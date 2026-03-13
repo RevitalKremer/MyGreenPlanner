@@ -368,6 +368,60 @@ function App() {
     })
   }
 
+  const addManualPanel = () => {
+    if (!refinedArea || !refinedArea.polygon || !imageRef || !baseline || !baseline.p2) return
+
+    const { pixelToCmRatio } = refinedArea
+    
+    // Panel dimensions from AIKO-G670-MCH72Mw specifications
+    const panelLengthCm = 238.2
+    const panelWidthCm = 113.4
+    
+    // Convert to pixels
+    const panelLengthPx = panelLengthCm / pixelToCmRatio
+    const panelWidthPx = panelWidthCm / pixelToCmRatio
+    
+    // Calculate baseline center and angle
+    const baselineCenterX = (baseline.p1[0] + baseline.p2[0]) / 2
+    const baselineCenterY = (baseline.p1[1] + baseline.p2[1]) / 2
+    const baselineAngle = Math.atan2(
+      baseline.p2[1] - baseline.p1[1],
+      baseline.p2[0] - baseline.p1[0]
+    )
+    
+    // Place panel below baseline (perpendicular to baseline, 50px margin)
+    const margin = 50
+    const newPanelCenterX = baselineCenterX + margin * Math.sin(baselineAngle)
+    const newPanelCenterY = baselineCenterY - margin * Math.cos(baselineAngle)
+    
+    // Calculate top-left corner from center
+    const newPanelX = newPanelCenterX - panelLengthPx / 2
+    const newPanelY = newPanelCenterY - panelWidthPx / 2
+    
+    // Generate new panel ID
+    const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
+    
+    // Create new panel with baseline rotation
+    const newPanel = {
+      id: newId,
+      x: newPanelX,
+      y: newPanelY,
+      width: panelLengthPx,
+      height: panelWidthPx,
+      widthCm: panelLengthCm,
+      heightCm: panelWidthCm,
+      rotation: baselineAngle * (180 / Math.PI) // Match baseline angle
+    }
+    
+    // Add to panels array
+    setPanels([...panels, newPanel])
+    
+    // Select the new panel
+    setSelectedPanels([newId])
+    
+    console.log('Manual panel added below baseline:', newPanel)
+  }
+
   const handlePointSelect = async (point, mapInstance, bounds) => {
     console.log('Point selected:', point, 'bounds:', bounds)
     setSelectedPoint(point)
@@ -2045,25 +2099,44 @@ function App() {
                           <li>Shift+click for multi-select</li>
                           <li>Drag panels to move</li>
                           <li>Click rotation icon to rotate</li>
+                          <li>Use "Add Panel" for extra panels</li>
                         </ul>
                       </div>
                       
-                      <button
-                        onClick={generatePanelLayout}
-                        style={{
-                          marginTop: '1rem',
-                          width: '100%',
-                          padding: '0.65rem',
-                          background: '#666',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Regenerate Layout
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <button
+                          onClick={generatePanelLayout}
+                          style={{
+                            flex: 1,
+                            padding: '0.65rem',
+                            background: '#666',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          🔄 Regenerate
+                        </button>
+                        <button
+                          onClick={addManualPanel}
+                          style={{
+                            flex: 1,
+                            padding: '0.65rem',
+                            background: '#C4D600',
+                            color: '#333',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          ➕ Add Panel
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
