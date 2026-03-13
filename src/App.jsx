@@ -41,6 +41,7 @@ function App() {
   const [selectedPanels, setSelectedPanels] = useState([]) // Array of selected panel IDs
   const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
   const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
+  const [viewZoom, setViewZoom] = useState(1) // Zoom level for Step 3 view (independent of uploadedImageData.scale)
   
   // Step 4: Construction planning (TBD)
   const [constructionPlan, setConstructionPlan] = useState(null)
@@ -421,6 +422,206 @@ function App() {
     setSelectedPanels([newId])
     
     console.log('Manual panel added below baseline:', newPanel)
+  }
+
+  // Row snapping system
+  const detectRows = (panelList) => {
+    if (!refinedArea || !refinedArea.pixelToCmRatio) return []
+    
+    const { pixelToCmRatio } = refinedArea
+    const panelGapCm = 2.5
+    const panelGapPx = panelGapCm / pixelToCmRatio
+    const tolerance = 1 // 1 pixel tolerance for gap detection
+    
+    // Group panels into rows based on rotation and proximity
+    const rows = []
+    const processed = new Set()
+    
+    panelList.forEach(panel => {
+      if (processed.has(panel.id)) return
+      
+      // Start a new row with this panel
+      const row = [panel]
+      processed.add(panel.id)
+      
+      // Find all panels that belong to the same row
+      let changed = true
+      while (changed) {
+        changed = false
+        
+        panelList.forEach(otherPanel => {
+          if (processed.has(otherPanel.id)) return
+          
+          // Check if otherPanel belongs to this row
+          // Criteria: same rotation and side-by-side with any panel in the row
+          const sameRotation = Math.abs(otherPanel.rotation - panel.rotation) < 1 // within 1 degree
+          
+          if (sameRotation) {
+            // Check if side-by-side with any panel in the row
+            for (const rowPanel of row) {
+              // Check Y-alignment first (panels should be on similar Y position)
+              const yDiff = Math.abs(rowPanel.y - otherPanel.y)
+              const alignedY = yDiff < rowPanel.height * 0.3 // within 30% of panel height
+              
+              if (alignedY) {
+                // Calculate horizontal gap between panels
+                const panel1Right = rowPanel.x + rowPanel.width
+                const panel1Left = rowPanel.x
+                const panel2Right = otherPanel.x + otherPanel.width
+                const panel2Left = otherPanel.x
+                
+                let gap = Infinity
+                
+                // Check if panel2 is to the right of panel1
+                if (panel2Left >= panel1Right) {
+                  gap = panel2Left - panel1Right
+                }
+                // Check if panel1 is to the right of panel2
+                else if (panel1Left >= panel2Right) {
+                  gap = panel1Left - panel2Right
+                }
+                // Panels overlap horizontally - still same row if aligned vertically
+                else {
+                  gap = 0
+                }
+                
+                // Check if gap matches expected spacing (2.5cm ± tolerance)
+                const isAdjacent = gap <= (panelGapPx + tolerance)
+                
+                if (isAdjacent) {
+                  row.push(otherPanel)
+                  processed.add(otherPanel.id)
+                  changed = true
+                  break
+                }
+              }
+            }
+          }
+        })
+      }
+      
+      rows.push(row)
+    })
+    
+    return rows
+  }
+
+  const snapPanelsToRows = (movedPanelIds) => {
+    if (!refinedArea || !refinedArea.pixelToCmRatio) return
+    
+    const { pixelToCmRatio } = refinedArea
+    const panelGapCm = 2.5
+    const panelGapPx = panelGapCm / pixelToCmRatio
+    
+    // Get unmoved panels (potential target rows)
+    const unmovedPanels = panels.filter(p => !movedPanelIds.includes(p.id))
+    
+    // Detect rows from unmoved panels only
+    const rows = detectRows(unmovedPanels)
+    
+    console.log('Detected rows for snapping:', rows.length)
+    
+    // For each moved panel, check if it should snap to a row
+    setPanels(prevPanels => {
+      return prevPanels.map(panel => {
+        if (!movedPanelIds.includes(panel.id)) return panel
+        
+        let bestRow = null
+        let bestDistance = Infinity
+        
+        // Find closest row that this panel could snap to
+        for (const row of rows) {
+          const rowRotation = row[0].rotation
+          const sameRotation = Math.abs(panel.rotation - rowRotation) < 1
+          
+          if (sameRotation) {
+            // Calculate the center Y of the moved panel
+            const panelCenterY = panel.y + panel.height / 2
+            const rowCenterY = row[0].y + row[0].height / 2
+            
+            // Use center-to-center distance for more accurate snapping
+            const yDiff = Math.abs(panelCenterY - rowCenterY)
+            
+            // Check if panel overlaps with row's X range (horizontally)
+            const rowMinX = Math.min(...row.map(p => p.x))
+            const rowMaxX = Math.max(...row.map(p => p.x + p.width))
+            const panelCenterX = panel.x + panel.width / 2
+            
+            // Panel should be within or near the row's horizontal span
+            const horizontallyAligned = panelCenterX >= (rowMinX - panel.width * 2) && 
+                                       panelCenterX <= (rowMaxX + panel.width * 2)
+            
+            // Reduce tolerance to 35% of panel height
+            const snapTolerance = panel.height * 0.35
+            
+            if (horizontallyAligned && yDiff < bestDistance && yDiff < snapTolerance) {
+              bestDistance = yDiff
+              bestRow = row
+            }
+          }
+        }
+        
+        if (bestRow) {
+          // Snap panel to this row
+          const rowRotation = bestRow[0].rotation
+          const newY = bestRow[0].y
+          
+          // Find where to place the panel in the row
+          // Sort row panels by X position to find the correct insertion point
+          const sortedRowPanels = [...bestRow].sort((a, b) => a.x - b.x)
+          
+          // Find if panel should go at the start, middle, or end
+          const panelCenterX = panel.x + panel.width / 2
+          
+          let newX
+          
+          // Check if it should be at the beginning
+          if (panelCenterX < sortedRowPanels[0].x) {
+            newX = sortedRowPanels[0].x - panel.width - panelGapPx
+            console.log(`Snapping panel ${panel.id} to START of row`)
+          }
+          // Check if it should be in the middle (between two panels)
+          else {
+            let insertionFound = false
+            for (let i = 0; i < sortedRowPanels.length - 1; i++) {
+              const currentPanel = sortedRowPanels[i]
+              const nextPanel = sortedRowPanels[i + 1]
+              const currentRight = currentPanel.x + currentPanel.width
+              const nextLeft = nextPanel.x
+              
+              // Check if dropped panel center is between these two panels
+              if (panelCenterX > currentRight && panelCenterX < nextLeft) {
+                // Place it after the current panel
+                newX = currentRight + panelGapPx
+                console.log(`Snapping panel ${panel.id} BETWEEN panels in row`)
+                insertionFound = true
+                break
+              }
+            }
+            
+            // If not found in middle, place at the end
+            if (!insertionFound) {
+              const lastPanel = sortedRowPanels[sortedRowPanels.length - 1]
+              newX = lastPanel.x + lastPanel.width + panelGapPx
+              console.log(`Snapping panel ${panel.id} to END of row`)
+            }
+          }
+          
+          console.log(`Panel ${panel.id} snapped to Y=${newY}, X=${newX}, distance=${bestDistance.toFixed(2)}`)
+          
+          return {
+            ...panel,
+            x: newX,
+            y: newY,
+            rotation: rowRotation
+          }
+        }
+        
+        // If no row found to snap to, keep panel where it was dropped
+        console.log(`Panel ${panel.id} not snapped - no suitable row found`)
+        return panel
+      })
+    })
   }
 
   const handlePointSelect = async (point, mapInstance, bounds) => {
@@ -885,8 +1086,17 @@ function App() {
           <>
             <div className="step-content-area" style={{ position: 'relative' }}>
               {uploadedImageData && roofPolygon ? (
-                <div className="uploaded-image-view" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                  <div className="uploaded-image-container" style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}>
+                <div className="uploaded-image-view" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto' }}>
+                  <div 
+                    className="uploaded-image-container" 
+                    style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}
+                    onWheel={(e) => {
+                      e.preventDefault()
+                      const delta = e.deltaY > 0 ? -0.1 : 0.1
+                      const newZoom = Math.max(0.5, Math.min(3, viewZoom + delta))
+                      setViewZoom(newZoom)
+                    }}
+                  >
                     <img 
                       ref={(el) => setImageRef(el)}
                       src={uploadedImageData.imageData} 
@@ -908,7 +1118,7 @@ function App() {
                       }}
                       style={{
                         display: 'block',
-                        transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale})`,
+                        transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`,
                         maxWidth: '100%',
                         maxHeight: 'calc(100vh - 250px)',
                         width: 'auto',
@@ -929,7 +1139,7 @@ function App() {
                           width: '100%',
                           height: '100%',
                           pointerEvents: 'none',
-                          transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale})`
+                          transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`
                         }}
                       >
                         {/* Mask: darken everything outside polygon */}
@@ -968,16 +1178,38 @@ function App() {
                               x2={referenceLine.end.x}
                               y2={referenceLine.end.y}
                               stroke="#FF5722"
-                              strokeWidth="4"
+                              strokeWidth="2"
+                              strokeDasharray="8,4"
                             />
-                            <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r="6" fill="#FF5722" />
-                            <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r="6" fill="#FF5722" />
+                            <circle 
+                              cx={referenceLine.start.x} 
+                              cy={referenceLine.start.y} 
+                              r="4" 
+                              fill="#FF5722" 
+                              stroke="white"
+                              strokeWidth="1.5"
+                            />
+                            <circle 
+                              cx={referenceLine.end.x} 
+                              cy={referenceLine.end.y} 
+                              r="4" 
+                              fill="#FF5722"
+                              stroke="white"
+                              strokeWidth="1.5"
+                            />
                           </>
                         )}
                         
                         {/* Line being drawn */}
                         {isDrawingLine && lineStart && (
-                          <circle cx={lineStart.x} cy={lineStart.y} r="6" fill="#FF5722" />
+                          <circle 
+                            cx={lineStart.x} 
+                            cy={lineStart.y} 
+                            r="4" 
+                            fill="#FF5722"
+                            stroke="white"
+                            strokeWidth="1.5"
+                          />
                         )}
                       </svg>
                     )}
@@ -1011,6 +1243,66 @@ function App() {
                     <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '600', color: '#666' }}>
                       Panel Side View
                     </h4>
+                    
+                    {/* Zoom Controls */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', fontWeight: '600' }}>
+                        🔍 Zoom: {(viewZoom * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <button
+                          onClick={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem',
+                            background: 'white',
+                            color: '#666',
+                            border: '2px solid #C4D600',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          −
+                        </button>
+                        <button
+                          onClick={() => setViewZoom(1)}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem',
+                            background: 'white',
+                            color: '#666',
+                            border: '2px solid #C4D600',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.75rem'
+                          }}
+                        >
+                          100%
+                        </button>
+                        <button
+                          onClick={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem',
+                            background: 'white',
+                            color: '#666',
+                            border: '2px solid #C4D600',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.25rem' }}>
+                        💡 Use mouse wheel to zoom
+                      </div>
+                    </div>
                     {panelFrontHeight && panelBackHeight && panelAngle ? (
                       <svg 
                         viewBox="0 0 300 180" 
@@ -1404,15 +1696,24 @@ function App() {
           <>
             <div className="step-content-area" style={{ position: 'relative' }}>
               {uploadedImageData && roofPolygon && refinedArea ? (
-                <div className="uploaded-image-view" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                  <div className="uploaded-image-container" style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}>
+                <div className="uploaded-image-view" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto' }}>
+                  <div 
+                    className="uploaded-image-container" 
+                    style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}
+                    onWheel={(e) => {
+                      e.preventDefault()
+                      const delta = e.deltaY > 0 ? -0.1 : 0.1
+                      const newZoom = Math.max(0.5, Math.min(3, viewZoom + delta))
+                      setViewZoom(newZoom)
+                    }}
+                  >
                     <img 
                       ref={(el) => setImageRef(el)}
                       src={uploadedImageData.imageData} 
                       alt="Roof with panels"
                       style={{
                         display: 'block',
-                        transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale})`,
+                        transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`,
                         maxWidth: '100%',
                         maxHeight: 'calc(100vh - 250px)',
                         width: 'auto',
@@ -1433,7 +1734,7 @@ function App() {
                           width: '100%',
                           height: '100%',
                           pointerEvents: 'auto',
-                          transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale})`,
+                          transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`,
                           cursor: dragState ? 'move' : 'default'
                         }}
                         onMouseDown={(e) => {
@@ -1637,6 +1938,11 @@ function App() {
                           }
                         }}
                         onMouseUp={() => {
+                          // Apply row snapping if panels were dragged
+                          if (dragState && dragState.panelIds) {
+                            snapPanelsToRows(dragState.panelIds)
+                          }
+                          
                           setDragState(null)
                           setRotationState(null)
                         }}
@@ -1755,29 +2061,56 @@ function App() {
                         })()}
                         
                         {/* Solar panels */}
-                        {panels.map(panel => {
-                          const centerX = panel.x + panel.width / 2
-                          const centerY = panel.y + panel.height / 2
-                          const rotation = panel.rotation || 0
-                          const iconSize = 10 // Size of rotation icon (reduced)
-                          const iconPadding = 3 // Distance from corner
+                        {(() => {
+                          // Calculate rows for debugging
+                          const rows = detectRows(panels)
+                          const panelToRowMap = new Map()
+                          rows.forEach((row, rowIndex) => {
+                            row.forEach(panel => {
+                              panelToRowMap.set(panel.id, rowIndex + 1)
+                            })
+                          })
                           
-                          return (
-                            <g key={panel.id} transform={`rotate(${rotation} ${centerX} ${centerY})`}>
-                              {/* Panel rectangle */}
-                              <rect
-                                x={panel.x}
-                                y={panel.y}
-                                width={panel.width}
-                                height={panel.height}
-                                fill={selectedPanels.includes(panel.id) ? 'rgba(100, 180, 255, 0.7)' : 'rgba(135, 206, 235, 0.6)'}
-                                stroke={selectedPanels.includes(panel.id) ? '#0066CC' : '#4682B4'}
-                                strokeWidth={selectedPanels.includes(panel.id) ? '3' : '1.5'}
-                                style={{ cursor: 'move' }}
-                              />
-                              
-                              {/* Rotation icon in top-right corner */}
-                              {selectedPanels.includes(panel.id) && (
+                          return panels.map(panel => {
+                            const centerX = panel.x + panel.width / 2
+                            const centerY = panel.y + panel.height / 2
+                            const rotation = panel.rotation || 0
+                            const iconSize = 10 // Size of rotation icon (reduced)
+                            const iconPadding = 3 // Distance from corner
+                            const rowNumber = panelToRowMap.get(panel.id) || '?'
+                            
+                            return (
+                              <g key={panel.id} transform={`rotate(${rotation} ${centerX} ${centerY})`}>
+                                {/* Panel rectangle */}
+                                <rect
+                                  x={panel.x}
+                                  y={panel.y}
+                                  width={panel.width}
+                                  height={panel.height}
+                                  fill={selectedPanels.includes(panel.id) ? 'rgba(100, 180, 255, 0.7)' : 'rgba(135, 206, 235, 0.6)'}
+                                  stroke={selectedPanels.includes(panel.id) ? '#0066CC' : '#4682B4'}
+                                  strokeWidth={selectedPanels.includes(panel.id) ? '3' : '1.5'}
+                                  style={{ cursor: 'move' }}
+                                />
+                                
+                                {/* Row number label for debugging */}
+                                <text
+                                  x={panel.x + panel.width / 2}
+                                  y={panel.y + panel.height / 2}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fontSize="12"
+                                  fontWeight="bold"
+                                  fill="white"
+                                  stroke="black"
+                                  strokeWidth="0.5"
+                                  style={{ pointerEvents: 'none' }}
+                                >
+                                  {rowNumber}
+                                </text>
+                                
+                                {/* Rotation icon in top-right corner */}
+                                {selectedPanels.includes(panel.id) && (
                                 <g>
                                   {/* Icon background circle */}
                                   <circle
@@ -1811,7 +2144,7 @@ function App() {
                               )}
                             </g>
                           )
-                        })}
+                        })})()}
                         
                         {/* Distance measurement - user drawn */}
                         {showDistances && distanceMeasurement && refinedArea && (() => {
@@ -2176,6 +2509,66 @@ function App() {
                   <h3 style={{ margin: '0 0 1rem 0', color: '#666666', fontSize: '1rem' }}>
                     Display Controls
                   </h3>
+                  
+                  {/* Zoom Controls */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      🔍 Zoom: {(viewZoom * 100).toFixed(0)}%
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <button
+                        onClick={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem',
+                          background: 'white',
+                          color: '#666',
+                          border: '2px solid #C4D600',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        −
+                      </button>
+                      <button
+                        onClick={() => setViewZoom(1)}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem',
+                          background: 'white',
+                          color: '#666',
+                          border: '2px solid #C4D600',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        100%
+                      </button>
+                      <button
+                        onClick={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem',
+                          background: 'white',
+                          color: '#666',
+                          border: '2px solid #C4D600',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.25rem' }}>
+                      💡 Use mouse wheel to zoom
+                    </div>
+                  </div>
                   
                   {/* Baseline & Distance Toggles */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
