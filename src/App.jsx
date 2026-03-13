@@ -36,6 +36,7 @@ function App() {
   const [baseline, setBaseline] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn baseline for first row
   const [showBaseline, setShowBaseline] = useState(true) // Toggle to show/hide baseline
   const [showDistances, setShowDistances] = useState(true) // Toggle to show/hide distance measurements
+  const [distanceMeasurement, setDistanceMeasurement] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn distance measurement
   const [panels, setPanels] = useState([]) // Array of panel objects
   const [selectedPanels, setSelectedPanels] = useState([]) // Array of selected panel IDs
   const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
@@ -1451,6 +1452,18 @@ function App() {
                             return
                           }
                           
+                          // If Ctrl/Cmd key is held, capture distance measurement points
+                          if ((e.ctrlKey || e.metaKey) && showDistances) {
+                            if (!distanceMeasurement) {
+                              setDistanceMeasurement({ p1: [x, y], p2: null })
+                              return
+                            }
+                            if (distanceMeasurement && distanceMeasurement.p2 === null) {
+                              setDistanceMeasurement({ ...distanceMeasurement, p2: [x, y] })
+                              return
+                            }
+                          }
+                          
                           // Check if clicking on a rotation icon (top-right corner of selected panels)
                           let clickedRotationHandle = null
                           const iconSize = 10
@@ -1800,98 +1813,40 @@ function App() {
                           )
                         })}
                         
-                        {/* Distance measurements */}
-                        {showDistances && panels.length > 0 && refinedArea && (() => {
+                        {/* Distance measurement - user drawn */}
+                        {showDistances && distanceMeasurement && refinedArea && (() => {
                           const { pixelToCmRatio } = refinedArea
-                          const measurements = []
+                          const { p1, p2 } = distanceMeasurement
                           
-                          // Group panels by row
-                          const rowGroups = {}
-                          panels.forEach(panel => {
-                            if (!rowGroups[panel.row]) rowGroups[panel.row] = []
-                            rowGroups[panel.row].push(panel)
-                          })
-                          
-                          const rowNumbers = Object.keys(rowGroups).map(Number).sort((a, b) => a - b)
-                          
-                          // Show distance between rows
-                          for (let i = 0; i < rowNumbers.length - 1; i++) {
-                            const currentRow = rowGroups[rowNumbers[i]]
-                            const nextRow = rowGroups[rowNumbers[i + 1]]
-                            
-                            if (currentRow.length > 0 && nextRow.length > 0) {
-                              const currentPanel = currentRow[0]
-                              const nextPanel = nextRow[0]
-                              
-                              const currentCenterY = currentPanel.y + currentPanel.height / 2
-                              const nextCenterY = nextPanel.y + nextPanel.height / 2
-                              const avgX = (currentPanel.x + nextPanel.x) / 2
-                              
-                              const distancePx = Math.abs(currentCenterY - nextCenterY)
-                              const distanceCm = distancePx * pixelToCmRatio
-                              
-                              measurements.push(
-                                <g key={`row-spacing-${i}`} style={{ cursor: 'pointer' }}>
-                                  <line
-                                    x1={avgX}
-                                    y1={currentCenterY}
-                                    x2={avgX}
-                                    y2={nextCenterY}
-                                    stroke="#2196F3"
-                                    strokeWidth="2"
-                                    markerStart="url(#arrow-start)"
-                                    markerEnd="url(#arrow-end)"
-                                  />
-                                  {/* Label group - shown on hover */}
-                                  <g className="distance-label" style={{ opacity: 0, transition: 'opacity 0.2s' }}>
-                                    <rect
-                                      x={avgX - 35}
-                                      y={(currentCenterY + nextCenterY) / 2 - 12}
-                                      width="70"
-                                      height="24"
-                                      fill="white"
-                                      stroke="#2196F3"
-                                      strokeWidth="1.5"
-                                      rx="4"
-                                    />
-                                    <text
-                                      x={avgX}
-                                      y={(currentCenterY + nextCenterY) / 2 + 5}
-                                      textAnchor="middle"
-                                      fill="#2196F3"
-                                      fontSize="12"
-                                      fontWeight="600"
-                                      pointerEvents="none"
-                                    >
-                                      {distanceCm.toFixed(0)} cm
-                                    </text>
-                                  </g>
-                                  {/* Invisible hover area */}
-                                  <rect
-                                    x={avgX - 40}
-                                    y={Math.min(currentCenterY, nextCenterY)}
-                                    width="80"
-                                    height={Math.abs(nextCenterY - currentCenterY)}
-                                    fill="transparent"
-                                    onMouseEnter={(e) => {
-                                      const label = e.currentTarget.previousSibling
-                                      if (label) label.style.opacity = '1'
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      const label = e.currentTarget.previousSibling
-                                      if (label) label.style.opacity = '0'
-                                    }}
-                                  />
-                                </g>
-                              )
-                            }
+                          if (!p2) {
+                            // Show first point only
+                            return (
+                              <circle
+                                cx={p1[0]}
+                                cy={p1[1]}
+                                r="4"
+                                fill="#2196F3"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                            )
                           }
+                          
+                          // Calculate distance
+                          const distancePx = Math.sqrt(
+                            Math.pow(p2[0] - p1[0], 2) + Math.pow(p2[1] - p1[1], 2)
+                          )
+                          const distanceCm = distancePx * pixelToCmRatio
+                          const distanceM = (distanceCm / 100).toFixed(2)
+                          
+                          const midX = (p1[0] + p2[0]) / 2
+                          const midY = (p1[1] + p2[1]) / 2
                           
                           return (
                             <>
                               <defs>
                                 <marker
-                                  id="arrow-start"
+                                  id="distance-arrow-start"
                                   markerWidth="10"
                                   markerHeight="10"
                                   refX="5"
@@ -1901,7 +1856,7 @@ function App() {
                                   <polygon points="5,2 5,8 2,5" fill="#2196F3" />
                                 </marker>
                                 <marker
-                                  id="arrow-end"
+                                  id="distance-arrow-end"
                                   markerWidth="10"
                                   markerHeight="10"
                                   refX="5"
@@ -1911,7 +1866,70 @@ function App() {
                                   <polygon points="5,2 5,8 8,5" fill="#2196F3" />
                                 </marker>
                               </defs>
-                              {measurements}
+                              
+                              {/* Distance line with arrows */}
+                              <line
+                                x1={p1[0]}
+                                y1={p1[1]}
+                                x2={p2[0]}
+                                y2={p2[1]}
+                                stroke="#2196F3"
+                                strokeWidth="3"
+                                markerStart="url(#distance-arrow-start)"
+                                markerEnd="url(#distance-arrow-end)"
+                              />
+                              
+                              {/* Endpoint circles */}
+                              <circle
+                                cx={p1[0]}
+                                cy={p1[1]}
+                                r="4"
+                                fill="#2196F3"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                              <circle
+                                cx={p2[0]}
+                                cy={p2[1]}
+                                r="4"
+                                fill="#2196F3"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                              
+                              {/* Distance label */}
+                              <g>
+                                <rect
+                                  x={midX - 45}
+                                  y={midY - 18}
+                                  width="90"
+                                  height="36"
+                                  fill="white"
+                                  stroke="#2196F3"
+                                  strokeWidth="2"
+                                  rx="6"
+                                />
+                                <text
+                                  x={midX}
+                                  y={midY - 2}
+                                  textAnchor="middle"
+                                  fill="#2196F3"
+                                  fontSize="14"
+                                  fontWeight="700"
+                                >
+                                  {distanceCm.toFixed(0)} cm
+                                </text>
+                                <text
+                                  x={midX}
+                                  y={midY + 12}
+                                  textAnchor="middle"
+                                  fill="#666"
+                                  fontSize="11"
+                                  fontWeight="600"
+                                >
+                                  ({distanceM} m)
+                                </text>
+                              </g>
                             </>
                           )
                         })()}
@@ -2189,8 +2207,44 @@ function App() {
                         fontSize: '0.85rem'
                       }}
                     >
-                      {showDistances ? '📏 Distances' : '📏 Distances'}
+                      {showDistances ? '📏 Measure Distance' : '📏 Measure Distance'}
                     </button>
+                    {showDistances && (
+                      <div style={{
+                        padding: '0.75rem',
+                        background: '#E3F2FD',
+                        borderRadius: '6px',
+                        border: '1px solid #2196F3',
+                        fontSize: '0.75rem',
+                        color: '#1565C0'
+                      }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
+                          💡 How to measure:
+                        </div>
+                        <div>
+                          Hold {navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'} + click two points
+                        </div>
+                        {distanceMeasurement && distanceMeasurement.p2 && (
+                          <button
+                            onClick={() => setDistanceMeasurement(null)}
+                            style={{
+                              marginTop: '0.5rem',
+                              width: '100%',
+                              padding: '0.4rem',
+                              background: 'white',
+                              color: '#2196F3',
+                              border: '1px solid #2196F3',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              fontWeight: '600'
+                            }}
+                          >
+                            🗑️ Clear Measurement
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Delete Selected Panel */}
