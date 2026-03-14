@@ -38,7 +38,32 @@ export const generatePanelLayout = (refinedArea, baseline) => {
   // Calculate roof projection (horizontal footprint) in pixels
   const angleRad = angle * (Math.PI / 180)
   const roofProjectionPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
-  
+
+  // Multi-line row configuration
+  const linesPerRow = panelConfig.linesPerRow || 1
+  const lineOrientations = (panelConfig.lineOrientations || ['vertical']).slice(0, linesPerRow)
+
+  const lineConfigs = lineOrientations.map(orientation => {
+    if (orientation === 'horizontal') {
+      return {
+        widthPx: panelLengthPx,
+        projectionPx: (panelWidthCm * Math.cos(angleRad)) / pixelToCmRatio,
+        widthCm: panelLengthCm,
+        heightCm: panelWidthCm
+      }
+    }
+    return {
+      widthPx: panelWidthPx,
+      projectionPx: roofProjectionPx,
+      widthCm: panelWidthCm,
+      heightCm: panelLengthCm
+    }
+  })
+
+  // Total projection of the full multi-line row (all lines + gaps between them)
+  const totalRowProjectionPx = lineConfigs.reduce((sum, lc) => sum + lc.projectionPx, 0) +
+    (linesPerRow - 1) * panelGapPx
+
   // Use the user-drawn baseline to determine roof orientation
   const roofOrientation = Math.atan2(
     baseline.p2[1] - baseline.p1[1],
@@ -134,92 +159,53 @@ export const generatePanelLayout = (refinedArea, baseline) => {
   
   console.log('Panel placement starting at baselineRotY:', baselineRotY)
   
-  while (currentRotY + roofProjectionPx <= rotMaxY) {
+  while (currentRotY + totalRowProjectionPx <= rotMaxY) {
     // For first row, use baseline X range; for other rows, use full polygon width
     const startX = (rowIndex === 0) ? baselineStartX : rotMinX
     const endX = (rowIndex === 0) ? baselineEndX : rotMaxX
-    
-    let currentRotX = startX
+
     let panelsInRow = 0
-    let isLastRow = (currentRotY + rowSpacingPx + roofProjectionPx) > rotMaxY
-    
-    // Place panels in row from left to right in rotated space
-    while (currentRotX + panelWidthPx <= endX) {
-      if (isPanelInRotatedPolygon(currentRotX, currentRotY, panelWidthPx, roofProjectionPx)) {
-        // Calculate center in rotated space
-        const rotCenterX = currentRotX + panelWidthPx / 2
-        const rotCenterY = currentRotY + roofProjectionPx / 2
-        
-        // Rotate back to original space
-        const dx = rotCenterX - centerX
-        const dy = rotCenterY - centerY
-        const originalCenterX = centerX + dx * Math.cos(roofOrientation) - dy * Math.sin(roofOrientation)
-        const originalCenterY = centerY + dx * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
-        
-        // Calculate top-left corner in original space
-        const originalX = originalCenterX - panelWidthPx / 2
-        const originalY = originalCenterY - roofProjectionPx / 2
-        
-        generatedPanels.push({
-          id: panelId++,
-          x: originalX,
-          y: originalY,
-          width: panelWidthPx,
-          height: roofProjectionPx,
-          widthCm: panelWidthCm,
-          heightCm: panelLengthCm,
-          rotation: roofOrientation * (180 / Math.PI),
-          row: rowIndex
-        })
-        panelsInRow++
-      }
-      
-      currentRotX += panelWidthPx + panelGapPx
-    }
-    
-    console.log(`Row ${rowIndex}: placed ${panelsInRow} panels`)
-    
-    // Move to next row
-    currentRotY += (roofProjectionPx + rowSpacingPx)
-    rowIndex++
-    
-    // If this is the last row and landscape didn't fit, try portrait
-    if (isLastRow && panelsInRow === 0 && (currentRotY + roofProjectionPx <= rotMaxY)) {
-      const portraitProjectionPx = (panelWidthCm * Math.cos(angleRad)) / pixelToCmRatio
-      const portraitWidthPx = panelLengthPx
-      
-      currentRotX = rotMinX
-      while (currentRotX + portraitWidthPx <= rotMaxX) {
-        if (isPanelInRotatedPolygon(currentRotX, currentRotY, portraitWidthPx, portraitProjectionPx)) {
-          const rotCenterX = currentRotX + portraitWidthPx / 2
-          const rotCenterY = currentRotY + portraitProjectionPx / 2
-          
+    let lineY = currentRotY
+
+    for (let lineIdx = 0; lineIdx < linesPerRow; lineIdx++) {
+      const lc = lineConfigs[lineIdx]
+      let currentRotX = startX
+
+      while (currentRotX + lc.widthPx <= endX) {
+        if (isPanelInRotatedPolygon(currentRotX, lineY, lc.widthPx, lc.projectionPx)) {
+          const rotCenterX = currentRotX + lc.widthPx / 2
+          const rotCenterY = lineY + lc.projectionPx / 2
+
           const dx = rotCenterX - centerX
           const dy = rotCenterY - centerY
           const originalCenterX = centerX + dx * Math.cos(roofOrientation) - dy * Math.sin(roofOrientation)
           const originalCenterY = centerY + dx * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
-          
-          const originalX = originalCenterX - portraitWidthPx / 2
-          const originalY = originalCenterY - portraitProjectionPx / 2
-          
+
           generatedPanels.push({
             id: panelId++,
-            x: originalX,
-            y: originalY,
-            width: portraitWidthPx,
-            height: portraitProjectionPx,
-            widthCm: panelLengthCm,
-            heightCm: panelWidthCm,
-            rotation: roofOrientation * (180 / Math.PI) + 90,
-            row: rowIndex
+            x: originalCenterX - lc.widthPx / 2,
+            y: originalCenterY - lc.projectionPx / 2,
+            width: lc.widthPx,
+            height: lc.projectionPx,
+            widthCm: lc.widthCm,
+            heightCm: lc.heightCm,
+            rotation: roofOrientation * (180 / Math.PI),
+            row: rowIndex,
+            line: lineIdx
           })
           panelsInRow++
         }
-        currentRotX += portraitWidthPx + panelGapPx
+        currentRotX += lc.widthPx + panelGapPx
       }
-      console.log(`Row ${rowIndex} (portrait): placed ${panelsInRow} panels`)
-      break
+
+      lineY += lc.projectionPx + panelGapPx
     }
+
+    console.log(`Row ${rowIndex}: placed ${panelsInRow} panels across ${linesPerRow} lines`)
+
+    // Move to next row
+    currentRotY += (totalRowProjectionPx + rowSpacingPx)
+    rowIndex++
   }
   
   console.log(`Total panels placed: ${generatedPanels.length}`)

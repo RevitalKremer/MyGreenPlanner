@@ -30,9 +30,22 @@ function App() {
   const [referenceLine, setReferenceLine] = useState(null) // { start: {x, y}, end: {x, y} }
   const [referenceLineLengthCm, setReferenceLineLengthCm] = useState('')
   const [panelFrontHeight, setPanelFrontHeight] = useState('')
-  const [panelBackHeight, setPanelBackHeight] = useState('')
+  const [linesPerRow, setLinesPerRow] = useState(1)
+  const [lineOrientations, setLineOrientations] = useState(['vertical'])
   const [panelAngle, setPanelAngle] = useState('')
   const [isDrawingLine, setIsDrawingLine] = useState(false)
+
+  // Derived: back height computed from angle, frontHeight, and line config
+  const getComputedBackHeight = () => {
+    const angle = parseFloat(panelAngle) || 0
+    const frontH = parseFloat(panelFrontHeight) || 0
+    const angleRad = angle * Math.PI / 180
+    const totalSlopeLen = lineOrientations.reduce(
+      (sum, o) => sum + (o === 'vertical' ? 238.2 : 113.4), 0
+    ) + (linesPerRow - 1) * 2.5
+    return frontH + totalSlopeLen * Math.sin(angleRad)
+  }
+
   const [lineStart, setLineStart] = useState(null)
   
   // Step 3: Solar panel placement
@@ -46,6 +59,7 @@ function App() {
   const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
   const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
   const [viewZoom, setViewZoom] = useState(1) // Zoom level for Step 3 view (independent of uploadedImageData.scale)
+  const [rowConfigs, setRowConfigs] = useState({}) // Per-row trapezoid overrides: { [rowKey]: { angle, backHeight } }
   
   // Step 4: Construction planning (TBD)
   const [constructionPlan, setConstructionPlan] = useState(null)
@@ -88,7 +102,8 @@ function App() {
       setReferenceLine(null)
       setReferenceLineLengthCm('')
       setPanelFrontHeight('')
-      setPanelBackHeight('')
+      setLinesPerRow(1)
+      setLineOrientations(['vertical'])
       setPanelAngle('')
       setIsDrawingLine(false)
       setLineStart(null)
@@ -97,6 +112,7 @@ function App() {
       setSelectedPanels([])
       setDragState(null)
       setRotationState(null)
+      setRowConfigs({})
       setConstructionPlan(null)
       setExportReady(false)
     }
@@ -299,11 +315,12 @@ function App() {
           pixelToCmRatio,
           panelConfig: {
             frontHeight: parseFloat(panelFrontHeight),
-            backHeight: parseFloat(panelBackHeight),
-            angle: parseFloat(panelAngle)
+            backHeight: getComputedBackHeight(),
+            angle: parseFloat(panelAngle),
+            linesPerRow,
+            lineOrientations: [...lineOrientations]
           },
           panelFrontHeight: parseFloat(panelFrontHeight),
-          panelBackHeight: parseFloat(panelBackHeight),
           panelAngle: parseFloat(panelAngle)
         })
       }
@@ -329,8 +346,6 @@ function App() {
           parseFloat(referenceLineLengthCm) > 0 &&
           panelFrontHeight !== '' &&
           parseFloat(panelFrontHeight) >= 0 &&
-          panelBackHeight !== '' &&
-          parseFloat(panelBackHeight) >= 0 &&
           panelAngle !== '' &&
           parseFloat(panelAngle) >= 0 &&
           parseFloat(panelAngle) <= 30
@@ -502,8 +517,11 @@ function App() {
             setPanelType={setPanelType}
             panelFrontHeight={panelFrontHeight}
             setPanelFrontHeight={setPanelFrontHeight}
-            panelBackHeight={panelBackHeight}
-            setPanelBackHeight={setPanelBackHeight}
+            linesPerRow={linesPerRow}
+            setLinesPerRow={setLinesPerRow}
+            lineOrientations={lineOrientations}
+            setLineOrientations={setLineOrientations}
+            computedBackHeight={getComputedBackHeight()}
             panelAngle={panelAngle}
             setPanelAngle={setPanelAngle}
           />
@@ -538,6 +556,8 @@ function App() {
             setDistanceMeasurement={setDistanceMeasurement}
             generatePanelLayoutHandler={generatePanelLayoutHandler}
             addManualPanel={addManualPanel}
+            rowConfigs={rowConfigs}
+            setRowConfigs={setRowConfigs}
           />
         )}
 

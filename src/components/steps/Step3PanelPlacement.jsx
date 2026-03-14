@@ -25,7 +25,9 @@ export default function Step3PanelPlacement({
   distanceMeasurement,
   setDistanceMeasurement,
   generatePanelLayoutHandler,
-  addManualPanel
+  addManualPanel,
+  rowConfigs,
+  setRowConfigs
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
@@ -57,7 +59,10 @@ export default function Step3PanelPlacement({
         return na - nb
       })
       .forEach(([, rowPanels]) => {
-        if (rowPanels.length <= 1) { result.push(rowPanels); return }
+        // Skip spatial sub-split for multi-line rows — different lines will have
+        // large cross-depth distances that would incorrectly trigger splits.
+        const isMultiLine = rowPanels.some(p => p.line !== undefined && p.line > 0)
+        if (rowPanels.length <= 1 || isMultiLine) { result.push(rowPanels); return }
 
         // Step 2: within same panel.row, split by spatial adjacency.
         // Panels separated by more than 2× panel widths are different clusters
@@ -174,6 +179,70 @@ export default function Step3PanelPlacement({
       newPanel
     ])
     setSelectedPanels(prev => [...prev, newId])
+  }
+
+  // ── Per-row trapezoid ─────────────────────────────────────────────────────────
+
+  const getRowKey = (panel) =>
+    panel.row !== undefined ? panel.row : `manual_${panel.id}`
+
+  const selectedRowKey = selectedRow ? getRowKey(selectedRow[0]) : null
+
+  const updateRowTrapezoid = (field, rawValue) => {
+    if (!selectedRowKey || !refinedArea?.panelConfig) return
+    const value = parseFloat(rawValue)
+    if (isNaN(value) || value < 0) return
+
+    const globalCfg = refinedArea.panelConfig
+    const current = rowConfigs[selectedRowKey] || {}
+    const PANEL_LENGTH = 238.2
+    const frontH = globalCfg.frontHeight || 0
+
+    let newOverride = { ...current, [field]: value }
+    // Two-way sync
+    if (field === 'angle') {
+      newOverride.backHeight = parseFloat((frontH + PANEL_LENGTH * Math.sin(value * Math.PI / 180)).toFixed(1))
+    } else if (field === 'backHeight') {
+      const derived = Math.asin((value - frontH) / PANEL_LENGTH) * 180 / Math.PI
+      if (!isNaN(derived) && derived >= 0 && derived <= 30) {
+        newOverride.angle = parseFloat(derived.toFixed(1))
+      }
+    }
+
+    setRowConfigs(prev => ({ ...prev, [selectedRowKey]: newOverride }))
+
+    // Recompute panel heights for this row when angle changes
+    const effectiveAngle = newOverride.angle ?? globalCfg.angle
+    if (effectiveAngle !== undefined && refinedArea.pixelToCmRatio) {
+      const rowIds = selectedRow.map(p => p.id)
+      setPanels(prev => prev.map(p => {
+        if (!rowIds.includes(p.id)) return p
+        const depthCm = p.heightCm || PANEL_LENGTH
+        const newH = (depthCm * Math.cos(effectiveAngle * Math.PI / 180)) / refinedArea.pixelToCmRatio
+        const cy = p.y + p.height / 2
+        return { ...p, height: newH, y: cy - newH / 2 }
+      }))
+    }
+  }
+
+  const resetRowTrapezoid = () => {
+    if (!selectedRowKey || !refinedArea?.panelConfig) return
+    const globalCfg = refinedArea.panelConfig
+    setRowConfigs(prev => {
+      const next = { ...prev }
+      delete next[selectedRowKey]
+      return next
+    })
+    // Restore global panel height
+    const angleRad = (globalCfg.angle || 0) * Math.PI / 180
+    const rowIds = selectedRow.map(p => p.id)
+    setPanels(prev => prev.map(p => {
+      if (!rowIds.includes(p.id)) return p
+      const depthCm = p.heightCm || 238.2
+      const newH = (depthCm * Math.cos(angleRad)) / refinedArea.pixelToCmRatio
+      const cy = p.y + p.height / 2
+      return { ...p, height: newH, y: cy - newH / 2 }
+    }))
   }
 
   // ── SVG interaction ───────────────────────────────────────────────────────────
@@ -472,6 +541,8 @@ export default function Step3PanelPlacement({
                     const cx = panel.x + panel.width / 2
                     const cy = panel.y + panel.height / 2
                     const rowNum = (panelToRowMap.get(panel.id) ?? 0) + 1
+                    const rowKey = getRowKey(panel)
+                    const hasOverride = !!rowConfigs[rowKey]
 
                     let fill, stroke, strokeWidth
                     if (isHovered) {
@@ -525,6 +596,15 @@ export default function Step3PanelPlacement({
                             >
                               {rowNum}
                             </text>
+                            {hasOverride && (
+                              <circle
+                                cx={cx + bw / 2 - bh * 0.18}
+                                cy={cy - bh / 2 + bh * 0.18}
+                                r={bh * 0.2}
+                                fill="#FF9800"
+                                style={{ pointerEvents: 'none' }}
+                              />
+                            )}
                           </>
                         )}
                         {/* Delete-hover indicator */}
@@ -726,6 +806,8 @@ export default function Step3PanelPlacement({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     {rows.map((row, i) => {
                       const isRowSelected = selectedRowIndex === i
+                      const rowKey = getRowKey(row[0])
+                      const hasOverride = !!rowConfigs[rowKey]
                       return (
                         <button
                           key={i}
@@ -746,6 +828,12 @@ export default function Step3PanelPlacement({
                           <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
                             Row {i + 1}
                           </span>
+                          {hasOverride && (
+                            <span title="Custom trapezoid" style={{
+                              width: '6px', height: '6px', borderRadius: '50%',
+                              background: '#FF9800', flexShrink: 0
+                            }} />
+                          )}
                           <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 'auto' }}>
                             {row.length} panels
                           </span>
@@ -980,6 +1068,123 @@ export default function Step3PanelPlacement({
                 </div>
               )}
             </div>
+
+            {/* Per-row trapezoid editor */}
+            {selectedRow && activeTool !== 'measure' && (() => {
+              const globalCfg = refinedArea?.panelConfig || {}
+              const override = rowConfigs[selectedRowKey] || {}
+              const isOverridden = !!rowConfigs[selectedRowKey]
+              const angle = override.angle ?? globalCfg.angle ?? 0
+              const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
+              const frontHeight = globalCfg.frontHeight ?? 0
+
+              // Trapezoid cross-section geometry
+              const W = 130, H = 62, groundY = H - 8
+              const fX = 15
+
+              return (
+                <div style={{
+                  marginBottom: '0.85rem', padding: '0.7rem',
+                  background: isOverridden ? '#FFF8E1' : '#fafafa',
+                  borderRadius: '8px',
+                  border: `1px solid ${isOverridden ? '#FFD54F' : '#f0f0f0'}`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isOverridden ? '#E65100' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>
+                      Row {(selectedRowIndex ?? 0) + 1} Trapezoid
+                    </span>
+                    {isOverridden && (
+                      <button
+                        onClick={resetRowTrapezoid}
+                        title="Reset to global defaults"
+                        style={{
+                          padding: '2px 6px', fontSize: '0.65rem', fontWeight: '600',
+                          background: 'white', color: '#E65100',
+                          border: '1px solid #FFB74D', borderRadius: '4px', cursor: 'pointer'
+                        }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Cross-section preview — multi-line aware */}
+                  {(() => {
+                    const globalCfg2 = refinedArea?.panelConfig || {}
+                    const effectiveLinesPerRow = globalCfg2.linesPerRow || 1
+                    const effectiveLineOrientations = globalCfg2.lineOrientations || ['vertical']
+                    const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
+                      .map(o => o === 'vertical' ? 238.2 : 113.4)
+                    const angleRad2 = angle * Math.PI / 180
+                    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (effectiveLinesPerRow - 1) * 2.5
+                    const totalHoriz = totalSlope * Math.cos(angleRad2)
+                    const scaleW2 = totalHoriz > 0 ? (W - 30) / totalHoriz : 1
+                    const scaleH2 = backHeight > 0 ? (H - 18) / backHeight : 1
+                    const sc = Math.min(scaleW2, scaleH2)
+                    // Build segments
+                    const segs = []
+                    let sx = fX, sy = groundY - frontHeight * sc
+                    for (let li = 0; li < effectiveLinesPerRow; li++) {
+                      const d = lineDepths[li]
+                      const gap = li < effectiveLinesPerRow - 1 ? 2.5 : 0
+                      const sdx = d * Math.cos(angleRad2) * sc
+                      const sdy = d * Math.sin(angleRad2) * sc
+                      const gdx = gap * Math.cos(angleRad2) * sc
+                      const gdy = gap * Math.sin(angleRad2) * sc
+                      const isH = effectiveLineOrientations[li] === 'horizontal'
+                      segs.push({ x1: sx, y1: sy, x2: sx + sdx, y2: sy - sdy, isH })
+                      sx = sx + sdx + gdx
+                      sy = sy - sdy - gdy
+                    }
+                    const finalX = sx, finalTopY = sy
+                    return (
+                      <svg width={W} height={H} style={{ display: 'block', margin: '0 auto 0.5rem' }}>
+                        <line x1="0" y1={groundY} x2={W} y2={groundY} stroke="#ddd" strokeWidth="1"/>
+                        <line x1={fX} y1={groundY} x2={fX} y2={groundY - frontHeight * sc} stroke="#aaa" strokeWidth="1.5"/>
+                        <line x1={finalX} y1={groundY} x2={finalX} y2={groundY - backHeight * sc} stroke="#aaa" strokeWidth="1.5"/>
+                        {segs.map((seg, i) => (
+                          <line key={i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                            stroke={seg.isH ? '#FF9800' : '#1565C0'} strokeWidth="2.5" strokeLinecap="round"/>
+                        ))}
+                        <text x={fX - 2} y={(groundY + groundY - frontHeight * sc) / 2} textAnchor="end" fill="#888" fontSize="8">{frontHeight.toFixed(0)}</text>
+                        <text x={finalX + 3} y={(groundY + groundY - backHeight * sc) / 2} fill="#888" fontSize="8">{backHeight.toFixed(1)}</text>
+                        <text x={(fX + finalX) / 2} y={H - 1} textAnchor="middle" fill="#555" fontSize="7.5" fontWeight="700">{angle.toFixed(1)}°</text>
+                      </svg>
+                    )
+                  })()}
+
+                  {/* Inputs */}
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Angle (°)</div>
+                      <input
+                        type="number" min="0" max="30" step="0.5"
+                        value={angle}
+                        onChange={e => updateRowTrapezoid('angle', e.target.value)}
+                        style={{
+                          width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
+                          border: `1px solid ${isOverridden ? '#FFB74D' : '#ddd'}`,
+                          borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600'
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Back H (cm)</div>
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={backHeight}
+                        onChange={e => updateRowTrapezoid('backHeight', e.target.value)}
+                        style={{
+                          width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
+                          border: `1px solid ${isOverridden ? '#FFB74D' : '#ddd'}`,
+                          borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Divider */}
             <div style={{ borderTop: '1px solid #f0f0f0', marginBottom: '0.85rem' }} />
