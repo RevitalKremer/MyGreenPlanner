@@ -511,58 +511,6 @@ export default function Step2PVAreaRefinement({
               />
             </div>
 
-            {/* Panel Back Height */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-                Panel Back Height (cm)
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={panelBackHeight}
-                onChange={(e) => {
-                  const backHeight = e.target.value
-                  setPanelBackHeight(backHeight)
-                  
-                  // Auto-calculate angle from back height
-                  // back_height = front_height + panel_length × sin(angle)
-                  // Therefore: angle = asin((back_height - front_height) / panel_length)
-                  if (backHeight !== '' && parseFloat(backHeight) >= 0 && panelFrontHeight !== '' && parseFloat(panelFrontHeight) >= 0) {
-                    const panelLengthCm = 238.2
-                    const backHeightVal = parseFloat(backHeight)
-                    const frontHeightVal = parseFloat(panelFrontHeight)
-                    
-                    const verticalRise = backHeightVal - frontHeightVal
-                    
-                    // Vertical rise must be positive and can't exceed panel length
-                    if (verticalRise >= 0 && verticalRise <= panelLengthCm) {
-                      const angleRadians = Math.asin(verticalRise / panelLengthCm)
-                      const angleDegrees = angleRadians * (180 / Math.PI)
-                      
-                      // Only update if within valid range (0-30°)
-                      if (angleDegrees >= 0 && angleDegrees <= 30) {
-                        setPanelAngle(angleDegrees.toFixed(2))
-                      }
-                    }
-                  }
-                }}
-                placeholder="front_height + panel_length × sin(angle)"
-                style={{
-                  width: '100%',
-                  padding: '0.65rem',
-                  border: '2px solid #e0e0e0',
-                  borderRadius: '6px',
-                  fontSize: '0.9rem'
-                }}
-              />
-              {panelFrontHeight && (
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#999' }}>
-                  Max: {(parseFloat(panelFrontHeight) + 238.2 * Math.sin(30 * Math.PI / 180)).toFixed(1)} cm (at 30°)
-                </p>
-              )}
-            </div>
-
             {/* Panel Angle */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
@@ -577,10 +525,10 @@ export default function Step2PVAreaRefinement({
                 onChange={(e) => {
                   const angle = e.target.value
                   const angleVal = parseFloat(angle)
-                  
+
                   if (angle === '' || (angleVal >= 0 && angleVal <= 30)) {
                     setPanelAngle(angle)
-                    
+
                     // Auto-calculate back height from angle
                     // back_height = front_height + panel_length × sin(angle)
                     // Panel length: 238.2 cm (AIKO-G670-MCH72Mw: 2382mm)
@@ -602,6 +550,58 @@ export default function Step2PVAreaRefinement({
                   fontSize: '0.9rem'
                 }}
               />
+            </div>
+
+            {/* Panel Back Height */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                Panel Back Height (cm)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={panelBackHeight}
+                onChange={(e) => {
+                  const backHeight = e.target.value
+                  setPanelBackHeight(backHeight)
+
+                  // Auto-calculate angle from back height
+                  // back_height = front_height + panel_length × sin(angle)
+                  // Therefore: angle = asin((back_height - front_height) / panel_length)
+                  if (backHeight !== '' && parseFloat(backHeight) >= 0 && panelFrontHeight !== '' && parseFloat(panelFrontHeight) >= 0) {
+                    const panelLengthCm = 238.2
+                    const backHeightVal = parseFloat(backHeight)
+                    const frontHeightVal = parseFloat(panelFrontHeight)
+
+                    const verticalRise = backHeightVal - frontHeightVal
+
+                    // Vertical rise must be positive and can't exceed panel length
+                    if (verticalRise >= 0 && verticalRise <= panelLengthCm) {
+                      const angleRadians = Math.asin(verticalRise / panelLengthCm)
+                      const angleDegrees = angleRadians * (180 / Math.PI)
+
+                      // Only update if within valid range (0-30°)
+                      if (angleDegrees >= 0 && angleDegrees <= 30) {
+                        setPanelAngle(angleDegrees.toFixed(2))
+                      }
+                    }
+                  }
+                }}
+                placeholder="front_height + panel_length × sin(angle)"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  border: '2px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '0.9rem'
+                }}
+              />
+              {panelFrontHeight && (
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#999' }}>
+                  Max: {(parseFloat(panelFrontHeight) + 238.2 * Math.sin(30 * Math.PI / 180)).toFixed(1)} cm (at 30°)
+                </p>
+              )}
             </div>
 
             {/* Validation Summary */}
