@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
+import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpPanel from './components/HelpPanel'
 import { SAM2Service } from './services/sam2Service'
@@ -64,7 +65,6 @@ function App() {
   const [rowConfigs, setRowConfigs] = useState({}) // Per-row trapezoid overrides: { [rowKey]: { angle, backHeight } }
   
   // Step 4: Construction planning (TBD)
-  const [constructionPlan, setConstructionPlan] = useState(null)
   
   const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
   const [showHelp, setShowHelp] = useState(false)
@@ -459,7 +459,7 @@ function App() {
       case 3:
         return panels.length > 0
       case 4:
-        return constructionPlan !== null
+        return true
       case 5:
         return true
       default:
@@ -698,28 +698,11 @@ function App() {
 
         {/* Step 4: Construction Planning */}
         {currentStep === 4 && (
-          <div className="step-content">
-            <div className="step-placeholder">
-              <h2>Construction Planning</h2>
-              <p>Generate installation details and requirements</p>
-              <div className="placeholder-info">
-                <p>This step will provide:</p>
-                <ul>
-                  <li>Bill of materials (BOM)</li>
-                  <li>Mounting system specifications</li>
-                  <li>Wiring diagram</li>
-                  <li>Installation sequence</li>
-                  <li>Safety requirements</li>
-                </ul>
-              </div>
-              <button 
-                className="btn-primary"
-                onClick={() => setConstructionPlan({ generated: true })}
-              >
-                Generate Plan (Mock)
-              </button>
-            </div>
-          </div>
+          <Step4ConstructionPlanning
+            panels={panels}
+            refinedArea={refinedArea}
+            rowConfigs={rowConfigs}
+          />
         )}
 
         {/* Step 5: Finalize & Export */}
