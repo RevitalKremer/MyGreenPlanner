@@ -4,11 +4,16 @@ import ImageUploader from './components/ImageUploader'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
+import WelcomeScreen from './components/WelcomeScreen'
 import { SAM2Service } from './services/sam2Service'
 import { generatePanelLayout, createManualPanel, detectRows, snapPanelsToRows } from './utils/panelUtils'
 import './App.css'
 
 function App() {
+  // App-level screen
+  const [appScreen, setAppScreen] = useState('welcome') // 'welcome' | 'wizard'
+  const [currentProject, setCurrentProject] = useState(null) // { name, location, date }
+
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1)
   const totalSteps = 5
@@ -85,37 +90,97 @@ function App() {
     setBackendStatus(status)
   }
 
+  const resetWizardState = () => {
+    setCurrentStep(1)
+    setSelectedPoint(null)
+    setRoofPolygon(null)
+    setProcessedImage(null)
+    setIsProcessing(false)
+    setUploadedImageMode(true)
+    setUploadedImageData(null)
+    setClickPosition(null)
+    setImageRef(null)
+    setRefinedArea(null)
+    setPanelType('AIKO-G670-MCH72Mw')
+    setReferenceLine(null)
+    setReferenceLineLengthCm('')
+    setPanelFrontHeight('')
+    setLinesPerRow(1)
+    setLineOrientations(['vertical'])
+    setPanelAngle('')
+    setIsDrawingLine(false)
+    setLineStart(null)
+    setPanelLayout(null)
+    setPanels([])
+    setSelectedPanels([])
+    setDragState(null)
+    setRotationState(null)
+    setRowConfigs({})
+    setConstructionPlan(null)
+    setExportReady(false)
+  }
+
   const handleStartOver = () => {
-    if (confirm('Are you sure you want to start over? All progress will be lost.')) {
-      // Reset all state to initial values
-      setCurrentStep(1)
-      setSelectedPoint(null)
-      setRoofPolygon(null)
-      setProcessedImage(null)
-      setIsProcessing(false)
-      setUploadedImageMode(true)
-      setUploadedImageData(null)
-      setClickPosition(null)
-      setImageRef(null)
-      setRefinedArea(null)
-      setPanelType('AIKO-G670-MCH72Mw')
-      setReferenceLine(null)
-      setReferenceLineLengthCm('')
-      setPanelFrontHeight('')
-      setLinesPerRow(1)
-      setLineOrientations(['vertical'])
-      setPanelAngle('')
-      setIsDrawingLine(false)
-      setLineStart(null)
-      setPanelLayout(null)
-      setPanels([])
-      setSelectedPanels([])
-      setDragState(null)
-      setRotationState(null)
-      setRowConfigs({})
-      setConstructionPlan(null)
-      setExportReady(false)
+    if (confirm('Return to the welcome screen? All unsaved progress will be lost.')) {
+      resetWizardState()
+      setCurrentProject(null)
+      setAppScreen('welcome')
     }
+  }
+
+  const handleCreateProject = (projectInfo) => {
+    setCurrentProject(projectInfo)
+    setAppScreen('wizard')
+  }
+
+  const handleImportProject = (data) => {
+    resetWizardState()
+    setCurrentProject(data.project)
+    if (data.uploadedImageData) setUploadedImageData(data.uploadedImageData)
+    if (data.roofPolygon) setRoofPolygon(data.roofPolygon)
+    if (data.referenceLine) setReferenceLine(data.referenceLine)
+    if (data.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(data.referenceLineLengthCm))
+    if (data.panelType) setPanelType(data.panelType)
+    if (data.panelFrontHeight !== undefined) setPanelFrontHeight(String(data.panelFrontHeight))
+    if (data.panelAngle !== undefined) setPanelAngle(String(data.panelAngle))
+    if (data.linesPerRow !== undefined) setLinesPerRow(data.linesPerRow)
+    if (data.lineOrientations) setLineOrientations(data.lineOrientations)
+    if (data.refinedArea) setRefinedArea(data.refinedArea)
+    if (data.baseline) setBaseline(data.baseline)
+    if (data.panels) setPanels(data.panels)
+    if (data.rowConfigs) setRowConfigs(data.rowConfigs)
+    if (data.currentStep) setCurrentStep(data.currentStep)
+    setAppScreen('wizard')
+  }
+
+  const handleExportProject = () => {
+    const data = {
+      version: '1.0',
+      project: currentProject,
+      currentStep,
+      uploadedImageData,
+      roofPolygon,
+      referenceLine,
+      referenceLineLengthCm,
+      panelType,
+      panelFrontHeight,
+      panelAngle,
+      linesPerRow,
+      lineOrientations,
+      refinedArea,
+      baseline,
+      panels,
+      rowConfigs
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const safeName = (currentProject?.name || 'project').replace(/[^a-z0-9]/gi, '_')
+    const dateStr = new Date().toISOString().split('T')[0]
+    a.href = url
+    a.download = `${safeName}_${dateStr}.mgp`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   // Helper function: Check if a point is inside a polygon
@@ -456,6 +521,15 @@ function App() {
     }
   }
 
+  if (appScreen === 'welcome') {
+    return (
+      <WelcomeScreen
+        onCreateProject={handleCreateProject}
+        onImportProject={handleImportProject}
+      />
+    )
+  }
+
   return (
     <div className="app">
       {/* Header Area */}
@@ -465,12 +539,36 @@ function App() {
             <img src="/logo.svg" alt="MyGreenPlanner Logo" style={{ height: '50px', width: '50px' }} />
             <div>
               <h1>MyGreenPlanner</h1>
-              <p className="header-subtitle">Solar PV Roof Planning System</p>
+              {currentProject?.name ? (
+                <p className="header-subtitle" style={{ fontWeight: '600', color: '#C4D600' }}>
+                  {currentProject.name}
+                  {currentProject.location && (
+                    <span style={{ fontWeight: '400', color: '#aaa', marginLeft: '0.5rem' }}>
+                      · {currentProject.location}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="header-subtitle">Solar PV Roof Planning System</p>
+              )}
             </div>
           </div>
-          <button className="btn-start-over" onClick={handleStartOver}>
-            Start Over
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={handleExportProject}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#C4D600', color: '#333',
+                border: 'none', borderRadius: '6px',
+                cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem'
+              }}
+            >
+              ↓ Export
+            </button>
+            <button className="btn-start-over" onClick={handleStartOver}>
+              Start Over
+            </button>
+          </div>
         </div>
       </header>
       
