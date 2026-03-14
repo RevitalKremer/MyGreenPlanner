@@ -559,7 +559,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '48px', width: 'auto' }} />
+            <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '68px', width: 'auto' }} />
             <div>
               <h1>MyGreenPlanner</h1>
               {currentProject?.name ? (
