@@ -162,8 +162,17 @@ export default function Step3PanelPlacement({
     const newCx = lastCx + (last.width + gap) * dirX
     const newCy = lastCy + (last.width + gap) * dirY
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
-    const newPanel = { ...last, id: newId, x: newCx - last.width / 2, y: newCy - last.height / 2 }
-    setPanels(prev => [...prev, newPanel])
+    // If the row has no row key (manually-added panels), assign one now based on the
+    // lowest panel ID in the group so it's stable across re-renders.
+    const rowKey = sortedRow[0].row !== undefined
+      ? sortedRow[0].row
+      : `m_${sortedRow[0].id}`
+    const selectedIds = selectedRow.map(p => p.id)
+    const newPanel = { ...last, id: newId, row: rowKey, x: newCx - last.width / 2, y: newCy - last.height / 2 }
+    setPanels(prev => [
+      ...prev.map(p => selectedIds.includes(p.id) ? { ...p, row: rowKey } : p),
+      newPanel
+    ])
     setSelectedPanels(prev => [...prev, newId])
   }
 
@@ -466,14 +475,19 @@ export default function Step3PanelPlacement({
 
                     let fill, stroke, strokeWidth
                     if (isHovered) {
-                      fill = 'rgba(244, 67, 54, 0.75)'; stroke = '#f44336'; strokeWidth = '3'
+                      fill = 'rgba(244, 67, 54, 0.65)'; stroke = '#f44336'; strokeWidth = '1'
                     } else if (isSelected) {
-                      fill = 'rgba(100, 180, 255, 0.85)'; stroke = '#0066CC'; strokeWidth = '3'
+                      fill = 'rgba(100, 180, 255, 0.75)'; stroke = '#0066CC'; strokeWidth = '2'
                     } else {
-                      fill = 'rgba(135, 206, 235, 0.6)'; stroke = '#4682B4'; strokeWidth = '1.5'
+                      fill = 'rgba(135, 206, 235, 0.5)'; stroke = '#4682B4'; strokeWidth = '1'
                     }
 
                     const opacity = hasSelection && !isSelected ? 0.45 : 1
+
+                    // Badge sizing proportional to the narrower panel dimension
+                    const bh = panel.width * 0.36
+                    const bw = bh * (rowNum >= 10 ? 2.4 : 1.9)
+                    const fs = bh * 0.62
 
                     return (
                       <g key={panel.id} style={{ opacity }}>
@@ -492,28 +506,47 @@ export default function Step3PanelPlacement({
                             onMouseLeave={() => setHoveredPanelId(null)}
                           />
                         </g>
-                        {/* Row number — rendered without rotation so it always reads upright */}
-                        <text
-                          x={cx} y={cy}
-                          textAnchor="middle" dominantBaseline="middle"
-                          fontSize="12" fontWeight="bold"
-                          fill="white" stroke="rgba(0,0,0,0.6)" strokeWidth="2"
-                          paintOrder="stroke"
-                          style={{ pointerEvents: 'none' }}
-                        >
-                          {rowNum}
-                        </text>
+                        {/* Row number pill badge — always upright, centered on panel */}
+                        {!isHovered && (
+                          <>
+                            <rect
+                              x={cx - bw / 2} y={cy - bh / 2}
+                              width={bw} height={bh}
+                              rx={bh / 2}
+                              fill={isSelected ? 'rgba(0,60,140,0.72)' : 'rgba(15,15,15,0.55)'}
+                              style={{ pointerEvents: 'none' }}
+                            />
+                            <text
+                              x={cx} y={cy}
+                              textAnchor="middle" dominantBaseline="middle"
+                              fontSize={fs} fontWeight="600"
+                              fill="white"
+                              style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}
+                            >
+                              {rowNum}
+                            </text>
+                          </>
+                        )}
+                        {/* Delete-hover indicator */}
                         {isHovered && (
-                          <text
-                            x={cx} y={cy}
-                            textAnchor="middle" dominantBaseline="middle"
-                            fontSize="16" fontWeight="bold"
-                            fill="white" stroke="rgba(0,0,0,0.4)" strokeWidth="2"
-                            paintOrder="stroke"
-                            style={{ pointerEvents: 'none' }}
-                          >
-                            ✕
-                          </text>
+                          <>
+                            <rect
+                              x={cx - bh / 2} y={cy - bh / 2}
+                              width={bh} height={bh}
+                              rx={bh / 2}
+                              fill="rgba(200,0,0,0.75)"
+                              style={{ pointerEvents: 'none' }}
+                            />
+                            <text
+                              x={cx} y={cy}
+                              textAnchor="middle" dominantBaseline="middle"
+                              fontSize={fs * 1.1} fontWeight="700"
+                              fill="white"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              ✕
+                            </text>
+                          </>
                         )}
                       </g>
                     )
@@ -524,7 +557,7 @@ export default function Step3PanelPlacement({
                     const { pixelToCmRatio } = refinedArea
                     const { p1, p2 } = distanceMeasurement
                     if (!p2) return (
-                      <circle cx={p1[0]} cy={p1[1]} r="4" fill="#2196F3" stroke="white" strokeWidth="2" />
+                      <circle cx={p1[0]} cy={p1[1]} r="3" fill="white" opacity="0.9" />
                     )
                     const distPx = Math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
                     const distCm = distPx * pixelToCmRatio

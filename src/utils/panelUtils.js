@@ -238,15 +238,18 @@ export const createManualPanel = (refinedArea, baseline, existingPanels) => {
     return null
   }
 
-  const { pixelToCmRatio } = refinedArea
-  
-  // Panel dimensions
+  const { pixelToCmRatio, panelConfig } = refinedArea
+
+  // Panel physical dimensions
   const panelLengthCm = 238.2
   const panelWidthCm = 113.4
-  
-  const panelLengthPx = panelLengthCm / pixelToCmRatio
+
+  // Use projection for the depth dimension, same as generatePanelLayout
+  const angle = panelConfig?.angle || 0
+  const angleRad = angle * (Math.PI / 180)
+  const roofProjectionPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
   const panelWidthPx = panelWidthCm / pixelToCmRatio
-  
+
   // Calculate baseline center and angle
   const baselineCenterX = (baseline.p1[0] + baseline.p2[0]) / 2
   const baselineCenterY = (baseline.p1[1] + baseline.p2[1]) / 2
@@ -254,26 +257,26 @@ export const createManualPanel = (refinedArea, baseline, existingPanels) => {
     baseline.p2[1] - baseline.p1[1],
     baseline.p2[0] - baseline.p1[0]
   )
-  
-  // Place panel below baseline
-  const margin = 50
+
+  // Place panel just below baseline center
+  const margin = roofProjectionPx
   const newPanelCenterX = baselineCenterX + margin * Math.sin(baselineAngle)
   const newPanelCenterY = baselineCenterY - margin * Math.cos(baselineAngle)
-  
-  const newPanelX = newPanelCenterX - panelLengthPx / 2
-  const newPanelY = newPanelCenterY - panelWidthPx / 2
-  
+
+  const newPanelX = newPanelCenterX - panelWidthPx / 2
+  const newPanelY = newPanelCenterY - roofProjectionPx / 2
+
   // Generate new panel ID
   const newId = existingPanels.length > 0 ? Math.max(...existingPanels.map(p => p.id)) + 1 : 1
-  
+
   return {
     id: newId,
     x: newPanelX,
     y: newPanelY,
-    width: panelLengthPx,
-    height: panelWidthPx,
-    widthCm: panelLengthCm,
-    heightCm: panelWidthCm,
+    width: panelWidthPx,
+    height: roofProjectionPx,
+    widthCm: panelWidthCm,
+    heightCm: panelLengthCm,
     rotation: baselineAngle * (180 / Math.PI)
   }
 }
