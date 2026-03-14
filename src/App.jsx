@@ -557,7 +557,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <img src="/logo.svg" alt="MyGreenPlanner Logo" style={{ height: '50px', width: '50px' }} />
+            <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '48px', width: 'auto' }} />
             <div>
               <h1>MyGreenPlanner</h1>
               {currentProject?.name ? (
@@ -574,7 +574,11 @@ function App() {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderRight: '1px solid rgba(255,255,255,0.2)', paddingRight: '1rem' }}>
+              <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>by</span>
+              <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '28px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.85 }} />
+            </div>
             <button
               onClick={handleExportProject}
               style={{
