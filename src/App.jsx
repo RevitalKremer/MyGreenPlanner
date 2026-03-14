@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
-import RoofMapper from './components/RoofMapper'
-import ImageUploader from './components/ImageUploader'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import WelcomeScreen from './components/WelcomeScreen'
 import { SAM2Service } from './services/sam2Service'
-import { generatePanelLayout, createManualPanel, detectRows, snapPanelsToRows } from './utils/panelUtils'
+import { generatePanelLayout, createManualPanel } from './utils/panelUtils'
 import './App.css'
 
 function App() {
@@ -21,13 +19,11 @@ function App() {
   // Step 1: Roof allocation
   const [selectedPoint, setSelectedPoint] = useState(null)
   const [roofPolygon, setRoofPolygon] = useState(null)
-  const [processedImage, setProcessedImage] = useState(null) // Store the processed image from backend
   const [backendStatus, setBackendStatus] = useState({ status: 'checking', model_loaded: false })
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadedImageMode, setUploadedImageMode] = useState(true)
   const [uploadedImageData, setUploadedImageData] = useState(null)
-  const [clickPosition, setClickPosition] = useState(null) // Store screen position for marker
-  const [imageRef, setImageRef] = useState(null) // Reference to the image element
+  const [imageRef, setImageRef] = useState(null)
   
   // Step 2: PV area refinement
   const [refinedArea, setRefinedArea] = useState(null)
@@ -54,12 +50,12 @@ function App() {
   const [lineStart, setLineStart] = useState(null)
   
   // Step 3: Solar panel placement
-  const [panelLayout, setPanelLayout] = useState(null)
   const [baseline, setBaseline] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn baseline for first row
   const [showBaseline, setShowBaseline] = useState(true) // Toggle to show/hide baseline
   const [showDistances, setShowDistances] = useState(true) // Toggle to show/hide distance measurements
   const [distanceMeasurement, setDistanceMeasurement] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn distance measurement
   const [panels, setPanels] = useState([]) // Array of panel objects
+  const [rowGroups, setRowGroups] = useState([])
   const [selectedPanels, setSelectedPanels] = useState([]) // Array of selected panel IDs
   const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
   const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
@@ -69,16 +65,9 @@ function App() {
   // Step 4: Construction planning (TBD)
   const [constructionPlan, setConstructionPlan] = useState(null)
   
-  // Step 5: Export data (TBD)
-  const [exportReady, setExportReady] = useState(false)
+  const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
 
-  const stepTitles = [
-    'Allocate Roof',
-    'Refine PV Area',
-    'Place Solar Panels',
-    'Construction Planning',
-    'Finalize & Export'
-  ]
+  const stepTitles = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
   useEffect(() => {
     // Check backend health on mount
@@ -94,11 +83,9 @@ function App() {
     setCurrentStep(1)
     setSelectedPoint(null)
     setRoofPolygon(null)
-    setProcessedImage(null)
     setIsProcessing(false)
     setUploadedImageMode(true)
     setUploadedImageData(null)
-    setClickPosition(null)
     setImageRef(null)
     setRefinedArea(null)
     setPanelType('AIKO-G670-MCH72Mw')
@@ -110,14 +97,13 @@ function App() {
     setPanelAngle('')
     setIsDrawingLine(false)
     setLineStart(null)
-    setPanelLayout(null)
     setPanels([])
+    setRowGroups([])
     setSelectedPanels([])
     setDragState(null)
     setRotationState(null)
     setRowConfigs({})
     setConstructionPlan(null)
-    setExportReady(false)
   }
 
   const handleStartOver = () => {
@@ -148,10 +134,12 @@ function App() {
     if (data.refinedArea) setRefinedArea(data.refinedArea)
     if (data.baseline) setBaseline(data.baseline)
     if (data.panels) setPanels(data.panels)
+    if (data.rowGroups) setRowGroups(data.rowGroups)
     if (data.rowConfigs) setRowConfigs(data.rowConfigs)
     if (data.currentStep) setCurrentStep(data.currentStep)
     setAppScreen('wizard')
   }
+
 
   const handleExportProject = () => {
     const data = {
@@ -170,6 +158,7 @@ function App() {
       refinedArea,
       baseline,
       panels,
+      rowGroups,
       rowConfigs
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -181,34 +170,6 @@ function App() {
     a.download = `${safeName}_${dateStr}.mgp`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  // Helper function: Check if a point is inside a polygon
-  const isPointInPolygon = (point, polygon) => {
-    let inside = false
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i][0], yi = polygon[i][1]
-      const xj = polygon[j][0], yj = polygon[j][1]
-      
-      const intersect = ((yi > point.y) !== (yj > point.y))
-        && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)
-      if (intersect) inside = !inside
-    }
-    return inside
-  }
-
-  // Helper function: Check if a rectangle (panel) is inside polygon
-  const isPanelInPolygon = (panelX, panelY, panelWidth, panelHeight, polygon) => {
-    // Check all four corners of the panel
-    const corners = [
-      { x: panelX, y: panelY },
-      { x: panelX + panelWidth, y: panelY },
-      { x: panelX, y: panelY + panelHeight },
-      { x: panelX + panelWidth, y: panelY + panelHeight }
-    ]
-    
-    // All corners must be inside the polygon
-    return corners.every(corner => isPointInPolygon(corner, polygon))
   }
 
   // Auto-generate panel layout based on Step 2 configuration
@@ -226,11 +187,73 @@ function App() {
     const generatedPanels = generatePanelLayout(refinedArea, baseline)
     
     setPanels(generatedPanels)
-    setPanelLayout({ 
-      panels: generatedPanels, 
-      count: generatedPanels.length,
-      totalCapacityKW: (generatedPanels.length * 0.67).toFixed(2)
+  }
+
+  const regeneratePlanPanelsHandler = () => {
+    if (!refinedArea || !refinedArea.pixelToCmRatio || rowGroups.length === 0) {
+      alert('Missing configuration from Step 2')
+      return
+    }
+    let nextId = 1
+    const allPanels = []
+    rowGroups.forEach((group, groupIdx) => {
+      if (!group.baseline) return
+      const angle = parseFloat(group.angle) || 0
+      const frontH = parseFloat(group.frontHeight) || 0
+      const angleRad = angle * Math.PI / 180
+      const n = group.linesPerRow || 1
+      const orients = (group.lineOrientations || ['vertical']).slice(0, n)
+      const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+      const backH = frontH + totalSlope * Math.sin(angleRad)
+      const generated = generatePanelLayout(
+        { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
+        group.baseline,
+        true
+      )
+      generated.forEach(p => allPanels.push({ ...p, id: nextId++, row: groupIdx }))
     })
+    setPanels(allPanels)
+  }
+
+  const regenerateSingleRowHandler = (rowKey) => {
+    if (!refinedArea || !refinedArea.pixelToCmRatio) return
+
+    if (projectMode === 'plan') {
+      const groupIdx = rowKey
+      const group = rowGroups[groupIdx]
+      if (!group || !group.baseline) return
+      const angle = parseFloat(group.angle) || 0
+      const frontH = parseFloat(group.frontHeight) || 0
+      const angleRad = angle * Math.PI / 180
+      const n = group.linesPerRow || 1
+      const orients = (group.lineOrientations || ['vertical']).slice(0, n)
+      const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+      const backH = frontH + totalSlope * Math.sin(angleRad)
+      const generated = generatePanelLayout(
+        { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
+        group.baseline,
+        true
+      )
+      setPanels(prev => {
+        const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
+        let nextId = maxId + 1
+        const newRowPanels = generated.map(p => ({ ...p, id: nextId++, row: groupIdx }))
+        return [...prev.filter(p => p.row !== rowKey), ...newRowPanels]
+      })
+      setSelectedPanels([])
+    } else {
+      // Scratch mode: re-run full generation, splice back only the target row
+      if (!baseline) return
+      const allGenerated = generatePanelLayout(refinedArea, baseline)
+      const rowPanels = allGenerated.filter(p => p.row === rowKey)
+      setPanels(prev => {
+        const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
+        let nextId = maxId + 1
+        const newRowPanels = rowPanels.map(p => ({ ...p, id: nextId++ }))
+        return [...prev.filter(p => p.row !== rowKey), ...newRowPanels]
+      })
+      setSelectedPanels([])
+    }
   }
 
   const addManualPanel = () => {
@@ -293,24 +316,6 @@ function App() {
           console.log('  ⚠️ If these differ significantly, polygon will be misaligned!')
         }
         
-        // Store the processed image from backend
-        if (result.properties.image_base64) {
-          console.log('🖼️ BACKEND IMAGE DIMENSIONS:', {
-            width: result.properties.image_width,
-            height: result.properties.image_height,
-            aspectRatio: (result.properties.image_width / result.properties.image_height).toFixed(3),
-            polygonPoints: result.properties.polygon_pixels ? result.properties.polygon_pixels.length : 0
-          })
-          
-          setProcessedImage({
-            imageData: result.properties.image_base64,
-            width: result.properties.image_width,
-            height: result.properties.image_height,
-            polygonPixels: result.properties.polygon_pixels,
-            clickPoint: result.properties.click_point
-          })
-        }
-        
         // Backend returns [lng, lat], but Leaflet needs [lat, lng]
         const coordinates = result.geometry.coordinates[0].map(coord => {
           return [coord[1], coord[0]]  // Convert [lng, lat] to [lat, lng]
@@ -343,53 +348,71 @@ function App() {
     }
   }
 
-  const handlePolygonGenerated = (polygon) => {
-    console.log('Polygon generated:', polygon)
-    setRoofPolygon(polygon)
-  }
-
   const handleImageUploaded = (imageData) => {
     console.log('Image uploaded:', imageData)
     setUploadedImageData(imageData)
     setUploadedImageMode(true)
   }
 
-  const handleApprovePolygon = () => {
-    if (!roofPolygon) return
-    
-    console.log('Polygon approved:', roofPolygon)
-    // Move to next step
-    handleNext()
-  }
-
   const handleNext = () => {
     if (currentStep < totalSteps) {
-      // Store Step 2 configuration when leaving Step 2
       if (currentStep === 2) {
         const pixelLength = Math.sqrt(
-          Math.pow(referenceLine.end.x - referenceLine.start.x, 2) + 
+          Math.pow(referenceLine.end.x - referenceLine.start.x, 2) +
           Math.pow(referenceLine.end.y - referenceLine.start.y, 2)
         )
         const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-        
-        setRefinedArea({
-          polygon: roofPolygon,
-          panelType,
-          referenceLine,
-          referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-          pixelToCmRatio,
-          panelConfig: {
-            frontHeight: parseFloat(panelFrontHeight),
-            backHeight: getComputedBackHeight(),
-            angle: parseFloat(panelAngle),
-            linesPerRow,
-            lineOrientations: [...lineOrientations]
-          },
-          panelFrontHeight: parseFloat(panelFrontHeight),
-          panelAngle: parseFloat(panelAngle)
-        })
+
+        if (projectMode === 'plan') {
+          setRefinedArea({
+            polygon: roofPolygon,
+            panelType,
+            referenceLine,
+            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+            pixelToCmRatio,
+            // panelConfig placeholder — per-group config used during generation below
+            panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
+          })
+          // Generate panels from every row group
+          let nextId = 1
+          const allPanels = []
+          rowGroups.forEach((group, groupIdx) => {
+            if (!group.baseline) return
+            const angle = parseFloat(group.angle) || 0
+            const frontH = parseFloat(group.frontHeight) || 0
+            const angleRad = angle * Math.PI / 180
+            const n = group.linesPerRow || 1
+            const orients = (group.lineOrientations || ['vertical']).slice(0, n)
+            const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+            const backH = frontH + totalSlope * Math.sin(angleRad)
+            const generated = generatePanelLayout(
+              { polygon: roofPolygon, pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
+              group.baseline,
+              true // singleRow: each group baseline generates exactly 1 row
+            )
+            generated.forEach(p => allPanels.push({ ...p, id: nextId++, row: groupIdx }))
+          })
+          setPanels(allPanels)
+        } else {
+          setRefinedArea({
+            polygon: roofPolygon,
+            panelType,
+            referenceLine,
+            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+            pixelToCmRatio,
+            panelConfig: {
+              frontHeight: parseFloat(panelFrontHeight),
+              backHeight: getComputedBackHeight(),
+              angle: parseFloat(panelAngle),
+              linesPerRow,
+              lineOrientations: [...lineOrientations]
+            },
+            panelFrontHeight: parseFloat(panelFrontHeight),
+            panelAngle: parseFloat(panelAngle)
+          })
+        }
       }
-      
+
       setCurrentStep(prev => prev + 1)
     }
   }
@@ -405,6 +428,22 @@ function App() {
       case 1:
         return roofPolygon !== null
       case 2:
+        if (projectMode === 'plan') {
+          return (
+            referenceLine !== null &&
+            referenceLineLengthCm !== '' &&
+            parseFloat(referenceLineLengthCm) > 0 &&
+            rowGroups.length > 0 &&
+            rowGroups.every(g =>
+              g.baseline !== null &&
+              g.frontHeight !== '' &&
+              parseFloat(g.frontHeight) >= 0 &&
+              g.angle !== '' &&
+              parseFloat(g.angle) >= 0 &&
+              parseFloat(g.angle) <= 30
+            )
+          )
+        }
         return (
           referenceLine !== null &&
           referenceLineLengthCm !== '' &&
@@ -488,24 +527,6 @@ function App() {
       console.log('SAM2 result:', result)
       
       if (result && result.geometry) {
-        // Store the processed image from backend
-        if (result.properties.image_base64) {
-          console.log('🖼️ BACKEND IMAGE DIMENSIONS (uploaded):', {
-            width: result.properties.image_width,
-            height: result.properties.image_height,
-            aspectRatio: (result.properties.image_width / result.properties.image_height).toFixed(3),
-            polygonPoints: result.properties.polygon_pixels ? result.properties.polygon_pixels.length : 0
-          })
-          
-          setProcessedImage({
-            imageData: result.properties.image_base64,
-            width: result.properties.image_width,
-            height: result.properties.image_height,
-            polygonPixels: result.properties.polygon_pixels,
-            clickPoint: result.properties.click_point
-          })
-        }
-        
         setRoofPolygon({
           coordinates: result.geometry.coordinates[0],
           area: result.properties.area_pixels,
@@ -573,8 +594,7 @@ function App() {
       </header>
       
       <main className="app-main">
-        {/* Step 1: Roof Allocation */}
-        {/* Step 1: Identify Roof */}
+        {/* Step 1: Allocate Roof */}
         {currentStep === 1 && (
           <Step1RoofAllocation
             uploadedImageMode={uploadedImageMode}
@@ -589,7 +609,6 @@ function App() {
             selectedPoint={selectedPoint}
             setSelectedPoint={setSelectedPoint}
             setRoofPolygon={setRoofPolygon}
-            setProcessedImage={setProcessedImage}
             handlePointSelect={handlePointSelect}
           />
         )}
@@ -622,6 +641,9 @@ function App() {
             computedBackHeight={getComputedBackHeight()}
             panelAngle={panelAngle}
             setPanelAngle={setPanelAngle}
+            projectMode={projectMode}
+            rowGroups={rowGroups}
+            setRowGroups={setRowGroups}
           />
         )}
 
@@ -629,6 +651,7 @@ function App() {
         {/* Step 3: Place Solar Panels */}
         {currentStep === 3 && (
           <Step3PanelPlacement
+            projectMode={projectMode}
             uploadedImageData={uploadedImageData}
             roofPolygon={roofPolygon}
             refinedArea={refinedArea}
@@ -653,6 +676,9 @@ function App() {
             distanceMeasurement={distanceMeasurement}
             setDistanceMeasurement={setDistanceMeasurement}
             generatePanelLayoutHandler={generatePanelLayoutHandler}
+            regeneratePlanPanelsHandler={regeneratePlanPanelsHandler}
+            regenerateSingleRowHandler={regenerateSingleRowHandler}
+            rowGroups={rowGroups}
             addManualPanel={addManualPanel}
             rowConfigs={rowConfigs}
             setRowConfigs={setRowConfigs}
@@ -701,9 +727,9 @@ function App() {
                   <li>Cost analysis</li>
                 </ul>
               </div>
-              <button 
+              <button
                 className="btn-primary"
-                onClick={() => setExportReady(true)}
+                onClick={() => {}}
               >
                 Export Project (Mock)
               </button>
@@ -721,10 +747,18 @@ function App() {
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
+        <button
+          className="btn-nav btn-back"
+          onClick={handleBack}
+          disabled={currentStep === 1}
+        >
+          ← Back
+        </button>
+
         <div className="wizard-steps">
           {Array.from({ length: totalSteps }, (_, i) => i + 1).map(step => (
-            <div 
-              key={step} 
+            <div
+              key={step}
               className={`wizard-step ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}
             >
               <div className="step-number">
@@ -734,34 +768,14 @@ function App() {
             </div>
           ))}
         </div>
-        
-        <div className="wizard-navigation">
-          <button 
-            className="btn-nav btn-back"
-            onClick={handleBack}
-            disabled={currentStep === 1}
-          >
-            ← Back
-          </button>
-          
-          <div className="step-info">
-            <span className="current-step-label">Step {currentStep} of {totalSteps}</span>
-            {currentStep === 1 && roofPolygon && (
-              <span className="status-message status-success">✓ Roof identified</span>
-            )}
-            {currentStep === 1 && !roofPolygon && (
-              <span className="status-message status-hint">Click on the roof to detect outline</span>
-            )}
-          </div>
-          
-          <button 
-            className="btn-nav btn-next"
-            onClick={handleNext}
-            disabled={!canProceedToNextStep()}
-          >
-            {currentStep === totalSteps ? 'Finish' : 'Next →'}
-          </button>
-        </div>
+
+        <button
+          className="btn-nav btn-next"
+          onClick={handleNext}
+          disabled={!canProceedToNextStep()}
+        >
+          {currentStep === totalSteps ? 'Finish' : 'Next →'}
+        </button>
       </footer>
     </div>
   )

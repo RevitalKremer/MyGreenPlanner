@@ -6,7 +6,7 @@
  * @param {Object} baseline - User-drawn baseline with p1 and p2 coordinates
  * @returns {Array} Array of generated panel objects
  */
-export const generatePanelLayout = (refinedArea, baseline) => {
+export const generatePanelLayout = (refinedArea, baseline, singleRow = false) => {
   if (!refinedArea || !refinedArea.polygon || !refinedArea.pixelToCmRatio) {
     console.error('Missing configuration data from Step 2')
     return []
@@ -18,7 +18,7 @@ export const generatePanelLayout = (refinedArea, baseline) => {
   }
 
   const { polygon, pixelToCmRatio, panelConfig } = refinedArea
-  const { frontHeight, backHeight, angle } = panelConfig
+  const { backHeight, angle } = panelConfig
   
   // Get polygon coordinates array
   const polygonCoords = polygon.coordinates || polygon
@@ -130,7 +130,7 @@ export const generatePanelLayout = (refinedArea, baseline) => {
   
   const generatedPanels = []
   let panelId = 1
-  
+
   // Helper: Check if panel in rotated space fits in rotated polygon
   const isPanelInRotatedPolygon = (rotX, rotY, width, height) => {
     const corners = [
@@ -139,13 +139,13 @@ export const generatePanelLayout = (refinedArea, baseline) => {
       { x: rotX, y: rotY + height },
       { x: rotX + width, y: rotY + height }
     ]
-    
+
     return corners.every(corner => {
       let inside = false
       for (let i = 0, j = rotatedPolygon.length - 1; i < rotatedPolygon.length; j = i++) {
         const xi = rotatedPolygon[i].x, yi = rotatedPolygon[i].y
         const xj = rotatedPolygon[j].x, yj = rotatedPolygon[j].y
-        
+
         const intersect = ((yi > corner.y) !== (yj > corner.y))
           && (corner.x < (xj - xi) * (corner.y - yi) / (yj - yi) + xi)
         if (intersect) inside = !inside
@@ -153,16 +153,29 @@ export const generatePanelLayout = (refinedArea, baseline) => {
       return inside
     })
   }
-  
-  let currentRotY = baselineRotY
+
+  // Determine which side of the baseline has more polygon (i.e. the roof interior).
+  // Generate panels toward that side so the baseline always acts as the near edge.
+  const rotCentroidY = rotatedPolygon.reduce((s, p) => s + p.y, 0) / rotatedPolygon.length
+  const goDown = rotCentroidY > baselineRotY   // centroid below baseline in rotated space
+
+  let currentRotY = goDown ? baselineRotY : baselineRotY - totalRowProjectionPx
+  const rowStep = goDown
+    ? (totalRowProjectionPx + rowSpacingPx)
+    : -(totalRowProjectionPx + rowSpacingPx)
+
+  console.log('Panel direction:', goDown ? 'downward' : 'upward', '| baselineRotY:', baselineRotY, '| centroidY:', rotCentroidY)
+
   let rowIndex = 0
-  
-  console.log('Panel placement starting at baselineRotY:', baselineRotY)
-  
-  while (currentRotY + totalRowProjectionPx <= rotMaxY) {
-    // For first row, use baseline X range; for other rows, use full polygon width
+
+  while (rowIndex < 200) {
+    // Stop when the entire row has left the polygon bounds
+    if (goDown  && currentRotY >= rotMaxY) break
+    if (!goDown && currentRotY + totalRowProjectionPx <= rotMinY) break
+
+    // For first row, respect the drawn baseline X range; subsequent rows span full polygon width
     const startX = (rowIndex === 0) ? baselineStartX : rotMinX
-    const endX = (rowIndex === 0) ? baselineEndX : rotMaxX
+    const endX   = (rowIndex === 0) ? baselineEndX   : rotMaxX
 
     let panelsInRow = 0
     let lineY = currentRotY
@@ -203,8 +216,9 @@ export const generatePanelLayout = (refinedArea, baseline) => {
 
     console.log(`Row ${rowIndex}: placed ${panelsInRow} panels across ${linesPerRow} lines`)
 
-    // Move to next row
-    currentRotY += (totalRowProjectionPx + rowSpacingPx)
+    if (singleRow) break
+
+    currentRotY += rowStep
     rowIndex++
   }
   
@@ -337,6 +351,51 @@ export const detectRows = (panelList, pixelToCmRatio) => {
   })
   
   return rows
+}
+
+/**
+ * Auto-group SAM2-detected panels into rows by Y-proximity
+ * @param {Array} detectedPanels - Array of { x, y, width, height, rotation, confidence } (top-left origin)
+ * @returns {Array} Panel objects with id, row, line assigned
+ */
+export const autoGroupPanels = (detectedPanels) => {
+  if (!detectedPanels || detectedPanels.length === 0) return []
+
+  let nextId = 1
+  const withIds = detectedPanels.map(p => ({ ...p, id: nextId++ }))
+
+  // Sort by Y center
+  const sorted = [...withIds].sort((a, b) => (a.y + a.height / 2) - (b.y + b.height / 2))
+
+  // Compute median height for row-grouping threshold
+  const heights = [...sorted].map(p => p.height).sort((a, b) => a - b)
+  const medianHeight = heights[Math.floor(heights.length / 2)]
+  const threshold = medianHeight * 0.6
+
+  // Group into rows by Y proximity (running mean)
+  const rowGroups = []
+  for (const panel of sorted) {
+    const cy = panel.y + panel.height / 2
+    let found = false
+    for (const group of rowGroups) {
+      const groupCY = group.reduce((s, p) => s + p.y + p.height / 2, 0) / group.length
+      if (Math.abs(cy - groupCY) <= threshold) {
+        group.push(panel)
+        found = true
+        break
+      }
+    }
+    if (!found) rowGroups.push([panel])
+  }
+
+  // Sort each row by X center, assign row and line indices
+  const result = []
+  rowGroups.forEach((group, rowIdx) => {
+    group.sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2))
+    group.forEach(panel => result.push({ ...panel, row: rowIdx, line: 0 }))
+  })
+
+  return result
 }
 
 /**

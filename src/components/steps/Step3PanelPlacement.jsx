@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 
 export default function Step3PanelPlacement({
+  projectMode = 'scratch',
   uploadedImageData,
   roofPolygon,
   refinedArea,
@@ -25,12 +26,20 @@ export default function Step3PanelPlacement({
   distanceMeasurement,
   setDistanceMeasurement,
   generatePanelLayoutHandler,
+  regeneratePlanPanelsHandler,
+  regenerateSingleRowHandler,
+  rowGroups = [],
   addManualPanel,
   rowConfigs,
   setRowConfigs
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [panActive, setPanActive] = useState(false)
+  const panRef = useRef(null)
+  const willDeselectRef = useRef(false)
+  const [rectSelect, setRectSelect] = useState(null) // { startX, startY, endX, endY }
 
   const NUDGE_PX = 5
 
@@ -189,7 +198,7 @@ export default function Step3PanelPlacement({
   const selectedRowKey = selectedRow ? getRowKey(selectedRow[0]) : null
 
   const updateRowTrapezoid = (field, rawValue) => {
-    if (!selectedRowKey || !refinedArea?.panelConfig) return
+    if (selectedRowKey === null || selectedRowKey === undefined || !refinedArea?.panelConfig) return
     const value = parseFloat(rawValue)
     if (isNaN(value) || value < 0) return
 
@@ -226,7 +235,7 @@ export default function Step3PanelPlacement({
   }
 
   const resetRowTrapezoid = () => {
-    if (!selectedRowKey || !refinedArea?.panelConfig) return
+    if (selectedRowKey === null || selectedRowKey === undefined || !refinedArea?.panelConfig) return
     const globalCfg = refinedArea.panelConfig
     setRowConfigs(prev => {
       const next = { ...prev }
@@ -248,16 +257,22 @@ export default function Step3PanelPlacement({
   // ── SVG interaction ───────────────────────────────────────────────────────────
 
   const getSVGCursor = () => {
-    if (dragState) return 'grabbing'
+    if (panActive || dragState) return 'grabbing'
+    if (rectSelect) return 'crosshair'
     if (rotationState) return 'crosshair'
     switch (activeTool) {
-      case 'move': return 'grab'
+      case 'move': return 'default'
       case 'rotate': return 'crosshair'
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
-      default: return 'default'
+      default: return 'grab'
     }
+  }
+
+  const startPan = (e) => {
+    panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: panOffset.x, startPanY: panOffset.y }
+    willDeselectRef.current = true
   }
 
   const handleSVGMouseDown = (e) => {
@@ -266,9 +281,11 @@ export default function Step3PanelPlacement({
     const x = ((e.clientX - rect.left) / rect.width) * imageRef.naturalWidth
     const y = ((e.clientY - rect.top) / rect.height) * imageRef.naturalHeight
 
-    // Baseline drawing (always first)
-    if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
-    if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
+    // Baseline drawing (scratch mode only, always first)
+    if (projectMode !== 'plan' && (!baseline || baseline.p2 === null)) {
+      if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
+      if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
+    }
 
     // Measure tool
     if (activeTool === 'measure') {
@@ -288,22 +305,38 @@ export default function Step3PanelPlacement({
       if (clickedPanel) {
         setPanels(panels.filter(p => p.id !== clickedPanel.id))
         setSelectedPanels([])
+      } else {
+        startPan(e)
       }
       return
     }
 
     if (activeTool === 'move') {
       if (clickedPanel) {
-        const rowIds = getRowPanelIds(clickedPanel.id)
-        setSelectedPanels(rowIds)
+        if (e.shiftKey) {
+          // Shift+click: toggle individual panel in/out of selection
+          setSelectedPanels(prev =>
+            prev.includes(clickedPanel.id)
+              ? prev.filter(id => id !== clickedPanel.id)
+              : [...prev, clickedPanel.id]
+          )
+          return
+        }
+        // If clicked panel is already part of the selection, drag all selected panels
+        // Otherwise select just this panel and drag it
+        const panelIds = selectedPanels.includes(clickedPanel.id) && selectedPanels.length > 0
+          ? selectedPanels
+          : [clickedPanel.id]
+        setSelectedPanels(panelIds)
         const originalPositions = {}
-        rowIds.forEach(id => {
+        panelIds.forEach(id => {
           const p = panels.find(p => p.id === id)
           if (p) originalPositions[id] = { x: p.x, y: p.y }
         })
-        setDragState({ panelIds: rowIds, startX: x, startY: y, originalPositions })
+        setDragState({ panelIds, startX: x, startY: y, originalPositions })
       } else {
-        setSelectedPanels([])
+        // Background: start rectangle selection
+        setRectSelect({ startX: x, startY: y, endX: x, endY: y })
       }
       return
     }
@@ -328,7 +361,7 @@ export default function Step3PanelPlacement({
         })
         setRotationState({ panelIds: rowIds, anchorCenterX: cx, anchorCenterY: cy, startAngle, originalData })
       } else {
-        setSelectedPanels([])
+        startPan(e)
       }
       return
     }
@@ -337,7 +370,7 @@ export default function Step3PanelPlacement({
       if (clickedPanel) {
         setSelectedPanels(getRowPanelIds(clickedPanel.id))
       } else {
-        setSelectedPanels([])
+        startPan(e)
       }
       return
     }
@@ -348,6 +381,22 @@ export default function Step3PanelPlacement({
     const rect = svg.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * imageRef.naturalWidth
     const y = ((e.clientY - rect.top) / rect.height) * imageRef.naturalHeight
+
+    if (rectSelect) {
+      setRectSelect(prev => ({ ...prev, endX: x, endY: y }))
+      return
+    }
+
+    if (panRef.current && !dragState && !rotationState) {
+      const dx = e.clientX - panRef.current.startX
+      const dy = e.clientY - panRef.current.startY
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        willDeselectRef.current = false
+        if (!panActive) setPanActive(true)
+        setPanOffset({ x: panRef.current.startPanX + dx, y: panRef.current.startPanY + dy })
+      }
+      return
+    }
 
     if (rotationState) {
       const currentAngle = Math.atan2(y - rotationState.anchorCenterY, x - rotationState.anchorCenterX) * (180 / Math.PI)
@@ -381,6 +430,33 @@ export default function Step3PanelPlacement({
   }
 
   const handleSVGMouseUp = () => {
+    if (rectSelect) {
+      const minX = Math.min(rectSelect.startX, rectSelect.endX)
+      const maxX = Math.max(rectSelect.startX, rectSelect.endX)
+      const minY = Math.min(rectSelect.startY, rectSelect.endY)
+      const maxY = Math.max(rectSelect.startY, rectSelect.endY)
+      if (Math.max(maxX - minX, maxY - minY) > 8) {
+        const hit = panels.filter(p => {
+          const cx = p.x + p.width / 2
+          const cy = p.y + p.height / 2
+          return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY
+        }).map(p => p.id)
+        setSelectedPanels(hit)
+      } else {
+        setSelectedPanels([])
+      }
+      setRectSelect(null)
+      setDragState(null)
+      setRotationState(null)
+      return
+    }
+
+    if (willDeselectRef.current) {
+      setSelectedPanels([])
+      willDeselectRef.current = false
+    }
+    panRef.current = null
+    setPanActive(false)
     // Do not snap whole rows — snapping stacks panels when every panel in a row
     // is moved together. Row positioning is intentional by the user.
     setDragState(null)
@@ -442,14 +518,14 @@ export default function Step3PanelPlacement({
   return (
     <>
       <div className="step-content-area" style={{ position: 'relative' }}>
-        {uploadedImageData && roofPolygon && refinedArea ? (
+        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) ? (
           <div
             className="uploaded-image-view"
             style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto' }}
           >
             <div
               className="uploaded-image-container"
-              style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}
+              style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)` }}
               onWheel={(e) => {
                 e.preventDefault()
                 const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -462,7 +538,7 @@ export default function Step3PanelPlacement({
                 alt="Roof with panels"
                 style={{
                   display: 'block',
-                  transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`,
+                  transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
                   maxWidth: '100%',
                   maxHeight: 'calc(100vh - 250px)',
                   width: 'auto',
@@ -480,22 +556,24 @@ export default function Step3PanelPlacement({
                     top: 0, left: 0,
                     width: '100%', height: '100%',
                     pointerEvents: 'auto',
-                    transform: `rotate(${uploadedImageData.rotation}deg) scale(${uploadedImageData.scale * viewZoom})`,
+                    transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
                     cursor: getSVGCursor()
                   }}
                   onMouseDown={handleSVGMouseDown}
                   onMouseMove={handleSVGMouseMove}
                   onMouseUp={handleSVGMouseUp}
-                  onMouseLeave={() => { setDragState(null); setRotationState(null) }}
+                  onMouseLeave={() => { setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null) }}
                 >
                   <defs>
-                    <mask id="polygonMask">
-                      <rect width="100%" height="100%" fill="white" />
-                      <polygon
-                        points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')}
-                        fill="black"
-                      />
-                    </mask>
+                    {roofPolygon && (
+                      <mask id="polygonMask">
+                        <rect width="100%" height="100%" fill="white" />
+                        <polygon
+                          points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')}
+                          fill="black"
+                        />
+                      </mask>
+                    )}
                     {showDistances && distanceMeasurement?.p2 && (
                       <>
                         <marker id="dist-arrow-start" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
@@ -509,13 +587,17 @@ export default function Step3PanelPlacement({
                   </defs>
 
                   {/* Darken area outside polygon */}
-                  <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
-                  <polygon
-                    points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')}
-                    fill="rgba(196,214,0,0.1)"
-                    stroke="#C4D600"
-                    strokeWidth="3"
-                  />
+                  {roofPolygon && (
+                    <>
+                      <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
+                      <polygon
+                        points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')}
+                        fill="rgba(196,214,0,0.1)"
+                        stroke="#C4D600"
+                        strokeWidth="3"
+                      />
+                    </>
+                  )}
 
                   {/* Baseline */}
                   {showBaseline && baseline?.p1 && baseline?.p2 && (
@@ -680,6 +762,24 @@ export default function Step3PanelPlacement({
                       </>
                     )
                   })()}
+
+                  {/* Rectangle selection box */}
+                  {rectSelect && (() => {
+                    const rx = Math.min(rectSelect.startX, rectSelect.endX)
+                    const ry = Math.min(rectSelect.startY, rectSelect.endY)
+                    const rw = Math.abs(rectSelect.endX - rectSelect.startX)
+                    const rh = Math.abs(rectSelect.endY - rectSelect.startY)
+                    return (
+                      <rect
+                        x={rx} y={ry} width={rw} height={rh}
+                        fill="rgba(100,160,255,0.10)"
+                        stroke="#3399FF"
+                        strokeWidth="1.5"
+                        strokeDasharray="6,3"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    )
+                  })()}
                 </svg>
               )}
             </div>
@@ -694,7 +794,7 @@ export default function Step3PanelPlacement({
         )}
 
         {/* ── LEFT PANEL ──────────────────────────────────────────────────────── */}
-        {uploadedImageData && roofPolygon && refinedArea && (
+        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (
           <div style={{
             position: 'absolute', top: '20px', left: '20px', width: '255px',
             padding: '1.25rem',
@@ -707,8 +807,8 @@ export default function Step3PanelPlacement({
               Panel Layout
             </h3>
 
-            {/* State: drawing baseline */}
-            {(!baseline || !baseline.p2) && (
+            {/* State: drawing baseline (scratch mode only) */}
+            {projectMode !== 'plan' && (!baseline || !baseline.p2) && (
               <div style={{
                 padding: '1rem', background: '#FFF3E0',
                 borderRadius: '8px', border: '2px solid #FF9800'
@@ -731,8 +831,8 @@ export default function Step3PanelPlacement({
               </div>
             )}
 
-            {/* State: baseline ready, no panels */}
-            {baseline?.p2 && panels.length === 0 && (
+            {/* State: baseline ready, no panels (scratch mode only) */}
+            {projectMode !== 'plan' && baseline?.p2 && panels.length === 0 && (
               <>
                 <div style={{
                   padding: '0.75rem', background: '#E8F5E9',
@@ -765,6 +865,26 @@ export default function Step3PanelPlacement({
                   Generate Panel Layout
                 </button>
               </>
+            )}
+
+            {/* State: plan mode, panels cleared */}
+            {projectMode === 'plan' && panels.length === 0 && (
+              <div style={{ padding: '1rem', background: '#FFF3E0', borderRadius: '8px', border: '2px solid #FF9800' }}>
+                <p style={{ fontSize: '0.82rem', color: '#666', margin: '0 0 0.75rem 0' }}>
+                  Panels were cleared. Regenerate from the baselines defined in Step 2.
+                </p>
+                <button
+                  onClick={regeneratePlanPanelsHandler}
+                  style={{
+                    width: '100%', padding: '0.75rem',
+                    background: '#C4D600', color: '#333',
+                    border: 'none', borderRadius: '6px',
+                    cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem'
+                  }}
+                >
+                  ↺ Regenerate from Baselines
+                </button>
+              </div>
             )}
 
             {/* State: panels placed */}
@@ -805,39 +925,53 @@ export default function Step3PanelPlacement({
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     {rows.map((row, i) => {
-                      const isRowSelected = selectedRowIndex === i
+                      const isRowSelected = row.some(p => selectedPanels.includes(p.id))
                       const rowKey = getRowKey(row[0])
                       const hasOverride = !!rowConfigs[rowKey]
                       return (
-                        <button
+                        <div
                           key={i}
-                          onClick={() => setSelectedPanels(row.map(p => p.id))}
                           style={{
-                            display: 'flex', alignItems: 'center', gap: '0.5rem',
-                            padding: '0.45rem 0.7rem',
+                            display: 'flex', alignItems: 'center',
+                            padding: '0.45rem 0.5rem 0.45rem 0.7rem',
                             background: isRowSelected ? '#f4f9e4' : '#f8f9fa',
                             border: `2px solid ${isRowSelected ? '#C4D600' : 'transparent'}`,
-                            borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                            transition: 'all 0.12s'
+                            borderRadius: '8px', transition: 'all 0.12s'
                           }}
                         >
-                          <span style={{
-                            width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
-                            background: isRowSelected ? '#C4D600' : '#ccc'
-                          }} />
-                          <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
-                            Row {i + 1}
-                          </span>
-                          {hasOverride && (
-                            <span title="Custom trapezoid" style={{
-                              width: '6px', height: '6px', borderRadius: '50%',
-                              background: '#FF9800', flexShrink: 0
+                          {/* Selection area */}
+                          <div
+                            onClick={() => setSelectedPanels(row.map(p => p.id))}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}
+                          >
+                            <span style={{
+                              width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+                              background: isRowSelected ? '#C4D600' : '#ccc'
                             }} />
-                          )}
-                          <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 'auto' }}>
-                            {row.length} panels
-                          </span>
-                        </button>
+                            <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
+                              Row {i + 1}
+                            </span>
+                            {hasOverride && (
+                              <span title="Custom trapezoid" style={{
+                                width: '6px', height: '6px', borderRadius: '50%',
+                                background: '#FF9800', flexShrink: 0
+                              }} />
+                            )}
+                            <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 'auto' }}>
+                              {row.length} panels
+                            </span>
+                          </div>
+                          {/* Per-row regenerate */}
+                          <button
+                            onClick={() => regenerateSingleRowHandler(rowKey)}
+                            title={`Regenerate Row ${i + 1}`}
+                            style={{
+                              marginLeft: '0.4rem', padding: '2px 6px', flexShrink: 0,
+                              background: 'none', border: '1px solid #ddd', borderRadius: '4px',
+                              cursor: 'pointer', fontSize: '0.8rem', color: '#aaa', lineHeight: 1
+                            }}
+                          >↺</button>
+                        </div>
                       )
                     })}
                   </div>
@@ -846,7 +980,10 @@ export default function Step3PanelPlacement({
                 {/* Layout actions */}
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
-                    onClick={() => { setBaseline(null); setPanels([]); setSelectedPanels([]) }}
+                    onClick={() => {
+                      if (projectMode === 'plan') { setPanels([]); setSelectedPanels([]) }
+                      else { setBaseline(null); setPanels([]); setSelectedPanels([]) }
+                    }}
                     style={{
                       flex: 1, padding: '0.5rem',
                       background: 'white', color: '#888',
@@ -857,7 +994,7 @@ export default function Step3PanelPlacement({
                     🔄 Reset
                   </button>
                   <button
-                    onClick={generatePanelLayoutHandler}
+                    onClick={projectMode === 'plan' ? regeneratePlanPanelsHandler : generatePanelLayoutHandler}
                     style={{
                       flex: 1, padding: '0.5rem',
                       background: '#666', color: 'white',
@@ -874,7 +1011,7 @@ export default function Step3PanelPlacement({
         )}
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
-        {uploadedImageData && roofPolygon && refinedArea && baseline?.p2 && (
+        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (projectMode === 'plan' ? panels.length > 0 : baseline?.p2) && (
           <div style={{
             position: 'absolute', top: '20px', right: '20px', width: '225px',
             padding: '1rem',
@@ -921,8 +1058,8 @@ export default function Step3PanelPlacement({
                 selectedPanels.length > 0 ? (
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#333', marginBottom: '0.6rem' }}>
-                      Row {selectedRowIndex !== null ? selectedRowIndex + 1 : '?'}
-                      <span style={{ fontWeight: '400', color: '#888' }}> · {selectedPanels.length} panels</span>
+                      {selectedPanels.length} panel{selectedPanels.length !== 1 ? 's' : ''} selected
+                      <span style={{ fontWeight: '400', color: '#888', fontSize: '0.75rem' }}> — drag to move</span>
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#aaa', marginBottom: '0.35rem' }}>Fine adjust</div>
                     <div style={{
@@ -946,8 +1083,10 @@ export default function Step3PanelPlacement({
                     </div>
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.82rem', color: '#bbb', textAlign: 'center', paddingTop: '0.75rem' }}>
-                    Click a row to select it
+                  <div style={{ fontSize: '0.8rem', color: '#bbb', textAlign: 'center', paddingTop: '0.5rem', lineHeight: 1.6 }}>
+                    <div>Click a panel to select</div>
+                    <div style={{ fontSize: '0.7rem' }}>Drag empty area to box-select</div>
+                    <div style={{ fontSize: '0.7rem' }}>Shift+click to add/remove</div>
                   </div>
                 )
               )}
@@ -1158,8 +1297,9 @@ export default function Step3PanelPlacement({
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Angle (°)</div>
                       <input
+                        key={`${selectedRowKey}-angle`}
                         type="number" min="0" max="30" step="0.5"
-                        value={angle}
+                        defaultValue={angle}
                         onChange={e => updateRowTrapezoid('angle', e.target.value)}
                         style={{
                           width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
@@ -1171,8 +1311,9 @@ export default function Step3PanelPlacement({
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Back H (cm)</div>
                       <input
+                        key={`${selectedRowKey}-backH`}
                         type="number" min="0" step="0.5"
-                        value={backHeight}
+                        defaultValue={backHeight}
                         onChange={e => updateRowTrapezoid('backHeight', e.target.value)}
                         style={{
                           width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
@@ -1205,7 +1346,7 @@ export default function Step3PanelPlacement({
                   }}
                 >−</button>
                 <button
-                  onClick={() => setViewZoom(1)}
+                  onClick={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
                   style={{
                     flex: 1, padding: '0.4rem',
                     background: 'white', color: '#666',
