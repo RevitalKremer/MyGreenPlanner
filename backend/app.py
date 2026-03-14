@@ -4,7 +4,7 @@ import json
 import math
 import base64
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,6 +13,7 @@ import numpy as np
 import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
 app = FastAPI(title="MyGreenPlanner API")
 
@@ -25,29 +26,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global predictor instance
+# Global model instances
 predictor = None
+mask_generator = None
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def load_sam2_model():
     """Load SAM2 model on startup"""
-    global predictor
-    
+    global predictor, mask_generator
+
     print(f"Loading SAM2 model on {device}...")
-    
+
     # Use SAM2 large model - adjust path as needed
     checkpoint = "./checkpoints/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"
-    
+
     if not os.path.exists(checkpoint):
         raise FileNotFoundError(
             f"SAM2 checkpoint not found at {checkpoint}. "
             "Please download it from: https://github.com/facebookresearch/segment-anything-2"
         )
-    
+
     sam2_model = build_sam2(model_cfg, checkpoint, device=device)
     predictor = SAM2ImagePredictor(sam2_model)
-    
+    mask_generator = SAM2AutomaticMaskGenerator(
+        sam2_model,
+        points_per_side=32,
+        pred_iou_thresh=0.7,
+        stability_score_thresh=0.85,
+        min_mask_region_area=200,
+    )
+
     print("SAM2 model loaded successfully!")
 
 @app.on_event("startup")
@@ -64,7 +73,7 @@ async def root():
     """Health check endpoint"""
     return {
         "status": "running",
-        "model_loaded": predictor is not None,
+        "model_loaded": predictor is not None and mask_generator is not None,
         "device": device
     }
 
@@ -504,6 +513,391 @@ async def segment_roof_from_map(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Segmentation error: {str(e)}")
+
+@app.post("/segment-all-panels")
+async def segment_all_panels(
+    image: UploadFile = File(...),
+    sample_x: Optional[float] = Form(None),
+    sample_y: Optional[float] = Form(None),
+):
+    """
+    Detect all solar panels in a plan image.
+
+    Strategy A (sample point provided):
+      1. Detect the individual sample panel → measure its exact size and rotation.
+      2. Select the SAM2 mask at the next scale up as the "array boundary".
+      3. Fill the boundary with a regular grid at the measured panel step.
+
+    Strategy B (no sample):
+      Fall back to the automatic mask generator + aspect-ratio filter.
+      Works best for CAD / plan drawings with clearly-outlined panels.
+
+    Returns: { panels: [{ x, y, width, height, rotation, confidence }] }
+    """
+    if predictor is None or mask_generator is None:
+        raise HTTPException(status_code=503, detail="SAM2 model not loaded")
+
+    try:
+        import cv2
+
+        image_bytes = await image.read()
+        pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image_np = np.array(pil_image)
+        img_h, img_w = image_np.shape[:2]
+
+        print(f"\nSegment all panels — {img_w}x{img_h}  sample=({sample_x},{sample_y})")
+
+        # ── STRATEGY A: sample-guided grid fill ──────────────────────────────
+        if sample_x is not None and sample_y is not None:
+            predictor.set_image(image_np)
+
+            # SAM2 returns 3 masks at increasing scales: small / medium / large
+            s_masks, s_scores, _ = predictor.predict(
+                point_coords=np.array([[sample_x, sample_y]]),
+                point_labels=np.array([1]),
+                multimask_output=True,
+            )
+
+            # ── 1. Pick the smallest valid panel mask ─────────────────────
+            # SAM2 multimask index 0 = finest, index 2 = coarsest.
+            # Sort by area ascending and take the first mask that looks like
+            # a single panel — this avoids picking row-of-panels masks.
+            image_area = img_w * img_h
+            best_mask_u8 = None
+            best_dims    = None
+
+            mask_candidates = sorted(
+                zip(s_masks, s_scores),
+                key=lambda ms: float(np.sum(ms[0]))
+            )
+
+            for m, sam_score in mask_candidates:
+                m_u8 = m.astype(np.uint8)
+                area = float(np.sum(m_u8))
+                if area < image_area * 0.00005 or area > image_area * 0.02:
+                    continue
+                ctrs, _ = cv2.findContours(m_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if not ctrs:
+                    continue
+                lc = max(ctrs, key=cv2.contourArea)
+                (cx_i, cy_i), (w_i, h_i), ang_i = cv2.minAreaRect(lc)
+                if h_i > w_i:
+                    w_i, h_i = h_i, w_i
+                    ang_i += 90
+                if h_i < 1:
+                    continue
+                aspect = w_i / h_i
+                if not (1.2 <= aspect <= 6.0):
+                    continue
+                best_mask_u8 = m_u8
+                best_dims    = (cx_i, cy_i, w_i, h_i, ang_i)
+                print(f"  Selected mask area={area:.0f} aspect={aspect:.2f} sam_score={sam_score:.3f}")
+                break
+
+            if best_mask_u8 is None or best_dims is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No panel-like shape found at the sample point. "
+                           "Try clicking directly on the centre of one panel."
+                )
+
+            cx0, cy0, pw, ph, rot_angle = best_dims
+            while rot_angle >  0:   rot_angle -= 90
+            while rot_angle <= -90: rot_angle += 90
+
+            print(f"  Sample panel: ({cx0:.0f},{cy0:.0f})  {pw:.1f}×{ph:.1f}  {rot_angle:.1f}°")
+
+            # ── 2. Array boundary via colour matching ─────────────────────
+            #  Sample the panel's colour, find all similar pixels, close
+            #  inter-panel gaps with morphology, then keep the connected
+            #  component that contains the sample centre.
+            panel_pixels = image_np[best_mask_u8 > 0]
+            if len(panel_pixels) >= 10:
+                mean_col = np.mean(panel_pixels, axis=0)
+                std_col  = np.std (panel_pixels, axis=0)
+                tolerance = np.maximum(std_col * 2.5, 30.0)
+
+                diff    = np.abs(image_np.astype(np.float32) - mean_col)
+                similar = np.all(diff <= tolerance, axis=2).astype(np.uint8)
+
+                # Two-pass close: first bridge intra-row gaps, then inter-row gaps
+                k1 = max(3, int(min(pw, ph) * 0.5))
+                similar = cv2.morphologyEx(similar, cv2.MORPH_CLOSE,
+                                           np.ones((k1, k1), np.uint8))
+                k2 = max(5, int(max(pw, ph) * 1.3))
+                similar = cv2.morphologyEx(similar, cv2.MORPH_CLOSE,
+                                           np.ones((k2, k2), np.uint8))
+
+                n_comp, labels = cv2.connectedComponents(similar)
+                sample_label   = int(labels[int(cy0), int(cx0)])
+                if sample_label > 0:
+                    array_mask = (labels == sample_label).astype(np.uint8)
+                else:
+                    array_mask = similar   # fallback: all matched pixels
+            else:
+                # Fallback: SAM2 large mask + heavy dilation
+                array_mask = s_masks[2].astype(np.uint8)
+                k = max(5, int(max(pw, ph) * 2))
+                array_mask = cv2.dilate(array_mask, np.ones((k, k), np.uint8), iterations=3)
+
+            # Extra dilation to avoid clipping edge panels
+            edge_k   = max(3, int(max(pw, ph) * 0.5))
+            array_mask_d = cv2.dilate(array_mask, np.ones((edge_k, edge_k), np.uint8), iterations=1)
+
+            print(f"  Array mask area: {np.sum(array_mask):,} px  (dilated: {np.sum(array_mask_d):,})")
+
+            # ── 3. Fill array with regular grid ────────────────────────────
+            angle_rad = math.radians(rot_angle)
+            # Long axis (along panel row)
+            lx, ly = math.cos(angle_rad), math.sin(angle_rad)
+            # Short axis (across rows)
+            sx_dir, sy_dir = -math.sin(angle_rad), math.cos(angle_rad)
+
+            # Step = panel dimension + ~2.5 % gap
+            step_long  = pw * 1.025   # panel width  + gap
+            step_short = ph * 1.030   # panel height + gap
+
+            # How many steps can we possibly need in each direction?
+            diag = math.hypot(img_w, img_h)
+            n_long  = int(diag / step_long)  + 2
+            n_short = int(diag / step_short) + 2
+
+            def point_in_mask(px, py):
+                ix, iy = int(round(px)), int(round(py))
+                if not (0 <= ix < img_w and 0 <= iy < img_h):
+                    return False
+                return array_mask_d[iy, ix] > 0
+
+            def panel_fits(cx, cy):
+                """Check 5 points: center + 4 inner corners at 70% half-dims."""
+                if not point_in_mask(cx, cy):
+                    return False
+                for si in (-0.7, 0.7):
+                    for sj in (-0.7, 0.7):
+                        px2 = cx + si * (pw / 2) * lx + sj * (ph / 2) * sx_dir
+                        py2 = cy + si * (pw / 2) * ly + sj * (ph / 2) * sy_dir
+                        if not point_in_mask(px2, py2):
+                            return False
+                return True
+
+            panels = []
+            for i in range(-n_long, n_long + 1):
+                for j in range(-n_short, n_short + 1):
+                    cx = cx0 + i * step_long * lx  + j * step_short * sx_dir
+                    cy = cy0 + i * step_long * ly  + j * step_short * sy_dir
+                    if panel_fits(cx, cy):
+                        panels.append({
+                            "x": float(cx - pw / 2),
+                            "y": float(cy - ph / 2),
+                            "width":  float(pw),
+                            "height": float(ph),
+                            "rotation": float(rot_angle),
+                            "confidence": 0.9,
+                        })
+
+            panels.sort(key=lambda p: (round(p["y"] / (ph * 0.5)) * ph * 0.5, p["x"]))
+            print(f"  Grid fill → {len(panels)} panels")
+            return JSONResponse(content={"panels": panels})
+
+        # ── STRATEGY B: auto mask generator (works best for CAD drawings) ──
+        all_masks = mask_generator.generate(image_np)
+        print(f"  Auto-generated {len(all_masks)} masks")
+
+        image_area = img_w * img_h
+        min_area = image_area * 0.0003
+        max_area = image_area * 0.12
+
+        panels = []
+        for mask_data in all_masks:
+            area = mask_data["area"]
+            if not (min_area <= area <= max_area):
+                continue
+
+            confidence = float(mask_data.get("predicted_iou", mask_data.get("stability_score", 0.5)))
+            mask = mask_data["segmentation"].astype(np.uint8)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                continue
+            largest = max(contours, key=cv2.contourArea)
+            (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
+            if h > w:
+                w, h = h, w
+                angle += 90
+            if h < 1:
+                continue
+            aspect = w / h
+            if not (1.3 <= aspect <= 4.0):
+                continue
+            panels.append({
+                "x": float(cx - w / 2),
+                "y": float(cy - h / 2),
+                "width": float(w),
+                "height": float(h),
+                "rotation": float(angle),
+                "confidence": confidence,
+            })
+
+        panels.sort(key=lambda p: (round(p["y"] / 20) * 20, p["x"]))
+        print(f"  Auto-mask filter → {len(panels)} panels")
+        return JSONResponse(content={"panels": panels})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Panel detection error: {str(e)}")
+
+
+@app.post("/fill-panels-in-polygon")
+async def fill_panels_in_polygon(
+    image: UploadFile = File(...),
+    polygon: str = Form(...),   # JSON: [[x, y], ...] in image pixel coords
+    sample_x: float = Form(...),
+    sample_y: float = Form(...),
+):
+    """
+    Fill a user-defined polygon boundary with a regular panel grid.
+    1. Detects the sample panel at (sample_x, sample_y) to measure size + rotation.
+    2. Fills every grid position that fits inside the polygon with a panel.
+    Returns: { panels: [{ x, y, width, height, rotation, confidence }] }
+    """
+    if predictor is None:
+        raise HTTPException(status_code=503, detail="SAM2 model not loaded")
+
+    try:
+        import cv2
+
+        image_bytes = await image.read()
+        pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image_np = np.array(pil_image)
+        img_h, img_w = image_np.shape[:2]
+
+        poly_points = json.loads(polygon)   # [[x, y], ...]
+
+        # ── 1. Rasterise polygon → mask ───────────────────────────────────
+        poly_arr = np.array(poly_points, dtype=np.int32)
+        poly_mask = np.zeros((img_h, img_w), dtype=np.uint8)
+        cv2.fillPoly(poly_mask, [poly_arr], 1)
+        print(f"\nFill panels: polygon area={np.sum(poly_mask):,} px  sample=({sample_x:.0f},{sample_y:.0f})")
+
+        # ── 2. Detect sample panel ────────────────────────────────────────
+        predictor.set_image(image_np)
+        s_masks, s_scores, _ = predictor.predict(
+            point_coords=np.array([[sample_x, sample_y]]),
+            point_labels=np.array([1]),
+            multimask_output=True,
+        )
+
+        image_area = img_w * img_h
+        poly_area  = float(np.sum(poly_mask))
+
+        # Upper bound: a single panel must be smaller than 25% of the polygon
+        # and smaller than 2% of the total image — whichever is tighter.
+        area_max = min(image_area * 0.02, poly_area * 0.25)
+        area_min = image_area * 0.00005
+
+        # SAM2 multimask: index 0 = finest/smallest, index 2 = coarsest/largest.
+        # Sort by area ascending so we always prefer the smallest valid mask —
+        # that is the most likely single-panel match.
+        mask_candidates = sorted(
+            zip(s_masks, s_scores),
+            key=lambda ms: float(np.sum(ms[0]))
+        )
+
+        best_mask_u8 = None
+        best_dims    = None
+
+        for m, sam_score in mask_candidates:
+            m_u8 = m.astype(np.uint8)
+            area = float(np.sum(m_u8))
+            if area < area_min or area > area_max:
+                continue
+            ctrs, _ = cv2.findContours(m_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not ctrs:
+                continue
+            lc = max(ctrs, key=cv2.contourArea)
+            (cx_i, cy_i), (w_i, h_i), ang_i = cv2.minAreaRect(lc)
+            if h_i > w_i:
+                w_i, h_i = h_i, w_i
+                ang_i += 90
+            if h_i < 1:
+                continue
+            aspect = w_i / h_i
+            if not (1.2 <= aspect <= 6.0):
+                continue
+            # Take the first (smallest) mask that looks like a panel
+            best_mask_u8 = m_u8
+            best_dims    = (cx_i, cy_i, w_i, h_i, ang_i)
+            print(f"  Selected mask area={area:.0f} aspect={aspect:.2f} sam_score={sam_score:.3f}")
+            break
+
+        if best_dims is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No panel-like shape found at the sample point. "
+                       "Try clicking the centre of one panel."
+            )
+
+        cx0, cy0, pw, ph, rot_angle = best_dims
+        while rot_angle >  0:   rot_angle -= 90
+        while rot_angle <= -90: rot_angle += 90
+        print(f"  Sample panel: ({cx0:.0f},{cy0:.0f})  {pw:.1f}×{ph:.1f}  {rot_angle:.1f}°")
+
+        # ── 3. Dilate polygon mask to avoid clipping edge panels ──────────
+        edge_k = max(3, int(max(pw, ph) * 0.35))
+        poly_mask_d = cv2.dilate(poly_mask, np.ones((edge_k, edge_k), np.uint8), iterations=1)
+
+        # ── 4. Grid fill ──────────────────────────────────────────────────
+        angle_rad = math.radians(rot_angle)
+        lx,      ly      = math.cos(angle_rad),  math.sin(angle_rad)
+        sx_dir,  sy_dir  = -math.sin(angle_rad), math.cos(angle_rad)
+        step_long  = pw * 1.025
+        step_short = ph * 1.030
+        diag    = math.hypot(img_w, img_h)
+        n_long  = int(diag / step_long)  + 2
+        n_short = int(diag / step_short) + 2
+
+        def in_mask(px, py):
+            ix, iy = int(round(px)), int(round(py))
+            return 0 <= ix < img_w and 0 <= iy < img_h and poly_mask_d[iy, ix] > 0
+
+        def panel_fits(cx, cy):
+            if not in_mask(cx, cy):
+                return False
+            for si in (-0.7, 0.7):
+                for sj in (-0.7, 0.7):
+                    if not in_mask(cx + si*(pw/2)*lx + sj*(ph/2)*sx_dir,
+                                   cy + si*(pw/2)*ly + sj*(ph/2)*sy_dir):
+                        return False
+            return True
+
+        panels = []
+        for i in range(-n_long, n_long + 1):
+            for j in range(-n_short, n_short + 1):
+                cx = cx0 + i * step_long * lx  + j * step_short * sx_dir
+                cy = cy0 + i * step_long * ly  + j * step_short * sy_dir
+                if panel_fits(cx, cy):
+                    panels.append({
+                        "x":          float(cx - pw / 2),
+                        "y":          float(cy - ph / 2),
+                        "width":      float(pw),
+                        "height":     float(ph),
+                        "rotation":   float(rot_angle),
+                        "confidence": 0.95,
+                    })
+
+        panels.sort(key=lambda p: (round(p["y"] / (ph * 0.5)) * ph * 0.5, p["x"]))
+        print(f"  Grid fill → {len(panels)} panels")
+        return JSONResponse(content={"panels": panels})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Panel fill error: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -80,6 +80,33 @@ export class SAM2Service {
   }
 
   /**
+   * Detect all panels in a plan image.
+   * sampleX/sampleY are optional — a clicked panel helps SAM2 identify panel appearance.
+   * Returns: { panels: [{ x, y, width, height, rotation, confidence }] } in image pixels.
+   */
+  static async segmentAllPanels(imageBlob, sampleX = null, sampleY = null) {
+    const formData = new FormData()
+    formData.append('image', imageBlob, 'plan.png')
+    if (sampleX !== null) formData.append('sample_x', sampleX.toString())
+    if (sampleY !== null) formData.append('sample_y', sampleY.toString())
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/segment-all-panels`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Panel detection failed')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Panel detection failed:', error)
+      throw error
+    }
+  }
+
+  /**
    * Segment a roof using pixel coordinates
    */
   static async segmentRoofPixel(imageBlob, pointX, pointY) {
@@ -103,6 +130,34 @@ export class SAM2Service {
       return geojson
     } catch (error) {
       console.error('Roof segmentation failed:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Fill a polygon boundary with a regular panel grid.
+   * polygon: [[x,y], ...] in image pixel coordinates
+   * Returns: { panels: [{ x, y, width, height, rotation, confidence }] }
+   */
+  static async fillPanelsInPolygon(imageBlob, polygon, sampleX, sampleY) {
+    const formData = new FormData()
+    formData.append('image', imageBlob, 'plan.png')
+    formData.append('polygon', JSON.stringify(polygon))
+    formData.append('sample_x', sampleX.toString())
+    formData.append('sample_y', sampleY.toString())
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/fill-panels-in-polygon`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Panel fill failed')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Panel fill failed:', error)
       throw error
     }
   }
