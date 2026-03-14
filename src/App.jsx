@@ -3,6 +3,7 @@ import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import WelcomeScreen from './components/WelcomeScreen'
+import HelpPanel from './components/HelpPanel'
 import { SAM2Service } from './services/sam2Service'
 import { generatePanelLayout, createManualPanel } from './utils/panelUtils'
 import './App.css'
@@ -66,6 +67,7 @@ function App() {
   const [constructionPlan, setConstructionPlan] = useState(null)
   
   const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
+  const [showHelp, setShowHelp] = useState(false)
 
   const stepTitles = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
@@ -561,14 +563,19 @@ function App() {
             <div>
               <h1>MyGreenPlanner</h1>
               {currentProject?.name ? (
-                <p className="header-subtitle" style={{ fontWeight: '600', color: '#C4D600' }}>
-                  {currentProject.name}
-                  {currentProject.location && (
-                    <span style={{ fontWeight: '400', color: '#aaa', marginLeft: '0.5rem' }}>
-                      · {currentProject.location}
-                    </span>
-                  )}
-                </p>
+                <>
+                  <p className="header-subtitle" style={{ fontWeight: '600', color: '#C4D600' }}>
+                    {currentProject.name}
+                    {currentProject.location && (
+                      <span style={{ fontWeight: '400', color: '#aaa', marginLeft: '0.5rem' }}>
+                        · {currentProject.location}
+                      </span>
+                    )}
+                  </p>
+                  <p className="header-subtitle" style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: '1px' }}>
+                    Created {currentProject.date ? new Date(currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                  </p>
+                </>
               ) : (
                 <p className="header-subtitle">Solar PV Roof Planning System</p>
               )}
@@ -741,6 +748,24 @@ function App() {
           </div>
         )}
         
+        {/* Help button */}
+        <button
+          onClick={() => setShowHelp(true)}
+          title="Help & Guidelines"
+          style={{
+            position: 'absolute', bottom: '1.25rem', right: '1.25rem',
+            width: '38px', height: '38px', borderRadius: '50%',
+            background: 'white', border: '2px solid #C4D600',
+            color: '#C4D600', fontSize: '1rem', fontWeight: '800',
+            cursor: 'pointer', zIndex: 900,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#C4D600'; e.currentTarget.style.color = 'white' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#C4D600' }}
+        >?</button>
+
         {isProcessing && (
           <div className="processing-overlay">
             <div className="spinner"></div>
@@ -748,6 +773,10 @@ function App() {
           </div>
         )}
       </main>
+
+      {showHelp && (
+        <HelpPanel currentStep={currentStep} onClose={() => setShowHelp(false)} />
+      )}
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
