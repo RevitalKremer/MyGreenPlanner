@@ -428,8 +428,8 @@ function DetailView({ rc, panelLines = null }) {
               const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
               const clampH   = Math.abs(panBot - beamTop)
               const CW = 14, FW = 20, FH = 3.5
-              // Distance along slope from panel start (panelX1)
-              const distCm = Math.round((cx - panelX1) / (SC * Math.cos(angleRad)))
+              // Distance along slope from beam start (x0)
+              const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
               // Label position: skyward above the top flange
               const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
               const lx = cx + (-Math.sin(angleRad)) * labelOffPx
@@ -483,39 +483,23 @@ function DetailView({ rc, panelLines = null }) {
 
             {/* ── Dimension annotations ── */}
 
-            {/* Rail overhangs along slope (above panel, pushed well clear) */}
-            <Dim ax1={panelX1} ay1={panelY1} ax2={x0} ay2={topY0}
-              label={`${RAIL_CM}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 14)} />
-            <Dim ax1={x1} ay1={topY1} ax2={panelX2} ay2={panelY2}
-              label={`${RAIL_CM}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 14)} />
-
-            {/* Total panel depth along slope (outermost line) */}
-            <Dim ax1={panelX1} ay1={panelY1} ax2={panelX2} ay2={panelY2}
-              label={`${totalPanelDepthCm.toFixed(1)}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 30)} />
-
-            {/* Top beam length (just above beam surface) */}
+            {/* Top beam length */}
             <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
-              label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 2)} />
+              label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 14)} />
 
-            {/* Connector span label box on the beam (conn1 → conn2) */}
+            {/* Split dim: [panel start → conn1] · [conn1 → conn2] · [conn2 → panel end] */}
             {(() => {
-              const spanLabel = `${Math.round((conn2X - conn1X) / SC / Math.cos(angleRad))}`
-              const midX = (conn1X + conn2X) / 2
-              const midY = beamY(midX)
-              const bw = spanLabel.length * 5.5 + 8, bh = 11
-              return (
-                <g transform={`translate(${midX}, ${midY}) rotate(${beamAngleDeg})`}>
-                  <rect x={-bw/2} y={-bh - 2} width={bw} height={bh}
-                    fill="white" stroke={DC} strokeWidth="0.8" rx="1.5" />
-                  <text x={0} y={-bh/2 - 2} textAnchor="middle" dominantBaseline="middle"
-                    fontSize="8" fontWeight="700" fill={DC}>{spanLabel}</text>
-                </g>
-              )
+              const splitOff = -(PANEL_OFFSET_PX + 30)
+              const toCm = (dx) => Math.round(dx / SC / Math.cos(angleRad))
+              return (<>
+                <Dim ax1={panelX1} ay1={panelY1} ax2={conn1X} ay2={beamY(conn1X)}
+                  label={`${toCm(conn1X - panelX1)}`} off={splitOff} />
+                <Dim ax1={conn1X} ay1={beamY(conn1X)} ax2={conn2X} ay2={beamY(conn2X)}
+                  label={`${toCm(conn2X - conn1X)}`} off={splitOff} />
+                <Dim ax1={conn2X} ay1={beamY(conn2X)} ax2={panelX2} ay2={panelY2}
+                  label={`${toCm(panelX2 - conn2X)}`} off={splitOff} />
+              </>)
             })()}
-
-            {/* Connector offset from rear leg */}
-            <Dim ax1={x0} ay1={topY0} ax2={conn1X} ay2={beamY(conn1X)}
-              label={`${connOffsetCm}`} off={10} fs={7} />
 
             {/* Rear leg height alone (inner left) */}
             {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
