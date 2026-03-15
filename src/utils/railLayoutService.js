@@ -110,9 +110,8 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
     const lineMinY = Math.min(...lineRects.map(r => r.localY))
     const lineMaxY = Math.max(...lineRects.map(r => r.localY + r.height))
 
-    const railYPositions = orientation === 'PORTRAIT'
-      ? [lineMinY + railOffsetPx, lineMaxY - railOffsetPx]
-      : [lineMinY + railOffsetPx]  // LANDSCAPE: 1 rail at top offset
+    // Every panel needs exactly 2 rails regardless of orientation
+    const railYPositions = [lineMinY + railOffsetPx, lineMaxY - railOffsetPx]
 
     for (const railY of railYPositions) {
       // Clip rail x-extent: find all panels (across ALL lines) that span this y
