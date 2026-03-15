@@ -7,6 +7,7 @@ import {
   PANEL_GAP_CM,
   PANEL_LENGTH_CM
 } from '../../utils/constructionCalculator'
+import RailLayoutTab from './RailLayoutTab'
 
 const ACCENT = '#C4D600'
 
@@ -397,6 +398,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
     { key: 'rows',   label: 'Row Dimensions' },
     { key: 'detail', label: 'Detail Sketch' },
     { key: 'bom',    label: 'Bill of Materials' },
+    { key: 'rails',  label: 'Rail Layout' },
   ]
 
   const updateUserConfig = (rowIdx, field, value) => {
@@ -432,7 +434,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           {rowConstructions.map((rc, i) => (
             <div
               key={i}
-              onClick={() => { setSelectedRowIdx(i); setActiveTab('detail') }}
+              onClick={() => setSelectedRowIdx(selectedRowIdx === i ? null : i)}
               style={{
                 padding: '0.6rem 1rem', cursor: 'pointer',
                 borderBottom: '1px solid #f0f0f0',
@@ -519,6 +521,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           {activeTab === 'rows'   && <RowsView rowConstructions={rowConstructions} />}
           {activeTab === 'detail' && <DetailView rc={selectedRC} />}
           {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
+          {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} />}
         </div>
       </div>
     </div>

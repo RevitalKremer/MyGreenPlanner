@@ -105,7 +105,6 @@ function App() {
     setDragState(null)
     setRotationState(null)
     setRowConfigs({})
-    setConstructionPlan(null)
   }
 
   const handleStartOver = () => {
