@@ -273,10 +273,25 @@ function DetailView({ rc, panelLines = null }) {
     let dCm = 0
     for (const seg of segments) {
       dCm += seg.gapBeforeCm
-      const startX = atSlope(dCm).x
-      const endX   = atSlope(dCm + seg.depthCm).x
-      xs.push(startX < x0 ? x0 + beamOffX : startX + beamOffX)  // left: beam-end or panel-edge
-      xs.push(endX   > x1 ? x1 - beamOffX : endX   - beamOffX)  // right: beam-end or panel-edge
+      const startX  = atSlope(dCm).x
+      const endX    = atSlope(dCm + seg.depthCm).x
+      const centerX = (startX + endX) / 2
+
+      // Initial placement: snap to beam end when panel overhangs, else panel edge
+      let lcX = startX < x0 ? x0 + beamOffX : startX + beamOffX
+      let rcX = endX   > x1 ? x1 - beamOffX : endX   - beamOffX
+
+      // Symmetrize: use the connector closer to center as the reference distance
+      const leftDist  = centerX - lcX
+      const rightDist = rcX - centerX
+      if (leftDist <= rightDist) {
+        rcX = centerX + leftDist   // right matches left distance
+      } else {
+        lcX = centerX - rightDist  // left matches right distance
+      }
+
+      xs.push(lcX)
+      xs.push(rcX)
       dCm += seg.depthCm
     }
     return xs
@@ -408,22 +423,32 @@ function DetailView({ rc, panelLines = null }) {
             {/* ── Purple mid-clamp connectors (drawn on top of panel bars) ── */}
             {connectorXs.map((cx, ci) => {
               const cy = beamY(cx)
-              // In rotated frame: y=0 is beam centre, negative y = skyward
-              const beamTop  = -BEAM_THICK_PX / 2                        // beam upper surface
-              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)  // panel underside
-              const clampH   = Math.abs(panBot - beamTop)                // gap to fill
-              const CW = 14, FW = 20, FH = 3.5                          // stem width, flange width/height
+              const beamTop  = -BEAM_THICK_PX / 2
+              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
+              const clampH   = Math.abs(panBot - beamTop)
+              const CW = 14, FW = 20, FH = 3.5
+              // Distance along slope from panel start (panelX1)
+              const distCm = Math.round((cx - panelX1) / (SC * Math.cos(angleRad)))
+              // Label position: skyward above the top flange
+              const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
+              const lx = cx + (-Math.sin(angleRad)) * labelOffPx
+              const ly = cy + (-Math.cos(angleRad)) * labelOffPx
               return (
-                <g key={ci} transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
-                  {/* Stem */}
-                  <rect x={-CW/2} y={panBot} width={CW} height={clampH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
-                  {/* Bottom flange (on beam) */}
-                  <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
-                  {/* Top flange (on panel) */}
-                  <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                <g key={ci}>
+                  <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
+                    <rect x={-CW/2} y={panBot} width={CW} height={clampH}
+                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                    <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
+                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                    <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
+                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                  </g>
+                  {/* Distance from panel start, above the connector */}
+                  <text x={lx} y={ly}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize="7.5" fontWeight="700" fill="#7c3aed"
+                    transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
+                  >{distCm}</text>
                 </g>
               )
             })}
