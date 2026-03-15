@@ -205,17 +205,15 @@ export default function Step3PanelPlacement({
     const globalCfg = refinedArea.panelConfig
     const current = rowConfigs[selectedRowKey] || {}
     const PANEL_LENGTH = 238.2
-    const frontH = globalCfg.frontHeight || 0
+    const frontH = current.frontHeight ?? globalCfg.frontHeight ?? 0
 
     let newOverride = { ...current, [field]: value }
-    // Two-way sync
+    // Keep angle, frontHeight, and backHeight in sync
     if (field === 'angle') {
       newOverride.backHeight = parseFloat((frontH + PANEL_LENGTH * Math.sin(value * Math.PI / 180)).toFixed(1))
-    } else if (field === 'backHeight') {
-      const derived = Math.asin((value - frontH) / PANEL_LENGTH) * 180 / Math.PI
-      if (!isNaN(derived) && derived >= 0 && derived <= 30) {
-        newOverride.angle = parseFloat(derived.toFixed(1))
-      }
+    } else if (field === 'frontHeight') {
+      const angleVal = current.angle ?? globalCfg.angle ?? 0
+      newOverride.backHeight = parseFloat((value + PANEL_LENGTH * Math.sin(angleVal * Math.PI / 180)).toFixed(1))
     }
 
     setRowConfigs(prev => ({ ...prev, [selectedRowKey]: newOverride }))
@@ -1215,7 +1213,7 @@ export default function Step3PanelPlacement({
               const isOverridden = !!rowConfigs[selectedRowKey]
               const angle = override.angle ?? globalCfg.angle ?? 0
               const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
-              const frontHeight = globalCfg.frontHeight ?? 0
+              const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
 
               // Trapezoid cross-section geometry
               const W = 130, H = 62, groundY = H - 8
@@ -1250,8 +1248,13 @@ export default function Step3PanelPlacement({
                   {/* Cross-section preview — multi-line aware */}
                   {(() => {
                     const globalCfg2 = refinedArea?.panelConfig || {}
-                    const effectiveLinesPerRow = globalCfg2.linesPerRow || 1
-                    const effectiveLineOrientations = globalCfg2.lineOrientations || ['vertical']
+                    // In plan mode each row group stores its own linesPerRow/lineOrientations;
+                    // selectedRowKey equals the group index, so look it up from rowGroups.
+                    const planGroup = projectMode === 'plan' && selectedRowKey !== null
+                      ? rowGroups[selectedRowKey] ?? null
+                      : null
+                    const effectiveLinesPerRow = (planGroup?.linesPerRow ?? globalCfg2.linesPerRow) || 1
+                    const effectiveLineOrientations = (planGroup?.lineOrientations ?? globalCfg2.lineOrientations) || ['vertical']
                     const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
                       .map(o => o === 'vertical' ? 238.2 : 113.4)
                     const angleRad2 = angle * Math.PI / 180
@@ -1292,7 +1295,7 @@ export default function Step3PanelPlacement({
                     )
                   })()}
 
-                  {/* Inputs */}
+                  {/* Inputs — mirrors Step 2: angle + front H editable, back H calculated */}
                   <div style={{ display: 'flex', gap: '0.4rem' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Angle (°)</div>
@@ -1309,12 +1312,12 @@ export default function Step3PanelPlacement({
                       />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Back H (cm)</div>
+                      <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Front H (cm)</div>
                       <input
-                        key={`${selectedRowKey}-backH`}
+                        key={`${selectedRowKey}-frontH`}
                         type="number" min="0" step="0.5"
-                        defaultValue={backHeight}
-                        onChange={e => updateRowTrapezoid('backHeight', e.target.value)}
+                        defaultValue={frontHeight}
+                        onChange={e => updateRowTrapezoid('frontHeight', e.target.value)}
                         style={{
                           width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
                           border: `1px solid ${isOverridden ? '#FFB74D' : '#ddd'}`,
@@ -1322,6 +1325,9 @@ export default function Step3PanelPlacement({
                         }}
                       />
                     </div>
+                  </div>
+                  <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.5rem', background: '#f8f9fa', borderRadius: '5px', fontSize: '0.75rem', color: '#777' }}>
+                    Back height (calc): <strong style={{ color: '#555' }}>{backHeight.toFixed(1)} cm</strong>
                   </div>
                 </div>
               )
