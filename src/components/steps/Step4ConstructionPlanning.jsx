@@ -425,27 +425,39 @@ function DetailView({ rc, panelLines = null }) {
 
             {/* ── Dimension annotations ── */}
 
-            {/* Rail overhangs along slope (above panel) */}
+            {/* Rail overhangs along slope (above panel, pushed well clear) */}
             <Dim ax1={panelX1} ay1={panelY1} ax2={x0} ay2={topY0}
-              label={`${RAIL_CM}`} off={-14} />
+              label={`${RAIL_CM}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 14)} />
             <Dim ax1={x1} ay1={topY1} ax2={panelX2} ay2={panelY2}
-              label={`${RAIL_CM}`} off={-14} />
+              label={`${RAIL_CM}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 14)} />
 
-            {/* Total panel depth along slope */}
+            {/* Total panel depth along slope (outermost line) */}
             <Dim ax1={panelX1} ay1={panelY1} ax2={panelX2} ay2={panelY2}
-              label={`${totalPanelDepthCm.toFixed(1)}`} off={-32} />
+              label={`${totalPanelDepthCm.toFixed(1)}`} off={-(PANEL_OFFSET_PX + PANEL_THICK_PX + 30)} />
 
-            {/* Top beam length */}
+            {/* Top beam length (just above beam surface) */}
             <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
-              label={`${topBeamLength.toFixed(0)}`} off={-22} />
+              label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 2)} />
 
-            {/* Rear leg → front connector (below beam, inside) */}
-            <Dim ax1={x0} ay1={topY0} ax2={conn2X} ay2={beamY(conn2X)}
-              label={`${(topBeamLength - connOffsetCm).toFixed(0)}`} off={12} fs={7} />
+            {/* Connector span label box on the beam (rear leg → front connector) */}
+            {(() => {
+              const spanLabel = `${(topBeamLength - connOffsetCm).toFixed(0)}`
+              const midX = (x0 + conn2X) / 2
+              const midY = beamY(midX)
+              const bw = spanLabel.length * 5.5 + 8, bh = 11
+              return (
+                <g transform={`translate(${midX}, ${midY}) rotate(${beamAngleDeg})`}>
+                  <rect x={-bw/2} y={-bh - 2} width={bw} height={bh}
+                    fill="white" stroke={DC} strokeWidth="0.8" rx="1.5" />
+                  <text x={0} y={-bh/2 - 2} textAnchor="middle" dominantBaseline="middle"
+                    fontSize="8" fontWeight="700" fill={DC}>{spanLabel}</text>
+                </g>
+              )
+            })()}
 
             {/* Connector offset from rear leg */}
             <Dim ax1={x0} ay1={topY0} ax2={conn1X} ay2={beamY(conn1X)}
-              label={`${connOffsetCm}`} off={8} fs={7} />
+              label={`${connOffsetCm}`} off={10} fs={7} />
 
             {/* Rear leg height alone (inner left) */}
             {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
