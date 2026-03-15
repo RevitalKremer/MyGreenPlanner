@@ -36,6 +36,8 @@ export default function Step2PVAreaRefinement({
   const [activeGroupId, setActiveGroupId] = useState(null)
   const [baselineDrawStart, setBaselineDrawStart] = useState(null)
   const [diagramGroupId, setDiagramGroupId] = useState(null)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   // Pan state
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
@@ -317,11 +319,16 @@ export default function Step2PVAreaRefinement({
         {/* ── Left: Cross-section diagram ── */}
         {uploadedImageData && (
           <div style={{
-            position: 'absolute', top: '20px', left: '20px', width: '340px',
+            position: 'absolute', top: '20px', left: '20px',
+            width: leftPanelCollapsed ? '32px' : '340px', minHeight: '36px', overflow: 'hidden',
             padding: '1.25rem', background: 'white', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '2px solid #C4D600',
             display: 'flex', flexDirection: 'column'
           }}>
+            <button onClick={() => setLeftPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {leftPanelCollapsed ? '›' : '‹'}
+            </button>
+            {!leftPanelCollapsed && <>
             <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem', fontWeight: '600', color: '#555' }}>
               Row Cross-Section
               {projectMode === 'plan' && dg && (
@@ -400,18 +407,24 @@ export default function Step2PVAreaRefinement({
                 <span style={{ fontSize: '0.72rem', color: '#FF9800', fontWeight: '600' }}>■ Horizontal</span>
               </div>
             )}
+            </>}
           </div>
         )}
 
         {/* ── Right: Configuration ── */}
         {uploadedImageData && (
           <div style={{
-            position: 'absolute', top: '20px', right: '20px', width: '320px',
+            position: 'absolute', top: '20px', right: '20px',
+            width: rightPanelCollapsed ? '32px' : '320px', minHeight: '36px', overflow: 'hidden',
             background: 'white', padding: '1.5rem', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            maxHeight: 'calc(100vh - 300px)', overflowY: 'auto',
+            maxHeight: rightPanelCollapsed ? 'none' : 'calc(100vh - 300px)', overflowY: rightPanelCollapsed ? 'hidden' : 'auto',
             border: '2px solid #C4D600'
           }}>
+            <button onClick={() => setRightPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {rightPanelCollapsed ? '‹' : '›'}
+            </button>
+            {!rightPanelCollapsed && <>
             <h3 style={{ margin: '0 0 1rem', color: '#555', fontSize: '1.05rem', fontWeight: '600' }}>
               Panel Configuration
             </h3>
@@ -642,6 +655,7 @@ export default function Step2PVAreaRefinement({
                 </div>
               </>
             )}
+            </>}
           </div>
         )}
       </div>

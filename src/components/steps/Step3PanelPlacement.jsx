@@ -40,6 +40,8 @@ export default function Step3PanelPlacement({
   const panRef = useRef(null)
   const willDeselectRef = useRef(false)
   const [rectSelect, setRectSelect] = useState(null) // { startX, startY, endX, endY }
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   const NUDGE_PX = 5
 
@@ -794,13 +796,18 @@ export default function Step3PanelPlacement({
         {/* ── LEFT PANEL ──────────────────────────────────────────────────────── */}
         {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (
           <div style={{
-            position: 'absolute', top: '20px', left: '20px', width: '255px',
+            position: 'absolute', top: '20px', left: '20px',
+            width: leftPanelCollapsed ? '32px' : '255px', minHeight: '36px', overflow: 'hidden',
             padding: '1.25rem',
             background: 'white', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             border: '2px solid #C4D600',
-            maxHeight: 'calc(100vh - 120px)', overflowY: 'auto'
+            maxHeight: leftPanelCollapsed ? 'none' : 'calc(100vh - 120px)', overflowY: leftPanelCollapsed ? 'hidden' : 'auto'
           }}>
+            <button onClick={() => setLeftPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {leftPanelCollapsed ? '›' : '‹'}
+            </button>
+            {!leftPanelCollapsed && <>
             <h3 style={{ margin: '0 0 1rem 0', color: '#555', fontSize: '1rem', fontWeight: '700' }}>
               Panel Layout
             </h3>
@@ -1005,18 +1012,24 @@ export default function Step3PanelPlacement({
                 </div>
               </>
             )}
+            </>}
           </div>
         )}
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
         {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (projectMode === 'plan' ? panels.length > 0 : baseline?.p2) && (
           <div style={{
-            position: 'absolute', top: '20px', right: '20px', width: '225px',
+            position: 'absolute', top: '20px', right: '20px',
+            width: rightPanelCollapsed ? '32px' : '225px', minHeight: '36px', overflow: 'hidden',
             padding: '1rem',
             background: 'white', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             border: '2px solid #C4D600'
           }}>
+            <button onClick={() => setRightPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {rightPanelCollapsed ? '‹' : '›'}
+            </button>
+            {!rightPanelCollapsed && <>
 
             {/* Tool selector */}
             <div style={{ marginBottom: '1rem' }}>
@@ -1404,6 +1417,7 @@ export default function Step3PanelPlacement({
             >
               {showBaseline ? '👁 Baseline visible' : '👁 Show Baseline'}
             </button>
+            </>}
           </div>
         )}
       </div>

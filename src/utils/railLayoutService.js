@@ -1,4 +1,5 @@
 export const DEFAULT_RAIL_OFFSET_CM = 49.1
+export const DEFAULT_RAIL_OVERHANG_CM = 4
 export const DEFAULT_STOCK_LENGTHS_MM = [4800, 6000]
 
 // Transform screen-space point to local frame (inverse rotation around center)
@@ -55,8 +56,10 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
 
   const railOffsetCm = railConfig.offsetFromPanelEdge ?? DEFAULT_RAIL_OFFSET_CM
+  const railOverhangCm = railConfig.overhangCm ?? DEFAULT_RAIL_OVERHANG_CM
   const stockLengths = railConfig.stockLengths ?? DEFAULT_STOCK_LENGTHS_MM
   const railOffsetPx = railOffsetCm / pixelToCmRatio
+  const railOverhangPx = railOverhangCm / pixelToCmRatio
 
   const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
 
@@ -121,6 +124,9 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
         }
       }
       if (xMin === Infinity) continue
+
+      xMin -= railOverhangPx
+      xMax += railOverhangPx
 
       const lengthPx = xMax - xMin
       const lengthCm = lengthPx * pixelToCmRatio
