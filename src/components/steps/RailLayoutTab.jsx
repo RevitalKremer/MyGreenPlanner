@@ -441,6 +441,7 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
         <div style={{
           position: 'absolute', top: '16px', right: '16px',
           width: panelCollapsed ? '32px' : '210px', minHeight: '36px', overflow: 'hidden',
+          maxHeight: panelCollapsed ? 'none' : 'calc(100vh - 100px)', overflowY: panelCollapsed ? 'hidden' : 'auto',
           padding: '1rem',
           background: 'white', borderRadius: '12px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)',

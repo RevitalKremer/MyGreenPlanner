@@ -402,7 +402,7 @@ function App() {
           setRowConfigs(prev => {
             const next = {}
             Object.keys(groupConfigs).forEach(key => {
-              next[key] = prev[key] ?? groupConfigs[key]
+              next[key] = { ...(prev[key] || {}), ...groupConfigs[key] }
             })
             return next
           })

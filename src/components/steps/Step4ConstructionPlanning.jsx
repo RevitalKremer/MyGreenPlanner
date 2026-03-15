@@ -264,9 +264,25 @@ function DetailView({ rc, panelLines = null }) {
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
-  // Connectors: offset measured along beam slope
-  const conn1X = x0 + connOffsetCm * SC * Math.cos(angleRad)
-  const conn2X = x1 - connOffsetCm * SC * Math.cos(angleRad)
+  // Connectors: 2 per panel segment (line).
+  // If the panel edge is outside the beam, snap the connector to the beam end + connOffsetCm.
+  // If the panel edge is inside the beam (middle gap), use panel edge ± connOffsetCm.
+  const beamOffX = connOffsetCm * SC * Math.cos(angleRad)
+  const connectorXs = (() => {
+    const xs = []
+    let dCm = 0
+    for (const seg of segments) {
+      dCm += seg.gapBeforeCm
+      const startX = atSlope(dCm).x
+      const endX   = atSlope(dCm + seg.depthCm).x
+      xs.push(startX < x0 ? x0 + beamOffX : startX + beamOffX)  // left: beam-end or panel-edge
+      xs.push(endX   > x1 ? x1 - beamOffX : endX   - beamOffX)  // right: beam-end or panel-edge
+      dCm += seg.depthCm
+    }
+    return xs
+  })()
+  const conn1X = connectorXs[0] ?? x0
+  const conn2X = connectorXs[connectorXs.length - 1] ?? x1
 
   // 40×40 mm profile: at SC pixels/cm → 4 cm × SC px
   const BEAM_THICK_PX = 4 * SC           // 40 mm in pixels = 8.8 px
@@ -367,29 +383,6 @@ function DetailView({ rc, panelLines = null }) {
             <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
             <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
 
-            {/* ── Purple mid-clamp connectors (between beam top and panel underside) ── */}
-            {[conn1X, conn2X].map((cx, ci) => {
-              const cy = beamY(cx)
-              // In rotated frame: y=0 is beam centre, negative y = skyward
-              const beamTop  = -BEAM_THICK_PX / 2          // beam upper surface
-              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)  // panel underside
-              const clampH   = Math.abs(panBot - beamTop)  // gap to fill
-              const CW = 10, FW = 14, FH = 2.5            // stem width, flange width/height
-              return (
-                <g key={ci} transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
-                  {/* Stem */}
-                  <rect x={-CW/2} y={panBot} width={CW} height={clampH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
-                  {/* Bottom flange (on beam) */}
-                  <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
-                  {/* Top flange (on panel) */}
-                  <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
-                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
-                </g>
-              )
-            })}
-
             {/* ── Panel bars (one per line, offset above beam+connectors) ── */}
             {(() => {
               let dCm = 0
@@ -411,6 +404,29 @@ function DetailView({ rc, panelLines = null }) {
                 )
               })
             })()}
+
+            {/* ── Purple mid-clamp connectors (drawn on top of panel bars) ── */}
+            {connectorXs.map((cx, ci) => {
+              const cy = beamY(cx)
+              // In rotated frame: y=0 is beam centre, negative y = skyward
+              const beamTop  = -BEAM_THICK_PX / 2                        // beam upper surface
+              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)  // panel underside
+              const clampH   = Math.abs(panBot - beamTop)                // gap to fill
+              const CW = 14, FW = 20, FH = 3.5                          // stem width, flange width/height
+              return (
+                <g key={ci} transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
+                  {/* Stem */}
+                  <rect x={-CW/2} y={panBot} width={CW} height={clampH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                  {/* Bottom flange (on beam) */}
+                  <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                  {/* Top flange (on panel) */}
+                  <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                </g>
+              )
+            })}
 
             {/* ── Blocks ── */}
             <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
@@ -439,10 +455,10 @@ function DetailView({ rc, panelLines = null }) {
             <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
               label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 2)} />
 
-            {/* Connector span label box on the beam (rear leg → front connector) */}
+            {/* Connector span label box on the beam (conn1 → conn2) */}
             {(() => {
-              const spanLabel = `${(topBeamLength - connOffsetCm).toFixed(0)}`
-              const midX = (x0 + conn2X) / 2
+              const spanLabel = `${Math.round((conn2X - conn1X) / SC / Math.cos(angleRad))}`
+              const midX = (conn1X + conn2X) / 2
               const midY = beamY(midX)
               const bw = spanLabel.length * 5.5 + 8, bh = 11
               return (
