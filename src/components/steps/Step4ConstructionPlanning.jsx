@@ -271,23 +271,30 @@ function DetailView({ rc, panelLines = null }) {
   const connectorXs = (() => {
     const xs = []
     let dCm = 0
-    for (const seg of segments) {
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si]
       dCm += seg.gapBeforeCm
       const startX  = atSlope(dCm).x
       const endX    = atSlope(dCm + seg.depthCm).x
       const centerX = (startX + endX) / 2
 
+      // For the outermost edges use panelX1/panelX2 so the snap matches what's drawn
+      const leftEdge  = si === 0                    ? panelX1 : startX
+      const rightEdge = si === segments.length - 1  ? panelX2 : endX
+
       // Initial placement: snap to beam end when panel overhangs, else panel edge
-      let lcX = startX < x0 ? x0 + beamOffX : startX + beamOffX
-      let rcX = endX   > x1 ? x1 - beamOffX : endX   - beamOffX
+      let lcX = leftEdge  < x0 ? x0 + beamOffX : startX + beamOffX
+      let rcX = rightEdge > x1 ? x1 - beamOffX : endX   - beamOffX
 
       // Symmetrize: use the connector closer to center as the reference distance
       const leftDist  = centerX - lcX
       const rightDist = rcX - centerX
-      if (leftDist <= rightDist) {
-        rcX = centerX + leftDist   // right matches left distance
-      } else {
-        lcX = centerX - rightDist  // left matches right distance
+      if (leftDist >= 0 && rightDist >= 0) {
+        if (leftDist <= rightDist) {
+          rcX = centerX + leftDist
+        } else {
+          lcX = centerX - rightDist
+        }
       }
 
       xs.push(lcX)
