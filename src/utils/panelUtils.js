@@ -154,24 +154,47 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
     })
   }
 
-  // Determine which side of the baseline has more polygon (i.e. the roof interior).
-  // Generate panels toward that side so the baseline always acts as the near edge.
-  const rotCentroidY = rotatedPolygon.reduce((s, p) => s + p.y, 0) / rotatedPolygon.length
-  const goDown = rotCentroidY > baselineRotY   // centroid below baseline in rotated space
+  // Determine which rotated-Y direction is "up" in image space.
+  // We do this empirically: place a test point half a row-height in each direction from the
+  // baseline, unrotate it back to image space, and pick the direction whose image-Y is smaller
+  // (smaller image-Y = higher on screen = "above" the baseline).
+  const baseMidImageY = (baseline.p1[1] + baseline.p2[1]) / 2
+  const midX = (baselineStartX + baselineEndX) / 2
+  const halfProj = totalRowProjectionPx / 2
 
-  let currentRotY = goDown ? baselineRotY : baselineRotY - totalRowProjectionPx
-  const rowStep = goDown
-    ? (totalRowProjectionPx + rowSpacingPx)
-    : -(totalRowProjectionPx + rowSpacingPx)
+  const unrotateImageY = (rotY) => {
+    const dy = rotY - centerY
+    return centerY + (midX - centerX) * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
+  }
 
-  console.log('Panel direction:', goDown ? 'downward' : 'upward', '| baselineRotY:', baselineRotY, '| centroidY:', rotCentroidY)
+  const imgY_ifDecreasing = unrotateImageY(baselineRotY - halfProj)
+  const imgY_ifIncreasing = unrotateImageY(baselineRotY + halfProj)
+
+  // "Above" = smaller image Y.  Pick the direction that yields smaller image Y.
+  const imageUpIsDecreasingRotY = imgY_ifDecreasing < imgY_ifIncreasing
+
+  // Row 1: lower image edge sits on the baseline; rows stack upward from there.
+  let currentRotY, rowStep
+  if (imageUpIsDecreasingRotY) {
+    currentRotY = baselineRotY - totalRowProjectionPx
+    rowStep = -(totalRowProjectionPx + rowSpacingPx)
+  } else {
+    currentRotY = baselineRotY
+    rowStep = +(totalRowProjectionPx + rowSpacingPx)
+  }
+
+  console.log('Panel placement: upward | imageUpIsDecreasingRotY:', imageUpIsDecreasingRotY,
+    '| orientation°:', (roofOrientation * 180 / Math.PI).toFixed(1),
+    '| baselineRotY:', baselineRotY.toFixed(1), '| row1 currentRotY:', currentRotY.toFixed(1),
+    '| baseMidImageY:', baseMidImageY.toFixed(1),
+    '| imgY dec:', imgY_ifDecreasing.toFixed(1), '| imgY inc:', imgY_ifIncreasing.toFixed(1))
 
   let rowIndex = 0
 
   while (rowIndex < 200) {
-    // Stop when the entire row has left the polygon bounds
-    if (goDown  && currentRotY >= rotMaxY) break
-    if (!goDown && currentRotY + totalRowProjectionPx <= rotMinY) break
+    // Stop when the row has moved entirely outside the polygon (above roof top)
+    if (imageUpIsDecreasingRotY  && currentRotY + totalRowProjectionPx <= rotMinY) break
+    if (!imageUpIsDecreasingRotY && currentRotY >= rotMaxY) break
 
     // For first row, respect the drawn baseline X range; subsequent rows span full polygon width
     const startX = (rowIndex === 0) ? baselineStartX : rotMinX

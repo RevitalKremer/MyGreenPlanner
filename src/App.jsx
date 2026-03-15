@@ -366,20 +366,11 @@ function App() {
         const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
 
         if (projectMode === 'plan') {
-          setRefinedArea({
-            polygon: roofPolygon,
-            panelType,
-            referenceLine,
-            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-            pixelToCmRatio,
-            // panelConfig placeholder — per-group config used during generation below
-            panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
-          })
           // Generate panels from every row group
           let nextId = 1
           const allPanels = []
+          const groupConfigs = {}
           rowGroups.forEach((group, groupIdx) => {
-            if (!group.baseline) return
             const angle = parseFloat(group.angle) || 0
             const frontH = parseFloat(group.frontHeight) || 0
             const angleRad = angle * Math.PI / 180
@@ -387,6 +378,9 @@ function App() {
             const orients = (group.lineOrientations || ['vertical']).slice(0, n)
             const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
             const backH = frontH + totalSlope * Math.sin(angleRad)
+            // Store per-group baseline config so editor defaults are correct (not 0)
+            groupConfigs[groupIdx] = { angle, frontHeight: frontH, backHeight: backH }
+            if (!group.baseline) return
             const generated = generatePanelLayout(
               { polygon: roofPolygon, pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
               group.baseline,
@@ -394,7 +388,23 @@ function App() {
             )
             generated.forEach(p => allPanels.push({ ...p, id: nextId++, row: groupIdx }))
           })
+          setRefinedArea({
+            polygon: roofPolygon,
+            panelType,
+            referenceLine,
+            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+            pixelToCmRatio,
+            panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
+          })
           setPanels(allPanels)
+          // Initialize rowConfigs from group settings, preserving any existing per-row overrides
+          setRowConfigs(prev => {
+            const next = {}
+            Object.keys(groupConfigs).forEach(key => {
+              next[key] = prev[key] ?? groupConfigs[key]
+            })
+            return next
+          })
         } else {
           setRefinedArea({
             polygon: roofPolygon,
@@ -415,12 +425,26 @@ function App() {
         }
       }
 
-      setCurrentStep(prev => prev + 1)
+      const nextStep = currentStep + 1
+      console.log(`\n${'─'.repeat(40)}\n  STEP ${nextStep}\n${'─'.repeat(40)}`)
+      if (nextStep === 3) {
+        const baselines = projectMode === 'plan'
+          ? rowGroups.filter(g => g.baseline).length
+          : baseline ? 1 : 0
+        console.log(`  Mode: ${projectMode} | Baselines: ${baselines}`)
+        if (projectMode === 'plan') {
+          rowGroups.forEach((g, i) => console.log(`  Baseline ${i + 1}:`, g.baseline ? `p1=${JSON.stringify(g.baseline.p1)} p2=${JSON.stringify(g.baseline.p2)}` : 'none'))
+        } else {
+          console.log(`  Baseline:`, baseline ? `p1=${JSON.stringify(baseline.p1)} p2=${JSON.stringify(baseline.p2)}` : 'none')
+        }
+      }
+      setCurrentStep(nextStep)
     }
   }
 
   const handleBack = () => {
     if (currentStep > 1) {
+      console.log(`\n${'─'.repeat(40)}\n  STEP ${currentStep - 1}\n${'─'.repeat(40)}`)
       setCurrentStep(prev => prev - 1)
     }
   }
