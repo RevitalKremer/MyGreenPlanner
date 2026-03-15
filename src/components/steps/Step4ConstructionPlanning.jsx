@@ -211,7 +211,7 @@ function DetailView({ rc, panelLines = null }) {
 
   if (!rc) return <div style={{ padding: '2rem', color: '#aaa' }}>Select a row to see its trapezoid detail</div>
 
-  const { heightRear, heightFront, baseLength, diagonalLength, angle, topBeamLength } = rc
+  const { heightRear, heightFront, baseLength, angle, topBeamLength } = rc
 
   const SC         = 2.2
   const RAIL_CM    = railOffsetCm
@@ -415,83 +415,81 @@ function DetailView({ rc, panelLines = null }) {
             {/* ── Blocks ── */}
             <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
             <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-            {/* Block width dimension (below block) */}
-            <Dim ax1={lb_x} ay1={blockBotY} ax2={lb_x + lb_w} ay2={blockBotY}
-              label={`${blockWidthCm}`} off={16} />
-            {/* Block height dimension (left side of block) */}
-            <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
-              label={`${BLOCK_H_CM}`} off={-14} />
 
             {/* ── Green floor line ── */}
             <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
               stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
-            {/* ── Angle arc ── */}
-            <path d={`M ${x1} ${topY1 + 22} A 22 22 0 0 0
-              ${x1 - 22 * Math.sin(angleRad)}
-              ${topY1 + 22 - 22 * (1 - Math.cos(angleRad))}`}
-              fill="none" stroke="#444" strokeWidth="1" />
-            <text x={x1 - 26} y={topY1 + 33} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
+            {/* ── Angle arc (between horizontal and top beam, at front leg top) ── */}
+            {(() => {
+              const R = 28
+              // Horizontal reference line to the right of front leg top
+              const hx = x1 + R, hy = topY1
+              // Point on beam direction going right (toward panel front, away from rear)
+              const bx = x1 + R * Math.cos(angleRad), by = topY1 - R * Math.sin(angleRad)
+              const midAng = angleRad / 2
+              return (
+                <g>
+                  {/* Horizontal tick */}
+                  <line x1={x1} y1={topY1} x2={hx} y2={hy} stroke="#444" strokeWidth="0.8" />
+                  {/* Arc from horizontal to beam (clockwise = sweep-flag=0 in SVG y-down) */}
+                  <path d={`M ${hx} ${hy} A ${R} ${R} 0 0 0 ${bx} ${by}`}
+                    fill="none" stroke="#444" strokeWidth="1" />
+                  {/* Label at arc midpoint */}
+                  <text
+                    x={x1 + R * 1.7 * Math.cos(midAng)}
+                    y={topY1 - R * 1.5 * Math.sin(midAng) + 3}
+                    fontSize="9" fill="#444" fontWeight="700" textAnchor="middle"
+                  >{angle}°</text>
+                </g>
+              )
+            })()}
 
             {/* ── Dimension annotations ── */}
 
-            {/* Rail offsets along slope, above panel */}
+            {/* Rail overhangs along slope (above panel) */}
             <Dim ax1={panelX1} ay1={panelY1} ax2={x0} ay2={topY0}
               label={`${RAIL_CM}`} off={-14} />
             <Dim ax1={x1} ay1={topY1} ax2={panelX2} ay2={panelY2}
               label={`${RAIL_CM}`} off={-14} />
 
-            {/* Panel length(s) along slope */}
+            {/* Total panel depth along slope */}
             <Dim ax1={panelX1} ay1={panelY1} ax2={panelX2} ay2={panelY2}
               label={`${totalPanelDepthCm.toFixed(1)}`} off={-32} />
 
-            {/* Top beam length (along slope, above beam) */}
+            {/* Top beam length */}
             <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
               label={`${topBeamLength.toFixed(0)}`} off={-22} />
 
-            {/* Connector-to-connector gap (above beam, further out) */}
-            <Dim ax1={conn1X} ay1={beamY(conn1X)} ax2={conn2X} ay2={beamY(conn2X)}
-              label={`${(topBeamLength - 2 * connOffsetCm).toFixed(0)}`} off={-33} />
-
-            {/* "145": rear leg to front connector (below beam, inside) */}
+            {/* Rear leg → front connector (below beam, inside) */}
             <Dim ax1={x0} ay1={topY0} ax2={conn2X} ay2={beamY(conn2X)}
               label={`${(topBeamLength - connOffsetCm).toFixed(0)}`} off={12} fs={7} />
 
-            {/* "5": connector offset from rear leg (below beam, inside) */}
+            {/* Connector offset from rear leg */}
             <Dim ax1={x0} ay1={topY0} ax2={conn1X} ay2={beamY(conn1X)}
               label={`${connOffsetCm}`} off={8} fs={7} />
 
-            {/* Base beam (below, past block) */}
-            <Dim ax1={x0} ay1={baseY} ax2={x1} ay2={baseY}
-              label={`${baseLength.toFixed(0)}`} off={blockH + 18} />
-
-            {/* "39.5": rear leg height alone (inner left) */}
+            {/* Rear leg height alone (inner left) */}
             {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
               label={`${heightRear.toFixed(1)}`} off={-28} />}
 
-            {/* "50": left panel tip height from floor (far left, actual panel position) */}
+            {/* Panel tip height from floor (far left) */}
             <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
                  ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
               label={`${(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)).toFixed(1)}`}
               off={-22} />
 
-            {/* "69.5": block + rear leg total (right inner) */}
-            <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY0}
-              label={`${(BLOCK_H_CM + heightRear).toFixed(1)}`} off={38} />
+            {/* Block height (left of block) */}
+            <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
+              label={`${BLOCK_H_CM}`} off={-14} />
 
-            {/* "96.6": block + front leg total (far right) */}
+            {/* Front leg height alone (right inner) */}
+            <Dim ax1={x1} ay1={baseY} ax2={x1} ay2={topY1}
+              label={`${heightFront.toFixed(1)}`} off={38} />
+
+            {/* Block + front leg total (far right) */}
             <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY1}
               label={`${(BLOCK_H_CM + heightFront).toFixed(1)}`} off={55} />
-
-            {/* Diagonal brace label */}
-            <text
-              x={(x0 + x1) / 2 + 6} y={(topY0 + baseY) / 2 - 6}
-              fontSize="9" fill={DC} fontStyle="italic" fontWeight="700" textAnchor="middle"
-              transform={`rotate(${Math.atan2(baseY - topY0, x1 - x0) * 180 / Math.PI}, ${(x0 + x1) / 2}, ${(topY0 + baseY) / 2})`}
-            >{diagonalLength.toFixed(1)}</text>
-
-            {/* TBD left-side dim */}
-            <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY} label="" off={-75} tbd />
 
             {/* ── TBD section (bottom — rail cut schedule) ── */}
             {[0, 1].map(row => {
