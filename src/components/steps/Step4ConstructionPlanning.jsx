@@ -420,30 +420,8 @@ function DetailView({ rc, panelLines = null }) {
             <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
               stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
-            {/* ── Angle arc (between horizontal and top beam, at front leg top) ── */}
-            {(() => {
-              const R = 28
-              // Horizontal reference line to the right of front leg top
-              const hx = x1 + R, hy = topY1
-              // Point on beam direction going right (toward panel front, away from rear)
-              const bx = x1 + R * Math.cos(angleRad), by = topY1 - R * Math.sin(angleRad)
-              const midAng = angleRad / 2
-              return (
-                <g>
-                  {/* Horizontal tick */}
-                  <line x1={x1} y1={topY1} x2={hx} y2={hy} stroke="#444" strokeWidth="0.8" />
-                  {/* Arc from horizontal to beam (clockwise = sweep-flag=0 in SVG y-down) */}
-                  <path d={`M ${hx} ${hy} A ${R} ${R} 0 0 0 ${bx} ${by}`}
-                    fill="none" stroke="#444" strokeWidth="1" />
-                  {/* Label at arc midpoint */}
-                  <text
-                    x={x1 + R * 1.7 * Math.cos(midAng)}
-                    y={topY1 - R * 1.5 * Math.sin(midAng) + 3}
-                    fontSize="9" fill="#444" fontWeight="700" textAnchor="middle"
-                  >{angle}°</text>
-                </g>
-              )
-            })()}
+            {/* ── Angle label at front leg top ── */}
+            <text x={x1 + 8} y={topY1 + 14} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
 
             {/* ── Dimension annotations ── */}
 
