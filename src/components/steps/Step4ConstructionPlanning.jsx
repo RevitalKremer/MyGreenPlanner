@@ -1,44 +1,19 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   computeRowConstruction,
   assignTypes,
   buildBOM,
-  PANEL_WIDTH_CM,
-  PANEL_GAP_CM,
   PANEL_LENGTH_CM
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './RailLayoutTab'
+import BasePlanTab   from './BasePlanTab'
+import { DEFAULT_RAIL_OFFSET_CM, computeRowRailLayout } from '../../utils/railLayoutService'
 
 const ACCENT = '#C4D600'
 
 // ─── SVG helpers ────────────────────────────────────────────────────────────
 
 /** Draw a dimension arrow between two points with a label */
-function DimArrow({ x1, y1, x2, y2, label, offset = 14, textOffset = 7, fontSize = 9 }) {
-  const mx = (x1 + x2) / 2
-  const my = (y1 + y2) / 2
-  const dx = x2 - x1, dy = y2 - y1
-  const len = Math.sqrt(dx * dx + dy * dy)
-  if (len < 2) return null
-  const nx = -dy / len * offset, ny = dx / len * offset
-  const lx1 = x1 + nx, ly1 = y1 + ny
-  const lx2 = x2 + nx, ly2 = y2 + ny
-  const lmx = mx + nx + (-dy / len) * textOffset
-  const lmy = my + ny + (dx / len) * textOffset
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI
-
-  return (
-    <g>
-      <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="#17a9cf" strokeWidth="1" markerEnd="url(#arr)" markerStart="url(#arr)" />
-      <line x1={x1} y1={y1} x2={lx1} y2={ly1} stroke="#17a9cf" strokeWidth="0.5" strokeDasharray="3,2" />
-      <line x1={x2} y1={y2} x2={lx2} y2={ly2} stroke="#17a9cf" strokeWidth="0.5" strokeDasharray="3,2" />
-      <text x={lmx} y={lmy} fontSize={fontSize} fill="#17a9cf" fontWeight="700" fontStyle="italic"
-        textAnchor="middle" dominantBaseline="middle"
-        transform={`rotate(${angle > 90 || angle < -90 ? angle + 180 : angle}, ${lmx}, ${lmy})`}
-      >{label}</text>
-    </g>
-  )
-}
 
 function ArrowDefs() {
   return (
@@ -210,107 +185,384 @@ function RowsView({ rowConstructions }) {
 // ─── Detail view (side elevation sketch) ─────────────────────────────────────
 
 function DetailView({ rc }) {
+  const [zoom, setZoom]             = useState(1)
+  const [panOffset, setPanOffset]   = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning]   = useState(false)
+  const [panStart, setPanStart]     = useState(null)
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const [railOffsetCm, setRailOffsetCm]     = useState(DEFAULT_RAIL_OFFSET_CM)
+  const [blockHeightCm, setBlockHeightCm]   = useState(30)
+  const [blockWidthCm, setBlockWidthCm]     = useState(70)
+  const [connOffsetCm, setConnOffsetCm]     = useState(5)
+  const [panelLengthCm, setPanelLengthCm]   = useState(238.2)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      e.preventDefault()
+      const factor = e.deltaY < 0 ? 1.1 : 0.909
+      setZoom(z => Math.max(0.25, Math.min(6, z * factor)))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   if (!rc) return <div style={{ padding: '2rem', color: '#aaa' }}>Select a row to see its trapezoid detail</div>
 
-  const { heightRear, heightFront, baseLength, topBeamLength, diagonalLength, angle } = rc
+  const { heightRear, heightFront, baseLength, diagonalLength, angle, topBeamLength } = rc
 
-  const sc = 2.2
-  const padL = 70, padR = 60, padT = 30, padB = 70
-  const bW = baseLength * sc
-  const hR = heightRear * sc
-  const hF = heightFront * sc
-  const W = bW + padL + padR
-  const H = hF + padT + padB + 20
+  const SC         = 2.2
+  const RAIL_CM    = railOffsetCm
+  const BLOCK_H_CM = blockHeightCm
 
-  const baseY = H - padB
-  const x0 = padL, x1 = padL + bW
-  const topY0 = baseY - hR
-  const topY1 = baseY - hF
-  const foundH = 12, foundW = 24
+  const angleRad = angle * Math.PI / 180
+  const bW      = baseLength   * SC
+  const hR      = heightRear   * SC
+  const hF      = heightFront  * SC
+  // Rail offset projected: RAIL_CM is measured along slope
+  const railOffH = RAIL_CM * Math.cos(angleRad) * SC  // horizontal projection
+  const railOffV = RAIL_CM * Math.sin(angleRad) * SC  // vertical projection
+  const blockH  = BLOCK_H_CM   * SC
+
+  const padL = Math.max(120, railOffH + 40)
+  const padR = Math.max(100, railOffH + 70)
+  const padT = 55
+  const padB = blockH + 120
+
+  const svgW = bW + padL + padR
+  const svgH = hF + padT + padB
+
+  const baseY     = hF + padT
+  const topY0     = baseY - hR
+  const topY1     = baseY - hF
+  const blockBotY = baseY + blockH
+
+  const x0 = padL
+  const x1 = padL + bW
+
+  const slope   = (topY1 - topY0) / bW
+  // Panel endpoints: extend along slope beyond each leg by RAIL_CM
+  const panelX1 = x0 - railOffH
+  const panelY1 = topY0 + railOffV  // descends left of rear leg
+  const panelX2 = x1 + railOffH
+  const panelY2 = topY1 - railOffV  // rises right of front leg
+
+  const beamY = (x) => topY0 + slope * (x - x0)
+
+  // Connectors: offset measured along beam slope
+  const conn1X = x0 + connOffsetCm * SC * Math.cos(angleRad)
+  const conn2X = x1 - connOffsetCm * SC * Math.cos(angleRad)
+
+  // 40×40 mm profile: at SC pixels/cm → 4 cm × SC px
+  const BEAM_THICK_PX = 4 * SC           // 40 mm in pixels = 8.8 px
+  const PANEL_THICK_PX = 6               // panel visual thickness (px)
+  // Panel is offset perpendicularly above the beam (skyward direction)
+  // Skyward unit = (-sin, -cos) in SVG (y-down) coords
+  const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + 10 + PANEL_THICK_PX / 2  // beam edge + gap + panel half
+  const panOffX = -Math.sin(angleRad) * PANEL_OFFSET_PX
+  const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
+
+  const lb_x = x0,           lb_w = blockWidthCm * SC
+  const rb_x = x1 - 8 * SC, rb_w = 10 * SC
+
+  // Colour palette — all dims are black, only TBD is gray
+  const DC = '#222'      // black — all known dimensions
+  const TC = '#aaa'      // gray  — TBD
+
+  // Beam angle for bracket rotation
+  const beamAngleDeg = Math.atan2(topY1 - topY0, x1 - x0) * 180 / Math.PI
+
+  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
+    const col = tbd ? TC : DC
+    const mk  = tbd ? 't' : 'k'
+    const dx = ax2 - ax1, dy = ay2 - ay1
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len < 2) return null
+    const nx = -dy / len * off, ny = dx / len * off
+    const lx1 = ax1 + nx, ly1 = ay1 + ny
+    const lx2 = ax2 + nx, ly2 = ay2 + ny
+    const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI
+    const ta = ang > 90 || ang < -90 ? ang + 180 : ang
+    return (
+      <g>
+        <line x1={ax1} y1={ay1} x2={lx1} y2={ly1} stroke={col} strokeWidth="0.5" />
+        <line x1={ax2} y1={ay2} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.5" />
+        <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.8"
+          markerStart={`url(#arr-${mk})`} markerEnd={`url(#arr-${mk})`} />
+        <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
+          fontSize={fs} fontWeight="600" fill={col}
+          transform={`rotate(${ta} ${mx} ${my})`}
+        >{tbd ? 'TBD' : label}</text>
+      </g>
+    )
+  }
+
+  const FloatLabel = ({ children }) => (
+    <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem', marginTop: '0.8rem' }}>
+      {children}
+    </div>
+  )
+
+  const FloatInput = ({ label, value, onChange, min, step = 1 }) => (
+    <div style={{ marginBottom: '0.5rem' }}>
+      <div style={{ fontSize: '0.68rem', color: '#777', marginBottom: '2px' }}>{label}</div>
+      <input type="number" value={value} min={min} step={step}
+        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+        style={{ width: '100%', padding: '0.25rem 0.4rem', boxSizing: 'border-box', border: '1px solid #ddd', borderRadius: '5px', fontSize: '0.8rem' }} />
+    </div>
+  )
 
   return (
-    <div style={{ padding: '1.5rem', overflowY: 'auto' }}>
-      <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#555', marginBottom: '1rem' }}>
-        Type {rc.typeLetter} — {angle}° tilt · Base {baseLength.toFixed(0)} cm · Front H {heightFront.toFixed(1)} cm
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+
+      {/* ── Zoom / pan area ── */}
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: isPanning ? 'grabbing' : 'grab' }}
+        onMouseDown={e => { setIsPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }) }}
+        onMouseMove={e => { if (isPanning && panStart) setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }) }}
+        onMouseUp={() => { setIsPanning(false); setPanStart(null) }}
+        onMouseLeave={() => { setIsPanning(false); setPanStart(null) }}
+      >
+        <div style={{
+          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+          transformOrigin: '0 0',
+          padding: '1rem 1.5rem',
+          display: 'inline-block',
+        }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
+            Type {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Base {baseLength.toFixed(0)} cm · Front {heightFront.toFixed(1)} cm
+          </div>
+
+          <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
+            <defs>
+              <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+                <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
+              </marker>
+              <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+                <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
+              </marker>
+            </defs>
+
+            {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
+            <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+            {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />}
+            <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+            <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+            <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+
+            {/* ── Purple mid-clamp connectors (between beam top and panel underside) ── */}
+            {[conn1X, conn2X].map((cx, ci) => {
+              const cy = beamY(cx)
+              // In rotated frame: y=0 is beam centre, negative y = skyward
+              const beamTop  = -BEAM_THICK_PX / 2          // beam upper surface
+              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)  // panel underside
+              const clampH   = Math.abs(panBot - beamTop)  // gap to fill
+              const CW = 10, FW = 14, FH = 2.5            // stem width, flange width/height
+              return (
+                <g key={ci} transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
+                  {/* Stem */}
+                  <rect x={-CW/2} y={panBot} width={CW} height={clampH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
+                  {/* Bottom flange (on beam) */}
+                  <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
+                  {/* Top flange (on panel) */}
+                  <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
+                    fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.6" />
+                </g>
+              )
+            })}
+
+            {/* ── Panel (blue rotated rectangle, offset above beam+connectors) ── */}
+            {(() => {
+              const beamCx = (panelX1 + panelX2) / 2
+              const beamCy = (panelY1 + panelY2) / 2
+              const panCx  = beamCx + panOffX
+              const panCy  = beamCy + panOffY
+              const panSvgLen = Math.sqrt((panelX2-panelX1)**2 + (panelY2-panelY1)**2)
+              return (
+                <rect
+                  x={panCx - panSvgLen/2} y={panCy - PANEL_THICK_PX/2}
+                  width={panSvgLen} height={PANEL_THICK_PX}
+                  fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
+                  transform={`rotate(${beamAngleDeg}, ${panCx}, ${panCy})`}
+                />
+              )
+            })()}
+
+            {/* ── Blocks ── */}
+            <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+            <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+            {/* Block width dimension (below block) */}
+            <Dim ax1={lb_x} ay1={blockBotY} ax2={lb_x + lb_w} ay2={blockBotY}
+              label={`${blockWidthCm}`} off={16} />
+            {/* Block height dimension (left side of block) */}
+            <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
+              label={`${BLOCK_H_CM}`} off={-14} />
+
+            {/* ── Green floor line ── */}
+            <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
+              stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
+
+            {/* ── Angle arc ── */}
+            <path d={`M ${x1} ${topY1 + 22} A 22 22 0 0 0
+              ${x1 - 22 * Math.sin(angleRad)}
+              ${topY1 + 22 - 22 * (1 - Math.cos(angleRad))}`}
+              fill="none" stroke="#444" strokeWidth="1" />
+            <text x={x1 - 26} y={topY1 + 33} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
+
+            {/* ── Dimension annotations ── */}
+
+            {/* Rail offsets along slope, above panel */}
+            <Dim ax1={panelX1} ay1={panelY1} ax2={x0} ay2={topY0}
+              label={`${RAIL_CM}`} off={-14} />
+            <Dim ax1={x1} ay1={topY1} ax2={panelX2} ay2={panelY2}
+              label={`${RAIL_CM}`} off={-14} />
+
+            {/* Physical panel length along slope */}
+            <Dim ax1={panelX1} ay1={panelY1} ax2={panelX2} ay2={panelY2}
+              label={`${panelLengthCm}`} off={-32} />
+
+            {/* Top beam length (along slope, above beam) */}
+            <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
+              label={`${topBeamLength.toFixed(0)}`} off={-22} />
+
+            {/* Connector-to-connector gap (above beam, further out) */}
+            <Dim ax1={conn1X} ay1={beamY(conn1X)} ax2={conn2X} ay2={beamY(conn2X)}
+              label={`${(topBeamLength - 2 * connOffsetCm).toFixed(0)}`} off={-33} />
+
+            {/* "145": rear leg to front connector (below beam, inside) */}
+            <Dim ax1={x0} ay1={topY0} ax2={conn2X} ay2={beamY(conn2X)}
+              label={`${(topBeamLength - connOffsetCm).toFixed(0)}`} off={12} fs={7} />
+
+            {/* "5": connector offset from rear leg (below beam, inside) */}
+            <Dim ax1={x0} ay1={topY0} ax2={conn1X} ay2={beamY(conn1X)}
+              label={`${connOffsetCm}`} off={8} fs={7} />
+
+            {/* Base beam (below, past block) */}
+            <Dim ax1={x0} ay1={baseY} ax2={x1} ay2={baseY}
+              label={`${baseLength.toFixed(0)}`} off={blockH + 18} />
+
+            {/* "39.5": rear leg height alone (inner left) */}
+            {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
+              label={`${heightRear.toFixed(1)}`} off={-28} />}
+
+            {/* "50": left panel tip height from floor (far left, actual panel position) */}
+            <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
+                 ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
+              label={`${(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)).toFixed(1)}`}
+              off={-22} />
+
+            {/* "69.5": block + rear leg total (right inner) */}
+            <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY0}
+              label={`${(BLOCK_H_CM + heightRear).toFixed(1)}`} off={38} />
+
+            {/* "96.6": block + front leg total (far right) */}
+            <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY1}
+              label={`${(BLOCK_H_CM + heightFront).toFixed(1)}`} off={55} />
+
+            {/* Diagonal brace label */}
+            <text
+              x={(x0 + x1) / 2 + 6} y={(topY0 + baseY) / 2 - 6}
+              fontSize="9" fill={DC} fontStyle="italic" fontWeight="700" textAnchor="middle"
+              transform={`rotate(${Math.atan2(baseY - topY0, x1 - x0) * 180 / Math.PI}, ${(x0 + x1) / 2}, ${(topY0 + baseY) / 2})`}
+            >{diagonalLength.toFixed(1)}</text>
+
+            {/* TBD left-side dim */}
+            <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY} label="" off={-75} tbd />
+
+            {/* ── TBD section (bottom — rail cut schedule) ── */}
+            {[0, 1].map(row => {
+              const ry = blockBotY + 12 + row * 28
+              return (
+                <g key={row}>
+                  <rect x={x0 - railOffH} y={ry} width={bW + 2 * railOffH} height={22}
+                    fill="#f6f6f6" stroke="#ccc" strokeWidth="1" strokeDasharray="4,3" rx="3" />
+                  <text x={x0 - railOffH + (bW + 2 * railOffH) / 2} y={ry + 11}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize="9" fill="#bbb" fontWeight="700">TBD</text>
+                </g>
+              )
+            })}
+          </svg>
+
+          {/* Members table */}
+          <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: '#f5f5f5' }}>
+                  <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Element</th>
+                  <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Length (cm)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['Base beam',  rc.baseLength],
+                  ['Top beam',   rc.topBeamLength],
+                  ['Rear leg',   rc.heightRear],
+                  ['Front leg',  rc.heightFront],
+                  ['Diagonal',   rc.diagonalLength],
+                ].map(([name, val]) => (
+                  <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
+                    <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>
+                    <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: '#222' }}>{val.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      <svg width={W + 40} height={H + 20} style={{ display: 'block', overflow: 'visible' }}>
-        <ArrowDefs />
+      {/* ── Floating right panel ── */}
+      <div style={{
+        position: 'absolute', top: 16, right: 16, zIndex: 10,
+        background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
+        width: panelCollapsed ? 'auto' : '210px',
+        transition: 'width 0.2s', overflow: 'hidden',
+      }}>
+        <div
+          onClick={() => setPanelCollapsed(c => !c)}
+          style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.6rem 0.75rem', cursor: 'pointer',
+            borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
+            background: '#fafafa',
+          }}
+        >
+          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#333', whiteSpace: 'nowrap' }}>Detail Settings</span>
+          <span style={{ fontSize: '0.85rem', color: '#888', marginLeft: '0.5rem' }}>{panelCollapsed ? '◀' : '▶'}</span>
+        </div>
 
-        {/* Foundation blocks */}
-        <rect x={x0 - foundW / 2} y={baseY} width={foundW} height={foundH} fill="#aaa" rx="2" />
-        <rect x={x1 - foundW / 2} y={baseY} width={foundW} height={foundH} fill="#aaa" rx="2" />
+        {!panelCollapsed && (
+          <div style={{ padding: '0.5rem 0.75rem', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
+            <FloatLabel>Parameters</FloatLabel>
+            <FloatInput label="Rail Clamp Offset (cm)" value={railOffsetCm} min={1} step={0.1} onChange={setRailOffsetCm} />
+            <FloatInput label="Connector Offset (cm)" value={connOffsetCm} min={0} step={0.5} onChange={setConnOffsetCm} />
+            <FloatInput label="Panel Length (cm)" value={panelLengthCm} min={10} step={0.1} onChange={setPanelLengthCm} />
+            <FloatInput label="Block Height (cm)" value={blockHeightCm} min={1} step={1} onChange={setBlockHeightCm} />
+            <FloatInput label="Block Width (cm)" value={blockWidthCm} min={1} step={1} onChange={setBlockWidthCm} />
 
-        {/* Base beam */}
-        <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#444" strokeWidth="4" strokeLinecap="round" />
-
-        {/* Rear leg */}
-        {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#444" strokeWidth="4" strokeLinecap="round" />}
-
-        {/* Front leg */}
-        <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#444" strokeWidth="4" strokeLinecap="round" />
-
-        {/* Top beam (sloped) */}
-        <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#3060b0" strokeWidth="5" strokeLinecap="round" />
-
-        {/* Panel overhang indicators */}
-        <line x1={x0 - 18} y1={topY0 - 3} x2={x1 + 18} y2={topY1 - 3} stroke="#3060b0" strokeWidth="3" strokeLinecap="round" opacity="0.4" />
-
-        {/* Diagonal brace */}
-        <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#666" strokeWidth="3" strokeLinecap="round" />
-
-        {/* Angle indicator at top-right */}
-        <path d={`M ${x1} ${topY1 + 22} A 22 22 0 0 0 ${x1 - 22 * Math.sin(angle * Math.PI / 180)} ${topY1 + 22 - 22 * (1 - Math.cos(angle * Math.PI / 180))}`}
-          fill="none" stroke="#444" strokeWidth="1" />
-        <text x={x1 - 28} y={topY1 + 30} fontSize="10" fill="#444" fontWeight="700">{angle}°</text>
-
-        {/* ── Dimension lines ── */}
-        {/* Base */}
-        <DimArrow x1={x0} y1={baseY + 30} x2={x1} y2={baseY + 30} label={`${baseLength.toFixed(0)}`} offset={0} textOffset={-10} />
-
-        {/* Rear leg height */}
-        {hR > 0 && <DimArrow x1={x0 - 40} y1={topY0} x2={x0 - 40} y2={baseY} label={`${heightRear.toFixed(1)}`} offset={0} textOffset={-10} />}
-
-        {/* Front leg height */}
-        <DimArrow x1={x1 + 32} y1={topY1} x2={x1 + 32} y2={baseY} label={`${heightFront.toFixed(1)}`} offset={0} textOffset={-10} />
-
-        {/* Top beam length */}
-        <DimArrow x1={x0} y1={topY0 - 16} x2={x1} y2={topY1 - 16} label={`${topBeamLength.toFixed(1)}`} offset={0} textOffset={-8} />
-
-        {/* Diagonal length */}
-        <text
-          x={(x0 + x1) / 2 + 8} y={(topY0 + baseY) / 2 - 8}
-          fontSize="9" fill="#17a9cf" fontStyle="italic" fontWeight="700"
-          transform={`rotate(${Math.atan2(baseY - topY0, x1 - x0) * 180 / Math.PI}, ${(x0 + x1) / 2}, ${(topY0 + baseY) / 2})`}
-          textAnchor="middle"
-        >{diagonalLength.toFixed(1)}</text>
-      </svg>
-
-      {/* Members table */}
-      <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Element</th>
-              <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Length (cm)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['Base beam',   rc.baseLength],
-              ['Top beam',    rc.topBeamLength],
-              ['Rear leg',    rc.heightRear],
-              ['Front leg',   rc.heightFront],
-              ['Diagonal',    rc.diagonalLength],
-            ].map(([name, val]) => (
-              <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>
-                <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: '#222' }}>{val.toFixed(1)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            <FloatLabel>Zoom</FloatLabel>
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
+              <button onClick={() => setZoom(z => Math.min(6, z * 1.2))}
+                style={{ flex: 1, padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem', background: '#f8f8f8' }}>+</button>
+              <button onClick={() => setZoom(z => Math.max(0.25, z * 0.833))}
+                style={{ flex: 1, padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem', background: '#f8f8f8' }}>−</button>
+            </div>
+            <button onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }}
+              style={{ width: '100%', padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem', background: '#f8f8f8', color: '#666' }}>
+              Reset View
+            </button>
+            <div style={{ fontSize: '0.68rem', color: '#aaa', textAlign: 'center', marginTop: '0.3rem' }}>{Math.round(zoom * 100)}%</div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -359,7 +611,7 @@ function BOMView({ rowConstructions }) {
 
 export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {} }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
-  const [activeTab, setActiveTab] = useState('layout')
+  const [activeTab, setActiveTab] = useState('detail')
   const [rowUserConfigs, setRowUserConfigs] = useState({})  // per-row overrides: { [rowIdx]: { spareLeft, spareRight, maxSpan, baseLength } }
 
   // Group panels by row index
@@ -379,26 +631,43 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
   // Compute construction for each row
   const rowConstructions = useMemo(() => {
+    const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
     const rcs = rowKeys.map((rowKey, i) => {
       const panelCount = rowPanelCounts[rowKey] || 1
       const globalCfg = refinedArea?.panelConfig || {}
       const override = rowConfigs[rowKey] || {}
       const angle = override.angle ?? globalCfg.angle ?? 0
-      const frontHeight = globalCfg.frontHeight ?? 0
+      const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
       const userCfg = rowUserConfigs[i] || {}
-      return computeRowConstruction(panelCount, angle, frontHeight, userCfg)
+
+      // Derive actual row length from placed panel positions
+      let measuredRowLength
+      if (pixelToCmRatio) {
+        const rowPanels = panels.filter(p => (p.row ?? 'unassigned') === rowKey)
+        const rl = rowPanels.length > 0 ? computeRowRailLayout(rowPanels, pixelToCmRatio) : null
+        if (rl?.frame?.localBounds) {
+          const { minX, maxX } = rl.frame.localBounds
+          measuredRowLength = (maxX - minX) * pixelToCmRatio
+        }
+      }
+
+      return computeRowConstruction(panelCount, angle, frontHeight, {
+        ...userCfg,
+        ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
+      })
     })
     return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, rowConfigs, rowUserConfigs])
+  }, [rowKeys, rowPanelCounts, refinedArea, rowConfigs, rowUserConfigs, panels])
 
   const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
   const tabs = [
+    { key: 'detail', label: 'Detail Sketch' },
+    { key: 'rails',  label: 'Rails Layout' },
+    { key: 'bases',  label: 'Bases Layout' },
     { key: 'layout', label: 'Trapezoid Layout' },
     { key: 'rows',   label: 'Row Dimensions' },
-    { key: 'detail', label: 'Detail Sketch' },
     { key: 'bom',    label: 'Bill of Materials' },
-    { key: 'rails',  label: 'Rail Layout' },
   ]
 
   const updateUserConfig = (rowIdx, field, value) => {
@@ -522,6 +791,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           {activeTab === 'detail' && <DetailView rc={selectedRC} />}
           {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
           {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} />}
+          {activeTab === 'bases'  && <BasePlanTab   panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} />}
         </div>
       </div>
     </div>

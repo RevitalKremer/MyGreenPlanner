@@ -17,9 +17,11 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
   const maxSpan    = config.maxSpan    ?? 165  // cm max spacing between trapezoids
 
   // Rail length (total row width including spares)
-  const rowLength = panelCount * PANEL_WIDTH_CM
+  // config.rowLength can be passed from actual panel placement measurements (preferred)
+  const rowLength = config.rowLength
+    ?? (panelCount * PANEL_WIDTH_CM
     + Math.max(0, panelCount - 1) * PANEL_GAP_CM
-    + spareLeft + spareRight
+    + spareLeft + spareRight)
 
   // Trapezoid base (horizontal depth of frame, cm)
   const panelProjection = PANEL_LENGTH_CM * Math.cos(angleRad)
