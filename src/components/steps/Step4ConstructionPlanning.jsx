@@ -308,8 +308,9 @@ function DetailView({ rc, panelLines = null }) {
   const panOffX = -Math.sin(angleRad) * PANEL_OFFSET_PX
   const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
 
-  const lb_x = x0,           lb_w = blockWidthCm * SC
-  const rb_x = x1 - 8 * SC, rb_w = 10 * SC
+  const blockW  = blockWidthCm * SC
+  const lb_x = x0 - blockW / 2, lb_w = blockW
+  const rb_x = x1 - blockW / 2, rb_w = blockW
 
   // Colour palette — all dims are black, only TBD is gray
   const DC = '#222'      // black — all known dimensions
@@ -449,6 +450,22 @@ function DetailView({ rc, panelLines = null }) {
                     fontSize="7.5" fontWeight="700" fill="#7c3aed"
                     transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
                   >{distCm}</text>
+                </g>
+              )
+            })}
+
+            {/* ── Connector support profiles (vertical, beam → base) ── */}
+            {/* Skip first and last — the trapezoid legs already support those edges */}
+            {connectorXs.slice(1, -1).map((cx, ci) => {
+              const sx = cx - 4 * Math.cos(angleRad) * SC  // 4 cm toward lower end
+              const topY = beamY(sx)
+              const lenCm = (baseY - topY) / SC
+              return (
+                <g key={ci}>
+                  <line x1={sx} y1={topY} x2={sx} y2={baseY}
+                    stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+                  <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY}
+                    label={lenCm.toFixed(1)} off={14} />
                 </g>
               )
             })}
