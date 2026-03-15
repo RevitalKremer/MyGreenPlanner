@@ -321,6 +321,7 @@ export default function Step2PVAreaRefinement({
           <div style={{
             position: 'absolute', top: '20px', left: '20px',
             width: leftPanelCollapsed ? '32px' : '340px', minHeight: '36px', overflow: 'hidden',
+            maxHeight: leftPanelCollapsed ? 'none' : 'calc(100vh - 120px)', overflowY: leftPanelCollapsed ? 'hidden' : 'auto',
             padding: '1.25rem', background: 'white', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '2px solid #C4D600',
             display: 'flex', flexDirection: 'column'
@@ -418,7 +419,7 @@ export default function Step2PVAreaRefinement({
             width: rightPanelCollapsed ? '32px' : '320px', minHeight: '36px', overflow: 'hidden',
             background: 'white', padding: '1.5rem', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            maxHeight: rightPanelCollapsed ? 'none' : 'calc(100vh - 300px)', overflowY: rightPanelCollapsed ? 'hidden' : 'auto',
+            maxHeight: rightPanelCollapsed ? 'none' : 'calc(100vh - 120px)', overflowY: rightPanelCollapsed ? 'hidden' : 'auto',
             border: '2px solid #C4D600'
           }}>
             <button onClick={() => setRightPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -485,6 +486,8 @@ export default function Step2PVAreaRefinement({
                 {rowGroups.map(group => {
                   const groupBackH = getGroupBackHeight(group)
                   const isActive = activeGroupId === group.id
+                  const groupLineDepths = group.lineOrientations.slice(0, group.linesPerRow).map(o => o === 'vertical' ? 238.2 : 113.4)
+                  const groupTotalSlope = groupLineDepths.reduce((s, d) => s + d, 0) + (group.linesPerRow - 1) * 2.5
                   return (
                     <div key={group.id} style={{ marginBottom: '0.75rem', border: `2px solid ${group.color}`, borderRadius: '8px', overflow: 'hidden' }}>
                       {/* Group header */}
@@ -560,10 +563,11 @@ export default function Step2PVAreaRefinement({
                           ))}
                         </div>
 
-                        {/* Back height (calculated) */}
+                        {/* Back height + slope depth (calculated) */}
                         {group.frontHeight !== '' && group.angle !== '' && (
-                          <div style={{ padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '6px', fontSize: '0.75rem', color: '#777' }}>
-                            Back height: <strong style={{ color: '#555' }}>{groupBackH.toFixed(1)} cm</strong>
+                          <div style={{ padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '6px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
+                            <span>Back height: <strong style={{ color: '#555' }}>{groupBackH.toFixed(1)} cm</strong></span>
+                            <span>Slope depth: <strong style={{ color: '#555' }}>{groupTotalSlope.toFixed(1)} cm</strong></span>
                           </div>
                         )}
                       </div>
@@ -636,11 +640,13 @@ export default function Step2PVAreaRefinement({
                   </div>
                 </div>
 
-                {/* Back height display */}
+                {/* Back height + slope depth display */}
                 {(panelFrontHeight !== '' && panelAngle !== '') && (
                   <div style={{ marginBottom: '1.1rem', padding: '0.6rem 0.75rem', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
                     <span style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>BACK HEIGHT (calculated)</span>
                     <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{(computedBackHeight || 0).toFixed(1)} cm</div>
+                    <div style={{ marginTop: '0.4rem', borderTop: '1px solid #e8e8e8', paddingTop: '0.4rem', fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>SLOPE DEPTH (total)</div>
+                    <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{totalSlope.toFixed(1)} cm</div>
                   </div>
                 )}
 

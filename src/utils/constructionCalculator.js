@@ -24,7 +24,9 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
     + spareLeft + spareRight)
 
   // Trapezoid base (horizontal depth of frame, cm)
-  const panelProjection = PANEL_LENGTH_CM * Math.cos(angleRad)
+  // Use actual measured line depth if provided (multi-line rows), else single panel length
+  const lineDepthCm    = config.lineDepthCm ?? PANEL_LENGTH_CM
+  const panelProjection = lineDepthCm * Math.cos(angleRad)
   const baseLength = config.baseLength
     ?? Math.max(80, Math.round((panelProjection - 80) / 10) * 10)
 

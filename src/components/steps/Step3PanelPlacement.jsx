@@ -1021,6 +1021,7 @@ export default function Step3PanelPlacement({
           <div style={{
             position: 'absolute', top: '20px', right: '20px',
             width: rightPanelCollapsed ? '32px' : '225px', minHeight: '36px', overflow: 'hidden',
+            maxHeight: rightPanelCollapsed ? 'none' : 'calc(100vh - 120px)', overflowY: rightPanelCollapsed ? 'hidden' : 'auto',
             padding: '1rem',
             background: 'white', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
@@ -1339,8 +1340,9 @@ export default function Step3PanelPlacement({
                       />
                     </div>
                   </div>
-                  <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.5rem', background: '#f8f9fa', borderRadius: '5px', fontSize: '0.75rem', color: '#777' }}>
-                    Back height (calc): <strong style={{ color: '#555' }}>{backHeight.toFixed(1)} cm</strong>
+                  <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.5rem', background: '#f8f9fa', borderRadius: '5px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
+                    <span>Back height: <strong style={{ color: '#555' }}>{backHeight.toFixed(1)} cm</strong></span>
+                    <span>Slope depth: <strong style={{ color: '#555' }}>{totalSlope.toFixed(1)} cm</strong></span>
                   </div>
                 </div>
               )

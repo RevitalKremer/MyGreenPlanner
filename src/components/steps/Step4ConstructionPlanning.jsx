@@ -184,7 +184,7 @@ function RowsView({ rowConstructions }) {
 
 // ─── Detail view (side elevation sketch) ─────────────────────────────────────
 
-function DetailView({ rc }) {
+function DetailView({ rc, panelLines = null }) {
   const [zoom, setZoom]             = useState(1)
   const [panOffset, setPanOffset]   = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning]   = useState(false)
@@ -226,8 +226,16 @@ function DetailView({ rc }) {
   const railOffV = RAIL_CM * Math.sin(angleRad) * SC  // vertical projection
   const blockH  = BLOCK_H_CM   * SC
 
+  // Panel segments — one per line, or single fallback
+  const segments = (panelLines && panelLines.length > 0)
+    ? panelLines
+    : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
+  const totalPanelDepthCm = segments.reduce((s, seg) => s + seg.gapBeforeCm + seg.depthCm, 0)
+
   const padL = Math.max(120, railOffH + 40)
-  const padR = Math.max(100, railOffH + 70)
+  // padR must cover panel extension beyond front leg
+  const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
+  const padR = Math.max(100, panelExtCm * SC + 70)
   const padT = 55
   const padB = blockH + 120
 
@@ -243,11 +251,16 @@ function DetailView({ rc }) {
   const x1 = padL + bW
 
   const slope   = (topY1 - topY0) / bW
-  // Panel endpoints: extend along slope beyond each leg by RAIL_CM
+  // Panel rear edge: RAIL_CM before the rear leg along the slope
   const panelX1 = x0 - railOffH
-  const panelY1 = topY0 + railOffV  // descends left of rear leg
-  const panelX2 = x1 + railOffH
-  const panelY2 = topY1 - railOffV  // rises right of front leg
+  const panelY1 = topY0 + railOffV
+  // Helper: screen coords at slope distance d (cm) from panelX1/Y1
+  const atSlope = (dCm) => ({
+    x: panelX1 + dCm * Math.cos(angleRad) * SC,
+    y: panelY1 - dCm * Math.sin(angleRad) * SC,
+  })
+  // Panel front edge: at totalPanelDepthCm along slope from rear edge
+  const { x: panelX2, y: panelY2 } = atSlope(totalPanelDepthCm)
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
@@ -377,21 +390,26 @@ function DetailView({ rc }) {
               )
             })}
 
-            {/* ── Panel (blue rotated rectangle, offset above beam+connectors) ── */}
+            {/* ── Panel bars (one per line, offset above beam+connectors) ── */}
             {(() => {
-              const beamCx = (panelX1 + panelX2) / 2
-              const beamCy = (panelY1 + panelY2) / 2
-              const panCx  = beamCx + panOffX
-              const panCy  = beamCy + panOffY
-              const panSvgLen = Math.sqrt((panelX2-panelX1)**2 + (panelY2-panelY1)**2)
-              return (
-                <rect
-                  x={panCx - panSvgLen/2} y={panCy - PANEL_THICK_PX/2}
-                  width={panSvgLen} height={PANEL_THICK_PX}
-                  fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
-                  transform={`rotate(${beamAngleDeg}, ${panCx}, ${panCy})`}
-                />
-              )
+              let dCm = 0
+              return segments.map((seg, idx) => {
+                dCm += seg.gapBeforeCm
+                const start = atSlope(dCm)
+                dCm += seg.depthCm
+                const end = atSlope(dCm)
+                const cx  = (start.x + end.x) / 2 + panOffX
+                const cy  = (start.y + end.y) / 2 + panOffY
+                const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
+                return (
+                  <rect key={idx}
+                    x={cx - len/2} y={cy - PANEL_THICK_PX/2}
+                    width={len} height={PANEL_THICK_PX}
+                    fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
+                    transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
+                  />
+                )
+              })
             })()}
 
             {/* ── Blocks ── */}
@@ -423,9 +441,9 @@ function DetailView({ rc }) {
             <Dim ax1={x1} ay1={topY1} ax2={panelX2} ay2={panelY2}
               label={`${RAIL_CM}`} off={-14} />
 
-            {/* Physical panel length along slope */}
+            {/* Panel length(s) along slope */}
             <Dim ax1={panelX1} ay1={panelY1} ax2={panelX2} ay2={panelY2}
-              label={`${panelLengthCm}`} off={-32} />
+              label={`${totalPanelDepthCm.toFixed(1)}`} off={-32} />
 
             {/* Top beam length (along slope, above beam) */}
             <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
@@ -640,20 +658,22 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
       const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
       const userCfg = rowUserConfigs[i] || {}
 
-      // Derive actual row length from placed panel positions
-      let measuredRowLength
+      // Derive actual row length and line depth from placed panel positions
+      let measuredRowLength, measuredLineDepth
       if (pixelToCmRatio) {
         const rowPanels = panels.filter(p => (p.row ?? 'unassigned') === rowKey)
         const rl = rowPanels.length > 0 ? computeRowRailLayout(rowPanels, pixelToCmRatio) : null
         if (rl?.frame?.localBounds) {
-          const { minX, maxX } = rl.frame.localBounds
+          const { minX, maxX, minY, maxY } = rl.frame.localBounds
           measuredRowLength = (maxX - minX) * pixelToCmRatio
+          measuredLineDepth = (maxY - minY) * pixelToCmRatio  // total depth along slope
         }
       }
 
       return computeRowConstruction(panelCount, angle, frontHeight, {
         ...userCfg,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
+        ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
     })
     return assignTypes(rcs)
@@ -661,8 +681,37 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
   const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
+  // Per-line depth info for the selected row (for multi-line panel drawing)
+  const selectedRowLineDepths = useMemo(() => {
+    const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
+    if (!pixelToCmRatio || selectedRowIdx == null) return null
+    const rowKey = rowKeys[selectedRowIdx]
+    if (rowKey == null) return null
+    const rowPanels = panels.filter(p => (p.row ?? 'unassigned') === rowKey)
+    if (rowPanels.length === 0) return null
+    const rl = computeRowRailLayout(rowPanels, pixelToCmRatio)
+    if (!rl) return null
+
+    const lineMap = {}
+    for (const pr of rl.panelLocalRects) {
+      const li = pr.line ?? 0
+      if (!lineMap[li]) lineMap[li] = { minY: Infinity, maxY: -Infinity }
+      lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
+      lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
+    }
+
+    const sorted = Object.entries(lineMap)
+      .map(([li, b]) => ({ lineIdx: Number(li), ...b }))
+      .sort((a, b) => a.lineIdx - b.lineIdx)
+
+    return sorted.map((line, i) => ({
+      depthCm:      (line.maxY - line.minY)                    * pixelToCmRatio,
+      gapBeforeCm:  i === 0 ? 0 : (line.minY - sorted[i-1].maxY) * pixelToCmRatio,
+    }))
+  }, [panels, refinedArea, selectedRowIdx, rowKeys])
+
   const tabs = [
-    { key: 'detail', label: 'Detail Sketch' },
+    { key: 'detail', label: 'Trapezoids Details' },
     { key: 'rails',  label: 'Rails Layout' },
     { key: 'bases',  label: 'Bases Layout' },
     { key: 'layout', label: 'Trapezoid Layout' },
@@ -788,7 +837,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeTab === 'layout' && <LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} />}
           {activeTab === 'rows'   && <RowsView rowConstructions={rowConstructions} />}
-          {activeTab === 'detail' && <DetailView rc={selectedRC} />}
+          {activeTab === 'detail' && <DetailView rc={selectedRC} panelLines={selectedRowLineDepths} />}
           {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
           {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} />}
           {activeTab === 'bases'  && <BasePlanTab   panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} />}
