@@ -147,7 +147,9 @@ function App() {
       version: '1.0',
       project: currentProject,
       currentStep,
-      uploadedImageData,
+      uploadedImageData: uploadedImageData
+        ? { ...uploadedImageData, file: undefined }
+        : null,
       roofPolygon,
       referenceLine,
       referenceLineLengthCm,

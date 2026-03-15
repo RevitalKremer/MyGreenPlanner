@@ -36,7 +36,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result)
-        if (!data.version || !data.project) throw new Error('Invalid project file')
+        if (!data.version) throw new Error('Invalid project file')
         onImportProject(data)
       } catch {
         setImportError('Could not read project file. Make sure it is a valid .mgp file.')
