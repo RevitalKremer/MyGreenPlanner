@@ -377,7 +377,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                 <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
                                   <text x={bx} y={by}
                                     textAnchor="middle" dominantBaseline="middle"
-                                    fontSize={6 / zoom} fontWeight="700" fill="white"
+                                    fontSize={10 / zoom} fontWeight="700" fill="white"
                                     style={{ userSelect: 'none' }}
                                   >{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
                                 </g>
