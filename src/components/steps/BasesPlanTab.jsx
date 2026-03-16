@@ -313,6 +313,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   const panelRearY   = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
                   const rearLegY     = panelRearY + railOffPx
                   const frontLegY    = panelRearY + railOffPx + topBeamPx
+                  // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
+                  const PROFILE_THICK = 4 / pixelToCmRatio * sc
+                  const FP = 20 / pixelToCmRatio * sc  // foot plate half-width = 20 cm
 
                   return (
                     <g key={`bp-${i}`} opacity={rowOpacity}>
@@ -327,9 +330,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const bLen = Math.sqrt((bbx - btx) ** 2 + (bby - bty) ** 2)
                         const buy = bLen > 0 ? (bby - bty) / bLen : 1
                         const bux = bLen > 0 ? (bbx - btx) / bLen : 0
-                        // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
-                        const PROFILE_THICK = 4 / pixelToCmRatio * sc
-                        const FP = 20 / pixelToCmRatio * sc  // foot plate half-width = 20 cm
                         // Place foot plate at outer edge side
                         const [fpx, fpy] = outerEdgeSvg(base.localX)
                         // Rotation angle of the base line
@@ -361,17 +361,16 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                             <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
                             <line x1={fpx - buy * FP} y1={fpy + bux * FP} x2={fpx + buy * FP} y2={fpy - bux * FP} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
                             {showBaseIDs && (() => {
-                              const [idX, idY] = annBaseSvg(base.localX)
-                              const ID_OFF = 10  // extra offset beyond annotation baseline
-                              const bx = idX + apX * ID_OFF
-                              const by = idY + apY * ID_OFF
+                              // Midpoint of brown bar, tilted along bar direction
+                              const bx = (btx + bbx) / 2
+                              const by = (bty + bby) / 2
                               return (
                                 <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
                                   <text x={bx} y={by}
                                     textAnchor="middle" dominantBaseline="middle"
-                                    fontSize="6" fontWeight="700" fill="#333"
+                                    fontSize="6" fontWeight="700" fill="white"
                                     style={{ userSelect: 'none' }}
-                                  >B{bi + 1}</text>
+                                  >{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
                                 </g>
                               )
                             })()}
