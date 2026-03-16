@@ -6,8 +6,8 @@ import {
 import { localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_RAIL_OFFSET_CM } from '../../utils/railLayoutService'
 
 const PANEL_FILL   = '#cfe3f5'
-const PANEL_STROKE = '#3a6ea5'
-const HATCH_COLOR  = '#9bbcd4'
+
+
 const BASE_COLOR   = '#6b4e2a'
 
 function getPanelsBoundingBox(panels) {
@@ -195,18 +195,19 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   const rowKey = rowKeys.indexOf(panel.row ?? 0)
                   const isSelected = selectedRowIdx === null || rowKey === selectedRowIdx
                   const opacity = isSelected ? 1 : 0.25
-                  const fill   = isSelected ? 'rgba(100, 180, 255, 0.75)' : PANEL_FILL
-                  const stroke = isSelected ? '#0066CC' : PANEL_STROKE
-                  const strokeWidth = isSelected ? '1.5' : '0.8'
+                  const fill   = isSelected ? '#d1e3f3' : PANEL_FILL
+                  const stroke = '#003f7f'
+                  const strokeWidth = 4 / pixelToCmRatio * sc  // 4 cm physical border
 
                   const hatchLines = []
                   const step = 8
+                  const inset = 2  // px gap from panel edges
                   for (let k = 0; k * step < sw + sh; k++) {
                     hatchLines.push(
                       <line key={k}
                         x1={Math.min(k * step, sw)} y1={Math.max(0, k * step - sw)}
                         x2={Math.max(0, k * step - sh)} y2={Math.min(k * step, sh)}
-                        stroke={HATCH_COLOR} strokeWidth="0.6" />
+                        stroke="white" strokeWidth="0.5" opacity="0.7" />
                     )
                   }
 
@@ -214,7 +215,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     <g key={panel.id} opacity={opacity} transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}>
                       <rect x={sx} y={sy} width={sw} height={sh} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
                       <g transform={`translate(${sx}, ${sy})`}>
-                        <clipPath id={`bcp-${panel.id}`}><rect x={0} y={0} width={sw} height={sh} /></clipPath>
+                        <clipPath id={`bcp-${panel.id}`}><rect x={inset} y={inset} width={sw - inset * 2} height={sh - inset * 2} /></clipPath>
                         <g clipPath={`url(#bcp-${panel.id})`}>{hatchLines}</g>
                       </g>
                     </g>
