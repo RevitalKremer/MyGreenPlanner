@@ -3,6 +3,7 @@ import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
+import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpPanel from './components/HelpPanel'
 import { SAM2Service } from './services/sam2Service'
@@ -744,26 +745,12 @@ function App() {
         {/* Step 5: Finalize & Export */}
         {currentStep === 5 && (
           <div className="step-content">
-            <div className="step-placeholder">
-              <h2>📥 Finalize & Export</h2>
-              <p>Review and export your solar PV design</p>
-              <div className="placeholder-info">
-                <p>Export options:</p>
-                <ul>
-                  <li>PDF report with all details</li>
-                  <li>CAD files (DXF/DWG)</li>
-                  <li>3D model visualization</li>
-                  <li>Energy production estimates</li>
-                  <li>Cost analysis</li>
-                </ul>
-              </div>
-              <button
-                className="btn-primary"
-                onClick={() => {}}
-              >
-                Export Project (Mock)
-              </button>
-            </div>
+            <Step5PdfReport
+              panels={panels}
+              refinedArea={refinedArea}
+              rowConfigs={rowConfigs}
+              project={currentProject}
+            />
           </div>
         )}
         
