@@ -6,7 +6,7 @@ import {
   PANEL_LENGTH_CM
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './RailLayoutTab'
-import BasePlanTab   from './BasePlanTab'
+import BasesPlanTab  from './BasesPlanTab'
 import { DEFAULT_RAIL_OFFSET_CM, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM, computeRowRailLayout } from '../../utils/railLayoutService'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_CONN_EDGE_DIST_MM, DEFAULT_CONN_MIN_PORTRAIT, DEFAULT_CONN_MIN_LANDSCAPE } from '../../utils/basePlanService'
 
@@ -962,7 +962,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           {activeTab === 'detail' && <DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} />}
           {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
           {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} />}
-          {activeTab === 'bases'  && <BasePlanTab   panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />}
+          {activeTab === 'bases'  && <BasesPlanTab  panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />}
         </div>
       </div>
     </div>
