@@ -7,8 +7,6 @@ import {
 } from '../../utils/railLayoutService'
 
 const PANEL_FILL = '#cfe3f5'
-const PANEL_STROKE = '#3a6ea5'
-const HATCH_COLOR = '#9bbcd4'
 const RAIL_COLOR_FILL = '#3f79a5'
 
 // ─── Compute bounding box of all panels in screen space (accounting for rotation)
@@ -251,29 +249,28 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
               const rowKey = rowKeys.indexOf(panel.row ?? 0)
               const isSelected = selectedRowIdx === null || rowKey === selectedRowIdx
               const opacity = isSelected ? 1 : 0.25
-              const fill   = isSelected ? 'rgba(100, 180, 255, 0.75)' : PANEL_FILL
-              const stroke = isSelected ? '#0066CC' : PANEL_STROKE
-              const strokeWidth = isSelected ? '1.5' : '0.8'
+              const fill = isSelected ? '#d1e3f3' : PANEL_FILL
+              const borderW = 4 / pixelToCmRatio * sc  // 4 cm physical border
 
-              // Hatch lines clipped to panel rect
+              // Hatch lines — white, minimal, inset from edges
               const hatchLines = []
-              const step = 8
+              const step = 8, inset = 2
               for (let k = 0; k * step < sw + sh; k++) {
                 hatchLines.push(
                   <line key={k}
                     x1={Math.min(k * step, sw)} y1={Math.max(0, k * step - sw)}
                     x2={Math.max(0, k * step - sh)} y2={Math.min(k * step, sh)}
-                    stroke={HATCH_COLOR} strokeWidth="0.6" />
+                    stroke="white" strokeWidth="0.5" opacity="0.7" />
                 )
               }
 
               return (
                 <g key={panel.id} opacity={opacity} transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}>
                   <rect x={sx} y={sy} width={sw} height={sh}
-                    fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                    fill={fill} stroke="#003f7f" strokeWidth={borderW} />
                   <g transform={`translate(${sx}, ${sy})`}>
                     <clipPath id={`cp-${panel.id}`}>
-                      <rect x={0} y={0} width={sw} height={sh} />
+                      <rect x={inset} y={inset} width={sw - inset * 2} height={sh - inset * 2} />
                     </clipPath>
                     <g clipPath={`url(#cp-${panel.id})`}>{hatchLines}</g>
                   </g>
@@ -317,9 +314,10 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
 
                 // Dimension line sits 2px beyond the panel outer edge (= railOffset away from rail)
                 const railOffsetSvg = (railOffsetCm / pixelToCmRatio) * sc
-                const DIM_GAP = 2
-                const EXT = railOffsetSvg + DIM_GAP  // total offset from rail to dim line
-                const TICK = 3   // half-length of end tick marks
+                const DIM_GAP = 4 / zoom
+                const EXT = railOffsetSvg + DIM_GAP
+                const TICK = 4 / zoom   // perpendicular CAD tick half-length
+                const EXT_OVR = 3 / zoom  // extension line overshoot past dim baseline
 
                 // Panel outer edge positions (start of extension lines)
                 const pe1x = x1 + apX * railOffsetSvg, pe1y = y1 + apY * railOffsetSvg
@@ -341,24 +339,21 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
                   const tx = x1 + dx * midFrac + apX * EXT
                   const ty = y1 + dy * midFrac + apY * EXT
                   const label = String(segMm)
-                  // Font size capped by segment length in SVG px (each char ~0.6× fontSize wide)
-                  const segLenSvg = (endFrac - startFrac) * len
-                  const maxFontSize = segLenSvg / (label.length * 0.62)
-                  const fontSize = Math.min(5.5, maxFontSize)
-                  const bgW = label.length * fontSize * 0.62 + 4
-                  const bgH = fontSize + 3
+                  const fontSize = 11 / zoom
+                  const bgW = label.length * fontSize * 0.6 + 6 / zoom
+                  const bgH = fontSize + 4 / zoom
 
-                  // Internal boundary: extension line from panel edge + tick at dim line
+                  // Internal boundary: extension line + perpendicular tick at dim line
                   const boundary = endFrac < 0.999 ? (
                     <g key={`ib-${si}`}>
                       <line
                         x1={x1 + dx * endFrac + apX * railOffsetSvg} y1={y1 + dy * endFrac + apY * railOffsetSvg}
-                        x2={x1 + dx * endFrac + apX * (EXT + 2)} y2={y1 + dy * endFrac + apY * (EXT + 2)}
-                        stroke="#000" strokeWidth="1" />
+                        x2={x1 + dx * endFrac + apX * (EXT + EXT_OVR)} y2={y1 + dy * endFrac + apY * (EXT + EXT_OVR)}
+                        stroke="#000" strokeWidth={0.8 / zoom} />
                       <line
-                        x1={x1 + dx * endFrac + apX * EXT - ux * TICK} y1={y1 + dy * endFrac + apY * EXT - uy * TICK}
-                        x2={x1 + dx * endFrac + apX * EXT + ux * TICK} y2={y1 + dy * endFrac + apY * EXT + uy * TICK}
-                        stroke="#000" strokeWidth="1" />
+                        x1={x1 + dx * endFrac + apX * EXT - perpUX * TICK} y1={y1 + dy * endFrac + apY * EXT - perpUY * TICK}
+                        x2={x1 + dx * endFrac + apX * EXT + perpUX * TICK} y2={y1 + dy * endFrac + apY * EXT + perpUY * TICK}
+                        stroke="#000" strokeWidth={1.2 / zoom} />
                     </g>
                   ) : null
 
@@ -366,10 +361,11 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
                     <g key={`seg-${si}`}>
                       {boundary}
                       <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
-                        <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" />
+                        <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH}
+                          fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
                         <text x={tx} y={ty}
                           textAnchor="middle" dominantBaseline="middle"
-                          fontSize={fontSize} fontWeight="600" fill="#000"
+                          fontSize={fontSize} fontWeight="700" fill="#000"
                         >{label}</text>
                       </g>
                     </g>
@@ -383,26 +379,26 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
                     {/* Rail line: 3px border (#105689) + 1px fill (#3f79a5) center */}
                     {showRails && (
                       <line x1={x1} y1={y1} x2={x2} y2={y2}
-                        stroke={RAIL_COLOR_FILL} strokeWidth="1" strokeLinecap="round" />
+                        stroke={RAIL_COLOR_FILL} strokeWidth={4 / pixelToCmRatio * sc} strokeLinecap="round" />
                     )}
 
                     {/* CAD annotation — one per line only */}
                     {showAnnotation && showDimensions && <>
                       {/* Extension lines: from panel outer edge outward past dim line */}
-                      <line x1={pe1x} y1={pe1y} x2={x1 + apX * (EXT + 2)} y2={y1 + apY * (EXT + 2)}
-                        stroke="#000" strokeWidth="1" />
-                      <line x1={pe2x} y1={pe2y} x2={x2 + apX * (EXT + 2)} y2={y2 + apY * (EXT + 2)}
-                        stroke="#000" strokeWidth="1" />
+                      <line x1={pe1x} y1={pe1y} x2={x1 + apX * (EXT + EXT_OVR)} y2={y1 + apY * (EXT + EXT_OVR)}
+                        stroke="#000" strokeWidth={0.8 / zoom} />
+                      <line x1={pe2x} y1={pe2y} x2={x2 + apX * (EXT + EXT_OVR)} y2={y2 + apY * (EXT + EXT_OVR)}
+                        stroke="#000" strokeWidth={0.8 / zoom} />
 
                       {/* Dimension line */}
                       <line x1={ann1x} y1={ann1y} x2={ann2x} y2={ann2y}
-                        stroke="#000" strokeWidth="1" />
+                        stroke="#000" strokeWidth={1 / zoom} />
 
-                      {/* End tick marks */}
-                      <line x1={ann1x - ux * TICK} y1={ann1y - uy * TICK} x2={ann1x + ux * TICK} y2={ann1y + uy * TICK}
-                        stroke="#000" strokeWidth="1" />
-                      <line x1={ann2x - ux * TICK} y1={ann2y - uy * TICK} x2={ann2x + ux * TICK} y2={ann2y + uy * TICK}
-                        stroke="#000" strokeWidth="1" />
+                      {/* End tick marks — perpendicular to dimension line */}
+                      <line x1={ann1x - perpUX * TICK} y1={ann1y - perpUY * TICK} x2={ann1x + perpUX * TICK} y2={ann1y + perpUY * TICK}
+                        stroke="#000" strokeWidth={1.2 / zoom} />
+                      <line x1={ann2x - perpUX * TICK} y1={ann2y - perpUY * TICK} x2={ann2x + perpUX * TICK} y2={ann2y + perpUY * TICK}
+                        stroke="#000" strokeWidth={1.2 / zoom} />
 
                       {/* Segment labels + internal ticks */}
                       {segAnnotations}
