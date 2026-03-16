@@ -473,7 +473,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                     <rect
                       x={cx - len/2} y={cy - PANEL_THICK_PX/2}
                       width={len} height={PANEL_THICK_PX}
-                      fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
+                      fill="#6a70ac" stroke="#293189" strokeWidth="1"
                       transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
                     />
                     {hl('panel') && (

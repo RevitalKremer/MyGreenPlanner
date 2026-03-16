@@ -400,7 +400,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                 <g key={`conn-${ci}`}>
                                   <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
                                     <rect x={-CW/2} y={-CH/2} width={CW} height={CH}
-                                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.5" />
+                                      fill="#d1e3f3" stroke="#642165" strokeWidth="1" />
                                   </g>
                                 </g>
                               )
