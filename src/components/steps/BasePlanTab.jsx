@@ -2,9 +2,8 @@ import { useState, useMemo, useRef } from 'react'
 import {
   computeRowBasePlan,
   DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM,
-  DEFAULT_CONN_EDGE_DIST_MM, DEFAULT_CONN_MIN_PORTRAIT, DEFAULT_CONN_MIN_LANDSCAPE,
 } from '../../utils/basePlanService'
-import { localToScreen, DEFAULT_RAIL_OVERHANG_CM } from '../../utils/railLayoutService'
+import { localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_RAIL_OFFSET_CM } from '../../utils/railLayoutService'
 
 const PANEL_FILL   = '#cfe3f5'
 const PANEL_STROKE = '#3a6ea5'
@@ -87,14 +86,14 @@ export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx =
   const edgeOffsetMm   = settings.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM
   const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
   const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
-  const connEdgeDistMm   = settings.connEdgeDistMm   ?? DEFAULT_CONN_EDGE_DIST_MM
-  const connMinPortrait  = settings.connMinPortrait  ?? DEFAULT_CONN_MIN_PORTRAIT
-  const connMinLandscape = settings.connMinLandscape ?? DEFAULT_CONN_MIN_LANDSCAPE
+  const railOffsetCm   = settings.railOffsetCm   ?? DEFAULT_RAIL_OFFSET_CM
+  const connOffsetCm   = settings.connOffsetCm   ?? 5
 
   const [showBases,       setShowBases]       = useState(true)
   const [showBaseIDs,     setShowBaseIDs]     = useState(true)
   const [showConnectors,  setShowConnectors]  = useState(true)
   const [showDimensions,  setShowDimensions]  = useState(true)
+  const [showDiagonals,   setShowDiagonals]   = useState(true)
 
   const [tableOpen, setTableOpen] = useState(true)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
@@ -320,56 +319,104 @@ export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx =
                         // Place foot plate at outer edge side
                         const [fpx, fpy] = outerEdgeSvg(base.localX)
                         // Center of base line in SVG for label placement
-                        const midX = (btx + bbx) / 2, midY = (bty + bby) / 2
                         // Rotation angle of the base line
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
                         const rc = rowConstructions[i]
-                        const label = rc ? `${rc.typeLetter}${rc.panelsPerSpan}` : `D${i + 1}`
-                        const fontSize = Math.min(7, bLen / (label.length * 0.6))
 
-                        // Connector positions: one set per panel line
-                        const connEdgeDistPx = (connEdgeDistMm / 10) / pixelToCmRatio
-                        const connLocalYs = []
-                        for (const ln of (lines || [])) {
-                          const count = ln.orientation === 'PORTRAIT' ? connMinPortrait : connMinLandscape
-                          const lineH = ln.maxY - ln.minY
-                          if (count === 1) {
-                            connLocalYs.push(ln.minY + lineH / 2)
-                          } else {
-                            const gap = Math.max(0, (lineH - 2 * connEdgeDistPx) / (count - 1))
-                            for (let ci = 0; ci < count; ci++) {
-                              connLocalYs.push(ln.minY + connEdgeDistPx + ci * gap)
-                            }
+                        // Connector positions: derived from trapezoid geometry (mirrors detail/elevation view)
+                        const railOffPx  = railOffsetCm / pixelToCmRatio
+                        const connOffPx  = connOffsetCm / pixelToCmRatio
+                        const topBeamPx  = rc ? rc.topBeamLength / pixelToCmRatio : 0
+                        const panelRearY = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
+                        const rearLegY   = panelRearY + railOffPx
+                        const frontLegY  = panelRearY + railOffPx + topBeamPx
+
+                        const connLocalYs = [];
+                        (lines || []).forEach((ln, si) => {
+                          const lineMinY    = ln.minY
+                          const lineMaxY    = ln.maxY
+                          const lineCenterY = (lineMinY + lineMaxY) / 2
+                          const leftEdgeY   = si === 0              ? panelRearY                         : lineMinY
+                          const rightEdgeY  = si === lines.length-1 ? lines[lines.length-1].maxY : lineMaxY
+
+                          let lcY = leftEdgeY  < rearLegY  ? rearLegY  + connOffPx : lineMinY + connOffPx
+                          let rcY = rightEdgeY > frontLegY ? frontLegY - connOffPx : lineMaxY - connOffPx
+
+                          const leftDist  = lineCenterY - lcY
+                          const rightDist = rcY - lineCenterY
+                          if (leftDist >= 0 && rightDist >= 0) {
+                            if (leftDist <= rightDist) rcY = lineCenterY + leftDist
+                            else lcY = lineCenterY - rightDist
                           }
-                        }
 
-                        const CRECT_W = 6, CRECT_H = 4  // connector rect size in SVG px
+                          connLocalYs.push(lcY, rcY)
+                        })
 
                         return (
                           <g key={`base-${bi}`}>
                             <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth="2" strokeLinecap="round" />
                             <line x1={fpx - buy * FP} y1={fpy + bux * FP} x2={fpx + buy * FP} y2={fpy - bux * FP} stroke={BASE_COLOR} strokeWidth="2.5" strokeLinecap="round" />
-                            {showBaseIDs && (
-                              <g transform={`rotate(${lineAngle} ${midX} ${midY})`}>
-                                <text x={midX} y={midY}
-                                  textAnchor="middle" dominantBaseline="middle"
-                                  fontSize={fontSize} fontWeight="700" fill="white"
-                                  style={{ userSelect: 'none' }}
-                                >{label}</text>
-                              </g>
-                            )}
+                            {showBaseIDs && (() => {
+                              const [idX, idY] = annBaseSvg(base.localX)
+                              const ID_OFF = 10  // extra offset beyond annotation baseline
+                              const bx = idX + apX * ID_OFF
+                              const by = idY + apY * ID_OFF
+                              return (
+                                <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
+                                  <text x={bx} y={by}
+                                    textAnchor="middle" dominantBaseline="middle"
+                                    fontSize="6" fontWeight="700" fill="#333"
+                                    style={{ userSelect: 'none' }}
+                                  >B{bi + 1}</text>
+                                </g>
+                              )
+                            })()}
                             {showConnectors && connLocalYs.map((localY, ci) => {
                               const sp = localToScreen({ x: base.localX, y: localY }, frame.center, frame.angleRad)
                               const [cx, cy] = toSvg(sp.x, sp.y)
+                              // H-clamp: a short bar perpendicular to base line, with two flange marks
+                              const CW = 8, CH = 3, FW = 4, FH = 1.5
+                              // label: offset from outer frame edge in mm
+                              const localYOffset = Math.round((localY - localBounds.minY) * pixelToCmRatio * 10)
+                              const labelOff = 6  // px away from connector, in base line direction
+                              const lx = cx + (-Math.sin(angleRad)) * (CW / 2 + labelOff)
+                              const ly = cy + (-Math.cos(angleRad)) * (CW / 2 + labelOff)
                               return (
-                                <rect key={`conn-${ci}`}
-                                  x={cx - CRECT_W / 2} y={cy - CRECT_H / 2}
-                                  width={CRECT_W} height={CRECT_H}
-                                  fill="#111"
-                                  transform={`rotate(${lineAngle} ${cx} ${cy})`}
-                                />
+                                <g key={`conn-${ci}`}>
+                                  <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
+                                    {/* center bar (along panel depth) */}
+                                    <rect x={-CW/2} y={-CH/2} width={CW} height={CH} fill="#111" />
+                                    {/* top flange */}
+                                    <rect x={-FW/2} y={-CH/2 - FH} width={FW} height={FH} fill="#111" />
+                                    {/* bottom flange */}
+                                    <rect x={-FW/2} y={ CH/2}      width={FW} height={FH} fill="#111" />
+                                  </g>
+                                  {showDimensions && (
+                                    <text x={lx} y={ly}
+                                      textAnchor="middle" dominantBaseline="middle"
+                                      fontSize="5" fontWeight="600" fill="#333"
+                                      transform={`rotate(${lineAngle} ${lx} ${ly})`}
+                                    >{(localYOffset / 10).toFixed(1)}</text>
+                                  )}
+                                </g>
                               )
                             })}
+                          </g>
+                        )
+                      })}
+
+                      {/* Diagonal braces between consecutive bases */}
+                      {showDiagonals && showBases && bases.length > 1 && bases.slice(0, -1).map((base, bi) => {
+                        const nextBase = bases[bi + 1]
+                        // top of current base → bottom of next base (and vice versa for X-brace)
+                        const [t1x, t1y] = toSvg(base.screenTop.x, base.screenTop.y)
+                        const [b2x, b2y] = toSvg(nextBase.screenBottom.x, nextBase.screenBottom.y)
+                        const [b1x, b1y] = toSvg(base.screenBottom.x, base.screenBottom.y)
+                        const [t2x, t2y] = toSvg(nextBase.screenTop.x, nextBase.screenTop.y)
+                        return (
+                          <g key={`diag-${bi}`}>
+                            <line x1={t1x} y1={t1y} x2={b2x} y2={b2y} stroke={BASE_COLOR} strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />
+                            <line x1={b1x} y1={b1y} x2={t2x} y2={t2y} stroke={BASE_COLOR} strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />
                           </g>
                         )
                       })}
@@ -406,7 +453,7 @@ export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx =
             <div style={{ padding: '0.6rem 0.75rem' }}>
               <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
-                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Connectors', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions]].map(([label, checked, setter]) => (
+                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Connectors', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
                   <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
                     <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
                     {label}
