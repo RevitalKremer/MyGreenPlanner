@@ -307,7 +307,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke="#000" strokeWidth="1.2" />
                         {/* Label: black text on white background */}
                         <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
-                          <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth="0.5" rx="1" />
+                          <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
                           <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill="#000">{label}</text>
                         </g>
                       </g>
@@ -420,7 +420,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                             const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
                             const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                             const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
-                            const fs = 9 / zoom
+                            const fs = 11 / zoom
                             const bgW = String(distMm).length * fs * 0.6 + 6 / zoom
                             const bgH = fs + 4 / zoom
                             return (
