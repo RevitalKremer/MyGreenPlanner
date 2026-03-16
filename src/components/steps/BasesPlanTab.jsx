@@ -8,7 +8,7 @@ import { localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_RAIL_OFFSET_CM } from 
 const PANEL_FILL   = '#cfe3f5'
 
 
-const BASE_COLOR   = '#6b4e2a'
+const BASE_COLOR   = '#000000'
 
 function getPanelsBoundingBox(panels) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
