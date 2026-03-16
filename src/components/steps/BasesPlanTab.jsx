@@ -281,7 +281,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     // Perpendicular unit vector (for ticks + extension lines)
                     const px = -uy, py = ux
 
-                    const label = `${(distMm / 10).toFixed(0)} cm`
+                    const label = `${distMm}`
                     const fontSize = 11 / zoom   // constant screen size
                     const tx = (ax1 + ax2) / 2, ty = (ay1 + ay2) / 2
                     const angle = Math.atan2(dy, dx) * 180 / Math.PI
