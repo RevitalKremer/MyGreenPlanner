@@ -726,7 +726,6 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
   const [globalSettings, setGlobalSettings] = useState(SETTINGS_DEFAULTS)
   const [rowSettings,    setRowSettings]    = useState({})  // per-row overrides: { [rowIdx]: partial }
   const [highlightParam, setHighlightParam] = useState(null)
-  const hlTimerRef = useRef(null)
 
   const getSettings = (rowIdx) => ({ ...globalSettings, ...(rowSettings[rowIdx] || {}) })
 
@@ -735,9 +734,6 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
       ...prev,
       [rowIdx]: { ...(prev[rowIdx] || {}), [key]: value }
     }))
-    setHighlightParam(key)
-    clearTimeout(hlTimerRef.current)
-    hlTimerRef.current = setTimeout(() => setHighlightParam(null), 2200)
   }
 
   const applySection = (rowIdx, keys) => {
@@ -909,6 +905,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           const numInput = (key, step = 1, min) => (
             <input type="number" value={s[key]} step={step} min={min}
               onChange={e => updateSetting(selectedRowIdx, key, parseFloat(e.target.value) || 0)}
+              onFocus={() => setHighlightParam(key)}
+              onBlur={() => setHighlightParam(null)}
               style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
                 border: `1px solid ${isOverride(key) ? '#FFB74D' : '#ddd'}`,
                 borderRadius: '4px', fontSize: '0.78rem', fontWeight: isOverride(key) ? '700' : '400' }} />
@@ -992,6 +990,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
                           value={(s.stockLengths || []).join(', ')}
                           onChange={e => updateSetting(selectedRowIdx, 'stockLengths',
                             e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
+                          onFocus={() => setHighlightParam('stockLengths')}
+                          onBlur={() => setHighlightParam(null)}
                           placeholder="e.g. 4800, 6000"
                           style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
                             border: `1px solid ${isOverride('stockLengths') ? '#FFB74D' : '#ddd'}`,
