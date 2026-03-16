@@ -8,20 +8,19 @@ export const PANEL_LENGTH_CM = 238.2  // depth along slope
  * @param {number} panelCount  - number of panels in the row
  * @param {number} angle       - tilt angle in degrees
  * @param {number} frontHeight - mounting height at low edge (cm)
- * @param {object} config      - optional overrides: spareLeft, spareRight, maxSpan, baseLength
+ * @param {object} config      - optional overrides: railOverhang, maxSpan, baseLength
  */
 export function computeRowConstruction(panelCount, angle, frontHeight, config = {}) {
   const angleRad = angle * Math.PI / 180
-  const spareLeft  = config.spareLeft  ?? 5    // cm
-  const spareRight = config.spareRight ?? 5    // cm
-  const maxSpan    = config.maxSpan    ?? 165  // cm max spacing between trapezoids
+  const railOverhang = config.railOverhang ?? 4  // cm — extension beyond outermost panel on each side
+  const maxSpan      = config.maxSpan      ?? 165  // cm max spacing between trapezoids
 
-  // Rail length (total row width including spares)
+  // Rail length (total row width including overhang)
   // config.rowLength can be passed from actual panel placement measurements (preferred)
   const rowLength = config.rowLength
     ?? (panelCount * PANEL_WIDTH_CM
     + Math.max(0, panelCount - 1) * PANEL_GAP_CM
-    + spareLeft + spareRight)
+    + 2 * railOverhang)
 
   // Trapezoid base (horizontal depth of frame, cm)
   // Use actual measured line depth if provided (multi-line rows), else single panel length
@@ -59,8 +58,7 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
     numTrapezoids,
     spacing,        // cm between trapezoids
     panelsPerSpan,
-    spareLeft,
-    spareRight,
+    railOverhang,
     panelCount,
   }
 }

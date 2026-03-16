@@ -108,10 +108,10 @@ function RailsTable({ rails, rowIdx }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx = null }) {
-  const [railOffsetCm, setRailOffsetCm] = useState(DEFAULT_RAIL_OFFSET_CM)
-  const [railOverhangCm, setRailOverhangCm] = useState(DEFAULT_RAIL_OVERHANG_CM)
-  const [stockInput, setStockInput] = useState(DEFAULT_STOCK_LENGTHS_MM.join(', '))
+export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx = null, settings = {} }) {
+  const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
+  const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
+  const stockLengths  = settings.stockLengths   ?? DEFAULT_STOCK_LENGTHS_MM
 
   // Layer visibility
   const [showRails, setShowRails] = useState(true)
@@ -120,11 +120,6 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
   // Table collapse
   const [tableOpen, setTableOpen] = useState(true)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
-
-  const stockLengths = useMemo(() =>
-    stockInput.split(',').map(s => parseInt(s.trim(), 10)).filter(n => n > 0),
-    [stockInput]
-  )
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
 
@@ -222,21 +217,6 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
   // SVG centroid of all panels — used to determine "outward" annotation direction per rail
   const svgCentX = PAD + (bboxW / 2) * sc
   const svgCentY = PAD + (bboxH / 2) * sc
-
-  const sectionLabel = (text) => (
-    <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.45rem' }}>
-      {text}
-    </div>
-  )
-
-  const fieldRow = (label, input) => (
-    <div style={{ marginBottom: '0.6rem' }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: '600', color: '#666', marginBottom: '0.25rem' }}>{label}</div>
-      {input}
-    </div>
-  )
-
-  const inputStyle = { width: '100%', padding: '0.3rem 0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.8rem', boxSizing: 'border-box' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white' }}>
@@ -437,92 +417,49 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
         </div>
         </div>
 
-        {/* ── Floating right panel ─────────────────────────────────────── */}
+        {/* ── Floating right panel ── */}
         <div style={{
-          position: 'absolute', top: '16px', right: '16px',
-          width: panelCollapsed ? '32px' : '210px', minHeight: '36px', overflow: 'hidden',
-          maxHeight: panelCollapsed ? 'none' : 'calc(100vh - 100px)', overflowY: panelCollapsed ? 'hidden' : 'auto',
-          padding: '1rem',
-          background: 'white', borderRadius: '12px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-          border: '2px solid #C4D600',
-          pointerEvents: 'all',
+          position: 'absolute', top: '16px', right: '16px', zIndex: 10,
+          width: panelCollapsed ? '36px' : '190px',
+          background: 'white', borderRadius: '10px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+          border: '1px solid #e0e0e0', overflow: 'hidden',
+          transition: 'width 0.18s',
         }} onMouseDown={e => e.stopPropagation()}>
-          <button onClick={() => setPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {panelCollapsed ? '‹' : '›'}
-          </button>
-          {!panelCollapsed && <>
-
-          {/* Rail settings */}
-          {sectionLabel('Rail Settings')}
-          {fieldRow('Clamp Offset (cm)',
-            <input type="number" value={railOffsetCm} step="0.1"
-              onChange={e => setRailOffsetCm(parseFloat(e.target.value) || DEFAULT_RAIL_OFFSET_CM)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Rail Overhang (cm)',
-            <input type="number" value={railOverhangCm} step="0.5" min="0"
-              onChange={e => setRailOverhangCm(parseFloat(e.target.value) || 0)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Stock Lengths (mm)',
-            <input type="text" value={stockInput}
-              onChange={e => setStockInput(e.target.value)}
-              placeholder="e.g. 4800, 6000"
-              style={inputStyle} />
-          )}
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          {/* Layers */}
-          {sectionLabel('Layers')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.85rem' }}>
-            {[
-              ['Rails', showRails, setShowRails],
-              ['Dimensions', showDimensions, setShowDimensions],
-            ].map(([label, checked, setter]) => (
-              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.8rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
-                <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)}
-                  style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
-                {label}
-              </label>
-            ))}
+          <div onClick={() => setPanelCollapsed(c => !c)} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.5rem 0.65rem', cursor: 'pointer', background: '#fafafa',
+            borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
+          }}>
+            {!panelCollapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#555', whiteSpace: 'nowrap' }}>Display</span>}
+            <span style={{ fontSize: '0.75rem', color: '#aaa', marginLeft: 'auto' }}>{panelCollapsed ? '◀' : '▶'}</span>
           </div>
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          {/* Zoom */}
-          <div style={{ fontSize: '0.7rem', color: '#aaa', fontWeight: '600', marginBottom: '0.35rem' }}>
-            🔍 Zoom: {(zoom * 100).toFixed(0)}%
-          </div>
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.25rem' }}>
-            {[
-              ['−', () => setZoom(z => Math.max(0.3, z - 0.1)), '0.9rem'],
-              ['100%', resetView, '0.7rem'],
-              ['+', () => setZoom(z => Math.min(8, z + 0.1)), '0.9rem'],
-            ].map(([label, fn, fs]) => (
-              <button key={label} onClick={fn} style={{
-                flex: 1, padding: '0.4rem',
-                background: 'white', color: '#666',
-                border: '1px solid #ddd', borderRadius: '6px',
-                cursor: 'pointer', fontWeight: '600', fontSize: fs
-              }}>{label}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#ccc' }}>Mouse wheel to zoom</div>
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          {/* Summary */}
-          <div style={{ fontSize: '0.75rem', color: '#888' }}>
-            {totalRails} rails
-          </div>
-          {totalLeftover > 0 && (
-            <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: '0.2rem' }}>
-              {fmt(totalLeftover)} mm leftover
+          {!panelCollapsed && (
+            <div style={{ padding: '0.6rem 0.75rem' }}>
+              <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
+                {[['Rails', showRails, setShowRails], ['Dimensions', showDimensions, setShowDimensions]].map(([label, checked, setter]) => (
+                  <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
+                    <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.6rem', marginBottom: '0.3rem' }}>
+                <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Zoom — {(zoom * 100).toFixed(0)}%</div>
+                <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.2rem' }}>
+                  {[['−', () => setZoom(z => Math.max(0.3, z - 0.1))], ['100%', resetView], ['+', () => setZoom(z => Math.min(8, z + 0.1))]].map(([lbl, fn]) => (
+                    <button key={lbl} onClick={fn} style={{ flex: 1, padding: '0.3rem 0', background: 'white', color: '#666', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
+              </div>
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
+                {totalRails} rails
+                {totalLeftover > 0 && <div style={{ color: '#b45309', marginTop: '0.15rem' }}>{fmt(totalLeftover)} mm leftover</div>}
+              </div>
             </div>
           )}
-          </>}
         </div>
 
       </div>

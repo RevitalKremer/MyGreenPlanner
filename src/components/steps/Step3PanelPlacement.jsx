@@ -1229,6 +1229,16 @@ export default function Step3PanelPlacement({
               const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
               const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
 
+              // Compute totalSlope in outer scope so it's accessible below the SVG IIFE
+              const _planGroup = projectMode === 'plan' && selectedRowKey !== null
+                ? rowGroups[selectedRowKey] ?? null
+                : null
+              const _effectiveLinesPerRow = (_planGroup?.linesPerRow ?? globalCfg.linesPerRow) || 1
+              const _effectiveLineOrientations = (_planGroup?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
+              const _lineDepths = _effectiveLineOrientations.slice(0, _effectiveLinesPerRow)
+                .map(o => o === 'vertical' ? 238.2 : 113.4)
+              const totalSlope = _lineDepths.reduce((s, d) => s + d, 0) + (_effectiveLinesPerRow - 1) * 2.5
+
               // Trapezoid cross-section geometry
               const W = 130, H = 62, groundY = H - 8
               const fX = 15

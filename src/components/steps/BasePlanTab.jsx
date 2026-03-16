@@ -83,21 +83,20 @@ function BasesTable({ bp, rowIdx }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [] }) {
-  const [edgeOffsetMm, setEdgeOffsetMm] = useState(DEFAULT_BASE_EDGE_OFFSET_MM)
-  const [spacingMm,    setSpacingMm]    = useState(DEFAULT_BASE_SPACING_MM)
-  const [railOverhangCm, setRailOverhangCm] = useState(DEFAULT_RAIL_OVERHANG_CM)
-
-  const [connEdgeDistMm,   setConnEdgeDistMm]   = useState(DEFAULT_CONN_EDGE_DIST_MM)
-  const [connMinPortrait,  setConnMinPortrait]  = useState(DEFAULT_CONN_MIN_PORTRAIT)
-  const [connMinLandscape, setConnMinLandscape] = useState(DEFAULT_CONN_MIN_LANDSCAPE)
+export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {} }) {
+  const edgeOffsetMm   = settings.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM
+  const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
+  const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
+  const connEdgeDistMm   = settings.connEdgeDistMm   ?? DEFAULT_CONN_EDGE_DIST_MM
+  const connMinPortrait  = settings.connMinPortrait  ?? DEFAULT_CONN_MIN_PORTRAIT
+  const connMinLandscape = settings.connMinLandscape ?? DEFAULT_CONN_MIN_LANDSCAPE
 
   const [showBases,       setShowBases]       = useState(true)
   const [showBaseIDs,     setShowBaseIDs]     = useState(true)
   const [showConnectors,  setShowConnectors]  = useState(true)
   const [showDimensions,  setShowDimensions]  = useState(true)
 
-  const [tableOpen,      setTableOpen]      = useState(true)
+  const [tableOpen, setTableOpen] = useState(true)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
 
   const [zoom,      setZoom]      = useState(1)
@@ -171,19 +170,6 @@ export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx =
   const toSvg = (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
   const svgCentX = PAD + (bboxW / 2) * sc
   const svgCentY = PAD + (bboxH / 2) * sc
-
-  const sectionLabel = text => (
-    <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.45rem' }}>
-      {text}
-    </div>
-  )
-  const fieldRow = (label, input) => (
-    <div style={{ marginBottom: '0.6rem' }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: '600', color: '#666', marginBottom: '0.25rem' }}>{label}</div>
-      {input}
-    </div>
-  )
-  const inputStyle = { width: '100%', padding: '0.3rem 0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.8rem', boxSizing: 'border-box' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white' }}>
@@ -399,100 +385,48 @@ export default function BasePlanTab({ panels = [], refinedArea, selectedRowIdx =
           </div>
         </div>
 
-        {/* ── Floating right panel ─────────────────────────────────────── */}
+        {/* ── Floating right panel ── */}
         <div style={{
-          position: 'absolute', top: '16px', right: '16px',
-          width: panelCollapsed ? '32px' : '210px', minHeight: '36px', overflow: 'hidden',
-          maxHeight: panelCollapsed ? 'none' : 'calc(100vh - 100px)', overflowY: panelCollapsed ? 'hidden' : 'auto',
-          padding: '1rem',
-          background: 'white', borderRadius: '12px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-          border: '2px solid #C4D600',
-          pointerEvents: 'all',
+          position: 'absolute', top: '16px', right: '16px', zIndex: 10,
+          width: panelCollapsed ? '36px' : '190px',
+          background: 'white', borderRadius: '10px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+          border: '1px solid #e0e0e0', overflow: 'hidden',
+          transition: 'width 0.18s',
         }} onMouseDown={e => e.stopPropagation()}>
-          <button onClick={() => setPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {panelCollapsed ? '‹' : '›'}
-          </button>
-          {!panelCollapsed && <>
-
-          {sectionLabel('Base Settings')}
-          {fieldRow('Edge Offset (mm)',
-            <input type="number" value={edgeOffsetMm} step="10" min="0"
-              onChange={e => setEdgeOffsetMm(parseFloat(e.target.value) || 0)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Base Spacing (mm)',
-            <input type="number" value={spacingMm} step="50" min="100"
-              onChange={e => setSpacingMm(parseFloat(e.target.value) || DEFAULT_BASE_SPACING_MM)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Rail Overhang (cm)',
-            <input type="number" value={railOverhangCm} step="0.5" min="0"
-              onChange={e => setRailOverhangCm(parseFloat(e.target.value) || 0)}
-              style={inputStyle} />
-          )}
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          {sectionLabel('Connectors')}
-          {fieldRow('Min per Portrait line',
-            <input type="number" value={connMinPortrait} step="1" min="1"
-              onChange={e => setConnMinPortrait(parseInt(e.target.value) || 1)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Min per Landscape line',
-            <input type="number" value={connMinLandscape} step="1" min="1"
-              onChange={e => setConnMinLandscape(parseInt(e.target.value) || 1)}
-              style={inputStyle} />
-          )}
-          {fieldRow('Min edge distance (mm)',
-            <input type="number" value={connEdgeDistMm} step="5" min="0"
-              onChange={e => setConnEdgeDistMm(parseFloat(e.target.value) || 0)}
-              style={inputStyle} />
-          )}
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          {sectionLabel('Layers')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.85rem' }}>
-            {[
-              ['Bases', showBases, setShowBases],
-              ['Bases IDs', showBaseIDs, setShowBaseIDs],
-              ['Connectors', showConnectors, setShowConnectors],
-              ['Dimensions', showDimensions, setShowDimensions],
-            ].map(([label, checked, setter]) => (
-              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.8rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
-                <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)}
-                  style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
-                {label}
-              </label>
-            ))}
+          <div onClick={() => setPanelCollapsed(c => !c)} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.5rem 0.65rem', cursor: 'pointer', background: '#fafafa',
+            borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
+          }}>
+            {!panelCollapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#555', whiteSpace: 'nowrap' }}>Display</span>}
+            <span style={{ fontSize: '0.75rem', color: '#aaa', marginLeft: 'auto' }}>{panelCollapsed ? '◀' : '▶'}</span>
           </div>
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          <div style={{ fontSize: '0.7rem', color: '#aaa', fontWeight: '600', marginBottom: '0.35rem' }}>
-            🔍 Zoom: {(zoom * 100).toFixed(0)}%
-          </div>
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.25rem' }}>
-            {[
-              ['−', () => setZoom(z => Math.max(0.3, z - 0.1)), '0.9rem'],
-              ['100%', resetView, '0.7rem'],
-              ['+', () => setZoom(z => Math.min(8, z + 0.1)), '0.9rem'],
-            ].map(([label, fn, fs]) => (
-              <button key={label} onClick={fn} style={{
-                flex: 1, padding: '0.4rem', background: 'white', color: '#666',
-                border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: fs
-              }}>{label}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#ccc' }}>Mouse wheel to zoom</div>
-
-          <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.75rem 0' }} />
-
-          <div style={{ fontSize: '0.75rem', color: '#888' }}>{totalBases} bases total</div>
-
-          </>}
+          {!panelCollapsed && (
+            <div style={{ padding: '0.6rem 0.75rem' }}>
+              <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
+                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Connectors', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions]].map(([label, checked, setter]) => (
+                  <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
+                    <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.6rem', marginBottom: '0.3rem' }}>
+                <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Zoom — {(zoom * 100).toFixed(0)}%</div>
+                <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.2rem' }}>
+                  {[['−', () => setZoom(z => Math.max(0.3, z - 0.1))], ['100%', resetView], ['+', () => setZoom(z => Math.min(8, z + 0.1))]].map(([lbl, fn]) => (
+                    <button key={lbl} onClick={fn} style={{ flex: 1, padding: '0.3rem 0', background: 'white', color: '#666', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
+              </div>
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
+                {totalBases} bases total
+              </div>
+            </div>
+          )}
         </div>
 
       </div>

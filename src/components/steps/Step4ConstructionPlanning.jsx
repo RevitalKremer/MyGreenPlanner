@@ -7,9 +7,30 @@ import {
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './RailLayoutTab'
 import BasePlanTab   from './BasePlanTab'
-import { DEFAULT_RAIL_OFFSET_CM, computeRowRailLayout } from '../../utils/railLayoutService'
+import { DEFAULT_RAIL_OFFSET_CM, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM, computeRowRailLayout } from '../../utils/railLayoutService'
+import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_CONN_EDGE_DIST_MM, DEFAULT_CONN_MIN_PORTRAIT, DEFAULT_CONN_MIN_LANDSCAPE } from '../../utils/basePlanService'
 
 const ACCENT = '#C4D600'
+
+// ─── Centralised settings defaults ───────────────────────────────────────────
+const SETTINGS_DEFAULTS = {
+  // Trapezoids & Connectors (detail tab)
+  railOffsetCm:     DEFAULT_RAIL_OFFSET_CM,
+  connOffsetCm:     5,
+  panelLengthCm:    238.2,
+  blockHeightCm:    30,
+  blockWidthCm:     70,
+  connEdgeDistMm:   DEFAULT_CONN_EDGE_DIST_MM,
+  connMinPortrait:  DEFAULT_CONN_MIN_PORTRAIT,
+  connMinLandscape: DEFAULT_CONN_MIN_LANDSCAPE,
+  // Rails (rails tab)
+  railOverhangCm:   DEFAULT_RAIL_OVERHANG_CM,
+  stockLengths:     DEFAULT_STOCK_LENGTHS_MM,
+  // Bases (bases tab)
+  edgeOffsetMm:     DEFAULT_BASE_EDGE_OFFSET_MM,
+  spacingMm:        DEFAULT_BASE_SPACING_MM,
+  maxSpanCm:        165,
+}
 
 // ─── SVG helpers ────────────────────────────────────────────────────────────
 
@@ -165,7 +186,7 @@ function RowsView({ rowConstructions }) {
               ))}
               {/* Trapezoid positions (vertical lines) */}
               {Array.from({ length: rc.numTrapezoids }, (_, j) => {
-                const tx = 30 + (rc.spareLeft + j * rc.spacing) * sc
+                const tx = 30 + (rc.railOverhang + j * rc.spacing) * sc
                 return <line key={j} x1={tx} y1={20} x2={tx} y2={20 + depthSc} stroke="#3a6ea5" strokeWidth="1.5" />
               })}
               {/* Label */}
@@ -184,18 +205,19 @@ function RowsView({ rowConstructions }) {
 
 // ─── Detail view (side elevation sketch) ─────────────────────────────────────
 
-function DetailView({ rc, panelLines = null }) {
+function DetailView({ rc, panelLines = null, settings = {} }) {
   const [zoom, setZoom]             = useState(1)
   const [panOffset, setPanOffset]   = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning]   = useState(false)
   const [panStart, setPanStart]     = useState(null)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
-  const [railOffsetCm, setRailOffsetCm]     = useState(DEFAULT_RAIL_OFFSET_CM)
-  const [blockHeightCm, setBlockHeightCm]   = useState(30)
-  const [blockWidthCm, setBlockWidthCm]     = useState(70)
-  const [connOffsetCm, setConnOffsetCm]     = useState(5)
-  const [panelLengthCm, setPanelLengthCm]   = useState(238.2)
   const containerRef = useRef(null)
+
+  const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
+  const blockHeightCm = settings.blockHeightCm ?? 30
+  const blockWidthCm  = settings.blockWidthCm  ?? 70
+  const connOffsetCm  = settings.connOffsetCm  ?? 5
+  const panelLengthCm = settings.panelLengthCm ?? 238.2
 
   useEffect(() => {
     const el = containerRef.current
@@ -351,21 +373,6 @@ function DetailView({ rc, panelLines = null }) {
       </g>
     )
   }
-
-  const FloatLabel = ({ children }) => (
-    <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem', marginTop: '0.8rem' }}>
-      {children}
-    </div>
-  )
-
-  const FloatInput = ({ label, value, onChange, min, step = 1 }) => (
-    <div style={{ marginBottom: '0.5rem' }}>
-      <div style={{ fontSize: '0.68rem', color: '#777', marginBottom: '2px' }}>{label}</div>
-      <input type="number" value={value} min={min} step={step}
-        onChange={e => onChange(parseFloat(e.target.value) || 0)}
-        style={{ width: '100%', padding: '0.25rem 0.4rem', boxSizing: 'border-box', border: '1px solid #ddd', borderRadius: '5px', fontSize: '0.8rem' }} />
-    </div>
-  )
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
@@ -576,49 +583,34 @@ function DetailView({ rc, panelLines = null }) {
 
       {/* ── Floating right panel ── */}
       <div style={{
-        position: 'absolute', top: 16, right: 16, zIndex: 10,
-        background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
-        width: panelCollapsed ? 'auto' : '210px',
-        transition: 'width 0.2s', overflow: 'hidden',
-      }}>
-        <div
-          onClick={() => setPanelCollapsed(c => !c)}
-          style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '0.6rem 0.75rem', cursor: 'pointer',
-            borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
-            background: '#fafafa',
-          }}
-        >
-          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#333', whiteSpace: 'nowrap' }}>Detail Settings</span>
-          <span style={{ fontSize: '0.85rem', color: '#888', marginLeft: '0.5rem' }}>{panelCollapsed ? '◀' : '▶'}</span>
+        position: 'absolute', top: '16px', right: '16px', zIndex: 10,
+        width: panelCollapsed ? '36px' : '190px',
+        background: 'white', borderRadius: '10px',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+        border: '1px solid #e0e0e0', overflow: 'hidden',
+        transition: 'width 0.18s',
+      }} onMouseDown={e => e.stopPropagation()}>
+        <div onClick={() => setPanelCollapsed(c => !c)} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '0.5rem 0.65rem', cursor: 'pointer', background: '#fafafa',
+          borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
+        }}>
+          {!panelCollapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#555', whiteSpace: 'nowrap' }}>Display</span>}
+          <span style={{ fontSize: '0.75rem', color: '#aaa', marginLeft: 'auto' }}>{panelCollapsed ? '◀' : '▶'}</span>
         </div>
-
         {!panelCollapsed && (
-          <div style={{ padding: '0.5rem 0.75rem', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
-            <FloatLabel>Parameters</FloatLabel>
-            <FloatInput label="Rail Clamp Offset (cm)" value={railOffsetCm} min={1} step={0.1} onChange={setRailOffsetCm} />
-            <FloatInput label="Connector Offset (cm)" value={connOffsetCm} min={0} step={0.5} onChange={setConnOffsetCm} />
-            <FloatInput label="Panel Length (cm)" value={panelLengthCm} min={10} step={0.1} onChange={setPanelLengthCm} />
-            <FloatInput label="Block Height (cm)" value={blockHeightCm} min={1} step={1} onChange={setBlockHeightCm} />
-            <FloatInput label="Block Width (cm)" value={blockWidthCm} min={1} step={1} onChange={setBlockWidthCm} />
-
-            <FloatLabel>Zoom</FloatLabel>
-            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
-              <button onClick={() => setZoom(z => Math.min(6, z * 1.2))}
-                style={{ flex: 1, padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem', background: '#f8f8f8' }}>+</button>
-              <button onClick={() => setZoom(z => Math.max(0.25, z * 0.833))}
-                style={{ flex: 1, padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem', background: '#f8f8f8' }}>−</button>
+          <div style={{ padding: '0.6rem 0.75rem' }}>
+            <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Zoom — {Math.round(zoom * 100)}%</div>
+            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.2rem' }}>
+              {[['−', () => setZoom(z => Math.max(0.25, z * 0.833))], ['100%', () => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }], ['+', () => setZoom(z => Math.min(6, z * 1.2))]].map(([lbl, fn]) => (
+                <button key={lbl} onClick={fn} style={{ flex: 1, padding: '0.3rem 0', background: 'white', color: '#666', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{lbl}</button>
+              ))}
             </div>
-            <button onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }}
-              style={{ width: '100%', padding: '0.3rem', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem', background: '#f8f8f8', color: '#666' }}>
-              Reset View
-            </button>
-            <div style={{ fontSize: '0.68rem', color: '#aaa', textAlign: 'center', marginTop: '0.3rem' }}>{Math.round(zoom * 100)}%</div>
+            <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
           </div>
         )}
       </div>
+
     </div>
   )
 }
@@ -667,7 +659,33 @@ function BOMView({ rowConstructions }) {
 export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {} }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [activeTab, setActiveTab] = useState('detail')
-  const [rowUserConfigs, setRowUserConfigs] = useState({})  // per-row overrides: { [rowIdx]: { spareLeft, spareRight, maxSpan, baseLength } }
+  const [globalSettings, setGlobalSettings] = useState(SETTINGS_DEFAULTS)
+  const [rowSettings,    setRowSettings]    = useState({})  // per-row overrides: { [rowIdx]: partial }
+
+  const getSettings = (rowIdx) => ({ ...globalSettings, ...(rowSettings[rowIdx] || {}) })
+
+  const updateSetting = (rowIdx, key, value) => {
+    setRowSettings(prev => ({
+      ...prev,
+      [rowIdx]: { ...(prev[rowIdx] || {}), [key]: value }
+    }))
+  }
+
+  const applySection = (rowIdx, keys) => {
+    const vals = {}
+    const s = getSettings(rowIdx)
+    keys.forEach(k => { vals[k] = s[k] })
+    setGlobalSettings(prev => ({ ...prev, ...vals }))
+    setRowSettings(prev => {
+      const next = {}
+      for (const i of Object.keys(prev)) {
+        const copy = { ...prev[i] }
+        keys.forEach(k => delete copy[k])
+        next[i] = copy
+      }
+      return next
+    })
+  }
 
   // Group panels by row index
   const rowPanelCounts = useMemo(() => {
@@ -693,7 +711,9 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
       const override = rowConfigs[rowKey] || {}
       const angle = override.angle ?? globalCfg.angle ?? 0
       const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
-      const userCfg = rowUserConfigs[i] || {}
+      const s = getSettings(i)
+      const railOverhang = s.railOverhangCm
+      const maxSpan      = s.maxSpanCm
 
       // Derive actual row length and line depth from placed panel positions
       let measuredRowLength, measuredLineDepth
@@ -702,19 +722,20 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
         const rl = rowPanels.length > 0 ? computeRowRailLayout(rowPanels, pixelToCmRatio) : null
         if (rl?.frame?.localBounds) {
           const { minX, maxX, minY, maxY } = rl.frame.localBounds
-          measuredRowLength = (maxX - minX) * pixelToCmRatio
-          measuredLineDepth = (maxY - minY) * pixelToCmRatio  // total depth along slope
+          measuredRowLength = (maxX - minX) * pixelToCmRatio + 2 * railOverhang
+          measuredLineDepth = (maxY - minY) * pixelToCmRatio
         }
       }
 
       return computeRowConstruction(panelCount, angle, frontHeight, {
-        ...userCfg,
+        railOverhang,
+        maxSpan,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
     })
     return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, rowConfigs, rowUserConfigs, panels])
+  }, [rowKeys, rowPanelCounts, refinedArea, rowConfigs, rowSettings, globalSettings, panels])
 
   const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
@@ -755,13 +776,6 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
     { key: 'rows',   label: 'Row Dimensions' },
     { key: 'bom',    label: 'Bill of Materials' },
   ]
-
-  const updateUserConfig = (rowIdx, field, value) => {
-    setRowUserConfigs(prev => ({
-      ...prev,
-      [rowIdx]: { ...(prev[rowIdx] || {}), [field]: parseFloat(value) || 0 }
-    }))
-  }
 
   if (rowKeys.length === 0) {
     return (
@@ -817,33 +831,104 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
           ))}
         </div>
 
-        {/* Config panel for selected row */}
-        {selectedRC && (
-          <div style={{ borderTop: '1px solid #e8e8e8', padding: '0.75rem 1rem' }}>
-            <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.6rem' }}>
-              Row {selectedRowIdx + 1} Config
+        {/* ── Settings sections (per-row, grouped by tab) ── */}
+        {selectedRC && (() => {
+          const s = getSettings(selectedRowIdx)
+          const isOverride = (key) => !!(rowSettings[selectedRowIdx] && key in rowSettings[selectedRowIdx])
+
+          const numInput = (key, step = 1, min) => (
+            <input type="number" value={s[key]} step={step} min={min}
+              onChange={e => updateSetting(selectedRowIdx, key, parseFloat(e.target.value) || 0)}
+              style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
+                border: `1px solid ${isOverride(key) ? '#FFB74D' : '#ddd'}`,
+                borderRadius: '4px', fontSize: '0.78rem', fontWeight: isOverride(key) ? '700' : '400' }} />
+          )
+
+          const field = (label, key, step, min) => (
+            <div key={key} style={{ marginBottom: '0.45rem' }}>
+              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>{label}</div>
+              {numInput(key, step, min)}
             </div>
-            {[
-              ['Spare Left (cm)', 'spareLeft', selectedRC.spareLeft],
-              ['Spare Right (cm)', 'spareRight', selectedRC.spareRight],
-              ['Max Span (cm)', 'maxSpan', selectedRC.spacing],
-              ['Base Length (cm)', 'baseLength', selectedRC.baseLength],
-            ].map(([label, field, def]) => (
-              <div key={field} style={{ marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.68rem', color: '#777', marginBottom: '2px' }}>{label}</div>
-                <input
-                  type="number"
-                  defaultValue={Math.round(def)}
-                  onChange={e => updateUserConfig(selectedRowIdx, field, e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.25rem 0.4rem', boxSizing: 'border-box',
-                    border: '1px solid #ddd', borderRadius: '5px', fontSize: '0.8rem'
-                  }}
-                />
+          )
+
+          const applyBtn = (keys) => (
+            <button onClick={() => applySection(selectedRowIdx, keys)}
+              style={{ width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+                fontSize: '0.65rem', fontWeight: '600', color: '#888',
+                background: '#f5f5f5', border: '1px solid #e0e0e0',
+                borderRadius: '4px', cursor: 'pointer' }}>
+              Apply to all rows
+            </button>
+          )
+
+          const SECTIONS = [
+            {
+              tabKey: 'detail', label: 'Trapezoids & Connectors',
+              keys: ['railOffsetCm','connOffsetCm','panelLengthCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape'],
+              fields: [
+                ['Rail Clamp Offset (cm)', 'railOffsetCm', 0.1, 0],
+                ['Connector Offset (cm)',  'connOffsetCm',  0.5, 0],
+                ['Panel Length (cm)',      'panelLengthCm', 0.1, 10],
+                ['Block Height (cm)',      'blockHeightCm', 1,   1],
+                ['Block Width (cm)',       'blockWidthCm',  1,   1],
+                ['Conn. Edge Dist (mm)',   'connEdgeDistMm',5,   0],
+                ['Min per Portrait',       'connMinPortrait',1,  1],
+                ['Min per Landscape',      'connMinLandscape',1, 1],
+              ],
+            },
+            {
+              tabKey: 'rails', label: 'Rails',
+              keys: ['railOverhangCm','stockLengths'],
+              fields: [
+                ['Rail Overhang (cm)', 'railOverhangCm', 0.5, 0],
+              ],
+            },
+            {
+              tabKey: 'bases', label: 'Bases',
+              keys: ['edgeOffsetMm','spacingMm','maxSpanCm'],
+              fields: [
+                ['Edge Offset (mm)',  'edgeOffsetMm', 10,  0],
+                ['Base Spacing (mm)', 'spacingMm',    50, 100],
+                ['Max Span (cm)',     'maxSpanCm',     5,  50],
+              ],
+            },
+          ]
+
+          return SECTIONS.map(sec => {
+            const isOpen = activeTab === sec.tabKey
+            return (
+              <div key={sec.tabKey} style={{ borderTop: '1px solid #e8e8e8' }}>
+                <div onClick={() => setActiveTab(isOpen ? activeTab : sec.tabKey)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '0.5rem 1rem', cursor: 'pointer',
+                    background: isOpen ? '#f0f4e8' : '#fafafa' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? '#5a6600' : '#888',
+                    textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.label}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#aaa' }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
+                    {sec.fields.map(([lbl, key, step, min]) => field(lbl, key, step, min))}
+                    {sec.tabKey === 'rails' && (
+                      <div style={{ marginBottom: '0.45rem' }}>
+                        <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Stock Lengths (mm)</div>
+                        <input type="text"
+                          value={(s.stockLengths || []).join(', ')}
+                          onChange={e => updateSetting(selectedRowIdx, 'stockLengths',
+                            e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
+                          placeholder="e.g. 4800, 6000"
+                          style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
+                            border: `1px solid ${isOverride('stockLengths') ? '#FFB74D' : '#ddd'}`,
+                            borderRadius: '4px', fontSize: '0.78rem' }} />
+                      </div>
+                    )}
+                    {applyBtn(sec.keys)}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            )
+          })
+        })()}
       </div>
 
       {/* ── Main content ── */}
@@ -874,10 +959,10 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeTab === 'layout' && <LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} />}
           {activeTab === 'rows'   && <RowsView rowConstructions={rowConstructions} />}
-          {activeTab === 'detail' && <DetailView rc={selectedRC} panelLines={selectedRowLineDepths} />}
+          {activeTab === 'detail' && <DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} />}
           {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
-          {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} />}
-          {activeTab === 'bases'  && <BasePlanTab   panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} />}
+          {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} />}
+          {activeTab === 'bases'  && <BasePlanTab   panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />}
         </div>
       </div>
     </div>
