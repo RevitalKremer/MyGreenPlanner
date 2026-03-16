@@ -376,9 +376,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                             {showConnectors && connLocalYs.map((localY, ci) => {
                               const sp = localToScreen({ x: base.localX, y: localY }, frame.center, frame.angleRad)
                               const [cx, cy] = toSvg(sp.x, sp.y)
-                              // H-clamp: a short bar perpendicular to base line, with two flange marks
-                              const CW = 8, CH = 3, FW = 4, FH = 1.5
-                              // label: offset from outer frame edge in mm
+                              // Simple rectangle connector (top view), purple to match detail view
+                              // Dimensions in physical cm → SVG px via (cm / pixelToCmRatio * sc)
+                              const CW = 9   / pixelToCmRatio * sc  // 9 cm along slope (long edge)
+                              const CH = 4.5 / pixelToCmRatio * sc  // 4.5 cm along row  (2:1 ratio)
+                              // label: offset from beam rear leg in mm
                               const localYOffset = Math.round((localY - rearLegY) * pixelToCmRatio * 10)
                               const labelOff = 6  // px away from connector, in base line direction
                               const lx = cx + (-Math.sin(angleRad)) * (CW / 2 + labelOff)
@@ -386,12 +388,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               return (
                                 <g key={`conn-${ci}`}>
                                   <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
-                                    {/* center bar (along panel depth) */}
-                                    <rect x={-CW/2} y={-CH/2} width={CW} height={CH} fill="#111" />
-                                    {/* top flange */}
-                                    <rect x={-FW/2} y={-CH/2 - FH} width={FW} height={FH} fill="#111" />
-                                    {/* bottom flange */}
-                                    <rect x={-FW/2} y={ CH/2}      width={FW} height={FH} fill="#111" />
+                                    <rect x={-CW/2} y={-CH/2} width={CW} height={CH}
+                                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.5" />
                                   </g>
                                   {showDimensions && (
                                     <text x={lx} y={ly}

@@ -440,22 +440,18 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
               const cy = beamY(cx)
               const beamTop  = -BEAM_THICK_PX / 2
               const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
-              const clampH   = Math.abs(panBot - beamTop)
-              const CW = 14, FW = 20, FH = 3.5
+              const RW = 9 * SC, RH = 4.5 * SC  // 9 cm × 4.5 cm (2:1), long along slope
+              const midY = (beamTop + panBot) / 2
               // Distance along slope from beam start (x0)
               const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
-              // Label position: skyward above the top flange
+              // Label position: skyward above the connector
               const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
               const lx = cx + (-Math.sin(angleRad)) * labelOffPx
               const ly = cy + (-Math.cos(angleRad)) * labelOffPx
               return (
                 <g key={ci}>
                   <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
-                    <rect x={-CW/2} y={panBot} width={CW} height={clampH}
-                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
-                    <rect x={-FW/2} y={beamTop - FH} width={FW} height={FH}
-                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
-                    <rect x={-FW/2} y={panBot - FH} width={FW} height={FH}
+                    <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
                       fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
                   </g>
                   {/* Distance from panel start, above the connector */}
