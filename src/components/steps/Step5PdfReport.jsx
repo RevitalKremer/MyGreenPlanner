@@ -8,126 +8,113 @@ const PAGE_H_MM  = 210
 const FRAME_MM   = 8    // inner frame inset from page edge
 const FOOTER_H_MM = 26  // title block height
 
-// ─── Title block cell helper ─────────────────────────────────────────────────
-function TBCell({ label, value, width, borderLeft = true, borderRight = false, colSpan, rowSpan, style = {}, valueStyle = {}, children }) {
-  return (
-    <td
-      colSpan={colSpan}
-      rowSpan={rowSpan}
-      style={{
-        width,
-        borderLeft:  borderLeft  ? '0.5px solid #000' : 'none',
-        borderRight: borderRight ? '0.5px solid #000' : 'none',
-        verticalAlign: 'top',
-        padding: '2px 3px 1px',
-        boxSizing: 'border-box',
-        ...style,
-      }}
-    >
-      {label && (
-        <div style={{ fontSize: '5px', color: '#555', lineHeight: 1, marginBottom: '2px', direction: 'rtl', whiteSpace: 'nowrap' }}>{label}</div>
-      )}
-      {value !== undefined && (
-        <div style={{ fontSize: '7.5px', fontWeight: '600', color: '#000', direction: 'rtl', lineHeight: 1.2, ...valueStyle }}>{value}</div>
-      )}
-      {children}
-    </td>
-  )
+// ─── Shared cell styles ───────────────────────────────────────────────────────
+const cellBase = {
+  borderLeft: '0.5px solid #000',
+  padding: '1px 3px',
+  boxSizing: 'border-box',
+  verticalAlign: 'top',
+  overflow: 'hidden',
+}
+const labelStyle = {
+  fontSize: '5px', color: '#555', lineHeight: 1,
+  direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px',
+}
+const valStyle = {
+  fontSize: '7.5px', fontWeight: '600', color: '#000',
+  direction: 'rtl', lineHeight: 1.2,
 }
 
-// ─── CAD Title Block (footer) ─────────────────────────────────────────────────
-function TitleBlock({ project, panelType, totalKw, panelCount, date }) {
-  const projectName = project?.name  || '<project name>'
+// ─── CAD Title Block (footer) — 3 areas: left sheet, middle data, right logo ──
+function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) {
+  const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
-
-  // Cell width helper — total usable width minus logo column
-  const W = (pct) => `${pct}%`
+  const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : 'TBD'
+  const wpStr       = panelWp ? `${panelWp}W` : 'TBD'
 
   return (
     <table style={{
       width: '100%', height: '100%',
-      borderCollapse: 'collapse',
-      tableLayout: 'fixed',
-      fontSize: '7px',
+      borderCollapse: 'collapse', tableLayout: 'fixed',
       borderTop: '0.5px solid #000',
     }}>
       <colgroup>
-        {/* sheet# | plan | approval | proj# | total-kw | power | qty | panel-type | proj-name | date | location | logo */}
-        <col style={{ width: '4%' }} />
-        <col style={{ width: '5%' }} />
-        <col style={{ width: '11%' }} />
-        <col style={{ width: '7%' }} />
-        <col style={{ width: '8%' }} />
-        <col style={{ width: '6%' }} />
-        <col style={{ width: '6%' }} />
-        <col style={{ width: '13%' }} />
-        <col style={{ width: '16%' }} />
-        <col style={{ width: '8%' }} />
-        <col style={{ width: '8%' }} />
-        <col style={{ width: '8%' }} />
+        {/* Area 1: approval (4%) | Area 2: sheet(6%) proj#(8%) approval-req(10%) total-kw(9%) panel-type(16%) power(7%) qty(6%) proj-name(14%) date(8%) location(8%) | Area 3: logo(12%) */}
+        <col style={{ width: '4%' }} />   {/* לאישור */}
+        <col style={{ width: '6%' }} />   {/* תבנית */}
+        <col style={{ width: '8%' }} />   {/* מספר פרויקט */}
+        <col style={{ width: '10%' }} />  {/* דרישה/קונסטרוקטור */}
+        <col style={{ width: '9%' }} />   {/* הספק כולל */}
+        <col style={{ width: '16%' }} />  {/* סוג פאנל */}
+        <col style={{ width: '7%' }} />   {/* הספק */}
+        <col style={{ width: '6%' }} />   {/* כמות */}
+        <col style={{ width: '14%' }} />  {/* שם פרויקט */}
+        <col style={{ width: '8%' }} />   {/* תאריך */}
+        <col style={{ width: '5%' }} />   {/* מיקום */}
+        <col style={{ width: '7%' }} />   {/* logo */}
       </colgroup>
       <tbody>
         {/* ── Row 1: labels ── */}
         <tr style={{ height: '50%', borderBottom: '0.5px solid #000' }}>
-          <TBCell label="תבנית" value="1" />
-          <TBCell label="תכנית" value="TBD" />
-          <TBCell label="דרישה / אישור">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '3px' }}>
-              <div style={{ fontSize: '6px', color: '#555', direction: 'rtl', lineHeight: 1.2, textAlign: 'center' }}>
-                דרישה אישור<br />קונסטרוקטור
-              </div>
-              <div style={{
-                background: '#e74c3c', color: 'white',
-                fontWeight: '800', fontSize: '6px',
-                borderRadius: '1px', padding: '1px 3px',
-                lineHeight: 1,
-              }}>!</div>
+          {/* Area 1 — left, label row: empty */}
+          <td style={{ ...cellBase, borderLeft: 'none' }} />
+
+          {/* Area 2 — data cells labels */}
+          <td style={cellBase}><div style={labelStyle}>תבנית</div></td>
+          <td style={cellBase}><div style={labelStyle}>מספר פרויקט</div></td>
+          {/* approval: spans both rows */}
+          <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center' }}>
+            <div style={{ fontSize: '6px', color: '#444', direction: 'rtl', lineHeight: 1.4, marginBottom: '3px' }}>
+              דרישה אישור<br />קונסטרוקטור
             </div>
-          </TBCell>
-          <TBCell label="מספר פרויקט" value="TBD" />
-          <TBCell label="הספק כולל" value={totalKw ? `${totalKw.toFixed(2)} kW` : 'TBD'} valueStyle={{ fontSize: '9px', fontWeight: '800' }} />
-          <TBCell label="הספק" value="TBD" />
-          <TBCell label="כמות" value={panelCount ?? 'TBD'} />
-          <TBCell label="סוג פאנל" value={panelType || '<Panel model name>'} valueStyle={{ fontSize: '6px' }} />
-          <TBCell label="שם פרויקט" value={projectName} valueStyle={{ fontSize: '7px' }} />
-          <TBCell label="תאריך" value={dateStr} />
-          <TBCell label="מיקום" value={location} />
-          {/* Logo — spans 2 rows */}
-          <td rowSpan={2} style={{
-            borderLeft: '0.5px solid #000',
-            padding: '4px 6px',
-            verticalAlign: 'middle',
-            textAlign: 'center',
-            background: '#fff',
-          }}>
+            <div style={{
+              display: 'inline-block',
+              background: '#c0392b', color: 'white',
+              fontWeight: '900', fontSize: '8px',
+              borderRadius: '2px', padding: '1px 4px', lineHeight: 1.3,
+            }}>!</div>
+          </td>
+          <td style={cellBase}><div style={labelStyle}>הספק כולל</div></td>
+          <td style={cellBase}><div style={labelStyle}>סוג פאנל</div></td>
+          <td style={cellBase}><div style={labelStyle}>הספק</div></td>
+          <td style={cellBase}><div style={labelStyle}>כמות</div></td>
+          <td style={cellBase}><div style={labelStyle}>שם פרויקט</div></td>
+          <td style={cellBase}><div style={labelStyle}>תאריך</div></td>
+          <td style={cellBase}><div style={labelStyle}>מיקום</div></td>
+
+          {/* Area 3 — logo spans both rows */}
+          <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center', padding: '3px 4px' }}>
             <img src="/sadotenergylogo.png" alt="שדרות אנרגיה"
-              style={{ maxWidth: '100%', maxHeight: '36px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+              style={{ maxWidth: '100%', maxHeight: '38px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           </td>
         </tr>
 
-        {/* ── Row 2: approval button row ── */}
+        {/* ── Row 2: values ── */}
         <tr style={{ height: '50%' }}>
-          <TBCell />
-          <TBCell />
-          <TBCell>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <div style={{
-                background: '#2563eb', color: 'white',
-                fontWeight: '800', fontSize: '7px',
-                borderRadius: '2px', padding: '2px 6px',
-                direction: 'rtl', lineHeight: 1.3,
-              }}>לאישור</div>
-            </div>
-          </TBCell>
-          <TBCell />
-          <TBCell />
-          <TBCell />
-          <TBCell />
-          <TBCell />
-          <TBCell />
-          <TBCell />
-          <TBCell />
+          {/* Area 1 — לאישור button */}
+          <td style={{ ...cellBase, borderLeft: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
+            <div style={{
+              background: '#2563eb', color: 'white',
+              fontWeight: '800', fontSize: '7px',
+              borderRadius: '2px', padding: '2px 5px',
+              direction: 'rtl', lineHeight: 1.3, display: 'inline-block',
+            }}>לאישור</div>
+          </td>
+
+          {/* Area 2 — values */}
+          <td style={cellBase}><div style={{ ...valStyle, fontSize: '7px' }}>D3</div></td>
+          <td style={cellBase}><div style={valStyle}>{project?.number || 'TBD'}</div></td>
+          {/* approval cell spanned above — skip */}
+          <td style={{ ...cellBase, verticalAlign: 'middle' }}>
+            <div style={{ ...valStyle, fontSize: '10px', fontWeight: '900', textAlign: 'center' }}>{kWstr}</div>
+          </td>
+          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{panelType || 'TBD'}</div></td>
+          <td style={cellBase}><div style={valStyle}>{wpStr}</div></td>
+          <td style={cellBase}><div style={valStyle}>{panelCount ?? 'TBD'}</div></td>
+          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{projectName}</div></td>
+          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{dateStr}</div></td>
+          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{location}</div></td>
         </tr>
       </tbody>
     </table>
@@ -135,7 +122,7 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date }) {
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, panelType, totalKw, panelCount, date, children, pageRef }) {
+export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date, children, pageRef }) {
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
 
@@ -190,6 +177,7 @@ export function CadPage({ project, panelType, totalKw, panelCount, date, childre
         <TitleBlock
           project={project}
           panelType={panelType}
+          panelWp={panelWp}
           totalKw={totalKw}
           panelCount={panelCount}
           date={date}
@@ -206,13 +194,13 @@ export default function Step5PdfReport({ panels = [], refinedArea, rowConfigs = 
   const panelCount = panels.length
   const panelType  = refinedArea?.panelType ?? null
 
-  // Rough total kW from panel count × panel wattage (parsed from model name if possible)
-  const totalKw = (() => {
+  // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
+  const panelWp = (() => {
     if (!panelType) return null
-    const m = panelType.match(/[A-Z]-?(\d{3})-/)
-    const wp = m ? parseInt(m[1], 10) : null
-    return wp ? (panelCount * wp) / 1000 : null
+    const m = panelType.match(/[A-Z0-9](\d{3})[^0-9]/)
+    return m ? parseInt(m[1], 10) : null
   })()
+  const totalKw = panelWp ? (panelCount * panelWp) / 1000 : null
 
   const handleExportPdf = async () => {
     const el = pageRef.current
@@ -269,6 +257,7 @@ export default function Step5PdfReport({ panels = [], refinedArea, rowConfigs = 
           pageRef={pageRef}
           project={project}
           panelType={panelType}
+          panelWp={panelWp}
           totalKw={totalKw}
           panelCount={panelCount}
           date={new Date().toLocaleDateString('he-IL')}
