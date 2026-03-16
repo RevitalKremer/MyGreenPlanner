@@ -396,24 +396,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               // Dimensions in physical cm → SVG px via (cm / pixelToCmRatio * sc)
                               const CW = 9   / pixelToCmRatio * sc  // 9 cm along slope (long edge)
                               const CH = 4.5 / pixelToCmRatio * sc  // 4.5 cm along row  (2:1 ratio)
-                              // label: offset from beam rear leg in mm
-                              const localYOffset = Math.round((localY - rearLegY) * pixelToCmRatio * 10)
-                              const labelOff = (CW / 2 + 6 / zoom)
-                              const lx = cx + (-Math.sin(angleRad)) * labelOff
-                              const ly = cy + (-Math.cos(angleRad)) * labelOff
                               return (
                                 <g key={`conn-${ci}`}>
                                   <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
                                     <rect x={-CW/2} y={-CH/2} width={CW} height={CH}
                                       fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.5" />
                                   </g>
-                                  {showDimensions && (
-                                    <text x={lx} y={ly}
-                                      textAnchor="middle" dominantBaseline="middle"
-                                      fontSize={6 / zoom} fontWeight="600" fill="#333"
-                                      transform={`rotate(${lineAngle} ${lx} ${ly})`}
-                                    >{(localYOffset / 10).toFixed(1)}</text>
-                                  )}
                                 </g>
                               )
                             })}
