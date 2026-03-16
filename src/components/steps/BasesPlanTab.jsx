@@ -327,7 +327,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const bLen = Math.sqrt((bbx - btx) ** 2 + (bby - bty) ** 2)
                         const buy = bLen > 0 ? (bby - bty) / bLen : 1
                         const bux = bLen > 0 ? (bbx - btx) / bLen : 0
-                        const FP = 4  // half-width of foot plate
+                        // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
+                        const PROFILE_THICK = 4 / pixelToCmRatio * sc
+                        const FP = 20 / pixelToCmRatio * sc  // foot plate half-width = 20 cm
                         // Place foot plate at outer edge side
                         const [fpx, fpy] = outerEdgeSvg(base.localX)
                         // Rotation angle of the base line
@@ -356,8 +358,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
 
                         return (
                           <g key={`base-${bi}`}>
-                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth="2" strokeLinecap="round" />
-                            <line x1={fpx - buy * FP} y1={fpy + bux * FP} x2={fpx + buy * FP} y2={fpy - bux * FP} stroke={BASE_COLOR} strokeWidth="2.5" strokeLinecap="round" />
+                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
+                            <line x1={fpx - buy * FP} y1={fpy + bux * FP} x2={fpx + buy * FP} y2={fpy - bux * FP} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
                             {showBaseIDs && (() => {
                               const [idX, idY] = annBaseSvg(base.localX)
                               const ID_OFF = 10  // extra offset beyond annotation baseline
@@ -419,8 +421,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const [b2x, b2y] = toSvg(bb2.x, bb2.y)
                         return (
                           <g key={`diag-${bi}`}>
-                            <line x1={t1x} y1={t1y} x2={b2x} y2={b2y} stroke={BASE_COLOR} strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />
-                            <line x1={b1x} y1={b1y} x2={t2x} y2={t2y} stroke={BASE_COLOR} strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />
+                            <line x1={t1x} y1={t1y} x2={b2x} y2={b2y} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeDasharray="3,2" opacity="0.6" />
+                            <line x1={b1x} y1={b1y} x2={t2x} y2={t2y} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeDasharray="3,2" opacity="0.6" />
                           </g>
                         )
                       })}
