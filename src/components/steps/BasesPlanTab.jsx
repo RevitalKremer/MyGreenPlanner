@@ -324,7 +324,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   const frontLegY    = panelRearY + railOffPx + topBeamPx
                   // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
                   const PROFILE_THICK = 4 / pixelToCmRatio * sc
-                  const FP = 20 / pixelToCmRatio * sc  // foot plate half-width = 20 cm
 
                   return (
                     <g key={`bp-${i}`} opacity={rowOpacity}>
@@ -335,12 +334,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const beamBottom = localToScreen({ x: base.localX, y: frontLegY }, frame.center, angleRad)
                         const [btx, bty] = toSvg(beamTop.x,    beamTop.y)
                         const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
-                        // Foot plate perpendicular to base line
-                        const bLen = Math.sqrt((bbx - btx) ** 2 + (bby - bty) ** 2)
-                        const buy = bLen > 0 ? (bby - bty) / bLen : 1
-                        const bux = bLen > 0 ? (bbx - btx) / bLen : 0
-                        // Place foot plate at outer edge side
-                        const [fpx, fpy] = outerEdgeSvg(base.localX)
                         // Rotation angle of the base line
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
 
@@ -368,7 +361,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         return (
                           <g key={`base-${bi}`}>
                             <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
-                            <line x1={fpx - buy * FP} y1={fpy + bux * FP} x2={fpx + buy * FP} y2={fpy - bux * FP} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
                             {showBaseIDs && (() => {
                               // Midpoint of brown bar, tilted along bar direction
                               const bx = (btx + bbx) / 2
