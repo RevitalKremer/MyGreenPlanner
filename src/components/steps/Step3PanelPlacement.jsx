@@ -630,7 +630,7 @@ export default function Step3PanelPlacement({
                     if (isHovered) {
                       fill = 'rgba(244, 67, 54, 0.65)'; stroke = '#f44336'; strokeWidth = '1'
                     } else if (isSelected) {
-                      fill = 'rgba(100, 180, 255, 0.75)'; stroke = '#0066CC'; strokeWidth = '2'
+                      fill = 'rgba(209,227,243,0.2)'; stroke = '#003f7f'; strokeWidth = '1'
                     } else {
                       fill = 'rgba(135, 206, 235, 0.5)'; stroke = '#4682B4'; strokeWidth = '1'
                     }
