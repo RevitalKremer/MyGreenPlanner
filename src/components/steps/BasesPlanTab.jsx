@@ -82,7 +82,7 @@ function BasesTable({ bp, rowIdx }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {} }) {
+export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, highlightGroup = null }) {
   const edgeOffsetMm   = settings.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM
   const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
   const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
@@ -186,6 +186,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
             <div style={{ padding: '1.25rem 1.25rem 0' }}>
               <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+                <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
                 {/* Panels */}
                 {panels.map(panel => {
@@ -360,8 +361,19 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         // Rotation angle of the base line
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
 
+                        // Determine if this base should be highlighted
+                        const isEdgeBase = bi === 0 || bi === bases.length - 1
+                        const hlThisBase = (highlightGroup === 'base-edges' && isEdgeBase)
+                          || highlightGroup === 'trap-spacing'
+
                         return (
                           <g key={`base-${bi}`}>
+                            {/* Highlight glow behind the bar */}
+                            {hlThisBase && (
+                              <line x1={btx} y1={bty} x2={bbx} y2={bby}
+                                stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="round"
+                                style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                            )}
                             <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
                             {showBaseIDs && (() => {
                               // Midpoint of brown bar, tilted along bar direction
@@ -441,7 +453,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                       })()}
 
                       {/* Spacing dimension annotations */}
-                      {showDimensions && segAnnotations}
+                      {showDimensions && (
+                        <g style={highlightGroup === 'base-spacing' ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
+                          {segAnnotations}
+                        </g>
+                      )}
                     </g>
                   )
                 })}

@@ -106,7 +106,7 @@ function RailsTable({ rails, rowIdx }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx = null, settings = {} }) {
+export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx = null, settings = {}, highlightGroup = null }) {
   const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
   const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
   const stockLengths  = settings.stockLengths   ?? DEFAULT_STOCK_LENGTHS_MM
@@ -237,6 +237,7 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
         <div style={{ padding: '1.25rem 1.25rem 0' }}>
           <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+            <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
             {/* Panels — drawn as rotated rectangles, selected row highlighted */}
             {panels.map(panel => {
@@ -374,12 +375,21 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
 
                 const showAnnotation = annotatedRailIds.has(rail.railId)
 
+                const hlRail = highlightGroup === 'rail-ends'
+                const hlCuts = highlightGroup === 'rail-cuts'
+
                 return (
                   <g key={`${i}-${rail.railId}`} opacity={railOpacity}>
-                    {/* Rail line: 3px border (#105689) + 1px fill (#3f79a5) center */}
+                    {/* Rail line */}
                     {showRails && (
                       <line x1={x1} y1={y1} x2={x2} y2={y2}
                         stroke={RAIL_COLOR_FILL} strokeWidth={4 / pixelToCmRatio * sc} strokeLinecap="round" />
+                    )}
+                    {/* rail-ends highlight: amber glow over the full rail line */}
+                    {hlRail && showRails && (
+                      <line x1={x1} y1={y1} x2={x2} y2={y2}
+                        stroke="#FFB300" strokeWidth={(4 / pixelToCmRatio * sc) + 6} strokeLinecap="round"
+                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
 
                     {/* CAD annotation — one per line only */}
@@ -401,7 +411,9 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
                         stroke="#000" strokeWidth={1.2 / zoom} />
 
                       {/* Segment labels + internal ticks */}
-                      {segAnnotations}
+                      <g style={hlCuts ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
+                        {segAnnotations}
+                      </g>
                     </>}
                   </g>
                 )

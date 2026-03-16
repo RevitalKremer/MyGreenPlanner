@@ -100,14 +100,17 @@ function TrapProfile({ rc, sc = 1.2, showLabel = true, selected = false }) {
 
 // ─── Layout view ─────────────────────────────────────────────────────────────
 
-function LayoutView({ rowConstructions, selectedIdx, onSelectRow }) {
+function LayoutView({ rowConstructions, selectedIdx, onSelectRow, highlightParam = null }) {
+  const hlSpacing = PARAM_GROUP[highlightParam] === 'trap-spacing'
   return (
     <div style={{ padding: '1.5rem', overflowY: 'auto' }}>
+      {hlSpacing && <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>}
       {rowConstructions.map((rc, i) => {
         const sc = 1.2
         const profileW = rc.baseLength * sc + 16
         const spacing_mm = Math.round(rc.spacing * 10)
         const totalW = rc.numTrapezoids * profileW + (rc.numTrapezoids - 1) * 20 + 60
+        const arrowColor = hlSpacing ? '#FFB300' : '#17a9cf'
 
         return (
           <div key={i}
@@ -134,9 +137,13 @@ function LayoutView({ rowConstructions, selectedIdx, onSelectRow }) {
                       <TrapProfile rc={rc} sc={sc} showLabel={true} selected={selectedIdx === i} />
                       {/* Spacing arrow at bottom */}
                       {!isLast && (
-                        <g transform={`translate(0, 115)`}>
-                          <line x1={rc.baseLength * sc + 16} y1={5} x2={rc.baseLength * sc + 16 + 20} y2={5} stroke="#17a9cf" strokeWidth="1" markerEnd="url(#arr)" markerStart="url(#arr)" />
-                          <text x={rc.baseLength * sc + 16 + 10} y={14} fontSize="8" fill="#17a9cf" fontWeight="700" fontStyle="italic" textAnchor="middle">{spacing_mm}</text>
+                        <g transform={`translate(0, 115)`}
+                          style={hlSpacing ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
+                          <line x1={rc.baseLength * sc + 16} y1={5} x2={rc.baseLength * sc + 16 + 20} y2={5}
+                            stroke={arrowColor} strokeWidth={hlSpacing ? 2 : 1}
+                            markerEnd="url(#arr)" markerStart="url(#arr)" />
+                          <text x={rc.baseLength * sc + 16 + 10} y={14} fontSize="8"
+                            fill={arrowColor} fontWeight="700" fontStyle="italic" textAnchor="middle">{spacing_mm}</text>
                         </g>
                       )}
                     </g>
@@ -153,13 +160,15 @@ function LayoutView({ rowConstructions, selectedIdx, onSelectRow }) {
 
 // ─── Rows (top view) ─────────────────────────────────────────────────────────
 
-function RowsView({ rowConstructions }) {
+function RowsView({ rowConstructions, highlightParam = null }) {
   const maxLen = Math.max(...rowConstructions.map(r => r.rowLength), 1)
   const maxW = 580
   const sc = maxW / maxLen
+  const hlEnds = PARAM_GROUP[highlightParam] === 'rail-ends'
 
   return (
     <div style={{ padding: '1.5rem', overflowY: 'auto' }}>
+      {hlEnds && <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>}
       {rowConstructions.map((rc, i) => {
         const W = rc.rowLength * sc
         const panelDepth = PANEL_LENGTH_CM * Math.cos(rc.angle * Math.PI / 180)
@@ -167,6 +176,7 @@ function RowsView({ rowConstructions }) {
         const railLabel = `${2}×${(rc.rowLength / 100).toFixed(1)}m`
         const totalH = depthSc + 48
         const svgW = W + 70
+        const widthArrowColor = hlEnds ? '#FFB300' : '#222'
 
         return (
           <div key={i} style={{ marginBottom: '2rem' }}>
@@ -174,8 +184,10 @@ function RowsView({ rowConstructions }) {
             <svg width={svgW} height={totalH} style={{ display: 'block', overflow: 'visible' }}>
               <ArrowDefs />
               {/* Row width arrow */}
-              <line x1={30} y1={8} x2={30 + W} y2={8} stroke="#222" strokeWidth="1" markerEnd="url(#arr)" markerStart="url(#arr)" />
-              <text x={30 + W / 2} y={5} fontSize="9" fontWeight="700" fill="#222" textAnchor="middle">{Math.round(rc.rowLength * 10)}</text>
+              <g style={hlEnds ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
+                <line x1={30} y1={8} x2={30 + W} y2={8} stroke={widthArrowColor} strokeWidth={hlEnds ? 2 : 1} markerEnd="url(#arr)" markerStart="url(#arr)" />
+                <text x={30 + W / 2} y={5} fontSize="9" fontWeight="700" fill={widthArrowColor} textAnchor="middle">{Math.round(rc.rowLength * 10)}</text>
+              </g>
               {/* Rectangle */}
               <rect x={30} y={20} width={W} height={depthSc}
                 fill="#cfe3f5" stroke="#3a6ea5" strokeWidth="1.5" />
@@ -205,7 +217,24 @@ function RowsView({ rowConstructions }) {
 
 // ─── Detail view (side elevation sketch) ─────────────────────────────────────
 
-function DetailView({ rc, panelLines = null, settings = {} }) {
+// Param → highlight group mapping (used across all tabs)
+const PARAM_GROUP = {
+  railOffsetCm:     'rail-clamp',    // detail tab: panel-rear clamp area
+  connOffsetCm:     'connectors',    // detail tab: connector rects
+  connEdgeDistMm:   'connectors',
+  connMinPortrait:  'connectors',
+  connMinLandscape: 'connectors',
+  panelLengthCm:    'panel',         // detail tab: panel bars
+  blockHeightCm:    'blocks',        // detail tab: block rects
+  blockWidthCm:     'blocks',
+  railOverhangCm:   'rail-ends',     // rails tab + rows tab
+  stockLengths:     'rail-cuts',     // rails tab: cut segment labels
+  edgeOffsetMm:     'base-edges',    // bases tab: first & last base
+  spacingMm:        'base-spacing',  // bases tab: dimension annotations
+  maxSpanCm:        'trap-spacing',  // layout tab + bases tab
+}
+
+function DetailView({ rc, panelLines = null, settings = {}, highlightParam = null }) {
   const [zoom, setZoom]             = useState(1)
   const [panOffset, setPanOffset]   = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning]   = useState(false)
@@ -230,6 +259,10 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
+
+  // Highlight helpers
+  const hlGroup = PARAM_GROUP[highlightParam] ?? null
+  const hl = (group) => hlGroup === group
 
   if (!rc) return <div style={{ padding: '2rem', color: '#aaa' }}>Select a row to see its trapezoid detail</div>
 
@@ -404,6 +437,7 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
               <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
                 <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
               </marker>
+              <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
             </defs>
 
             {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
@@ -412,6 +446,16 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
             <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
             <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
             <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+            {/* Rail-clamp offset highlight: panel rear overhang region */}
+            {hl('rail-clamp') && (
+              <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                {/* Highlight the panel-rear-to-rear-leg span */}
+                <line x1={panelX1} y1={panelY1} x2={x0} y2={topY0}
+                  stroke="#FFB300" strokeWidth="8" strokeLinecap="round" opacity="0.6" />
+                {/* Ring on the rear leg top where the clamp sits */}
+                <circle cx={x0} cy={topY0} r={10} fill="none" stroke="#FFB300" strokeWidth="2.5" />
+              </g>
+            )}
 
             {/* ── Panel bars (one per line, offset above beam+connectors) ── */}
             {(() => {
@@ -425,12 +469,23 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
                 const cy  = (start.y + end.y) / 2 + panOffY
                 const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
                 return (
-                  <rect key={idx}
-                    x={cx - len/2} y={cy - PANEL_THICK_PX/2}
-                    width={len} height={PANEL_THICK_PX}
-                    fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
-                    transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
-                  />
+                  <g key={idx}>
+                    <rect
+                      x={cx - len/2} y={cy - PANEL_THICK_PX/2}
+                      width={len} height={PANEL_THICK_PX}
+                      fill="#3060b0" stroke="#1a4080" strokeWidth="0.5"
+                      transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
+                    />
+                    {hl('panel') && (
+                      <rect
+                        x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
+                        width={len + 10} height={PANEL_THICK_PX + 10}
+                        fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                        transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
+                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
+                      />
+                    )}
+                  </g>
                 )
               })
             })()}
@@ -453,6 +508,11 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
                   <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                     <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
                       fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                    {hl('connectors') && (
+                      <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
+                        fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                    )}
                   </g>
                   {/* Distance from panel start, above the connector */}
                   <text x={lx} y={ly}
@@ -483,6 +543,14 @@ function DetailView({ rc, panelLines = null, settings = {} }) {
             {/* ── Blocks ── */}
             <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
             <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+            {hl('blocks') && (
+              <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                <rect x={lb_x - 5} y={baseY - 5} width={lb_w + 10} height={blockH + 10}
+                  fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                <rect x={rb_x - 5} y={baseY - 5} width={rb_w + 10} height={blockH + 10}
+                  fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+              </g>
+            )}
 
             {/* ── Green floor line ── */}
             <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
@@ -657,6 +725,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
   const [activeTab, setActiveTab] = useState('detail')
   const [globalSettings, setGlobalSettings] = useState(SETTINGS_DEFAULTS)
   const [rowSettings,    setRowSettings]    = useState({})  // per-row overrides: { [rowIdx]: partial }
+  const [highlightParam, setHighlightParam] = useState(null)
+  const hlTimerRef = useRef(null)
 
   const getSettings = (rowIdx) => ({ ...globalSettings, ...(rowSettings[rowIdx] || {}) })
 
@@ -665,6 +735,9 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
       ...prev,
       [rowIdx]: { ...(prev[rowIdx] || {}), [key]: value }
     }))
+    setHighlightParam(key)
+    clearTimeout(hlTimerRef.current)
+    hlTimerRef.current = setTimeout(() => setHighlightParam(null), 2200)
   }
 
   const applySection = (rowIdx, keys) => {
@@ -783,6 +856,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: 'white' }}>
+      <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
 
       {/* ── Left sidebar ── */}
       <div style={{
@@ -840,12 +914,18 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
                 borderRadius: '4px', fontSize: '0.78rem', fontWeight: isOverride(key) ? '700' : '400' }} />
           )
 
-          const field = (label, key, step, min) => (
-            <div key={key} style={{ marginBottom: '0.45rem' }}>
-              <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>{label}</div>
-              {numInput(key, step, min)}
-            </div>
-          )
+          const field = (label, key, step, min) => {
+            const isActive = highlightParam === key
+            return (
+              <div key={key} style={{ marginBottom: '0.45rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.65rem', color: isActive ? '#d97706' : '#888', fontWeight: isActive ? '700' : '400', marginBottom: '2px', transition: 'color 0.2s' }}>
+                  {isActive && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FFB300', display: 'inline-block', flexShrink: 0, animation: 'hlPulse 0.75s ease-in-out infinite' }} />}
+                  {label}
+                </div>
+                {numInput(key, step, min)}
+              </div>
+            )
+          }
 
           const applyBtn = (keys) => (
             <button onClick={() => applySection(selectedRowIdx, keys)}
@@ -953,14 +1033,14 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} /></div>}
-          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} /></div>}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} /></div>}
+          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
+          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} highlightParam={highlightParam} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} highlightParam={highlightParam} /></div>}
           {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
-          {activeTab === 'rails'  && <div style={{ height: '100%', overflow: 'hidden' }}><RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} /></div>}
+          {activeTab === 'rails'  && <div style={{ height: '100%', overflow: 'hidden' }}><RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} highlightGroup={PARAM_GROUP[highlightParam] ?? null} /></div>}
           {/* Bases tab: kept mounted to preserve zoom/pan state */}
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-            <BasesPlanTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />
+            <BasesPlanTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} highlightGroup={PARAM_GROUP[highlightParam] ?? null} />
           </div>
         </div>
       </div>
