@@ -101,12 +101,8 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date }) {
             textAlign: 'center',
             background: '#fff',
           }}>
-            <div style={{ fontSize: '8px', fontWeight: '900', color: '#1a6e2e', lineHeight: 1.3, letterSpacing: '0.01em' }}>
-              שדרות אנרגיה
-            </div>
-            <div style={{ fontSize: '5px', color: '#555', letterSpacing: '0.04em', marginTop: '2px' }}>
-              BRINGING ENERGY TO LIFE
-            </div>
+            <img src="/sadotenergylogo.png" alt="שדרות אנרגיה"
+              style={{ maxWidth: '100%', maxHeight: '36px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           </td>
         </tr>
 
