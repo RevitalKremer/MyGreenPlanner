@@ -305,12 +305,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     )
                   })
 
+                  // Per-row beam geometry (same for all bases in this row)
+                  const rc           = rowConstructions[i]
+                  const railOffPx    = railOffsetCm / pixelToCmRatio
+                  const connOffPx    = connOffsetCm / pixelToCmRatio
+                  const topBeamPx    = rc ? rc.topBeamLength / pixelToCmRatio : 0
+                  const panelRearY   = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
+                  const rearLegY     = panelRearY + railOffPx
+                  const frontLegY    = panelRearY + railOffPx + topBeamPx
+
                   return (
                     <g key={`bp-${i}`} opacity={rowOpacity}>
                       {/* Base markers */}
                       {showBases && bases.map((base, bi) => {
-                        const [btx, bty] = toSvg(base.screenTop.x, base.screenTop.y)
-                        const [bbx, bby] = toSvg(base.screenBottom.x, base.screenBottom.y)
+                        // Brown bar = top beam: spans rearLegY → frontLegY in local Y
+                        const beamTop    = localToScreen({ x: base.localX, y: rearLegY  }, frame.center, angleRad)
+                        const beamBottom = localToScreen({ x: base.localX, y: frontLegY }, frame.center, angleRad)
+                        const [btx, bty] = toSvg(beamTop.x,    beamTop.y)
+                        const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
                         // Foot plate perpendicular to base line
                         const bLen = Math.sqrt((bbx - btx) ** 2 + (bby - bty) ** 2)
                         const buy = bLen > 0 ? (bby - bty) / bLen : 1
@@ -318,18 +330,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const FP = 4  // half-width of foot plate
                         // Place foot plate at outer edge side
                         const [fpx, fpy] = outerEdgeSvg(base.localX)
-                        // Center of base line in SVG for label placement
                         // Rotation angle of the base line
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-                        const rc = rowConstructions[i]
-
-                        // Connector positions: derived from trapezoid geometry (mirrors detail/elevation view)
-                        const railOffPx  = railOffsetCm / pixelToCmRatio
-                        const connOffPx  = connOffsetCm / pixelToCmRatio
-                        const topBeamPx  = rc ? rc.topBeamLength / pixelToCmRatio : 0
-                        const panelRearY = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
-                        const rearLegY   = panelRearY + railOffPx
-                        const frontLegY  = panelRearY + railOffPx + topBeamPx
 
                         const connLocalYs = [];
                         (lines || []).forEach((ln, si) => {
@@ -377,7 +379,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               // H-clamp: a short bar perpendicular to base line, with two flange marks
                               const CW = 8, CH = 3, FW = 4, FH = 1.5
                               // label: offset from outer frame edge in mm
-                              const localYOffset = Math.round((localY - localBounds.minY) * pixelToCmRatio * 10)
+                              const localYOffset = Math.round((localY - rearLegY) * pixelToCmRatio * 10)
                               const labelOff = 6  // px away from connector, in base line direction
                               const lx = cx + (-Math.sin(angleRad)) * (CW / 2 + labelOff)
                               const ly = cy + (-Math.cos(angleRad)) * (CW / 2 + labelOff)
@@ -408,11 +410,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                       {/* Diagonal braces between consecutive bases */}
                       {showDiagonals && showBases && bases.length > 1 && bases.slice(0, -1).map((base, bi) => {
                         const nextBase = bases[bi + 1]
-                        // top of current base → bottom of next base (and vice versa for X-brace)
-                        const [t1x, t1y] = toSvg(base.screenTop.x, base.screenTop.y)
-                        const [b2x, b2y] = toSvg(nextBase.screenBottom.x, nextBase.screenBottom.y)
-                        const [b1x, b1y] = toSvg(base.screenBottom.x, base.screenBottom.y)
-                        const [t2x, t2y] = toSvg(nextBase.screenTop.x, nextBase.screenTop.y)
+                        // X-brace using top-beam endpoints (rearLeg ↔ frontLeg)
+                        const bt1 = localToScreen({ x: base.localX,     y: rearLegY  }, frame.center, angleRad)
+                        const bb1 = localToScreen({ x: base.localX,     y: frontLegY }, frame.center, angleRad)
+                        const bt2 = localToScreen({ x: nextBase.localX, y: rearLegY  }, frame.center, angleRad)
+                        const bb2 = localToScreen({ x: nextBase.localX, y: frontLegY }, frame.center, angleRad)
+                        const [t1x, t1y] = toSvg(bt1.x, bt1.y)
+                        const [b1x, b1y] = toSvg(bb1.x, bb1.y)
+                        const [t2x, t2y] = toSvg(bt2.x, bt2.y)
+                        const [b2x, b2y] = toSvg(bb2.x, bb2.y)
                         return (
                           <g key={`diag-${bi}`}>
                             <line x1={t1x} y1={t1y} x2={b2x} y2={b2y} stroke={BASE_COLOR} strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />

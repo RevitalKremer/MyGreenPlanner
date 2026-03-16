@@ -956,13 +956,16 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
         </div>
 
         {/* Tab content */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {activeTab === 'layout' && <LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} />}
-          {activeTab === 'rows'   && <RowsView rowConstructions={rowConstructions} />}
-          {activeTab === 'detail' && <DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} />}
-          {activeTab === 'bom'    && <BOMView rowConstructions={rowConstructions} />}
-          {activeTab === 'rails'  && <RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} />}
-          {activeTab === 'bases'  && <BasesPlanTab  panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} /></div>}
+          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} /></div>}
+          {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
+          {activeTab === 'rails'  && <div style={{ height: '100%', overflow: 'hidden' }}><RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} /></div>}
+          {/* Bases tab: kept mounted to preserve zoom/pan state */}
+          <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <BasesPlanTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions} settings={getSettings(selectedRowIdx)} />
+          </div>
         </div>
       </div>
     </div>
