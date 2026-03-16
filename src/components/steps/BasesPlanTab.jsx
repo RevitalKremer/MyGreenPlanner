@@ -248,9 +248,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   // Outer frame edge Y in local coords (the side facing away from scene center)
                   const outerLocalY = outSign >= 0 ? localBounds.maxY : localBounds.minY
 
-                  // Annotation baseline offset from outer frame edge (in SVG px)
-                  const ANN_OFF = 14
-                  const TICK = 3
+                  // Annotation constants — divided by zoom so they stay at constant screen size
+                  const ANN_OFF = 16 / zoom   // gap from row outer edge to dim line
+                  const TICK    = 4  / zoom   // half-length of perpendicular CAD tick mark
+                  const EXT_GAP = 2  / zoom   // gap between frame edge and extension line start
+                  const EXT_OVR = 3  / zoom   // extension line overshoot past dim baseline
 
                   // Helper: SVG coords of a point at localX on the outer frame edge
                   const outerEdgeSvg = (localX) => {
@@ -282,24 +284,37 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     const len = Math.sqrt(dx * dx + dy * dy)
                     if (len < 2) return null
                     const ux = dx / len, uy = dy / len
+                    // Perpendicular unit vector (for ticks + extension lines)
+                    const px = -uy, py = ux
 
-                    const label = fmt(distMm)
-                    const fontSize = Math.min(5.5, len / (label.length * 0.62))
+                    const label = `${(distMm / 10).toFixed(0)} cm`
+                    const fontSize = 7 / zoom   // constant screen size
                     const tx = (ax1 + ax2) / 2, ty = (ay1 + ay2) / 2
                     const angle = Math.atan2(dy, dx) * 180 / Math.PI
                     const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle
-                    const bgW = label.length * fontSize * 0.62 + 4, bgH = fontSize + 3
+                    const bgW = label.length * fontSize * 0.6 + 6 / zoom
+                    const bgH = fontSize + 4 / zoom
+
+                    // Extension line: from frame edge (+ small gap) to dim baseline (+ overshoot)
+                    const ex1s = [fe1x + apX * EXT_GAP, fe1y + apY * EXT_GAP]
+                    const ex1e = [ax1  - apX * EXT_OVR, ay1  - apY * EXT_OVR]
+                    const ex2s = [fe2x + apX * EXT_GAP, fe2y + apY * EXT_GAP]
+                    const ex2e = [ax2  - apX * EXT_OVR, ay2  - apY * EXT_OVR]
 
                     return (
                       <g key={`ann-${si}`}>
-                        <line x1={fe1x} y1={fe1y} x2={ax1} y2={ay1} stroke="#000" strokeWidth="1" />
-                        <line x1={fe2x} y1={fe2y} x2={ax2} y2={ay2} stroke="#000" strokeWidth="1" />
+                        {/* Extension lines */}
+                        <line x1={ex1s[0]} y1={ex1s[1]} x2={ex1e[0]} y2={ex1e[1]} stroke="#000" strokeWidth="0.8" />
+                        <line x1={ex2s[0]} y1={ex2s[1]} x2={ex2e[0]} y2={ex2e[1]} stroke="#000" strokeWidth="0.8" />
+                        {/* Dimension line */}
                         <line x1={ax1} y1={ay1} x2={ax2} y2={ay2} stroke="#000" strokeWidth="1" />
-                        <line x1={ax1 - ux * TICK} y1={ay1 - uy * TICK} x2={ax1 + ux * TICK} y2={ay1 + uy * TICK} stroke="#000" strokeWidth="1" />
-                        <line x1={ax2 - ux * TICK} y1={ay2 - uy * TICK} x2={ax2 + ux * TICK} y2={ay2 + uy * TICK} stroke="#000" strokeWidth="1" />
+                        {/* CAD tick marks: perpendicular to dim line at each endpoint */}
+                        <line x1={ax1 - px * TICK} y1={ay1 - py * TICK} x2={ax1 + px * TICK} y2={ay1 + py * TICK} stroke="#000" strokeWidth="1.2" />
+                        <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke="#000" strokeWidth="1.2" />
+                        {/* Label: black text on white background */}
                         <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
-                          <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" />
-                          <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="600" fill="#000">{label}</text>
+                          <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth="0.5" rx="1" />
+                          <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill="#000">{label}</text>
                         </g>
                       </g>
                     )
@@ -368,7 +383,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                 <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
                                   <text x={bx} y={by}
                                     textAnchor="middle" dominantBaseline="middle"
-                                    fontSize="6" fontWeight="700" fill="white"
+                                    fontSize={6 / zoom} fontWeight="700" fill="white"
                                     style={{ userSelect: 'none' }}
                                   >{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
                                 </g>
@@ -383,9 +398,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               const CH = 4.5 / pixelToCmRatio * sc  // 4.5 cm along row  (2:1 ratio)
                               // label: offset from beam rear leg in mm
                               const localYOffset = Math.round((localY - rearLegY) * pixelToCmRatio * 10)
-                              const labelOff = 6  // px away from connector, in base line direction
-                              const lx = cx + (-Math.sin(angleRad)) * (CW / 2 + labelOff)
-                              const ly = cy + (-Math.cos(angleRad)) * (CW / 2 + labelOff)
+                              const labelOff = (CW / 2 + 6 / zoom)
+                              const lx = cx + (-Math.sin(angleRad)) * labelOff
+                              const ly = cy + (-Math.cos(angleRad)) * labelOff
                               return (
                                 <g key={`conn-${ci}`}>
                                   <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
@@ -395,7 +410,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                   {showDimensions && (
                                     <text x={lx} y={ly}
                                       textAnchor="middle" dominantBaseline="middle"
-                                      fontSize="5" fontWeight="600" fill="#333"
+                                      fontSize={6 / zoom} fontWeight="600" fill="#333"
                                       transform={`rotate(${lineAngle} ${lx} ${ly})`}
                                     >{(localYOffset / 10).toFixed(1)}</text>
                                   )}
