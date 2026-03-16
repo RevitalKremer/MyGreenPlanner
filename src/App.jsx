@@ -63,8 +63,10 @@ function App() {
   const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
   const [viewZoom, setViewZoom] = useState(1) // Zoom level for Step 3 view (independent of uploadedImageData.scale)
   const [rowConfigs, setRowConfigs] = useState({}) // Per-row trapezoid overrides: { [rowKey]: { angle, backHeight } }
-  
-  // Step 4: Construction planning (TBD)
+
+  // Step 4: Construction planning settings (persisted for export)
+  const [step4GlobalSettings, setStep4GlobalSettings] = useState(null) // null = use Step4 defaults
+  const [step4RowSettings,    setStep4RowSettings]    = useState(null)
   
   const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
   const [showHelp, setShowHelp] = useState(false)
@@ -105,6 +107,8 @@ function App() {
     setDragState(null)
     setRotationState(null)
     setRowConfigs({})
+    setStep4GlobalSettings(null)
+    setStep4RowSettings(null)
   }
 
   const handleStartOver = () => {
@@ -137,6 +141,8 @@ function App() {
     if (data.panels) setPanels(data.panels)
     if (data.rowGroups) setRowGroups(data.rowGroups)
     if (data.rowConfigs) setRowConfigs(data.rowConfigs)
+    if (data.step4GlobalSettings) setStep4GlobalSettings(data.step4GlobalSettings)
+    if (data.step4RowSettings)    setStep4RowSettings(data.step4RowSettings)
     if (data.currentStep) setCurrentStep(data.currentStep)
     setAppScreen('wizard')
   }
@@ -162,7 +168,9 @@ function App() {
       baseline,
       panels,
       rowGroups,
-      rowConfigs
+      rowConfigs,
+      step4GlobalSettings,
+      step4RowSettings,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -727,6 +735,9 @@ function App() {
             panels={panels}
             refinedArea={refinedArea}
             rowConfigs={rowConfigs}
+            initialGlobalSettings={step4GlobalSettings}
+            initialRowSettings={step4RowSettings}
+            onSettingsChange={(g, r) => { setStep4GlobalSettings(g); setStep4RowSettings(r) }}
           />
         )}
 

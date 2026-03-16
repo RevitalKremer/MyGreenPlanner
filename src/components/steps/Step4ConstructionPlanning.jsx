@@ -720,12 +720,17 @@ function BOMView({ rowConstructions }) {
 
 // ─── Main Step4 component ────────────────────────────────────────────────────
 
-export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {} }) {
+export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {}, initialGlobalSettings = null, initialRowSettings = null, onSettingsChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [activeTab, setActiveTab] = useState('detail')
-  const [globalSettings, setGlobalSettings] = useState(SETTINGS_DEFAULTS)
-  const [rowSettings,    setRowSettings]    = useState({})  // per-row overrides: { [rowIdx]: partial }
+  const [globalSettings, setGlobalSettings] = useState(() => initialGlobalSettings ?? SETTINGS_DEFAULTS)
+  const [rowSettings,    setRowSettings]    = useState(() => initialRowSettings    ?? {})
   const [highlightParam, setHighlightParam] = useState(null)
+
+  // Sync settings back to App whenever they change (for export persistence)
+  useEffect(() => {
+    onSettingsChange?.(globalSettings, rowSettings)
+  }, [globalSettings, rowSettings])
 
   const getSettings = (rowIdx) => ({ ...globalSettings, ...(rowSettings[rowIdx] || {}) })
 
