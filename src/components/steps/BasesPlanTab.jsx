@@ -265,15 +265,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     return [ex + apX * ANN_OFF, ey + apY * ANN_OFF]
                   }
 
-                  // Annotation segments: left edge → base1 → base2 → ... → right edge
-                  const segPoints = [
-                    { localX: frameXMinPx },
-                    ...bases.map(b => ({ localX: b.localX })),
-                    { localX: frameXMaxPx },
-                  ]
-
-                  const segAnnotations = segPoints.slice(0, -1).map((p1, si) => {
-                    const p2 = segPoints[si + 1]
+                  // Annotation segments: only between consecutive trapezoid bases
+                  const segAnnotations = bases.slice(0, -1).map((b1, si) => {
+                    const p1 = b1, p2 = bases[si + 1]
                     const distMm = Math.round((p2.localX - p1.localX) * pixelToCmRatio * 10)
                     const [ax1, ay1] = annBaseSvg(p1.localX)
                     const [ax2, ay2] = annBaseSvg(p2.localX)
@@ -288,7 +282,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     const px = -uy, py = ux
 
                     const label = `${(distMm / 10).toFixed(0)} cm`
-                    const fontSize = 7 / zoom   // constant screen size
+                    const fontSize = 11 / zoom   // constant screen size
                     const tx = (ax1 + ax2) / 2, ty = (ay1 + ay2) / 2
                     const angle = Math.atan2(dy, dx) * 180 / Math.PI
                     const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle
