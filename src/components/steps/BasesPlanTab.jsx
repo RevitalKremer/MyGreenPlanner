@@ -325,6 +325,28 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
                   const PROFILE_THICK = 4 / pixelToCmRatio * sc
 
+                  // Connector local-Y positions — same for every base in this row
+                  const connLocalYs = [];
+                  (lines || []).forEach((ln, si) => {
+                    const lineMinY    = ln.minY
+                    const lineMaxY    = ln.maxY
+                    const lineCenterY = (lineMinY + lineMaxY) / 2
+                    const leftEdgeY   = si === 0              ? panelRearY                        : lineMinY
+                    const rightEdgeY  = si === lines.length-1 ? lines[lines.length-1].maxY : lineMaxY
+
+                    let lcY = leftEdgeY  < rearLegY  ? rearLegY  + connOffPx : lineMinY + connOffPx
+                    let rcY = rightEdgeY > frontLegY ? frontLegY - connOffPx : lineMaxY - connOffPx
+
+                    const leftDist  = lineCenterY - lcY
+                    const rightDist = rcY - lineCenterY
+                    if (leftDist >= 0 && rightDist >= 0) {
+                      if (leftDist <= rightDist) rcY = lineCenterY + leftDist
+                      else lcY = lineCenterY - rightDist
+                    }
+
+                    connLocalYs.push(lcY, rcY)
+                  })
+
                   return (
                     <g key={`bp-${i}`} opacity={rowOpacity}>
                       {/* Base markers */}
@@ -336,27 +358,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
                         // Rotation angle of the base line
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-
-                        const connLocalYs = [];
-                        (lines || []).forEach((ln, si) => {
-                          const lineMinY    = ln.minY
-                          const lineMaxY    = ln.maxY
-                          const lineCenterY = (lineMinY + lineMaxY) / 2
-                          const leftEdgeY   = si === 0              ? panelRearY                         : lineMinY
-                          const rightEdgeY  = si === lines.length-1 ? lines[lines.length-1].maxY : lineMaxY
-
-                          let lcY = leftEdgeY  < rearLegY  ? rearLegY  + connOffPx : lineMinY + connOffPx
-                          let rcY = rightEdgeY > frontLegY ? frontLegY - connOffPx : lineMaxY - connOffPx
-
-                          const leftDist  = lineCenterY - lcY
-                          const rightDist = rcY - lineCenterY
-                          if (leftDist >= 0 && rightDist >= 0) {
-                            if (leftDist <= rightDist) rcY = lineCenterY + leftDist
-                            else lcY = lineCenterY - rightDist
-                          }
-
-                          connLocalYs.push(lcY, rcY)
-                        })
 
                         return (
                           <g key={`base-${bi}`}>
@@ -395,25 +396,48 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         )
                       })}
 
-                      {/* Diagonal braces between consecutive bases */}
-                      {showDiagonals && showBases && bases.length > 1 && bases.slice(0, -1).map((base, bi) => {
-                        const nextBase = bases[bi + 1]
-                        // X-brace using top-beam endpoints (rearLeg ↔ frontLeg)
-                        const bt1 = localToScreen({ x: base.localX,     y: rearLegY  }, frame.center, angleRad)
-                        const bb1 = localToScreen({ x: base.localX,     y: frontLegY }, frame.center, angleRad)
-                        const bt2 = localToScreen({ x: nextBase.localX, y: rearLegY  }, frame.center, angleRad)
-                        const bb2 = localToScreen({ x: nextBase.localX, y: frontLegY }, frame.center, angleRad)
-                        const [t1x, t1y] = toSvg(bt1.x, bt1.y)
-                        const [b1x, b1y] = toSvg(bb1.x, bb1.y)
-                        const [t2x, t2y] = toSvg(bt2.x, bt2.y)
-                        const [b2x, b2y] = toSvg(bb2.x, bb2.y)
-                        return (
-                          <g key={`diag-${bi}`}>
-                            <line x1={t1x} y1={t1y} x2={b2x} y2={b2y} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeDasharray="3,2" opacity="0.6" />
-                            <line x1={b1x} y1={b1y} x2={t2x} y2={t2y} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeDasharray="3,2" opacity="0.6" />
-                          </g>
-                        )
-                      })}
+                      {/* End diagonals: B1↔B2 and Bn↔B(n-1), using connector positions */}
+                      {showDiagonals && showBases && bases.length >= 2 && connLocalYs.length >= 2 && (() => {
+                        const n   = bases.length
+                        const C1  = connLocalYs[0]
+                        const C2  = connLocalYs[1] ?? C1
+                        const Cm  = connLocalYs[connLocalYs.length - 1]
+                        const Cm1 = connLocalYs[connLocalYs.length - 2] ?? Cm
+                        // Two end pairs: [B1,B2] and [Bn,B(n-1)]; skip second if same as first
+                        const pairs = n === 2
+                          ? [[0, 1]]
+                          : [[0, 1], [n - 1, n - 2]]
+                        return pairs.flatMap(([ai, bi], pi) => {
+                          const ba = bases[ai], bb = bases[bi]
+                          return [[C1, C2], [Cm, Cm1]].map(([ya, yb], di) => {
+                            const pa = localToScreen({ x: ba.localX, y: ya }, frame.center, angleRad)
+                            const pb = localToScreen({ x: bb.localX, y: yb }, frame.center, angleRad)
+                            const [x1, y1] = toSvg(pa.x, pa.y)
+                            const [x2, y2] = toSvg(pb.x, pb.y)
+                            const distMm = Math.round(
+                              Math.sqrt((bb.localX - ba.localX) ** 2 + (yb - ya) ** 2) * pixelToCmRatio * 10
+                            )
+                            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+                            const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+                            const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
+                            const fs = 9 / zoom
+                            const bgW = String(distMm).length * fs * 0.6 + 6 / zoom
+                            const bgH = fs + 4 / zoom
+                            return (
+                              <g key={`diag-${pi}-${di}`}>
+                                <line x1={x1} y1={y1} x2={x2} y2={y2}
+                                  stroke="cyan" strokeWidth={PROFILE_THICK} />
+                                <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
+                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH}
+                                    fill="white" stroke="#ccc" strokeWidth={0.5/zoom} rx={1/zoom} />
+                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
+                                    fontSize={fs} fontWeight="700" fill="#000">{distMm}</text>
+                                </g>
+                              </g>
+                            )
+                          })
+                        })
+                      })()}
 
                       {/* Spacing dimension annotations */}
                       {showDimensions && segAnnotations}
