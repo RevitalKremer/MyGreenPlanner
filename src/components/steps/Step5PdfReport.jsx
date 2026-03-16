@@ -9,113 +9,131 @@ const FRAME_MM   = 8    // inner frame inset from page edge
 const FOOTER_H_MM = 26  // title block height
 
 // ─── Shared cell styles ───────────────────────────────────────────────────────
-const cellBase = {
-  borderLeft: '0.5px solid #000',
-  padding: '1px 3px',
-  boxSizing: 'border-box',
-  verticalAlign: 'top',
-  overflow: 'hidden',
+const B  = '0.5px solid #000'
+const cellBase = { borderLeft: B, padding: '1px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
+const LBL = { fontSize: '5px', color: '#666', lineHeight: 1, direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px' }
+const VAL = { fontSize: '7.5px', fontWeight: '600', color: '#000', direction: 'rtl', lineHeight: 1.2 }
+
+function Cell({ style, children }) {
+  return <td style={{ ...cellBase, ...style }}>{children}</td>
 }
-const labelStyle = {
-  fontSize: '5px', color: '#555', lineHeight: 1,
-  direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px',
-}
-const valStyle = {
-  fontSize: '7.5px', fontWeight: '600', color: '#000',
-  direction: 'rtl', lineHeight: 1.2,
+function LV({ label, value, vStyle }) {
+  return <>
+    <div style={LBL}>{label}</div>
+    <div style={{ ...VAL, ...vStyle }}>{value}</div>
+  </>
 }
 
-// ─── CAD Title Block (footer) — 3 areas: left sheet, middle data, right logo ──
+// ─── CAD Title Block ─────────────────────────────────────────────────────────
+// Layout (9 cols, 2 rows):
+// Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
+// Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
 function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
   const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : 'TBD'
-  const wpStr       = panelWp ? `${panelWp}W` : 'TBD'
+  const wpStr       = panelWp ? `${panelWp}W`             : 'TBD'
+  const qtyStr      = panelCount != null ? String(panelCount) : 'TBD'
 
   return (
-    <table style={{
-      width: '100%', height: '100%',
-      borderCollapse: 'collapse', tableLayout: 'fixed',
-      borderTop: '0.5px solid #000',
-    }}>
+    <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', borderTop: B }}>
       <colgroup>
-        {/* Area 1: approval (4%) | Area 2: sheet(6%) proj#(8%) approval-req(10%) total-kw(9%) panel-type(16%) power(7%) qty(6%) proj-name(14%) date(8%) location(8%) | Area 3: logo(12%) */}
-        <col style={{ width: '4%' }} />   {/* לאישור */}
-        <col style={{ width: '6%' }} />   {/* תבנית */}
-        <col style={{ width: '8%' }} />   {/* מספר פרויקט */}
-        <col style={{ width: '10%' }} />  {/* דרישה/קונסטרוקטור */}
-        <col style={{ width: '9%' }} />   {/* הספק כולל */}
-        <col style={{ width: '16%' }} />  {/* סוג פאנל */}
-        <col style={{ width: '7%' }} />   {/* הספק */}
-        <col style={{ width: '6%' }} />   {/* כמות */}
-        <col style={{ width: '14%' }} />  {/* שם פרויקט */}
-        <col style={{ width: '8%' }} />   {/* תאריך */}
-        <col style={{ width: '5%' }} />   {/* מיקום */}
-        <col style={{ width: '7%' }} />   {/* logo */}
+        <col style={{ width: '11%' }} />  {/* col1: approval area */}
+        <col style={{ width: '10%' }} />  {/* col2: מספר פרויקט */}
+        <col style={{ width: '10%' }} />  {/* col3: approval req (rowspan) */}
+        <col style={{ width: '10%' }} />  {/* col4: הספק כולל */}
+        <col style={{ width: '10%' }} />  {/* col5: סוג פאנל / הספק */}
+        <col style={{ width: '10%' }} />  {/* col6: סוג פאנל cont. / כמות */}
+        <col style={{ width: '10%' }} />  {/* col7: שם פרויקט / תאריך */}
+        <col style={{ width: '10%' }} />  {/* col8: שם פרויקט cont. / מיקום */}
+        <col style={{ width: '19%' }} />  {/* col9: logo (rowspan) */}
       </colgroup>
       <tbody>
-        {/* ── Row 1: labels ── */}
-        <tr style={{ height: '50%', borderBottom: '0.5px solid #000' }}>
-          {/* Area 1 — left, label row: empty */}
-          <td style={{ ...cellBase, borderLeft: 'none' }} />
 
-          {/* Area 2 — data cells labels */}
-          <td style={cellBase}><div style={labelStyle}>תבנית</div></td>
-          <td style={cellBase}><div style={labelStyle}>מספר פרויקט</div></td>
-          {/* approval: spans both rows */}
+        {/* ── Row 1 ─────────────────────────────────────────────────────── */}
+        <tr style={{ height: '50%', borderBottom: B }}>
+
+          {/* col1 row1: תבנית */}
+          <Cell style={{ borderLeft: 'none' }}>
+            <LV label="תבנית" value="D3" />
+          </Cell>
+
+          {/* col2 row1: מספר פרויקט */}
+          <Cell>
+            <LV label="מספר פרויקט" value={project?.number || 'TBD'} />
+          </Cell>
+
+          {/* col3: approval — rowspan=2 */}
           <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{ fontSize: '6px', color: '#444', direction: 'rtl', lineHeight: 1.4, marginBottom: '3px' }}>
+            <div style={{ fontSize: '5.5px', color: '#333', direction: 'rtl', lineHeight: 1.5, marginBottom: '3px' }}>
               דרישה אישור<br />קונסטרוקטור
             </div>
-            <div style={{
-              display: 'inline-block',
-              background: '#c0392b', color: 'white',
-              fontWeight: '900', fontSize: '8px',
-              borderRadius: '2px', padding: '1px 4px', lineHeight: 1.3,
-            }}>!</div>
+            <span style={{ background: '#c0392b', color: '#fff', fontWeight: '900', fontSize: '9px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
           </td>
-          <td style={cellBase}><div style={labelStyle}>הספק כולל</div></td>
-          <td style={cellBase}><div style={labelStyle}>סוג פאנל</div></td>
-          <td style={cellBase}><div style={labelStyle}>הספק</div></td>
-          <td style={cellBase}><div style={labelStyle}>כמות</div></td>
-          <td style={cellBase}><div style={labelStyle}>שם פרויקט</div></td>
-          <td style={cellBase}><div style={labelStyle}>תאריך</div></td>
-          <td style={cellBase}><div style={labelStyle}>מיקום</div></td>
 
-          {/* Area 3 — logo spans both rows */}
-          <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center', padding: '3px 4px' }}>
+          {/* col4 row1: הספק כולל */}
+          <Cell style={{ verticalAlign: 'middle', textAlign: 'center' }}>
+            <div style={LBL}>הספק כולל</div>
+            <div style={{ ...VAL, fontSize: '9.5px', fontWeight: '900' }}>{kWstr}</div>
+          </Cell>
+
+          {/* col5-6 row1: סוג פאנל (colspan=2) */}
+          <td colSpan={2} style={{ ...cellBase }}>
+            <LV label="סוג פאנל" value={panelType || 'TBD'} vStyle={{ fontSize: '6.5px' }} />
+          </td>
+
+          {/* col7-8 row1: שם פרויקט (colspan=2) */}
+          <td colSpan={2} style={{ ...cellBase }}>
+            <LV label="שם פרויקט" value={projectName} vStyle={{ fontSize: '6.5px' }} />
+          </td>
+
+          {/* col9: logo — rowspan=2 */}
+          <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center', padding: '3px 5px' }}>
             <img src="/sadotenergylogo.png" alt="שדרות אנרגיה"
-              style={{ maxWidth: '100%', maxHeight: '38px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+              style={{ maxWidth: '100%', maxHeight: '40px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           </td>
         </tr>
 
-        {/* ── Row 2: values ── */}
+        {/* ── Row 2 ─────────────────────────────────────────────────────── */}
         <tr style={{ height: '50%' }}>
-          {/* Area 1 — לאישור button */}
+
+          {/* col1 row2: לאישור */}
           <td style={{ ...cellBase, borderLeft: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{
-              background: '#2563eb', color: 'white',
-              fontWeight: '800', fontSize: '7px',
-              borderRadius: '2px', padding: '2px 5px',
-              direction: 'rtl', lineHeight: 1.3, display: 'inline-block',
-            }}>לאישור</div>
+            <div style={{ background: '#2563eb', color: '#fff', fontWeight: '800', fontSize: '7px', borderRadius: '2px', padding: '2px 6px', display: 'inline-block', direction: 'rtl' }}>לאישור</div>
           </td>
 
-          {/* Area 2 — values */}
-          <td style={cellBase}><div style={{ ...valStyle, fontSize: '7px' }}>D3</div></td>
-          <td style={cellBase}><div style={valStyle}>{project?.number || 'TBD'}</div></td>
-          {/* approval cell spanned above — skip */}
-          <td style={{ ...cellBase, verticalAlign: 'middle' }}>
-            <div style={{ ...valStyle, fontSize: '10px', fontWeight: '900', textAlign: 'center' }}>{kWstr}</div>
-          </td>
-          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{panelType || 'TBD'}</div></td>
-          <td style={cellBase}><div style={valStyle}>{wpStr}</div></td>
-          <td style={cellBase}><div style={valStyle}>{panelCount ?? 'TBD'}</div></td>
-          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{projectName}</div></td>
-          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{dateStr}</div></td>
-          <td style={cellBase}><div style={{ ...valStyle, fontSize: '6.5px' }}>{location}</div></td>
+          {/* col2 row2: blank */}
+          <Cell />
+
+          {/* col3 spanned — skip */}
+
+          {/* col4 row2: blank */}
+          <Cell />
+
+          {/* col5 row2: הספק */}
+          <Cell>
+            <LV label="הספק" value={wpStr} />
+          </Cell>
+
+          {/* col6 row2: כמות */}
+          <Cell>
+            <LV label="כמות" value={qtyStr} />
+          </Cell>
+
+          {/* col7 row2: תאריך */}
+          <Cell>
+            <LV label="תאריך" value={dateStr} vStyle={{ fontSize: '6.5px' }} />
+          </Cell>
+
+          {/* col8 row2: מיקום */}
+          <Cell>
+            <LV label="מיקום" value={location} vStyle={{ fontSize: '6.5px' }} />
+          </Cell>
+
+          {/* col9 spanned — skip */}
         </tr>
+
       </tbody>
     </table>
   )
