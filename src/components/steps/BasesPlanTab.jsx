@@ -419,16 +419,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                       {showDiagonals && showBases && bases.length >= 2 && railLocalYs.length >= 2 && (() => {
                         const n   = bases.length
                         const C1  = railLocalYs[0]
-                        const C2  = railLocalYs[1] ?? C1
                         const Cm  = railLocalYs[railLocalYs.length - 1]
-                        const Cm1 = railLocalYs[railLocalYs.length - 2] ?? Cm
                         // Two end pairs: [B1,B2] and [Bn,B(n-1)]; skip second if same as first
                         const pairs = n === 2
                           ? [[0, 1]]
                           : [[0, 1], [n - 1, n - 2]]
                         return pairs.flatMap(([ai, bi], pi) => {
                           const ba = bases[ai], bb = bases[bi]
-                          return [[C1, C2], [Cm, Cm1]].map(([ya, yb], di) => {
+                          return [[C1, C1], [Cm, Cm]].map(([ya, yb], di) => {
                             const pa = localToScreen({ x: ba.localX, y: ya }, frame.center, angleRad)
                             const pb = localToScreen({ x: bb.localX, y: yb }, frame.center, angleRad)
                             const [x1, y1] = toSvg(pa.x, pa.y)
