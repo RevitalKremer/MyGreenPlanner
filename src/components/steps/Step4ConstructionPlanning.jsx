@@ -942,7 +942,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
           const SECTIONS = [
             {
-              tabKey: 'detail', label: 'Trapezoids & Rails',
+              tabKey: 'detail', label: 'Trapezoids',
               keys: ['railOffsetCm','connOffsetCm','panelLengthCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape'],
               fields: [
                 ['Rail Clamp Offset (cm)', 'railOffsetCm', 0.1, 0],
