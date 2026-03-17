@@ -91,7 +91,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
 
   const [showBases,       setShowBases]       = useState(true)
   const [showBaseIDs,     setShowBaseIDs]     = useState(true)
-  const [showConnectors,  setShowConnectors]  = useState(true)
+  const [showRails,       setShowRails]       = useState(true)
   const [showDimensions,  setShowDimensions]  = useState(true)
   const [showDiagonals,   setShowDiagonals]   = useState(true)
 
@@ -327,8 +327,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   // Profile thickness: 40×40 mm section → 4 cm, scaled to SVG px
                   const PROFILE_THICK = 4 / pixelToCmRatio * sc
 
-                  // Connector local-Y positions — same for every base in this row
-                  const connLocalYs = [];
+                  // Rail local-Y positions — same for every base in this row
+                  const railLocalYs = [];
                   (lines || []).forEach((ln, si) => {
                     const lineMinY    = ln.minY
                     const lineMaxY    = ln.maxY
@@ -346,7 +346,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                       else lcY = lineCenterY - rightDist
                     }
 
-                    connLocalYs.push(lcY, rcY)
+                    railLocalYs.push(lcY, rcY)
                   })
 
                   return (
@@ -389,10 +389,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                 </g>
                               )
                             })()}
-                            {showConnectors && connLocalYs.map((localY, ci) => {
+                            {showRails && railLocalYs.map((localY, ci) => {
                               const sp = localToScreen({ x: base.localX, y: localY }, frame.center, frame.angleRad)
                               const [cx, cy] = toSvg(sp.x, sp.y)
-                              // Simple rectangle connector (top view), purple to match detail view
+                              // Rail profile (40×40mm top view)
                               // Dimensions in physical cm → SVG px via (cm / pixelToCmRatio * sc)
                               const CW = 4 / pixelToCmRatio * sc  // 40×40 mm profile (square)
                               const CH = 4 / pixelToCmRatio * sc
@@ -415,13 +415,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         )
                       })}
 
-                      {/* End diagonals: B1↔B2 and Bn↔B(n-1), using connector positions */}
-                      {showDiagonals && showBases && bases.length >= 2 && connLocalYs.length >= 2 && (() => {
+                      {/* End diagonals: B1↔B2 and Bn↔B(n-1), using rail positions */}
+                      {showDiagonals && showBases && bases.length >= 2 && railLocalYs.length >= 2 && (() => {
                         const n   = bases.length
-                        const C1  = connLocalYs[0]
-                        const C2  = connLocalYs[1] ?? C1
-                        const Cm  = connLocalYs[connLocalYs.length - 1]
-                        const Cm1 = connLocalYs[connLocalYs.length - 2] ?? Cm
+                        const C1  = railLocalYs[0]
+                        const C2  = railLocalYs[1] ?? C1
+                        const Cm  = railLocalYs[railLocalYs.length - 1]
+                        const Cm1 = railLocalYs[railLocalYs.length - 2] ?? Cm
                         // Two end pairs: [B1,B2] and [Bn,B(n-1)]; skip second if same as first
                         const pairs = n === 2
                           ? [[0, 1]]
@@ -494,7 +494,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
             <div style={{ padding: '0.6rem 0.75rem' }}>
               <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
-                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Rails', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
+                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Rails', showRails, setShowRails], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
                   <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
                     <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
                     {label}

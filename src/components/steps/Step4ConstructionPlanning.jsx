@@ -14,7 +14,7 @@ const ACCENT = '#C4D600'
 
 // ─── Centralised settings defaults ───────────────────────────────────────────
 const SETTINGS_DEFAULTS = {
-  // Trapezoids & Connectors (detail tab)
+  // Trapezoids & Rails (detail tab)
   railOffsetCm:     DEFAULT_RAIL_OFFSET_CM,
   connOffsetCm:     5,
   panelLengthCm:    238.2,
@@ -319,11 +319,11 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
-  // Connectors: 2 per panel segment (line).
-  // If the panel edge is outside the beam, snap the connector to the beam end + connOffsetCm.
+  // Cross-rails: 2 per panel segment (line).
+  // If the panel edge is outside the beam, snap the rail to the beam end + connOffsetCm.
   // If the panel edge is inside the beam (middle gap), use panel edge ± connOffsetCm.
   const beamOffX = connOffsetCm * SC * Math.cos(angleRad)
-  const connectorXs = (() => {
+  const railXs = (() => {
     const xs = []
     let dCm = 0
     for (let si = 0; si < segments.length; si++) {
@@ -341,7 +341,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
       let lcX = leftEdge  < x0 ? x0 + beamOffX : startX + beamOffX
       let rcX = rightEdge > x1 ? x1 - beamOffX : endX   - beamOffX
 
-      // Symmetrize: use the connector closer to center as the reference distance
+      // Symmetrize: use the rail closer to center as the reference distance
       const leftDist  = centerX - lcX
       const rightDist = rcX - centerX
       if (leftDist >= 0 && rightDist >= 0) {
@@ -358,8 +358,8 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
     }
     return xs
   })()
-  const conn1X = connectorXs[0] ?? x0
-  const conn2X = connectorXs[connectorXs.length - 1] ?? x1
+  const rail1X = railXs[0] ?? x0
+  const rail2X = railXs[railXs.length - 1] ?? x1
 
   // 40×40 mm profile: at SC pixels/cm → 4 cm × SC px
   const BEAM_THICK_PX = 4 * SC           // 40 mm in pixels = 8.8 px
@@ -457,7 +457,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               </g>
             )}
 
-            {/* ── Panel bars (one per line, offset above beam+connectors) ── */}
+            {/* ── Panel bars (one per line, offset above beam+rails) ── */}
             {(() => {
               let dCm = 0
               return segments.map((seg, idx) => {
@@ -490,8 +490,8 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               })
             })()}
 
-            {/* ── Purple mid-clamp connectors (drawn on top of panel bars) ── */}
-            {connectorXs.map((cx, ci) => {
+            {/* ── Cross-rails 40×40mm profile (drawn on top of panel bars) ── */}
+            {railXs.map((cx, ci) => {
               const cy = beamY(cx)
               const beamTop  = -BEAM_THICK_PX / 2
               const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
@@ -499,7 +499,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               const midY = (beamTop + panBot) / 2
               // Distance along slope from beam start (x0)
               const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
-              // Label position: skyward above the connector
+              // Label position: skyward above the rail
               const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
               const lx = cx + (-Math.sin(angleRad)) * labelOffPx
               const ly = cy + (-Math.cos(angleRad)) * labelOffPx
@@ -514,7 +514,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
                   </g>
-                  {/* Distance from panel start, above the connector */}
+                  {/* Distance from panel start, above the rail */}
                   <text x={lx} y={ly}
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize="7.5" fontWeight="700" fill="#642165"
@@ -524,9 +524,9 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               )
             })}
 
-            {/* ── Connector support profiles (vertical, beam → base) ── */}
+            {/* ── Rail support profiles (vertical, beam → base) ── */}
             {/* Skip first and last — the trapezoid legs already support those edges */}
-            {connectorXs.slice(1, -1).map((cx, ci) => {
+            {railXs.slice(1, -1).map((cx, ci) => {
               const sx = cx - 4 * Math.cos(angleRad) * SC  // 4 cm toward lower end
               const topY = beamY(sx)
               const lenCm = (baseY - topY) / SC
@@ -570,12 +570,12 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               const splitOff = -(PANEL_OFFSET_PX + 30)
               const toCm = (dx) => Math.round(dx / SC / Math.cos(angleRad))
               return (<>
-                <Dim ax1={panelX1} ay1={panelY1} ax2={conn1X} ay2={beamY(conn1X)}
-                  label={`${toCm(conn1X - panelX1)}`} off={splitOff} />
-                <Dim ax1={conn1X} ay1={beamY(conn1X)} ax2={conn2X} ay2={beamY(conn2X)}
-                  label={`${toCm(conn2X - conn1X)}`} off={splitOff} />
-                <Dim ax1={conn2X} ay1={beamY(conn2X)} ax2={panelX2} ay2={panelY2}
-                  label={`${toCm(panelX2 - conn2X)}`} off={splitOff} />
+                <Dim ax1={panelX1} ay1={panelY1} ax2={rail1X} ay2={beamY(rail1X)}
+                  label={`${toCm(rail1X - panelX1)}`} off={splitOff} />
+                <Dim ax1={rail1X} ay1={beamY(rail1X)} ax2={rail2X} ay2={beamY(rail2X)}
+                  label={`${toCm(rail2X - rail1X)}`} off={splitOff} />
+                <Dim ax1={rail2X} ay1={beamY(rail2X)} ax2={panelX2} ay2={panelY2}
+                  label={`${toCm(panelX2 - rail2X)}`} off={splitOff} />
               </>)
             })()}
 
