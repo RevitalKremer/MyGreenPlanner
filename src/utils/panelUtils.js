@@ -44,19 +44,23 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
   const lineOrientations = (panelConfig.lineOrientations || ['vertical']).slice(0, linesPerRow)
 
   const lineConfigs = lineOrientations.map(orientation => {
-    if (orientation === 'horizontal') {
+    const isEmpty = orientation === 'empty' || orientation === 'empty-vertical' || orientation === 'empty-horizontal'
+    const base = orientation === 'empty-horizontal' ? 'horizontal' : (isEmpty ? 'vertical' : orientation)
+    if (base === 'horizontal') {
       return {
         widthPx: panelLengthPx,
         projectionPx: (panelWidthCm * Math.cos(angleRad)) / pixelToCmRatio,
         widthCm: panelLengthCm,
-        heightCm: panelWidthCm
+        heightCm: panelWidthCm,
+        isEmpty
       }
     }
     return {
       widthPx: panelWidthPx,
       projectionPx: roofProjectionPx,
       widthCm: panelWidthCm,
-      heightCm: panelLengthCm
+      heightCm: panelLengthCm,
+      isEmpty
     }
   })
 
@@ -205,35 +209,33 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
 
     for (let lineIdx = 0; lineIdx < linesPerRow; lineIdx++) {
       const lc = lineConfigs[lineIdx]
-      let currentRotX = startX
-
-      while (currentRotX + lc.widthPx <= endX) {
-        if (isPanelInRotatedPolygon(currentRotX, lineY, lc.widthPx, lc.projectionPx)) {
-          const rotCenterX = currentRotX + lc.widthPx / 2
-          const rotCenterY = lineY + lc.projectionPx / 2
-
-          const dx = rotCenterX - centerX
-          const dy = rotCenterY - centerY
-          const originalCenterX = centerX + dx * Math.cos(roofOrientation) - dy * Math.sin(roofOrientation)
-          const originalCenterY = centerY + dx * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
-
-          generatedPanels.push({
-            id: panelId++,
-            x: originalCenterX - lc.widthPx / 2,
-            y: originalCenterY - lc.projectionPx / 2,
-            width: lc.widthPx,
-            height: lc.projectionPx,
-            widthCm: lc.widthCm,
-            heightCm: lc.heightCm,
-            rotation: roofOrientation * (180 / Math.PI),
-            row: rowIndex,
-            line: lineIdx
-          })
-          panelsInRow++
+      if (!lc.isEmpty) {
+        let currentRotX = startX
+        while (currentRotX + lc.widthPx <= endX) {
+          if (isPanelInRotatedPolygon(currentRotX, lineY, lc.widthPx, lc.projectionPx)) {
+            const rotCenterX = currentRotX + lc.widthPx / 2
+            const rotCenterY = lineY + lc.projectionPx / 2
+            const dx = rotCenterX - centerX
+            const dy = rotCenterY - centerY
+            const originalCenterX = centerX + dx * Math.cos(roofOrientation) - dy * Math.sin(roofOrientation)
+            const originalCenterY = centerY + dx * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
+            generatedPanels.push({
+              id: panelId++,
+              x: originalCenterX - lc.widthPx / 2,
+              y: originalCenterY - lc.projectionPx / 2,
+              width: lc.widthPx,
+              height: lc.projectionPx,
+              widthCm: lc.widthCm,
+              heightCm: lc.heightCm,
+              rotation: roofOrientation * (180 / Math.PI),
+              row: rowIndex,
+              line: lineIdx
+            })
+            panelsInRow++
+          }
+          currentRotX += lc.widthPx + panelGapPx
         }
-        currentRotX += lc.widthPx + panelGapPx
       }
-
       lineY += lc.projectionPx + panelGapPx
     }
 

@@ -80,7 +80,22 @@ export default function Step2PVAreaRefinement({
   const toggleOrientation = (idx) => {
     setLineOrientations(prev => {
       const next = [...prev]
-      next[idx] = next[idx] === 'vertical' ? 'horizontal' : 'vertical'
+      const o = next[idx]
+      next[idx] = o === 'vertical' ? 'horizontal' : o === 'horizontal' ? 'vertical'
+        : o === 'empty-vertical' ? 'empty-horizontal' : o === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
+      return next
+    })
+  }
+
+  const toggleEmptyOrientation = (idx) => {
+    setLineOrientations(prev => {
+      const next = [...prev]
+      const o = next[idx]
+      if (o === 'vertical') next[idx] = 'empty-vertical'
+      else if (o === 'horizontal') next[idx] = 'empty-horizontal'
+      else if (o === 'empty-vertical') next[idx] = 'vertical'
+      else if (o === 'empty-horizontal') next[idx] = 'horizontal'
+      else next[idx] = 'vertical'
       return next
     })
   }
@@ -128,7 +143,23 @@ export default function Step2PVAreaRefinement({
     setAreas(prev => prev.map(g => {
       if (g.id !== id) return g
       const next = [...g.lineOrientations]
-      next[idx] = next[idx] === 'vertical' ? 'horizontal' : 'vertical'
+      const o = next[idx]
+      next[idx] = o === 'vertical' ? 'horizontal' : o === 'horizontal' ? 'vertical'
+        : o === 'empty-vertical' ? 'empty-horizontal' : o === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
+      return { ...g, lineOrientations: next }
+    }))
+  }
+
+  const toggleGroupEmptyOrientation = (id, idx) => {
+    setAreas(prev => prev.map(g => {
+      if (g.id !== id) return g
+      const next = [...g.lineOrientations]
+      const o = next[idx]
+      if (o === 'vertical') next[idx] = 'empty-vertical'
+      else if (o === 'horizontal') next[idx] = 'empty-horizontal'
+      else if (o === 'empty-vertical') next[idx] = 'vertical'
+      else if (o === 'empty-horizontal') next[idx] = 'horizontal'
+      else next[idx] = 'vertical'
       return { ...g, lineOrientations: next }
     }))
   }
@@ -139,7 +170,7 @@ export default function Step2PVAreaRefinement({
     const angleRad = angle * Math.PI / 180
     const n = group.linesPerRow || 1
     const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-    const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+    const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
     return frontH + totalSlope * Math.sin(angleRad)
   }
 
@@ -179,7 +210,7 @@ export default function Step2PVAreaRefinement({
 
   // Cross-section diagram computations (same formulas as before, using diag* values)
   const angleRad    = diagAngle * Math.PI / 180
-  const lineDepths  = diagOrients.slice(0, diagLPR).map(o => o === 'vertical' ? 238.2 : 113.4)
+  const lineDepths  = diagOrients.slice(0, diagLPR).map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
   const groundY = 160, startX = 40
   const totalSlope  = lineDepths.reduce((s, d) => s + d, 0) + (diagLPR - 1) * 2.5
   const totalHoriz  = totalSlope * Math.cos(angleRad)
@@ -195,7 +226,10 @@ export default function Step2PVAreaRefinement({
     const gap = i < diagLPR - 1 ? 2.5 : 0
     const dx = d * Math.cos(angleRad) * diagramScale
     const dy = d * Math.sin(angleRad) * diagramScale
-    segments.push({ x1: cx, y1: cy, x2: cx + dx, y2: cy - dy, label: diagOrients[i] === 'vertical' ? 'V' : 'H' })
+    const dO = diagOrients[i]
+    const dEmp = dO === 'empty' || dO === 'empty-vertical' || dO === 'empty-horizontal'
+    const dLabel = dEmp ? 'Ø' : (dO === 'horizontal' || dO === 'empty-horizontal') ? 'H' : 'V'
+    segments.push({ x1: cx, y1: cy, x2: cx + dx, y2: cy - dy, label: dLabel, isEmpty: dEmp })
     cx += dx + gap * Math.cos(angleRad) * diagramScale
     cy -= dy + gap * Math.sin(angleRad) * diagramScale
   }
@@ -449,8 +483,8 @@ export default function Step2PVAreaRefinement({
                   const midY = (seg.y1 + seg.y2) / 2
                   return (
                     <g key={i}>
-                      <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.label === 'H' ? '#FF9800' : '#1565C0'} strokeWidth="3.5" strokeLinecap="round"/>
-                      <circle cx={midX} cy={midY - 8} r="7" fill={seg.label === 'H' ? '#FF9800' : '#1565C0'}/>
+                      <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={seg.isEmpty ? '4 3' : undefined}/>
+                      <circle cx={midX} cy={midY - 8} r="7" fill={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'}/>
                       <text x={midX} y={midY - 8} textAnchor="middle" dominantBaseline="middle" fontSize="7.5" fill="white" fontWeight="700">{seg.label}</text>
                     </g>
                   )
@@ -624,15 +658,23 @@ export default function Step2PVAreaRefinement({
 
                         {/* Orientations */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          {group.lineOrientations.slice(0, group.linesPerRow).map((o, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <span style={{ fontSize: '0.72rem', color: '#777', width: '42px', flexShrink: 0 }}>Line {idx+1}</span>
-                              <button onClick={() => toggleGroupOrientation(group.id, idx)}
-                                style={{ flex: 1, padding: '0.3rem', background: o === 'vertical' ? '#E3F2FD' : '#FFF3E0', color: o === 'vertical' ? '#1565C0' : '#E65100', border: `1.5px solid ${o === 'vertical' ? '#90CAF9' : '#FFB74D'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem' }}>
-                                {o === 'vertical' ? '▮ Portrait' : '▬ Landscape'}
-                              </button>
-                            </div>
-                          ))}
+                          {group.lineOrientations.slice(0, group.linesPerRow).map((o, idx) => {
+                            const isEmpty = o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
+                            const isH = o === 'horizontal' || o === 'empty-horizontal'
+                            return (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <span
+                                  onClick={() => toggleGroupEmptyOrientation(group.id, idx)}
+                                  title="Click to mark/unmark line as empty (no panels)"
+                                  style={{ fontSize: '0.72rem', width: '42px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? '#bbb' : '#777', textDecoration: isEmpty ? 'line-through' : 'none' }}
+                                >Line {idx+1}</span>
+                                <button onClick={() => toggleGroupOrientation(group.id, idx)}
+                                  style={{ flex: 1, padding: '0.3rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
+                                  {isH ? '▬ Landscape' : '▮ Portrait'}
+                                </button>
+                              </div>
+                            )
+                          })}
                         </div>
 
                         {/* Back height + slope depth (calculated) */}
@@ -700,15 +742,23 @@ export default function Step2PVAreaRefinement({
                     Line Orientations <span style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: '400' }}>(front → back)</span>
                   </label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {lineOrientations.map((o, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: '#777', width: '46px', flexShrink: 0 }}>Line {idx+1}</span>
-                        <button onClick={() => toggleOrientation(idx)}
-                          style={{ flex: 1, padding: '0.35rem 0.5rem', background: o === 'vertical' ? '#E3F2FD' : '#FFF3E0', color: o === 'vertical' ? '#1565C0' : '#E65100', border: `1.5px solid ${o === 'vertical' ? '#90CAF9' : '#FFB74D'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
-                          {o === 'vertical' ? '▮ Vertical (portrait)' : '▬ Horizontal (landscape)'}
-                        </button>
-                      </div>
-                    ))}
+                    {lineOrientations.map((o, idx) => {
+                      const isEmpty = o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
+                      const isH = o === 'horizontal' || o === 'empty-horizontal'
+                      return (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span
+                            onClick={() => toggleEmptyOrientation(idx)}
+                            title="Click to mark/unmark line as empty (no panels)"
+                            style={{ fontSize: '0.78rem', width: '46px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? '#bbb' : '#777', textDecoration: isEmpty ? 'line-through' : 'none' }}
+                          >Line {idx+1}</span>
+                          <button onClick={() => toggleOrientation(idx)}
+                            style={{ flex: 1, padding: '0.35rem 0.5rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
+                            {isH ? '▬ Horizontal (landscape)' : '▮ Vertical (portrait)'}
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
 

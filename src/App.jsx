@@ -45,7 +45,7 @@ function App() {
     const frontH = parseFloat(panelFrontHeight) || 0
     const angleRad = angle * Math.PI / 180
     const totalSlopeLen = lineOrientations.reduce(
-      (sum, o) => sum + (o === 'vertical' ? 238.2 : 113.4), 0
+      (sum, o) => sum + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0
     ) + (linesPerRow - 1) * 2.5
     return frontH + totalSlopeLen * Math.sin(angleRad)
   }
@@ -241,7 +241,7 @@ function App() {
       const angleRad = angle * Math.PI / 180
       const n = group.linesPerRow || 1
       const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-      const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+      const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
       const backH = frontH + totalSlope * Math.sin(angleRad)
       const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
       const generated = generatePanelLayout(
@@ -266,7 +266,7 @@ function App() {
       const angleRad = angle * Math.PI / 180
       const n = group.linesPerRow || 1
       const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-      const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+      const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
       const backH = frontH + totalSlope * Math.sin(angleRad)
       const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
       const generated = generatePanelLayout(
@@ -433,7 +433,7 @@ function App() {
             const angleRad = angle * Math.PI / 180
             const n = group.linesPerRow || 1
             const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-            const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
+            const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
             const backH = frontH + totalSlope * Math.sin(angleRad)
             // Store per-area trapezoid config so editor defaults are correct (not 0)
             const trapezoidId = `${group.label || String.fromCharCode(65 + groupIdx)}1`
