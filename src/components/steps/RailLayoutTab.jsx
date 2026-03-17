@@ -7,7 +7,7 @@ import {
 } from '../../utils/railLayoutService'
 
 const PANEL_FILL = '#cfe3f5'
-const RAIL_COLOR_FILL = '#3f79a5'
+const RAIL_COLOR_FILL = '#642165'
 
 // ─── Compute bounding box of all panels in screen space (accounting for rotation)
 function getPanelsBoundingBox(panels) {

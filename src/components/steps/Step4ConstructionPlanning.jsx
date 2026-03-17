@@ -507,7 +507,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                 <g key={ci}>
                   <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                     <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                      fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
+                      fill="#d1e3f3" stroke="#642165" strokeWidth="1" />
                     {hl('cross-rails') && (
                       <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                         fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
@@ -517,7 +517,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                   {/* Distance from panel start, above the connector */}
                   <text x={lx} y={ly}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize="7.5" fontWeight="700" fill="#7c3aed"
+                    fontSize="7.5" fontWeight="700" fill="#642165"
                     transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
                   >{distCm}</text>
                 </g>
