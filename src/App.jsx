@@ -57,17 +57,17 @@ function App() {
   const [showBaseline, setShowBaseline] = useState(true) // Toggle to show/hide baseline
   const [showDistances, setShowDistances] = useState(true) // Toggle to show/hide distance measurements
   const [distanceMeasurement, setDistanceMeasurement] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn distance measurement
-  const [panels, setPanels] = useState([]) // Array of panel objects
-  const [rowGroups, setRowGroups] = useState([])
+  const [panels, setPanels] = useState([]) // Array of panel objects { ...panel, area, trapezoidId }
+  const [areas, setAreas] = useState([]) // Area groups (was rowGroups)
   const [selectedPanels, setSelectedPanels] = useState([]) // Array of selected panel IDs
   const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
   const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
   const [viewZoom, setViewZoom] = useState(1) // Zoom level for Step 3 view (independent of uploadedImageData.scale)
-  const [rowConfigs, setRowConfigs] = useState({}) // Per-row trapezoid overrides: { [rowKey]: { angle, backHeight } }
+  const [trapezoidConfigs, setTrapezoidConfigs] = useState({}) // Per-trapezoid overrides: { [trapezoidId]: { angle, frontHeight, backHeight } }
 
   // Step 4: Construction planning settings (persisted for export)
   const [step4GlobalSettings, setStep4GlobalSettings] = useState(null) // null = use Step4 defaults
-  const [step4RowSettings,    setStep4RowSettings]    = useState(null)
+  const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
   
   const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
   const [showHelp, setShowHelp] = useState(false)
@@ -103,13 +103,13 @@ function App() {
     setIsDrawingLine(false)
     setLineStart(null)
     setPanels([])
-    setRowGroups([])
+    setAreas([])
     setSelectedPanels([])
     setDragState(null)
     setRotationState(null)
-    setRowConfigs({})
+    setTrapezoidConfigs({})
     setStep4GlobalSettings(null)
-    setStep4RowSettings(null)
+    setStep4AreaSettings(null)
   }
 
   const handleStartOver = () => {
@@ -139,11 +139,37 @@ function App() {
     if (data.lineOrientations) setLineOrientations(data.lineOrientations)
     if (data.refinedArea) setRefinedArea(data.refinedArea)
     if (data.baseline) setBaseline(data.baseline)
-    if (data.panels) setPanels(data.panels)
-    if (data.rowGroups) setRowGroups(data.rowGroups)
-    if (data.rowConfigs) setRowConfigs(data.rowConfigs)
+    if (data.panels) {
+      const mode = data.project?.mode || 'scratch'
+      const areaLetter = (idx) => String.fromCharCode(65 + (idx || 0))
+      setPanels(data.panels.map(p => {
+        const area = p.area ?? p.row ?? 0
+        const trapezoidId = p.trapezoidId ?? (mode === 'plan' ? `${areaLetter(area)}1` : 'A1')
+        return { ...p, area, trapezoidId }
+      }))
+    }
+    if (data.areas) setAreas(data.areas)
+    else if (data.rowGroups) setAreas(data.rowGroups)
+    if (data.trapezoidConfigs) {
+      setTrapezoidConfigs(data.trapezoidConfigs)
+    } else if (data.rowConfigs) {
+      // Migrate old rowConfigs (integer-keyed) to trapezoidId-keyed
+      const mode = data.project?.mode || 'scratch'
+      const migrated = {}
+      if (mode === 'plan') {
+        Object.entries(data.rowConfigs).forEach(([key, value]) => {
+          const idx = parseInt(key)
+          if (!isNaN(idx)) migrated[`${String.fromCharCode(65 + idx)}1`] = value
+        })
+      } else {
+        const first = Object.values(data.rowConfigs)[0]
+        if (first) migrated['A1'] = first
+      }
+      setTrapezoidConfigs(migrated)
+    }
     if (data.step4GlobalSettings) setStep4GlobalSettings(data.step4GlobalSettings)
-    if (data.step4RowSettings)    setStep4RowSettings(data.step4RowSettings)
+    if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
+    else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
     if (data.currentStep) setCurrentStep(data.currentStep)
     setAppScreen('wizard')
   }
@@ -168,10 +194,10 @@ function App() {
       refinedArea,
       baseline,
       panels,
-      rowGroups,
-      rowConfigs,
+      areas,
+      trapezoidConfigs,
       step4GlobalSettings,
-      step4RowSettings,
+      step4AreaSettings,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -197,18 +223,18 @@ function App() {
     }
 
     const generatedPanels = generatePanelLayout(refinedArea, baseline)
-    
-    setPanels(generatedPanels)
+    // Add area and trapezoidId fields (scratch mode: all areas share trapezoid "A1")
+    setPanels(generatedPanels.map(p => ({ ...p, area: p.row, trapezoidId: 'A1' })))
   }
 
   const regeneratePlanPanelsHandler = () => {
-    if (!refinedArea || !refinedArea.pixelToCmRatio || rowGroups.length === 0) {
+    if (!refinedArea || !refinedArea.pixelToCmRatio || areas.length === 0) {
       alert('Missing configuration from Step 2')
       return
     }
     let nextId = 1
     const allPanels = []
-    rowGroups.forEach((group, groupIdx) => {
+    areas.forEach((group, groupIdx) => {
       if (!group.baseline) return
       const angle = parseFloat(group.angle) || 0
       const frontH = parseFloat(group.frontHeight) || 0
@@ -217,22 +243,23 @@ function App() {
       const orients = (group.lineOrientations || ['vertical']).slice(0, n)
       const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
       const backH = frontH + totalSlope * Math.sin(angleRad)
+      const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
       const generated = generatePanelLayout(
         { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
         group.baseline,
         true
       )
-      generated.forEach(p => allPanels.push({ ...p, id: nextId++, row: groupIdx }))
+      generated.forEach(p => allPanels.push({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
     })
     setPanels(allPanels)
   }
 
-  const regenerateSingleRowHandler = (rowKey) => {
+  const regenerateSingleRowHandler = (areaKey) => {
     if (!refinedArea || !refinedArea.pixelToCmRatio) return
 
     if (projectMode === 'plan') {
-      const groupIdx = rowKey
-      const group = rowGroups[groupIdx]
+      const groupIdx = areaKey
+      const group = areas[groupIdx]
       if (!group || !group.baseline) return
       const angle = parseFloat(group.angle) || 0
       const frontH = parseFloat(group.frontHeight) || 0
@@ -241,6 +268,7 @@ function App() {
       const orients = (group.lineOrientations || ['vertical']).slice(0, n)
       const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
       const backH = frontH + totalSlope * Math.sin(angleRad)
+      const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
       const generated = generatePanelLayout(
         { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
         group.baseline,
@@ -249,20 +277,20 @@ function App() {
       setPanels(prev => {
         const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
         let nextId = maxId + 1
-        const newRowPanels = generated.map(p => ({ ...p, id: nextId++, row: groupIdx }))
-        return [...prev.filter(p => p.row !== rowKey), ...newRowPanels]
+        const newAreaPanels = generated.map(p => ({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
+        return [...prev.filter(p => (p.area ?? p.row) !== areaKey), ...newAreaPanels]
       })
       setSelectedPanels([])
     } else {
-      // Scratch mode: re-run full generation, splice back only the target row
+      // Scratch mode: re-run full generation, splice back only the target area
       if (!baseline) return
       const allGenerated = generatePanelLayout(refinedArea, baseline)
-      const rowPanels = allGenerated.filter(p => p.row === rowKey)
+      const areaPanels = allGenerated.filter(p => p.row === areaKey)
       setPanels(prev => {
         const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
         let nextId = maxId + 1
-        const newRowPanels = rowPanels.map(p => ({ ...p, id: nextId++ }))
-        return [...prev.filter(p => p.row !== rowKey), ...newRowPanels]
+        const newAreaPanels = areaPanels.map(p => ({ ...p, id: nextId++, area: p.row, trapezoidId: 'A1' }))
+        return [...prev.filter(p => (p.area ?? p.row) !== areaKey), ...newAreaPanels]
       })
       setSelectedPanels([])
     }
@@ -376,11 +404,11 @@ function App() {
         const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
 
         if (projectMode === 'plan') {
-          // Generate panels from every row group
+          // Generate panels from every area group
           let nextId = 1
           const allPanels = []
-          const groupConfigs = {}
-          rowGroups.forEach((group, groupIdx) => {
+          const groupTrapConfigs = {}
+          areas.forEach((group, groupIdx) => {
             const angle = parseFloat(group.angle) || 0
             const frontH = parseFloat(group.frontHeight) || 0
             const angleRad = angle * Math.PI / 180
@@ -388,15 +416,16 @@ function App() {
             const orients = (group.lineOrientations || ['vertical']).slice(0, n)
             const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
             const backH = frontH + totalSlope * Math.sin(angleRad)
-            // Store per-group baseline config so editor defaults are correct (not 0)
-            groupConfigs[groupIdx] = { angle, frontHeight: frontH, backHeight: backH }
+            // Store per-area trapezoid config so editor defaults are correct (not 0)
+            const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
+            groupTrapConfigs[trapezoidId] = { angle, frontHeight: frontH, backHeight: backH }
             if (!group.baseline) return
             const generated = generatePanelLayout(
               { polygon: roofPolygon, pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
               group.baseline,
               true // singleRow: each group baseline generates exactly 1 row
             )
-            generated.forEach(p => allPanels.push({ ...p, id: nextId++, row: groupIdx }))
+            generated.forEach(p => allPanels.push({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
           })
           setRefinedArea({
             polygon: roofPolygon,
@@ -407,11 +436,11 @@ function App() {
             panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
           })
           setPanels(allPanels)
-          // Initialize rowConfigs from group settings, preserving any existing per-row overrides
-          setRowConfigs(prev => {
+          // Initialize trapezoidConfigs from group settings, preserving any existing overrides
+          setTrapezoidConfigs(prev => {
             const next = {}
-            Object.keys(groupConfigs).forEach(key => {
-              next[key] = { ...(prev[key] || {}), ...groupConfigs[key] }
+            Object.keys(groupTrapConfigs).forEach(trapId => {
+              next[trapId] = { ...(prev[trapId] || {}), ...groupTrapConfigs[trapId] }
             })
             return next
           })
@@ -435,15 +464,27 @@ function App() {
         }
       }
 
+      if (currentStep === 3) {
+        // Remove trapezoid configs for trapezoids with no panels assigned
+        setTrapezoidConfigs(prev => {
+          const usedIds = new Set(panels.map(p => p.trapezoidId).filter(Boolean))
+          const next = {}
+          for (const [id, cfg] of Object.entries(prev)) {
+            if (usedIds.has(id)) next[id] = cfg
+          }
+          return next
+        })
+      }
+
       const nextStep = currentStep + 1
       console.log(`\n${'─'.repeat(40)}\n  STEP ${nextStep}\n${'─'.repeat(40)}`)
       if (nextStep === 3) {
         const baselines = projectMode === 'plan'
-          ? rowGroups.filter(g => g.baseline).length
+          ? areas.filter(g => g.baseline).length
           : baseline ? 1 : 0
         console.log(`  Mode: ${projectMode} | Baselines: ${baselines}`)
         if (projectMode === 'plan') {
-          rowGroups.forEach((g, i) => console.log(`  Baseline ${i + 1}:`, g.baseline ? `p1=${JSON.stringify(g.baseline.p1)} p2=${JSON.stringify(g.baseline.p2)}` : 'none'))
+          areas.forEach((g, i) => console.log(`  Baseline ${i + 1}:`, g.baseline ? `p1=${JSON.stringify(g.baseline.p1)} p2=${JSON.stringify(g.baseline.p2)}` : 'none'))
         } else {
           console.log(`  Baseline:`, baseline ? `p1=${JSON.stringify(baseline.p1)} p2=${JSON.stringify(baseline.p2)}` : 'none')
         }
@@ -469,8 +510,8 @@ function App() {
             referenceLine !== null &&
             referenceLineLengthCm !== '' &&
             parseFloat(referenceLineLengthCm) > 0 &&
-            rowGroups.length > 0 &&
-            rowGroups.every(g =>
+            areas.length > 0 &&
+            areas.every(g =>
               g.baseline !== null &&
               g.frontHeight !== '' &&
               parseFloat(g.frontHeight) >= 0 &&
@@ -687,8 +728,8 @@ function App() {
             panelAngle={panelAngle}
             setPanelAngle={setPanelAngle}
             projectMode={projectMode}
-            rowGroups={rowGroups}
-            setRowGroups={setRowGroups}
+            areas={areas}
+            setAreas={setAreas}
           />
         )}
 
@@ -723,10 +764,10 @@ function App() {
             generatePanelLayoutHandler={generatePanelLayoutHandler}
             regeneratePlanPanelsHandler={regeneratePlanPanelsHandler}
             regenerateSingleRowHandler={regenerateSingleRowHandler}
-            rowGroups={rowGroups}
+            areas={areas}
             addManualPanel={addManualPanel}
-            rowConfigs={rowConfigs}
-            setRowConfigs={setRowConfigs}
+            trapezoidConfigs={trapezoidConfigs}
+            setTrapezoidConfigs={setTrapezoidConfigs}
           />
         )}
 
@@ -735,11 +776,11 @@ function App() {
           <Step4ConstructionPlanning
             panels={panels}
             refinedArea={refinedArea}
-            rowConfigs={rowConfigs}
-            rowGroups={rowGroups}
+            trapezoidConfigs={trapezoidConfigs}
+            areas={areas}
             initialGlobalSettings={step4GlobalSettings}
-            initialRowSettings={step4RowSettings}
-            onSettingsChange={(g, r) => { setStep4GlobalSettings(g); setStep4RowSettings(r) }}
+            initialAreaSettings={step4AreaSettings}
+            onSettingsChange={(g, a) => { setStep4GlobalSettings(g); setStep4AreaSettings(a) }}
           />
         )}
 

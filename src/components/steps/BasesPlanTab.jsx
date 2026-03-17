@@ -128,7 +128,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const rowGroups = useMemo(() => {
     const map = {}
     for (const p of panels) {
-      const key = p.row ?? 0
+      const key = p.area ?? p.row ?? 0
       if (!map[key]) map[key] = []
       map[key].push(p)
     }
@@ -193,7 +193,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   const [sx, sy] = toSvg(panel.x, panel.y)
                   const sw = panel.width * sc, sh = panel.height * sc
                   const scx = sx + sw / 2, scy = sy + sh / 2
-                  const rowKey = rowKeys.indexOf(panel.row ?? 0)
+                  const rowKey = rowKeys.indexOf(panel.area ?? panel.row ?? 0)
                   const isSelected = selectedRowIdx === null || rowKey === selectedRowIdx
                   const opacity = isSelected ? 1 : 0.25
                   const fill   = isSelected ? '#d1e3f3' : PANEL_FILL

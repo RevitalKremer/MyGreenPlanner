@@ -29,8 +29,8 @@ export default function Step2PVAreaRefinement({
   setLineOrientations,
   computedBackHeight,
   projectMode = 'scratch',
-  rowGroups = [],
-  setRowGroups,
+  areas = [],
+  setAreas,
 }) {
   // Plan mode local state
   const [activeGroupId, setActiveGroupId] = useState(null)
@@ -87,24 +87,24 @@ export default function Step2PVAreaRefinement({
     const id = Date.now()
     const newGroup = {
       id,
-      label: String.fromCharCode(65 + rowGroups.length),
-      color: GROUP_COLORS[rowGroups.length % GROUP_COLORS.length],
+      label: String.fromCharCode(65 + areas.length),
+      color: GROUP_COLORS[areas.length % GROUP_COLORS.length],
       baseline: null,
       angle: '',
       frontHeight: '',
       linesPerRow: 1,
       lineOrientations: ['vertical'],
     }
-    setRowGroups(prev => [...prev, newGroup])
+    setAreas(prev => [...prev, newGroup])
     setDiagramGroupId(id)
   }
 
   const updateGroup = (id, field, value) => {
-    setRowGroups(prev => prev.map(g => g.id === id ? { ...g, [field]: value } : g))
+    setAreas(prev => prev.map(g => g.id === id ? { ...g, [field]: value } : g))
   }
 
   const removeGroup = (id) => {
-    setRowGroups(prev => {
+    setAreas(prev => {
       const remaining = prev.filter(g => g.id !== id)
       if (diagramGroupId === id) setDiagramGroupId(remaining[0]?.id ?? null)
       return remaining
@@ -113,7 +113,7 @@ export default function Step2PVAreaRefinement({
   }
 
   const updateGroupLinesPerRow = (id, n) => {
-    setRowGroups(prev => prev.map(g => {
+    setAreas(prev => prev.map(g => {
       if (g.id !== id) return g
       const orientations = [...g.lineOrientations]
       while (orientations.length < n) orientations.push('vertical')
@@ -122,7 +122,7 @@ export default function Step2PVAreaRefinement({
   }
 
   const toggleGroupOrientation = (id, idx) => {
-    setRowGroups(prev => prev.map(g => {
+    setAreas(prev => prev.map(g => {
       if (g.id !== id) return g
       const next = [...g.lineOrientations]
       next[idx] = next[idx] === 'vertical' ? 'horizontal' : 'vertical'
@@ -164,7 +164,7 @@ export default function Step2PVAreaRefinement({
 
   // ── Diagram data (plan: selected group; scratch: global config) ──────────
   const dg = projectMode === 'plan'
-    ? (rowGroups.find(g => g.id === diagramGroupId) || rowGroups[0] || null)
+    ? (areas.find(g => g.id === diagramGroupId) || areas[0] || null)
     : null
 
   const diagAngle   = dg ? (parseFloat(dg.angle) || 0)       : (parseFloat(panelAngle) || 0)
@@ -265,7 +265,7 @@ export default function Step2PVAreaRefinement({
                   )}
 
                   {/* Group baselines (plan mode) */}
-                  {projectMode === 'plan' && rowGroups.map(group => (
+                  {projectMode === 'plan' && areas.map(group => (
                     group.baseline && (
                       <g key={group.id}>
                         <line
@@ -290,7 +290,7 @@ export default function Step2PVAreaRefinement({
                     <circle
                       cx={baselineDrawStart[0]} cy={baselineDrawStart[1]}
                       r={labelFontSize * 0.4}
-                      fill={rowGroups.find(g => g.id === activeGroupId)?.color || '#fff'}
+                      fill={areas.find(g => g.id === activeGroupId)?.color || '#fff'}
                       stroke="white" strokeWidth="2"
                     />
                   )}
@@ -302,7 +302,7 @@ export default function Step2PVAreaRefinement({
                 <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,152,0,0.92)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                   {isDrawingLine
                     ? (lineStart ? 'Click second point to finish reference line' : 'Click first point of reference line')
-                    : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${rowGroups.find(g => g.id === activeGroupId)?.label}`)}
+                    : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${areas.find(g => g.id === activeGroupId)?.label}`)}
                 </div>
               )}
             </div>
@@ -338,13 +338,13 @@ export default function Step2PVAreaRefinement({
             </h4>
 
             {/* Group selector (plan mode, multiple groups) */}
-            {projectMode === 'plan' && rowGroups.length > 1 && (
+            {projectMode === 'plan' && areas.length > 1 && (
               <select
-                value={diagramGroupId ?? rowGroups[0]?.id ?? ''}
+                value={diagramGroupId ?? areas[0]?.id ?? ''}
                 onChange={e => setDiagramGroupId(Number(e.target.value))}
                 style={{ marginBottom: '0.6rem', padding: '0.4rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.82rem' }}
               >
-                {rowGroups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                {areas.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
               </select>
             )}
 
@@ -466,24 +466,24 @@ export default function Step2PVAreaRefinement({
               )}
             </div>
 
-            {/* ── PLAN MODE: Row Groups ── */}
+            {/* ── PLAN MODE: Areas ── */}
             {projectMode === 'plan' ? (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                  <label style={{ fontWeight: '600', fontSize: '0.88rem' }}>Row Groups</label>
+                  <label style={{ fontWeight: '600', fontSize: '0.88rem' }}>Areas</label>
                   <button onClick={addGroup}
                     style={{ padding: '0.35rem 0.75rem', background: '#C4D600', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}>
-                    + Add Group
+                    + Add Area
                   </button>
                 </div>
 
-                {rowGroups.length === 0 && (
+                {areas.length === 0 && (
                   <p style={{ fontSize: '0.82rem', color: '#aaa', textAlign: 'center', padding: '1rem 0' }}>
-                    Click "+ Add Group" to define a row group.
+                    Click "+ Add Area" to define an area.
                   </p>
                 )}
 
-                {rowGroups.map(group => {
+                {areas.map(group => {
                   const groupBackH = getGroupBackHeight(group)
                   const isActive = activeGroupId === group.id
                   const groupLineDepths = group.lineOrientations.slice(0, group.linesPerRow).map(o => o === 'vertical' ? 238.2 : 113.4)
@@ -582,13 +582,13 @@ export default function Step2PVAreaRefinement({
                 })}
 
                 {/* Validation summary */}
-                <div style={{ padding: '0.75rem', background: (referenceLine && referenceLineLengthCm && rowGroups.length > 0 && rowGroups.every(g => g.baseline && g.angle && g.frontHeight)) ? '#e8f5e9' : '#fff3cd', borderRadius: '8px', fontSize: '0.82rem', marginTop: '0.5rem' }}>
+                <div style={{ padding: '0.75rem', background: (referenceLine && referenceLineLengthCm && areas.length > 0 && areas.every(g => g.baseline && g.angle && g.frontHeight)) ? '#e8f5e9' : '#fff3cd', borderRadius: '8px', fontSize: '0.82rem', marginTop: '0.5rem' }}>
                   <strong>Required:</strong>
                   <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
                     <li style={{ color: (referenceLine && referenceLineLengthCm) ? '#4caf50' : '#ff9800' }}>Reference line with length</li>
-                    <li style={{ color: rowGroups.length > 0 ? '#4caf50' : '#ff9800' }}>At least one row group</li>
-                    <li style={{ color: rowGroups.length > 0 && rowGroups.every(g => g.baseline) ? '#4caf50' : '#ff9800' }}>All groups have a baseline</li>
-                    <li style={{ color: rowGroups.length > 0 && rowGroups.every(g => g.angle && g.frontHeight) ? '#4caf50' : '#ff9800' }}>All groups have angle + front height</li>
+                    <li style={{ color: areas.length > 0 ? '#4caf50' : '#ff9800' }}>At least one area</li>
+                    <li style={{ color: areas.length > 0 && areas.every(g => g.baseline) ? '#4caf50' : '#ff9800' }}>All groups have a baseline</li>
+                    <li style={{ color: areas.length > 0 && areas.every(g => g.angle && g.frontHeight) ? '#4caf50' : '#ff9800' }}>All groups have angle + front height</li>
                   </ul>
                 </div>
               </div>

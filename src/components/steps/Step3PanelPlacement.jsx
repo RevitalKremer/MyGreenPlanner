@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
 export default function Step3PanelPlacement({
   projectMode = 'scratch',
@@ -28,10 +28,10 @@ export default function Step3PanelPlacement({
   generatePanelLayoutHandler,
   regeneratePlanPanelsHandler,
   regenerateSingleRowHandler,
-  rowGroups = [],
+  areas = [],
   addManualPanel,
-  rowConfigs,
-  setRowConfigs
+  trapezoidConfigs,
+  setTrapezoidConfigs
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
@@ -53,10 +53,10 @@ export default function Step3PanelPlacement({
   const rows = useMemo(() => {
     if (panels.length === 0) return []
 
-    // Step 1: group by panel.row property
+    // Step 1: group by panel.area property (falls back to panel.row for old saves)
     const rowMap = new Map()
     panels.forEach(panel => {
-      const key = panel.row !== undefined ? panel.row : `manual_${panel.id}`
+      const key = (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
       if (!rowMap.has(key)) rowMap.set(key, [])
       rowMap.get(key).push(panel)
     })
@@ -75,7 +75,7 @@ export default function Step3PanelPlacement({
         const isMultiLine = rowPanels.some(p => p.line !== undefined && p.line > 0)
         if (rowPanels.length <= 1 || isMultiLine) { result.push(rowPanels); return }
 
-        // Step 2: within same panel.row, split by spatial adjacency.
+        // Step 2: within same panel.area, split by spatial adjacency.
         // Panels separated by more than 2× panel widths are different clusters
         // (happens when an obstacle interrupts a row).
         const angle = (rowPanels[0].rotation || 0) * Math.PI / 180
@@ -178,75 +178,198 @@ export default function Step3PanelPlacement({
     const newCx = lastCx + (last.width + gap) * dirX
     const newCy = lastCy + (last.width + gap) * dirY
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
-    // If the row has no row key (manually-added panels), assign one now based on the
-    // lowest panel ID in the group so it's stable across re-renders.
-    const rowKey = sortedRow[0].row !== undefined
-      ? sortedRow[0].row
+    // If the area has no area key (manually-added panels), assign one now
+    const areaKey = (sortedRow[0].area ?? sortedRow[0].row) !== undefined
+      ? (sortedRow[0].area ?? sortedRow[0].row)
       : `m_${sortedRow[0].id}`
+    const trapId = sortedRow[0].trapezoidId || 'A1'
     const selectedIds = selectedRow.map(p => p.id)
-    const newPanel = { ...last, id: newId, row: rowKey, x: newCx - last.width / 2, y: newCy - last.height / 2 }
+    const newPanel = { ...last, id: newId, area: areaKey, trapezoidId: trapId, x: newCx - last.width / 2, y: newCy - last.height / 2 }
     setPanels(prev => [
-      ...prev.map(p => selectedIds.includes(p.id) ? { ...p, row: rowKey } : p),
+      ...prev.map(p => selectedIds.includes(p.id) ? { ...p, area: areaKey, trapezoidId: trapId } : p),
       newPanel
     ])
     setSelectedPanels(prev => [...prev, newId])
   }
 
-  // ── Per-row trapezoid ─────────────────────────────────────────────────────────
+  // ── Per-trapezoid config ──────────────────────────────────────────────────────
 
-  const getRowKey = (panel) =>
-    panel.row !== undefined ? panel.row : `manual_${panel.id}`
+  const getAreaKey = (panel) =>
+    (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
-  const selectedRowKey = selectedRow ? getRowKey(selectedRow[0]) : null
+  const selectedTrapezoidId = selectedRow ? (selectedRow[0].trapezoidId || null) : null
 
-  // Row label: prefix with group name if available (e.g. "A · Row 1")
-  const rowLabel = (rowKey, i) => {
-    const g = rowGroups[rowKey]?.label
-    return g ? `${g} · Row ${i + 1}` : `Row ${i + 1}`
+  // Area label: use area's label if available (e.g. "A")
+  const areaLabel = (areaKey, i) => {
+    const g = areas[areaKey]?.label
+    return g ? `${g}` : `Area ${i + 1}`
   }
-  const selectedRowLabel = selectedRowIndex !== null ? rowLabel(selectedRowKey, selectedRowIndex) : '?'
+  const selectedAreaLabel = selectedRowIndex !== null ? areaLabel(getAreaKey(selectedRow[0]), selectedRowIndex) : '?'
 
-  const updateRowTrapezoid = (field, rawValue) => {
-    if (selectedRowKey === null || selectedRowKey === undefined || !refinedArea?.panelConfig) return
-    const value = parseFloat(rawValue)
-    if (isNaN(value) || value < 0) return
+  // ── Trapezoid management ──────────────────────────────────────────────────────
 
-    const globalCfg = refinedArea.panelConfig
-    const current = rowConfigs[selectedRowKey] || {}
-    const PANEL_LENGTH = 238.2
-    const frontH = current.frontHeight ?? globalCfg.frontHeight ?? 0
+  // Map: areaKey → sorted array of trapezoidIds present in that area
+  const areaTrapezoidMap = useMemo(() => {
+    const map = {}
+    panels.forEach(p => {
+      const aKey = p.area ?? p.row
+      if (aKey === undefined || aKey === null) return
+      const tId = p.trapezoidId || 'A1'
+      if (!map[aKey]) map[aKey] = new Set()
+      map[aKey].add(tId)
+    })
+    const result = {}
+    Object.entries(map).forEach(([k, s]) => { result[k] = [...s].sort() })
+    return result
+  }, [panels])
 
-    let newOverride = { ...current, [field]: value }
-    // Keep angle, frontHeight, and backHeight in sync
-    if (field === 'angle') {
-      newOverride.backHeight = parseFloat((frontH + PANEL_LENGTH * Math.sin(value * Math.PI / 180)).toFixed(1))
-    } else if (field === 'frontHeight') {
-      const angleVal = current.angle ?? globalCfg.angle ?? 0
-      newOverride.backHeight = parseFloat((value + PANEL_LENGTH * Math.sin(angleVal * Math.PI / 180)).toFixed(1))
-    }
+  // Are all selected panels in the same area?
+  const allSelectedSameArea = useMemo(() => {
+    if (selectedPanels.length === 0) return false
+    const sel = panels.filter(p => selectedPanels.includes(p.id))
+    const areaKeys = new Set(sel.map(p => p.area ?? p.row ?? null))
+    return areaKeys.size === 1
+  }, [selectedPanels, panels])
 
-    setRowConfigs(prev => ({ ...prev, [selectedRowKey]: newOverride }))
+  // Trapezoids that exist in the selected area
+  const selectedAreaTrapIds = useMemo(() => {
+    if (!allSelectedSameArea || !selectedRow) return []
+    const ak = getAreaKey(selectedRow[0])
+    return areaTrapezoidMap[ak] || []
+  }, [allSelectedSameArea, selectedRow, areaTrapezoidMap])
 
-    // Recompute panel heights for this row when angle changes
-    const effectiveAngle = newOverride.angle ?? globalCfg.angle
-    if (effectiveAngle !== undefined && refinedArea.pixelToCmRatio) {
-      const rowIds = selectedRow.map(p => p.id)
+  // Add a new trapezoid to the selected area, reassign selected panels to it
+  const addTrapezoid = () => {
+    if (!allSelectedSameArea || !selectedRow) return
+    const areaKey = getAreaKey(selectedRow[0])
+    const areaIdx = typeof areaKey === 'number' ? areaKey : 0
+    const letter = String.fromCharCode(65 + areaIdx)
+    const existingNums = selectedAreaTrapIds
+      .map(id => parseInt(id.slice(letter.length)))
+      .filter(n => !isNaN(n))
+    const nextNum = Math.max(...existingNums, 0) + 1
+    const newTrapId = `${letter}${nextNum}`
+    // Inherit config from the current trapezoid
+    const sourceConfig = trapezoidConfigs?.[selectedTrapezoidId] || {}
+    setTrapezoidConfigs(prev => ({ ...prev, [newTrapId]: { ...sourceConfig } }))
+    // Reassign selected panels
+    const selIds = new Set(selectedPanels)
+    setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: newTrapId } : p))
+  }
+
+  // Trapezoid IDs that are used by more than one area (shared configs)
+  const sharedTrapIds = useMemo(() => {
+    const trapToAreas = {}
+    Object.entries(areaTrapezoidMap).forEach(([areaKey, trapIds]) => {
+      trapIds.forEach(trapId => {
+        if (!trapToAreas[trapId]) trapToAreas[trapId] = []
+        trapToAreas[trapId].push(areaKey)
+      })
+    })
+    const shared = new Set()
+    Object.entries(trapToAreas).forEach(([trapId, areaKeys]) => {
+      if (areaKeys.length > 1) shared.add(trapId)
+    })
+    return shared
+  }, [areaTrapezoidMap])
+
+  // Normalize panel.area values: if spatial sub-splitting creates more visual rows than
+  // distinct panel.area keys, assign new sequential area values to the extra sub-groups.
+  useEffect(() => {
+    if (rows.length === 0 || panels.length === 0) return
+
+    const distinctAreaKeys = new Set()
+    panels.forEach(p => {
+      const k = p.area ?? p.row
+      if (k !== undefined && k !== null) distinctAreaKeys.add(k)
+    })
+
+    if (rows.length <= distinctAreaKeys.size) return // Already normalized
+
+    // Group rows by their area key
+    const areaKeyToRows = new Map()
+    rows.forEach(row => {
+      if (row.length === 0) return
+      const aKey = row[0].area ?? row[0].row
+      if (!areaKeyToRows.has(aKey)) areaKeyToRows.set(aKey, [])
+      areaKeyToRows.get(aKey).push(row)
+    })
+
+    let nextAreaKey = Math.max(0, ...[...distinctAreaKeys]) + 1
+    const panelUpdates = new Map()
+
+    areaKeyToRows.forEach(rowGroups => {
+      if (rowGroups.length <= 1) return
+      for (let gi = 1; gi < rowGroups.length; gi++) {
+        const newKey = nextAreaKey++
+        rowGroups[gi].forEach(panel => panelUpdates.set(panel.id, newKey))
+      }
+    })
+
+    if (panelUpdates.size > 0) {
       setPanels(prev => prev.map(p => {
-        if (!rowIds.includes(p.id)) return p
-        const depthCm = p.heightCm || PANEL_LENGTH
-        const newH = (depthCm * Math.cos(effectiveAngle * Math.PI / 180)) / refinedArea.pixelToCmRatio
-        const cy = p.y + p.height / 2
-        return { ...p, height: newH, y: cy - newH / 2 }
+        const newArea = panelUpdates.get(p.id)
+        return newArea !== undefined ? { ...p, area: newArea } : p
       }))
     }
+  }, [rows.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reassign selected panels to an existing trapezoid
+  const reassignToTrapezoid = (trapId) => {
+    const selIds = new Set(selectedPanels)
+    setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: trapId } : p))
   }
 
-  const resetRowTrapezoid = () => {
-    if (selectedRowKey === null || selectedRowKey === undefined || !refinedArea?.panelConfig) return
+  const updateTrapezoidConfig = (field, rawValue) => {
+    if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
+
     const globalCfg = refinedArea.panelConfig
-    setRowConfigs(prev => {
+    const current = trapezoidConfigs[selectedTrapezoidId] || {}
+
+    // For numeric fields, parse and validate
+    if (field === 'angle' || field === 'frontHeight') {
+      const value = parseFloat(rawValue)
+      if (isNaN(value) || value < 0) return
+    }
+
+    let newOverride = { ...current, [field]: rawValue }
+
+    // Recalculate backHeight whenever any relevant field changes
+    const a     = field === 'angle'            ? parseFloat(rawValue)  : (current.angle            ?? globalCfg.angle            ?? 0)
+    const fH    = field === 'frontHeight'      ? parseFloat(rawValue)  : (current.frontHeight      ?? globalCfg.frontHeight      ?? 0)
+    const lpr   = field === 'linesPerRow'      ? rawValue              : (current.linesPerRow      ?? globalCfg.linesPerRow      ?? 1)
+    const orients = field === 'lineOrientations' ? rawValue            : (current.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical'])
+    const lineDepths = (orients || ['vertical']).slice(0, lpr).map(o => o === 'vertical' ? 238.2 : 113.4)
+    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (lpr - 1) * 2.5
+    newOverride.backHeight = parseFloat((fH + totalSlope * Math.sin((a || 0) * Math.PI / 180)).toFixed(1))
+
+    // For numeric fields, store parsed value
+    if (field === 'angle' || field === 'frontHeight') newOverride[field] = parseFloat(rawValue)
+
+    setTrapezoidConfigs(prev => ({ ...prev, [selectedTrapezoidId]: newOverride }))
+
+    // Recompute panel heights when angle changes
+    if (field === 'angle' && refinedArea.pixelToCmRatio) {
+      const angleVal = newOverride.angle
+      if (angleVal !== undefined) {
+        const rowIds = selectedRow.map(p => p.id)
+        setPanels(prev => prev.map(p => {
+          if (!rowIds.includes(p.id)) return p
+          const depthCm = p.heightCm || 238.2
+          const newH = (depthCm * Math.cos(angleVal * Math.PI / 180)) / refinedArea.pixelToCmRatio
+          const cy = p.y + p.height / 2
+          return { ...p, height: newH, y: cy - newH / 2 }
+        }))
+      }
+    }
+  }
+
+  const resetTrapezoidConfig = () => {
+    if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
+    const globalCfg = refinedArea.panelConfig
+    setTrapezoidConfigs(prev => {
       const next = { ...prev }
-      delete next[selectedRowKey]
+      delete next[selectedTrapezoidId]
       return next
     })
     // Restore global panel height
@@ -629,9 +752,8 @@ export default function Step3PanelPlacement({
                     const isHovered = activeTool === 'delete' && hoveredPanelId === panel.id
                     const cx = panel.x + panel.width / 2
                     const cy = panel.y + panel.height / 2
-                    const rowNum = (panelToRowMap.get(panel.id) ?? 0) + 1
-                    const rowKey = getRowKey(panel)
-                    const hasOverride = !!rowConfigs[rowKey]
+                    const trapId = panel.trapezoidId || 'A1'
+                    const hasOverride = !!trapezoidConfigs?.[trapId]
 
                     let fill, stroke, strokeWidth
                     if (isHovered) {
@@ -646,7 +768,7 @@ export default function Step3PanelPlacement({
 
                     // Badge sizing proportional to the narrower panel dimension
                     const bh = panel.width * 0.36
-                    const bw = bh * (rowNum >= 10 ? 2.4 : 1.9)
+                    const bw = bh * (trapId.length > 2 ? 2.8 : 1.9)
                     const fs = bh * 0.62
 
                     return (
@@ -683,7 +805,7 @@ export default function Step3PanelPlacement({
                               fill="white"
                               style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}
                             >
-                              {rowNum}
+                              {trapId}
                             </text>
                             {hasOverride && (
                               <circle
@@ -927,62 +1049,119 @@ export default function Step3PanelPlacement({
                   </div>
                 </div>
 
-                {/* Row list */}
+                {/* Area list with trapezoid sub-items */}
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{
                     fontSize: '0.72rem', fontWeight: '700', color: '#aaa',
                     textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem'
                   }}>
-                    Rows ({rows.length})
+                    Areas ({rows.length})
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     {rows.map((row, i) => {
                       const isRowSelected = row.some(p => selectedPanels.includes(p.id))
-                      const rowKey = getRowKey(row[0])
-                      const hasOverride = !!rowConfigs[rowKey]
+                      const areaKey = getAreaKey(row[0])
+                      const trapIds = areaTrapezoidMap[areaKey] || []
+                      const hasMultiTrap = trapIds.length > 1
                       return (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex', alignItems: 'center',
-                            padding: '0.45rem 0.5rem 0.45rem 0.7rem',
-                            background: isRowSelected ? '#f4f9e4' : '#f8f9fa',
-                            border: `2px solid ${isRowSelected ? '#C4D600' : 'transparent'}`,
-                            borderRadius: '8px', transition: 'all 0.12s'
-                          }}
-                        >
-                          {/* Selection area */}
+                        <div key={i}>
+                          {/* Area header row */}
                           <div
-                            onClick={() => setSelectedPanels(row.map(p => p.id))}
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}
-                          >
-                            <span style={{
-                              width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
-                              background: isRowSelected ? '#C4D600' : '#ccc'
-                            }} />
-                            <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
-                              {rowLabel(rowKey, i)}
-                            </span>
-                            {hasOverride && (
-                              <span title="Custom trapezoid" style={{
-                                width: '6px', height: '6px', borderRadius: '50%',
-                                background: '#FF9800', flexShrink: 0
-                              }} />
-                            )}
-                            <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 'auto' }}>
-                              {row.length} panels
-                            </span>
-                          </div>
-                          {/* Per-row regenerate */}
-                          <button
-                            onClick={() => regenerateSingleRowHandler(rowKey)}
-                            title={`Regenerate ${rowLabel(rowKey, i)}`}
                             style={{
-                              marginLeft: '0.4rem', padding: '2px 6px', flexShrink: 0,
-                              background: 'none', border: '1px solid #ddd', borderRadius: '4px',
-                              cursor: 'pointer', fontSize: '0.8rem', color: '#aaa', lineHeight: 1
+                              display: 'flex', alignItems: 'center',
+                              padding: '0.45rem 0.5rem 0.45rem 0.7rem',
+                              background: isRowSelected ? '#f4f9e4' : '#f8f9fa',
+                              border: `2px solid ${isRowSelected ? '#C4D600' : 'transparent'}`,
+                              borderRadius: hasMultiTrap ? '8px 8px 0 0' : '8px',
+                              transition: 'all 0.12s'
                             }}
-                          >↺</button>
+                          >
+                            <div
+                              onClick={() => setSelectedPanels(row.map(p => p.id))}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}
+                            >
+                              <span style={{
+                                width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+                                background: isRowSelected ? '#C4D600' : '#ccc'
+                              }} />
+                              <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
+                                {areaLabel(areaKey, i)}
+                              </span>
+                              {/* Trapezoid badge (single-trap areas only) */}
+                              {!hasMultiTrap && trapIds.length === 1 && (
+                                <span
+                                  title={sharedTrapIds.has(trapIds[0]) ? 'Shared config — changes affect all areas using this trapezoid' : trapIds[0]}
+                                  style={{
+                                    fontSize: '0.62rem', fontWeight: '700',
+                                    padding: '1px 5px', borderRadius: '8px',
+                                    background: sharedTrapIds.has(trapIds[0]) ? '#E3F2FD' : '#f0f0f0',
+                                    color: sharedTrapIds.has(trapIds[0]) ? '#1565C0' : '#888',
+                                    border: sharedTrapIds.has(trapIds[0]) ? '1px solid #90CAF9' : '1px solid transparent',
+                                    cursor: 'default'
+                                  }}
+                                >
+                                  {trapIds[0]}{sharedTrapIds.has(trapIds[0]) && ' ⇄'}
+                                </span>
+                              )}
+                              <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 'auto' }}>
+                                {row.length} panels
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => regenerateSingleRowHandler(areaKey)}
+                              title={`Regenerate ${areaLabel(areaKey, i)}`}
+                              style={{
+                                marginLeft: '0.4rem', padding: '2px 6px', flexShrink: 0,
+                                background: 'none', border: '1px solid #ddd', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '0.8rem', color: '#aaa', lineHeight: 1
+                              }}
+                            >↺</button>
+                          </div>
+                          {/* Trapezoid sub-rows (shown when area has multiple trapezoids) */}
+                          {hasMultiTrap && (
+                            <div style={{
+                              borderLeft: '2px solid #C4D600', marginLeft: '0.7rem',
+                              borderRadius: '0 0 6px 6px', background: '#fafafa',
+                              borderBottom: '1px solid #e8e8e8', borderRight: '1px solid #e8e8e8'
+                            }}>
+                              {trapIds.map(trapId => {
+                                const trapPanels = panels.filter(p =>
+                                  (p.area ?? p.row) === areaKey && p.trapezoidId === trapId
+                                )
+                                const isTrapSelected = trapPanels.length > 0 &&
+                                  trapPanels.every(p => selectedPanels.includes(p.id))
+                                return (
+                                  <div
+                                    key={trapId}
+                                    onClick={() => setSelectedPanels(trapPanels.map(p => p.id))}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                      padding: '0.3rem 0.5rem 0.3rem 0.75rem',
+                                      cursor: 'pointer',
+                                      background: isTrapSelected ? '#f0f9e4' : 'transparent',
+                                      borderBottom: '1px solid #f0f0f0'
+                                    }}
+                                  >
+                                    <span style={{
+                                      fontSize: '0.72rem', fontWeight: '700',
+                                      color: isTrapSelected ? '#5a6600' : '#888',
+                                      background: isTrapSelected ? '#e8f2b0' : '#f0f0f0',
+                                      padding: '1px 6px', borderRadius: '10px', letterSpacing: '0.02em'
+                                    }}>{trapId}</span>
+                                    <span style={{ fontSize: '0.72rem', color: '#aaa', marginLeft: 'auto' }}>
+                                      {trapPanels.length} panels
+                                    </span>
+                                    {!!trapezoidConfigs?.[trapId] && (
+                                      <span title="Custom config" style={{
+                                        width: '5px', height: '5px', borderRadius: '50%',
+                                        background: '#FF9800', flexShrink: 0
+                                      }} />
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -1100,6 +1279,48 @@ export default function Step3PanelPlacement({
                     <div style={{ fontSize: '0.68rem', color: '#bbb', textAlign: 'center', marginTop: '0.4rem' }}>
                       or drag on canvas
                     </div>
+                    {/* ── Trapezoid assignment (shown when same-area panels selected) ── */}
+                    {allSelectedSameArea && selectedAreaTrapIds.length > 0 && (
+                      <div style={{ marginTop: '0.65rem', borderTop: '1px solid #f0f0f0', paddingTop: '0.55rem' }}>
+                        <div style={{ fontSize: '0.65rem', color: '#aaa', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+                          Trapezoid
+                        </div>
+                        {/* Current trapezoid badge + reassign dropdown */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem' }}>
+                          <span style={{
+                            fontSize: '0.75rem', fontWeight: '700', color: '#5a6600',
+                            background: '#e8f2b0', padding: '2px 8px', borderRadius: '10px'
+                          }}>{selectedTrapezoidId || '—'}</span>
+                          {selectedAreaTrapIds.length > 1 && (
+                            <select
+                              value={selectedTrapezoidId || ''}
+                              onChange={e => reassignToTrapezoid(e.target.value)}
+                              style={{
+                                flex: 1, padding: '0.2rem 0.3rem', fontSize: '0.72rem',
+                                border: '1px solid #ddd', borderRadius: '4px',
+                                background: 'white', cursor: 'pointer'
+                              }}
+                            >
+                              {selectedAreaTrapIds.map(tid => (
+                                <option key={tid} value={tid}>{tid}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        {/* Add Trapezoid button */}
+                        <button
+                          onClick={addTrapezoid}
+                          style={{
+                            width: '100%', padding: '0.35rem',
+                            background: '#f0f4e8', color: '#5a6600',
+                            border: '1px solid #C4D600', borderRadius: '5px',
+                            cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem'
+                          }}
+                        >
+                          ＋ New Trapezoid for Selection
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ fontSize: '0.8rem', color: '#bbb', textAlign: 'center', paddingTop: '0.5rem', lineHeight: 1.6 }}>
@@ -1115,7 +1336,7 @@ export default function Step3PanelPlacement({
                 selectedPanels.length > 0 ? (
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#333', marginBottom: '0.4rem' }}>
-                      {selectedRowLabel}
+                      {selectedAreaLabel}
                       <span style={{ fontWeight: '400', color: '#888' }}> · {selectedPanels.length} panels</span>
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#888', marginBottom: '0.5rem' }}>
@@ -1133,7 +1354,7 @@ export default function Step3PanelPlacement({
                   </div>
                 ) : (
                   <div style={{ fontSize: '0.82rem', color: '#bbb', textAlign: 'center', paddingTop: '0.75rem' }}>
-                    Click a row to select it
+                    Click an area to select it
                   </div>
                 )
               )}
@@ -1155,7 +1376,7 @@ export default function Step3PanelPlacement({
                 selectedPanels.length > 0 ? (
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#333', marginBottom: '0.6rem' }}>
-                      {selectedRowLabel}
+                      {selectedAreaLabel}
                       <span style={{ fontWeight: '400', color: '#888' }}> · {selectedPanels.length} panels</span>
                     </div>
                     <button
@@ -1167,7 +1388,7 @@ export default function Step3PanelPlacement({
                         cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem'
                       }}
                     >
-                      ＋ Add to {selectedRowLabel}
+                      ＋ Add to {selectedAreaLabel || '?'}
                     </button>
                     <button
                       onClick={addManualPanel}
@@ -1227,21 +1448,22 @@ export default function Step3PanelPlacement({
               )}
             </div>
 
-            {/* Per-row trapezoid editor */}
+            {/* Per-trapezoid config editor */}
             {selectedRow && activeTool !== 'measure' && (() => {
               const globalCfg = refinedArea?.panelConfig || {}
-              const override = rowConfigs[selectedRowKey] || {}
-              const isOverridden = !!rowConfigs[selectedRowKey]
+              const override = trapezoidConfigs?.[selectedTrapezoidId] || {}
+              const isOverridden = !!(selectedTrapezoidId && trapezoidConfigs?.[selectedTrapezoidId])
               const angle = override.angle ?? globalCfg.angle ?? 0
               const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
               const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
 
-              // Compute totalSlope in outer scope so it's accessible below the SVG IIFE
-              const _planGroup = projectMode === 'plan' && selectedRowKey !== null
-                ? rowGroups[selectedRowKey] ?? null
+              // Compute totalSlope — override > plan area > global config
+              const selectedAreaKey = selectedRow ? getAreaKey(selectedRow[0]) : null
+              const _planArea = projectMode === 'plan' && selectedAreaKey !== null
+                ? areas[selectedAreaKey] ?? null
                 : null
-              const _effectiveLinesPerRow = (_planGroup?.linesPerRow ?? globalCfg.linesPerRow) || 1
-              const _effectiveLineOrientations = (_planGroup?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
+              const _effectiveLinesPerRow = (override.linesPerRow ?? _planArea?.linesPerRow ?? globalCfg.linesPerRow) || 1
+              const _effectiveLineOrientations = (override.lineOrientations ?? _planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
               const _lineDepths = _effectiveLineOrientations.slice(0, _effectiveLinesPerRow)
                 .map(o => o === 'vertical' ? 238.2 : 113.4)
               const totalSlope = _lineDepths.reduce((s, d) => s + d, 0) + (_effectiveLinesPerRow - 1) * 2.5
@@ -1259,11 +1481,11 @@ export default function Step3PanelPlacement({
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isOverridden ? '#E65100' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>
-                      {selectedRowLabel} Trapezoid
+                      {selectedAreaLabel} Trapezoid
                     </span>
                     {isOverridden && (
                       <button
-                        onClick={resetRowTrapezoid}
+                        onClick={resetTrapezoidConfig}
                         title="Reset to global defaults"
                         style={{
                           padding: '2px 6px', fontSize: '0.65rem', fontWeight: '600',
@@ -1278,23 +1500,19 @@ export default function Step3PanelPlacement({
 
                   {/* Cross-section preview — multi-line aware */}
                   {(() => {
-                    const globalCfg2 = refinedArea?.panelConfig || {}
-                    // In plan mode each row group stores its own linesPerRow/lineOrientations;
-                    // selectedRowKey equals the group index, so look it up from rowGroups.
-                    const planGroup = projectMode === 'plan' && selectedRowKey !== null
-                      ? rowGroups[selectedRowKey] ?? null
+                    const planArea = projectMode === 'plan' && selectedAreaKey !== null
+                      ? areas[selectedAreaKey] ?? null
                       : null
-                    const effectiveLinesPerRow = (planGroup?.linesPerRow ?? globalCfg2.linesPerRow) || 1
-                    const effectiveLineOrientations = (planGroup?.lineOrientations ?? globalCfg2.lineOrientations) || ['vertical']
+                    const effectiveLinesPerRow = (override.linesPerRow ?? planArea?.linesPerRow ?? globalCfg.linesPerRow) || 1
+                    const effectiveLineOrientations = (override.lineOrientations ?? planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
                     const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
                       .map(o => o === 'vertical' ? 238.2 : 113.4)
                     const angleRad2 = angle * Math.PI / 180
-                    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (effectiveLinesPerRow - 1) * 2.5
-                    const totalHoriz = totalSlope * Math.cos(angleRad2)
+                    const totalSlopePrev = lineDepths.reduce((s, d) => s + d, 0) + (effectiveLinesPerRow - 1) * 2.5
+                    const totalHoriz = totalSlopePrev * Math.cos(angleRad2)
                     const scaleW2 = totalHoriz > 0 ? (W - 30) / totalHoriz : 1
                     const scaleH2 = backHeight > 0 ? (H - 18) / backHeight : 1
                     const sc = Math.min(scaleW2, scaleH2)
-                    // Build segments
                     const segs = []
                     let sx = fX, sy = groundY - frontHeight * sc
                     for (let li = 0; li < effectiveLinesPerRow; li++) {
@@ -1309,7 +1527,7 @@ export default function Step3PanelPlacement({
                       sx = sx + sdx + gdx
                       sy = sy - sdy - gdy
                     }
-                    const finalX = sx, finalTopY = sy
+                    const finalX = sx
                     return (
                       <svg width={W} height={H} style={{ display: 'block', margin: '0 auto 0.5rem' }}>
                         <line x1="0" y1={groundY} x2={W} y2={groundY} stroke="#ddd" strokeWidth="1"/>
@@ -1326,15 +1544,15 @@ export default function Step3PanelPlacement({
                     )
                   })()}
 
-                  {/* Inputs — mirrors Step 2: angle + front H editable, back H calculated */}
+                  {/* Inputs — angle + front H editable, back H calculated */}
                   <div style={{ display: 'flex', gap: '0.4rem' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Angle (°)</div>
                       <input
-                        key={`${selectedRowKey}-angle`}
+                        key={`${selectedTrapezoidId}-angle`}
                         type="number" min="0" max="30" step="0.5"
                         defaultValue={angle}
-                        onChange={e => updateRowTrapezoid('angle', e.target.value)}
+                        onChange={e => updateTrapezoidConfig('angle', e.target.value)}
                         style={{
                           width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
                           border: `1px solid ${isOverridden ? '#FFB74D' : '#ddd'}`,
@@ -1345,16 +1563,55 @@ export default function Step3PanelPlacement({
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.65rem', color: '#aaa', marginBottom: '2px' }}>Front H (cm)</div>
                       <input
-                        key={`${selectedRowKey}-frontH`}
+                        key={`${selectedTrapezoidId}-frontH`}
                         type="number" min="0" step="0.5"
                         defaultValue={frontHeight}
-                        onChange={e => updateRowTrapezoid('frontHeight', e.target.value)}
+                        onChange={e => updateTrapezoidConfig('frontHeight', e.target.value)}
                         style={{
                           width: '100%', padding: '0.3rem 0.4rem', boxSizing: 'border-box',
                           border: `1px solid ${isOverridden ? '#FFB74D' : '#ddd'}`,
                           borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600'
                         }}
                       />
+                    </div>
+                  </div>
+                  {/* Lines per Row — same L&F as Step 2 */}
+                  <div style={{ marginBottom: '0.75rem', marginTop: '0.6rem' }}>
+                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.82rem' }}>Lines per Row</label>
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      {[1,2,3,4,5].map(n => (
+                        <button key={n} onClick={() => {
+                          const newOrients = [..._effectiveLineOrientations]
+                          while (newOrients.length < n) newOrients.push('vertical')
+                          updateTrapezoidConfig('linesPerRow', n)
+                          updateTrapezoidConfig('lineOrientations', newOrients.slice(0, n))
+                        }}
+                          style={{ flex: 1, padding: '0.4rem', background: _effectiveLinesPerRow === n ? '#1565C0' : 'white', color: _effectiveLinesPerRow === n ? 'white' : '#555', border: `2px solid ${_effectiveLinesPerRow === n ? '#1565C0' : '#e0e0e0'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Line Orientations — same L&F as Step 2 */}
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.82rem' }}>
+                      Line Orientations <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '400' }}>(front → back)</span>
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      {_effectiveLineOrientations.slice(0, _effectiveLinesPerRow).map((o, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#777', width: '46px', flexShrink: 0 }}>Line {idx + 1}</span>
+                          <button onClick={() => {
+                            const newOrients = [..._effectiveLineOrientations]
+                            newOrients[idx] = newOrients[idx] === 'vertical' ? 'horizontal' : 'vertical'
+                            updateTrapezoidConfig('lineOrientations', newOrients)
+                          }}
+                            style={{ flex: 1, padding: '0.32rem 0.5rem', background: o === 'vertical' ? '#E3F2FD' : '#FFF3E0', color: o === 'vertical' ? '#1565C0' : '#E65100', border: `1.5px solid ${o === 'vertical' ? '#90CAF9' : '#FFB74D'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+                            {o === 'vertical' ? '▮ Vertical (portrait)' : '▬ Horizontal (landscape)'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.5rem', background: '#f8f9fa', borderRadius: '5px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
