@@ -735,7 +735,7 @@ export default function Step3PanelPlacement({
               }}
             >
               <img
-                ref={(el) => setImageRef(el)}
+                ref={(el) => { if (el) setImageRef(el) }}
                 src={uploadedImageData.imageData}
                 alt="Roof with panels"
                 style={{

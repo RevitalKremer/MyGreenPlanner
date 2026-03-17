@@ -254,7 +254,7 @@ export default function Step2PVAreaRefinement({
               onMouseLeave={handleContainerMouseUp}
             >
               <img
-                ref={(el) => setImageRef(el)}
+                ref={(el) => { if (el) setImageRef(el) }}
                 src={uploadedImageData.imageData}
                 alt="Roof"
                 onClick={handleImageClick}
@@ -609,9 +609,9 @@ export default function Step2PVAreaRefinement({
                           />
                         </div>
 
-                        {/* Lines per row */}
+                        {/* Lines per area */}
                         <div>
-                          <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Lines per Row</label>
+                          <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Lines per Area</label>
                           <div style={{ display: 'flex', gap: '0.25rem' }}>
                             {[1,2,3,4,5].map(n => (
                               <button key={n} onClick={() => updateGroupLinesPerRow(group.id, n)}
@@ -681,9 +681,9 @@ export default function Step2PVAreaRefinement({
                   />
                 </div>
 
-                {/* Lines per Row */}
+                {/* Lines per Area */}
                 <div style={{ marginBottom: '1.1rem' }}>
-                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.88rem' }}>Lines per Row</label>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.88rem' }}>Lines per Area</label>
                   <div style={{ display: 'flex', gap: '0.3rem' }}>
                     {[1,2,3,4,5].map(n => (
                       <button key={n} onClick={() => handleLinesPerRowChange(n)}

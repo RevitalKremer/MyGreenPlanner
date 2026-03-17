@@ -40,7 +40,7 @@ const HELP = {
         a: 'Front height is the mounting height at the low edge of the panel (toward the eave). Back height is computed from the front height plus the panel slope projection. Together they define the panel\'s 3D trapezoid profile used for shade and row spacing calculations.'
       },
       {
-        q: 'What does "Lines per Row" mean?',
+        q: 'What does "Lines per Area" mean?',
         a: 'Each row can have 1 or 2 panel lines (portrait or landscape) stacked together. Two lines increase output per row but require more depth. Orientation (vertical = portrait, horizontal = landscape) controls which dimension faces along the baseline.'
       },
       {
