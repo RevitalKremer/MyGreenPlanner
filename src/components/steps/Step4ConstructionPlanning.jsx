@@ -240,7 +240,47 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
   const [isPanning, setIsPanning]   = useState(false)
   const [panStart, setPanStart]     = useState(null)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
   const containerRef = useRef(null)
+  const contentRef = useRef(null)
+  const minimapDragRef = useRef(false)
+
+  const MM_W = 180
+  const MM_H = 100
+
+  const panToMinimapPoint = (mmX, mmY) => {
+    if (!contentRef.current || !containerRef.current) return
+    const contentRect = contentRef.current.getBoundingClientRect()
+    const naturalW = contentRect.width / zoom
+    const naturalH = contentRect.height / zoom
+    if (naturalW <= 0 || naturalH <= 0) return
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const contentX = (mmX / MM_W) * naturalW
+    const contentY = (mmY / MM_H) * naturalH
+    setPanOffset({
+      x: containerRect.width  / 2 - contentX * zoom,
+      y: containerRect.height / 2 - contentY * zoom,
+    })
+  }
+
+  const getMinimapViewportRect = () => {
+    if (!contentRef.current || !containerRef.current) return null
+    const contentRect = contentRef.current.getBoundingClientRect()
+    const naturalW = contentRect.width / zoom
+    const naturalH = contentRect.height / zoom
+    if (naturalW <= 0 || naturalH <= 0) return null
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const visLeft = -panOffset.x / zoom
+    const visTop  = -panOffset.y / zoom
+    const visW = containerRect.width  / zoom
+    const visH = containerRect.height / zoom
+    return {
+      x: Math.max(0, visLeft / naturalW * MM_W),
+      y: Math.max(0, visTop  / naturalH * MM_H),
+      w: Math.min(MM_W, visW  / naturalW * MM_W),
+      h: Math.min(MM_H, visH  / naturalH * MM_H),
+    }
+  }
 
   const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
   const blockHeightCm = settings.blockHeightCm ?? 30
@@ -419,7 +459,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
         onMouseUp={() => { setIsPanning(false); setPanStart(null) }}
         onMouseLeave={() => { setIsPanning(false); setPanStart(null) }}
       >
-        <div style={{
+        <div ref={contentRef} style={{
           transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
           padding: '1rem 1.5rem',
@@ -671,6 +711,32 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               ))}
             </div>
             <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
+
+            {/* Minimap Navigator — shown only when zoomed in */}
+            {zoom > 1 && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div
+                  onClick={() => setMinimapCollapsed(c => !c)}
+                  style={{ fontSize: '0.58rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                >
+                  <span>Navigator</span>
+                  <span style={{ fontSize: '0.52rem' }}>{minimapCollapsed ? '▲' : '▼'}</span>
+                </div>
+                {!minimapCollapsed && (
+                  <div
+                    style={{ width: MM_W, height: MM_H, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', boxShadow: '0 1px 5px rgba(0,0,0,0.18)', position: 'relative', background: '#1e2433' }}
+                    onMouseDown={(e) => { minimapDragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                    onMouseMove={(e) => { if (!minimapDragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                    onMouseUp={() => { minimapDragRef.current = false }}
+                    onMouseLeave={() => { minimapDragRef.current = false }}
+                  >
+                    <svg width={MM_W} height={MM_H} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+                      {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.08)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+                    </svg>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

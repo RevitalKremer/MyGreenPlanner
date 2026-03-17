@@ -43,6 +43,9 @@ export default function Step2PVAreaRefinement({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
   const [panActive, setPanActive] = useState(false)
   const panRef = useRef(null)
+  const viewportRef = useRef(null)
+  const minimapDragRef = useRef(false)
+  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
 
   const handleContainerMouseDown = (e) => {
     if (e.button !== 0 || isDrawingAnything) return
@@ -201,11 +204,46 @@ export default function Step2PVAreaRefinement({
   // Font size for SVG labels (scales with image width)
   const labelFontSize = imageRef ? Math.max(12, Math.min(36, imageRef.naturalWidth * 0.012)) : 14
 
+  // ── Minimap helpers ───────────────────────────────────────────────────────────
+  const MM_W = 180
+  const MM_H = imageRef
+    ? Math.min(120, Math.round(MM_W * imageRef.naturalHeight / Math.max(imageRef.naturalWidth, 1)))
+    : 100
+
+  const panToMinimapPoint = (mmX, mmY) => {
+    if (!imageRef || !viewportRef.current) return
+    const imgRect = imageRef.getBoundingClientRect()
+    const vpRect  = viewportRef.current.getBoundingClientRect()
+    const screenX = imgRect.left + (mmX / MM_W) * imgRect.width
+    const screenY = imgRect.top  + (mmY / MM_H) * imgRect.height
+    setPanOffset(prev => ({
+      x: prev.x + (vpRect.left + vpRect.width  / 2) - screenX,
+      y: prev.y + (vpRect.top  + vpRect.height / 2) - screenY,
+    }))
+  }
+
+  const getMinimapViewportRect = () => {
+    if (!imageRef || !viewportRef.current) return null
+    const imgRect = imageRef.getBoundingClientRect()
+    const vpRect  = viewportRef.current.getBoundingClientRect()
+    const ol = Math.max(vpRect.left,   imgRect.left)
+    const or = Math.min(vpRect.right,  imgRect.right)
+    const ot = Math.max(vpRect.top,    imgRect.top)
+    const ob = Math.min(vpRect.bottom, imgRect.bottom)
+    if (or <= ol || ob <= ot) return null
+    return {
+      x: (ol - imgRect.left) / imgRect.width  * MM_W,
+      y: (ot - imgRect.top)  / imgRect.height * MM_H,
+      w: (or - ol)           / imgRect.width  * MM_W,
+      h: (ob - ot)           / imgRect.height * MM_H,
+    }
+  }
+
   return (
     <>
       <div className="step-content-area" style={{ position: 'relative' }}>
         {uploadedImageData ? (
-          <div className="uploaded-image-view" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto' }}>
+          <div className="uploaded-image-view" ref={viewportRef} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative' }}>
             <div
               className="uploaded-image-container"
               style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: panActive ? 'grabbing' : (isDrawingAnything ? 'crosshair' : 'grab') }}
@@ -361,6 +399,34 @@ export default function Step2PVAreaRefinement({
                 ))}
               </div>
             </div>
+
+            {/* Minimap Navigator — shown only when zoomed in */}
+            {viewZoom > 1 && imageRef && (
+              <div style={{ marginBottom: '0.6rem' }}>
+                <div
+                  onClick={() => setMinimapCollapsed(c => !c)}
+                  style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                >
+                  <span>Navigator</span>
+                  <span style={{ fontSize: '0.55rem' }}>{minimapCollapsed ? '▲' : '▼'}</span>
+                </div>
+                {!minimapCollapsed && (
+                  <div
+                    style={{ width: MM_W, height: MM_H, borderRadius: '6px', overflow: 'hidden', cursor: 'crosshair', boxShadow: '0 1px 6px rgba(0,0,0,0.2)', position: 'relative' }}
+                    onMouseDown={(e) => { minimapDragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                    onMouseMove={(e) => { if (!minimapDragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                    onMouseUp={() => { minimapDragRef.current = false }}
+                    onMouseLeave={() => { minimapDragRef.current = false }}
+                  >
+                    <img src={uploadedImageData.imageData} alt="" style={{ position: 'absolute', top: 0, left: 0, width: MM_W, height: MM_H, objectFit: 'fill', pointerEvents: 'none' }} />
+                    <svg width={MM_W} height={MM_H} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+                      <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.2)" />
+                      {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+                    </svg>
+                  </div>
+                )}
+              </div>
+            )}
 
             {hasValues ? (
               <svg viewBox="0 0 300 180" style={{ width: '100%', height: 'auto', background: '#f8f9fa', borderRadius: '6px' }}>

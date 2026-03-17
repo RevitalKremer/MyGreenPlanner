@@ -102,6 +102,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
   const [panActive, setPanActive] = useState(false)
   const panRef = useRef(null)
+  const containerRef = useRef(null)
+  const contentRef   = useRef(null)
+  const minimapDragRef = useRef(false)
+  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
 
   const handleWheel = (e) => {
     e.preventDefault()
@@ -120,6 +124,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   }
   const stopPan   = () => { panRef.current = null; setPanActive(false) }
   const resetView = () => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }
+
+  const MM_W = 180, MM_H = 100
+  const panToMinimapPoint = (mmX, mmY) => {
+    if (!contentRef.current || !containerRef.current) return
+    const naturalW = contentRef.current.getBoundingClientRect().width  / zoom
+    const naturalH = contentRef.current.getBoundingClientRect().height / zoom
+    if (naturalW <= 0 || naturalH <= 0) return
+    const cr = containerRef.current.getBoundingClientRect()
+    setPanOffset({ x: cr.width  / 2 - (mmX / MM_W) * naturalW * zoom, y: cr.height / 2 - (mmY / MM_H) * naturalH * zoom })
+  }
+  const getMinimapViewportRect = () => {
+    if (!contentRef.current || !containerRef.current) return null
+    const naturalW = contentRef.current.getBoundingClientRect().width  / zoom
+    const naturalH = contentRef.current.getBoundingClientRect().height / zoom
+    if (naturalW <= 0 || naturalH <= 0) return null
+    const cr = containerRef.current.getBoundingClientRect()
+    return { x: Math.max(0, (-panOffset.x / zoom) / naturalW * MM_W), y: Math.max(0, (-panOffset.y / zoom) / naturalH * MM_H), w: Math.min(MM_W, (cr.width / zoom) / naturalW * MM_W), h: Math.min(MM_H, (cr.height / zoom) / naturalH * MM_H) }
+  }
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const railConfig = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
@@ -181,9 +203,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
         onMouseMove={handleMouseMove}
         onMouseUp={stopPan}
         onMouseLeave={stopPan}
+        ref={containerRef}
       >
         <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+          <div ref={contentRef} style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
             <div style={{ padding: '1.25rem 1.25rem 0' }}>
               <svg width={svgW} height={svgH} style={{ display: 'block' }}>
                 <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
@@ -524,6 +547,26 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   ))}
                 </div>
                 <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
+                {zoom > 1 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div onClick={() => setMinimapCollapsed(c => !c)} style={{ fontSize: '0.58rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span>Navigator</span><span style={{ fontSize: '0.52rem' }}>{minimapCollapsed ? '▲' : '▼'}</span>
+                    </div>
+                    {!minimapCollapsed && (
+                      <div
+                        style={{ width: MM_W, height: MM_H, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', boxShadow: '0 1px 5px rgba(0,0,0,0.18)', position: 'relative', background: '#1e2433' }}
+                        onMouseDown={(e) => { minimapDragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                        onMouseMove={(e) => { if (!minimapDragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
+                        onMouseUp={() => { minimapDragRef.current = false }}
+                        onMouseLeave={() => { minimapDragRef.current = false }}
+                      >
+                        <svg width={MM_W} height={MM_H} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+                          {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.08)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
                 {totalBases} bases total
