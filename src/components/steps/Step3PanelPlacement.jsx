@@ -364,7 +364,7 @@ export default function Step3PanelPlacement({
     const lpr   = field === 'linesPerRow'      ? rawValue              : (current.linesPerRow      ?? globalCfg.linesPerRow      ?? 1)
     const orients = field === 'lineOrientations' ? rawValue            : (current.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical'])
     const lineDepths = (orients || ['vertical']).slice(0, lpr).map(o => o === 'vertical' ? 238.2 : 113.4)
-    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (lpr - 1) * 2.5
+    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (lineDepths.length - 1) * 2.5
     newOverride.backHeight = parseFloat((fH + totalSlope * Math.sin((a || 0) * Math.PI / 180)).toFixed(1))
 
     // For numeric fields, store parsed value
@@ -1542,7 +1542,7 @@ export default function Step3PanelPlacement({
               const _effectiveLineOrientations = (override.lineOrientations ?? _planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
               const _lineDepths = _effectiveLineOrientations.slice(0, _effectiveLinesPerRow)
                 .map(o => o === 'vertical' ? 238.2 : 113.4)
-              const totalSlope = _lineDepths.reduce((s, d) => s + d, 0) + (_effectiveLinesPerRow - 1) * 2.5
+              const totalSlope = _lineDepths.reduce((s, d) => s + d, 0) + (_lineDepths.length - 1) * 2.5
 
               // Trapezoid cross-section geometry
               const W = 130, H = 62, groundY = H - 8
@@ -1584,16 +1584,16 @@ export default function Step3PanelPlacement({
                     const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
                       .map(o => o === 'vertical' ? 238.2 : 113.4)
                     const angleRad2 = angle * Math.PI / 180
-                    const totalSlopePrev = lineDepths.reduce((s, d) => s + d, 0) + (effectiveLinesPerRow - 1) * 2.5
+                    const totalSlopePrev = lineDepths.reduce((s, d) => s + d, 0) + (lineDepths.length - 1) * 2.5
                     const totalHoriz = totalSlopePrev * Math.cos(angleRad2)
                     const scaleW2 = totalHoriz > 0 ? (W - 30) / totalHoriz : 1
                     const scaleH2 = backHeight > 0 ? (H - 18) / backHeight : 1
                     const sc = Math.min(scaleW2, scaleH2)
                     const segs = []
                     let sx = fX, sy = groundY - frontHeight * sc
-                    for (let li = 0; li < effectiveLinesPerRow; li++) {
+                    for (let li = 0; li < lineDepths.length; li++) {
                       const d = lineDepths[li]
-                      const gap = li < effectiveLinesPerRow - 1 ? 2.5 : 0
+                      const gap = li < lineDepths.length - 1 ? 2.5 : 0
                       const sdx = d * Math.cos(angleRad2) * sc
                       const sdy = d * Math.sin(angleRad2) * sc
                       const gdx = gap * Math.cos(angleRad2) * sc
@@ -1657,10 +1657,17 @@ export default function Step3PanelPlacement({
                     <div style={{ display: 'flex', gap: '0.3rem' }}>
                       {[1,2,3,4,5].map(n => (
                         <button key={n} onClick={() => {
+                          if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
+                          const gCfg = refinedArea.panelConfig
+                          const cur = trapezoidConfigs?.[selectedTrapezoidId] || {}
                           const newOrients = [..._effectiveLineOrientations]
                           while (newOrients.length < n) newOrients.push('vertical')
-                          updateTrapezoidConfig('linesPerRow', n)
-                          updateTrapezoidConfig('lineOrientations', newOrients.slice(0, n))
+                          const slicedOrients = newOrients.slice(0, n)
+                          const a  = cur.angle       ?? gCfg.angle       ?? 0
+                          const fH = cur.frontHeight ?? gCfg.frontHeight ?? 0
+                          const lds = slicedOrients.map(o => o === 'vertical' ? 238.2 : 113.4)
+                          const bH = parseFloat((fH + (lds.reduce((s, d) => s + d, 0) + (n - 1) * 2.5) * Math.sin((a || 0) * Math.PI / 180)).toFixed(1))
+                          setTrapezoidConfigs(prev => ({ ...prev, [selectedTrapezoidId]: { ...cur, linesPerRow: n, lineOrientations: slicedOrients, backHeight: bH } }))
                         }}
                           style={{ flex: 1, padding: '0.4rem', background: _effectiveLinesPerRow === n ? '#1565C0' : 'white', color: _effectiveLinesPerRow === n ? 'white' : '#555', border: `2px solid ${_effectiveLinesPerRow === n ? '#1565C0' : '#e0e0e0'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
                           {n}
