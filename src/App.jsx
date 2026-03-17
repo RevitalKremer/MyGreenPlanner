@@ -202,7 +202,7 @@ function App() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const safeName = (currentProject?.name || 'project').replace(/[^a-z0-9]/gi, '_')
+    const safeName = (currentProject?.name || 'project').replace(/[^\p{L}\p{N}]/gu, '_')
     const dateStr = new Date().toISOString().split('T')[0]
     a.href = url
     a.download = `${safeName}_${dateStr}.mgp`
