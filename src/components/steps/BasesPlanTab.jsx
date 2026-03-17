@@ -420,30 +420,47 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const n   = bases.length
                         const C1  = railLocalYs[0]
                         const Cm  = railLocalYs[railLocalYs.length - 1]
+
+                        // Trapezoid leg height at a given local Y (base bottom → beam top, NOT floor distance)
+                        const heightAtY_mm = (localY) => {
+                          if (!rc || frontLegY <= rearLegY) return 0
+                          const t = Math.max(0, Math.min(1, (localY - rearLegY) / (frontLegY - rearLegY)))
+                          return (rc.heightRear + t * (rc.heightFront - rc.heightRear)) * 10
+                        }
+
                         // Two end pairs: [B1,B2] and [Bn,B(n-1)]; skip second if same as first
                         const pairs = n === 2
                           ? [[0, 1]]
                           : [[0, 1], [n - 1, n - 2]]
                         return pairs.flatMap(([ai, bi], pi) => {
                           const ba = bases[ai], bb = bases[bi]
-                          return [[C1, C1], [Cm, Cm]].map(([ya, yb], di) => {
-                            const pa = localToScreen({ x: ba.localX, y: ya }, frame.center, angleRad)
-                            const pb = localToScreen({ x: bb.localX, y: yb }, frame.center, angleRad)
+                          return [C1, Cm].map((railY, di) => {
+                            // TOP end = ba (beam level), BOTTOM end = bb (ground anchor)
+                            const pa = localToScreen({ x: ba.localX, y: railY }, frame.center, angleRad)
+                            const pb = localToScreen({ x: bb.localX, y: railY }, frame.center, angleRad)
                             const [x1, y1] = toSvg(pa.x, pa.y)
                             const [x2, y2] = toSvg(pb.x, pb.y)
-                            const distMm = Math.round(
-                              Math.sqrt((bb.localX - ba.localX) ** 2 + (yb - ya) ** 2) * pixelToCmRatio * 10
-                            )
+
+                            // True 3D length: horizontal plan distance + vertical drop (beam height at railY)
+                            const horizMm = Math.abs(bb.localX - ba.localX) * pixelToCmRatio * 10
+                            const vertMm  = heightAtY_mm(railY)
+                            const distMm  = Math.round(Math.sqrt(horizMm ** 2 + vertMm ** 2))
+
                             const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
                             const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                             const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
-                            const fs = 11 / zoom
+                            const fs  = 11 / zoom
                             const bgW = String(distMm).length * fs * 0.6 + 6 / zoom
                             const bgH = fs + 4 / zoom
+                            const dotR = 4 / zoom
                             return (
                               <g key={`diag-${pi}-${di}`}>
                                 <line x1={x1} y1={y1} x2={x2} y2={y2}
                                   stroke="cyan" strokeWidth={PROFILE_THICK} />
+                                {/* Top end: filled dot (beam level) */}
+                                <circle cx={x1} cy={y1} r={dotR} fill="cyan" stroke="#006" strokeWidth={0.5/zoom} />
+                                {/* Bottom end: hollow circle (ground anchor) */}
+                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke="cyan" strokeWidth={1/zoom} />
                                 <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
                                   <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH}
                                     fill="white" stroke="#ccc" strokeWidth={0.5/zoom} rx={1/zoom} />
