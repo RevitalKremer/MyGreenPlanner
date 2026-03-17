@@ -8,7 +8,7 @@ import {
 import RailLayoutTab from './RailLayoutTab'
 import BasesPlanTab  from './BasesPlanTab'
 import { DEFAULT_RAIL_OFFSET_CM, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM, computeRowRailLayout } from '../../utils/railLayoutService'
-import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_CONN_EDGE_DIST_MM, DEFAULT_CONN_MIN_PORTRAIT, DEFAULT_CONN_MIN_LANDSCAPE } from '../../utils/basePlanService'
+import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_RAIL_EDGE_DIST_MM, DEFAULT_RAIL_MIN_PORTRAIT, DEFAULT_RAIL_MIN_LANDSCAPE } from '../../utils/basePlanService'
 
 const ACCENT = '#C4D600'
 
@@ -20,9 +20,9 @@ const SETTINGS_DEFAULTS = {
   panelLengthCm:    238.2,
   blockHeightCm:    30,
   blockWidthCm:     70,
-  connEdgeDistMm:   DEFAULT_CONN_EDGE_DIST_MM,
-  connMinPortrait:  DEFAULT_CONN_MIN_PORTRAIT,
-  connMinLandscape: DEFAULT_CONN_MIN_LANDSCAPE,
+  connEdgeDistMm:   DEFAULT_RAIL_EDGE_DIST_MM,
+  connMinPortrait:  DEFAULT_RAIL_MIN_PORTRAIT,
+  connMinLandscape: DEFAULT_RAIL_MIN_LANDSCAPE,
   // Rails (rails tab)
   railOverhangCm:   DEFAULT_RAIL_OVERHANG_CM,
   stockLengths:     DEFAULT_STOCK_LENGTHS_MM,
@@ -220,10 +220,10 @@ function RowsView({ rowConstructions, highlightParam = null }) {
 // Param → highlight group mapping (used across all tabs)
 const PARAM_GROUP = {
   railOffsetCm:     'rail-clamp',    // detail tab: panel-rear clamp area
-  connOffsetCm:     'connectors',    // detail tab: connector rects
-  connEdgeDistMm:   'connectors',
-  connMinPortrait:  'connectors',
-  connMinLandscape: 'connectors',
+  connOffsetCm:     'cross-rails',    // detail tab: cross-rail rects
+  connEdgeDistMm:   'cross-rails',
+  connMinPortrait:  'cross-rails',
+  connMinLandscape: 'cross-rails',
   panelLengthCm:    'panel',         // detail tab: panel bars
   blockHeightCm:    'blocks',        // detail tab: block rects
   blockWidthCm:     'blocks',
@@ -495,7 +495,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
               const cy = beamY(cx)
               const beamTop  = -BEAM_THICK_PX / 2
               const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
-              const RW = 9 * SC, RH = 4.5 * SC  // 9 cm × 4.5 cm (2:1), long along slope
+              const RW = 4 * SC, RH = 4 * SC  // 40×40 mm profile (square)
               const midY = (beamTop + panBot) / 2
               // Distance along slope from beam start (x0)
               const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
@@ -508,7 +508,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                   <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                     <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
                       fill="#7c3aed" stroke="#5b21b6" strokeWidth="0.8" />
-                    {hl('connectors') && (
+                    {hl('cross-rails') && (
                       <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                         fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
@@ -942,17 +942,17 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
           const SECTIONS = [
             {
-              tabKey: 'detail', label: 'Trapezoids & Connectors',
+              tabKey: 'detail', label: 'Trapezoids & Rails',
               keys: ['railOffsetCm','connOffsetCm','panelLengthCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape'],
               fields: [
                 ['Rail Clamp Offset (cm)', 'railOffsetCm', 0.1, 0],
-                ['Connector Offset (cm)',  'connOffsetCm',  0.5, 0],
+                ['Cross-Rail Offset (cm)', 'connOffsetCm',  0.5, 0],
                 ['Panel Length (cm)',      'panelLengthCm', 0.1, 10],
                 ['Block Height (cm)',      'blockHeightCm', 1,   1],
                 ['Block Width (cm)',       'blockWidthCm',  1,   1],
-                ['Conn. Edge Dist (mm)',   'connEdgeDistMm',5,   0],
-                ['Min per Portrait',       'connMinPortrait',1,  1],
-                ['Min per Landscape',      'connMinLandscape',1, 1],
+                ['Rail Edge Dist (mm)',    'connEdgeDistMm',5,   0],
+                ['Min Rails Portrait',     'connMinPortrait',1,  1],
+                ['Min Rails Landscape',    'connMinLandscape',1, 1],
               ],
             },
             {

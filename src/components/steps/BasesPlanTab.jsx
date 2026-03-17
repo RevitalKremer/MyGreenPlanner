@@ -394,13 +394,19 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               const [cx, cy] = toSvg(sp.x, sp.y)
                               // Simple rectangle connector (top view), purple to match detail view
                               // Dimensions in physical cm → SVG px via (cm / pixelToCmRatio * sc)
-                              const CW = 9   / pixelToCmRatio * sc  // 9 cm along slope (long edge)
-                              const CH = 4.5 / pixelToCmRatio * sc  // 4.5 cm along row  (2:1 ratio)
+                              const CW = 4 / pixelToCmRatio * sc  // 40×40 mm profile (square)
+                              const CH = 4 / pixelToCmRatio * sc
+                              const hlRail = highlightGroup === 'cross-rails'
                               return (
                                 <g key={`conn-${ci}`}>
                                   <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
                                     <rect x={-CW/2} y={-CH/2} width={CW} height={CH}
                                       fill="#d1e3f3" stroke="#642165" strokeWidth="1" />
+                                    {hlRail && (
+                                      <rect x={-CW/2 - 4} y={-CH/2 - 4} width={CW + 8} height={CH + 8}
+                                        fill="none" stroke="#FFB300" strokeWidth="2" rx="2"
+                                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                                    )}
                                   </g>
                                 </g>
                               )
@@ -488,7 +494,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
             <div style={{ padding: '0.6rem 0.75rem' }}>
               <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
-                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Connectors', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
+                {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Rails', showConnectors, setShowConnectors], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
                   <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
                     <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
                     {label}

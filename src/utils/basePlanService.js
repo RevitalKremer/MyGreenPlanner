@@ -2,9 +2,9 @@ import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, getPanel
 
 export const DEFAULT_BASE_EDGE_OFFSET_MM  = 300   // 30 cm from each end
 export const DEFAULT_BASE_SPACING_MM      = 2000  // max 2 m between bases
-export const DEFAULT_CONN_EDGE_DIST_MM    = 40
-export const DEFAULT_CONN_MIN_PORTRAIT    = 2
-export const DEFAULT_CONN_MIN_LANDSCAPE   = 1
+export const DEFAULT_RAIL_EDGE_DIST_MM    = 40
+export const DEFAULT_RAIL_MIN_PORTRAIT    = 2
+export const DEFAULT_RAIL_MIN_LANDSCAPE   = 1
 
 // Compute base placement for one row
 // Returns { frame, bases, lines, frameLengthMm, baseCount, edgeOffsetMm, spacingMm, lastGapMm }
