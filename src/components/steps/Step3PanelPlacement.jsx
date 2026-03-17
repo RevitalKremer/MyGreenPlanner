@@ -1651,9 +1651,9 @@ export default function Step3PanelPlacement({
                       />
                     </div>
                   </div>
-                  {/* Lines per Row — same L&F as Step 2 */}
+                  {/* Lines per Area — same L&F as Step 2 */}
                   <div style={{ marginBottom: '0.75rem', marginTop: '0.6rem' }}>
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.82rem' }}>Lines per Row</label>
+                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.82rem' }}>Lines per Area</label>
                     <div style={{ display: 'flex', gap: '0.3rem' }}>
                       {[1,2,3,4,5].map(n => (
                         <button key={n} onClick={() => {

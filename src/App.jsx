@@ -282,14 +282,33 @@ function App() {
       })
       setSelectedPanels([])
     } else {
-      // Scratch mode: re-run full generation, splice back only the target area
+      // Scratch mode: re-run full generation, splice back only the target area.
+      // We can't use p.row === areaKey because areaKey may be a normalized sequential
+      // number assigned after spatial sub-splitting, not the original generation row.
+      // Instead, find the matching cluster by spatial proximity to the existing area centroid.
       if (!baseline) return
       const allGenerated = generatePanelLayout(refinedArea, baseline)
-      const areaPanels = allGenerated.filter(p => p.row === areaKey)
       setPanels(prev => {
+        const existingAreaPanels = prev.filter(p => (p.area ?? p.row) === areaKey)
+        if (existingAreaPanels.length === 0) return prev
+        const cx = existingAreaPanels.reduce((s, p) => s + p.x + p.width / 2, 0) / existingAreaPanels.length
+        const cy = existingAreaPanels.reduce((s, p) => s + p.y + p.height / 2, 0) / existingAreaPanels.length
+        // Find the row in the new generation whose panel is closest to the existing area centroid
+        let minDist = Infinity, matchRow = null
+        allGenerated.forEach(p => {
+          const d = Math.hypot((p.x + p.width / 2) - cx, (p.y + p.height / 2) - cy)
+          if (d < minDist) { minDist = d; matchRow = p.row }
+        })
+        // From that row, take only panels spatially near the existing area (handles sub-splits)
+        const xs = existingAreaPanels.map(p => p.x + p.width / 2)
+        const ys = existingAreaPanels.map(p => p.y + p.height / 2)
+        const radius = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + existingAreaPanels[0].width * 3
+        const areaPanels = allGenerated.filter(p => p.row === matchRow &&
+          Math.hypot((p.x + p.width / 2) - cx, (p.y + p.height / 2) - cy) <= radius)
         const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
         let nextId = maxId + 1
-        const newAreaPanels = areaPanels.map(p => ({ ...p, id: nextId++, area: p.row, trapezoidId: 'A1' }))
+        const trapId = existingAreaPanels[0]?.trapezoidId || 'A1'
+        const newAreaPanels = areaPanels.map(p => ({ ...p, id: nextId++, area: areaKey, trapezoidId: trapId }))
         return [...prev.filter(p => (p.area ?? p.row) !== areaKey), ...newAreaPanels]
       })
       setSelectedPanels([])
