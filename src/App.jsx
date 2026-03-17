@@ -736,6 +736,7 @@ function App() {
             panels={panels}
             refinedArea={refinedArea}
             rowConfigs={rowConfigs}
+            rowGroups={rowGroups}
             initialGlobalSettings={step4GlobalSettings}
             initialRowSettings={step4RowSettings}
             onSettingsChange={(g, r) => { setStep4GlobalSettings(g); setStep4RowSettings(r) }}

@@ -199,6 +199,13 @@ export default function Step3PanelPlacement({
 
   const selectedRowKey = selectedRow ? getRowKey(selectedRow[0]) : null
 
+  // Row label: prefix with group name if available (e.g. "A · Row 1")
+  const rowLabel = (rowKey, i) => {
+    const g = rowGroups[rowKey]?.label
+    return g ? `${g} · Row ${i + 1}` : `Row ${i + 1}`
+  }
+  const selectedRowLabel = selectedRowIndex !== null ? rowLabel(selectedRowKey, selectedRowIndex) : '?'
+
   const updateRowTrapezoid = (field, rawValue) => {
     if (selectedRowKey === null || selectedRowKey === undefined || !refinedArea?.panelConfig) return
     const value = parseFloat(rawValue)
@@ -954,7 +961,7 @@ export default function Step3PanelPlacement({
                               background: isRowSelected ? '#C4D600' : '#ccc'
                             }} />
                             <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#444' }}>
-                              Row {i + 1}
+                              {rowLabel(rowKey, i)}
                             </span>
                             {hasOverride && (
                               <span title="Custom trapezoid" style={{
@@ -969,7 +976,7 @@ export default function Step3PanelPlacement({
                           {/* Per-row regenerate */}
                           <button
                             onClick={() => regenerateSingleRowHandler(rowKey)}
-                            title={`Regenerate Row ${i + 1}`}
+                            title={`Regenerate ${rowLabel(rowKey, i)}`}
                             style={{
                               marginLeft: '0.4rem', padding: '2px 6px', flexShrink: 0,
                               background: 'none', border: '1px solid #ddd', borderRadius: '4px',
@@ -1108,7 +1115,7 @@ export default function Step3PanelPlacement({
                 selectedPanels.length > 0 ? (
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#333', marginBottom: '0.4rem' }}>
-                      Row {selectedRowIndex !== null ? selectedRowIndex + 1 : '?'}
+                      {selectedRowLabel}
                       <span style={{ fontWeight: '400', color: '#888' }}> · {selectedPanels.length} panels</span>
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#888', marginBottom: '0.5rem' }}>
@@ -1148,7 +1155,7 @@ export default function Step3PanelPlacement({
                 selectedPanels.length > 0 ? (
                   <div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#333', marginBottom: '0.6rem' }}>
-                      Row {selectedRowIndex !== null ? selectedRowIndex + 1 : '?'}
+                      {selectedRowLabel}
                       <span style={{ fontWeight: '400', color: '#888' }}> · {selectedPanels.length} panels</span>
                     </div>
                     <button
@@ -1160,7 +1167,7 @@ export default function Step3PanelPlacement({
                         cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem'
                       }}
                     >
-                      ＋ Add to Row {selectedRowIndex !== null ? selectedRowIndex + 1 : ''}
+                      ＋ Add to {selectedRowLabel}
                     </button>
                     <button
                       onClick={addManualPanel}
@@ -1252,7 +1259,7 @@ export default function Step3PanelPlacement({
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isOverridden ? '#E65100' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>
-                      Row {(selectedRowIndex ?? 0) + 1} Trapezoid
+                      {selectedRowLabel} Trapezoid
                     </span>
                     {isOverridden && (
                       <button

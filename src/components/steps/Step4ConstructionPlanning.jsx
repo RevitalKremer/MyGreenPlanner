@@ -100,7 +100,7 @@ function TrapProfile({ rc, sc = 1.2, showLabel = true, selected = false }) {
 
 // ─── Layout view ─────────────────────────────────────────────────────────────
 
-function LayoutView({ rowConstructions, selectedIdx, onSelectRow, highlightParam = null }) {
+function LayoutView({ rowConstructions, rowLabels = [], selectedIdx, onSelectRow, highlightParam = null }) {
   const hlSpacing = PARAM_GROUP[highlightParam] === 'trap-spacing'
   return (
     <div style={{ padding: '1.5rem', overflowY: 'auto' }}>
@@ -124,7 +124,7 @@ function LayoutView({ rowConstructions, selectedIdx, onSelectRow, highlightParam
             }}
           >
             <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#888', marginBottom: '0.5rem' }}>
-              Row {i + 1} · {rc.panelCount} panels · {rc.angle}° · {rc.typeLetter}{rc.panelsPerSpan} type
+              {rowLabels[i] ?? `Row ${i + 1}`} · {rc.panelCount} panels · {rc.angle}° · {rc.typeLetter}{rc.panelsPerSpan} type
             </div>
             <div style={{ overflowX: 'auto' }}>
               <svg width={totalW} height={140} style={{ display: 'block' }}>
@@ -160,7 +160,7 @@ function LayoutView({ rowConstructions, selectedIdx, onSelectRow, highlightParam
 
 // ─── Rows (top view) ─────────────────────────────────────────────────────────
 
-function RowsView({ rowConstructions, highlightParam = null }) {
+function RowsView({ rowConstructions, rowLabels = [], highlightParam = null }) {
   const maxLen = Math.max(...rowConstructions.map(r => r.rowLength), 1)
   const maxW = 580
   const sc = maxW / maxLen
@@ -180,7 +180,7 @@ function RowsView({ rowConstructions, highlightParam = null }) {
 
         return (
           <div key={i} style={{ marginBottom: '2rem' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#888', marginBottom: '4px' }}>Row {i + 1}</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#888', marginBottom: '4px' }}>{rowLabels[i] ?? `Row ${i + 1}`}</div>
             <svg width={svgW} height={totalH} style={{ display: 'block', overflow: 'visible' }}>
               <ArrowDefs />
               {/* Row width arrow */}
@@ -720,7 +720,7 @@ function BOMView({ rowConstructions }) {
 
 // ─── Main Step4 component ────────────────────────────────────────────────────
 
-export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {}, initialGlobalSettings = null, initialRowSettings = null, onSettingsChange }) {
+export default function Step4ConstructionPlanning({ panels = [], refinedArea, rowConfigs = {}, rowGroups = [], initialGlobalSettings = null, initialRowSettings = null, onSettingsChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [activeTab, setActiveTab] = useState('detail')
   const [globalSettings, setGlobalSettings] = useState(() => initialGlobalSettings ?? SETTINGS_DEFAULTS)
@@ -733,6 +733,12 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
   }, [globalSettings, rowSettings])
 
   const getSettings = (rowIdx) => ({ ...globalSettings, ...(rowSettings[rowIdx] || {}) })
+
+  // Row label: prefix with group name if available (e.g. "A · Row 1")
+  const rowLabel = (rowKey, i) => {
+    const g = rowGroups[rowKey]?.label
+    return g ? `${g} · Row ${i + 1}` : `Row ${i + 1}`
+  }
 
   const updateSetting = (rowIdx, key, value) => {
     setRowSettings(prev => ({
@@ -771,6 +777,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
     Object.keys(rowPanelCounts).filter(k => k !== 'unassigned').map(Number).sort((a, b) => a - b),
     [rowPanelCounts]
   )
+  const rowLabels = rowKeys.map((rk, i) => rowLabel(rk, i))
 
   // Compute construction for each row
   const rowConstructions = useMemo(() => {
@@ -885,7 +892,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.84rem', fontWeight: '700', color: selectedRowIdx === i ? '#333' : '#555' }}>
-                  Row {i + 1}
+                  {rowLabel(rowKeys[i], i)}
                 </span>
                 <span style={{
                   fontSize: '0.72rem', fontWeight: '800', color: 'white',
@@ -1038,8 +1045,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, ro
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
-          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} highlightParam={highlightParam} /></div>}
+          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
+          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
           {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} highlightParam={highlightParam} /></div>}
           {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
           {activeTab === 'rails'  && <div style={{ height: '100%', overflow: 'hidden' }}><RailLayoutTab panels={panels} refinedArea={refinedArea} selectedRowIdx={selectedRowIdx} settings={getSettings(selectedRowIdx)} highlightGroup={PARAM_GROUP[highlightParam] ?? null} /></div>}
