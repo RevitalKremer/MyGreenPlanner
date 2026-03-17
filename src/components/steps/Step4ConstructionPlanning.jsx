@@ -507,7 +507,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
                 <g key={ci}>
                   <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                     <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                      fill="#d1e3f3" stroke="#642165" strokeWidth="1" />
+                      fill="#7c3aed" stroke="#642165" strokeWidth="1" />
                     {hl('cross-rails') && (
                       <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                         fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
