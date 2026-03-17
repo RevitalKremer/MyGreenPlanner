@@ -267,12 +267,12 @@ export default function Step3PanelPlacement({
     if (!allSelectedSameArea || !selectedRow) return
     const areaKey = getAreaKey(selectedRow[0])
     const areaIdx = typeof areaKey === 'number' ? areaKey : 0
-    const letter = String.fromCharCode(65 + areaIdx)
+    const areaPrefix = areas[areaKey]?.label || String.fromCharCode(65 + areaIdx)
     const existingNums = selectedAreaTrapIds
-      .map(id => parseInt(id.slice(letter.length)))
+      .map(id => parseInt(id.slice(areaPrefix.length)))
       .filter(n => !isNaN(n))
     const nextNum = Math.max(...existingNums, 0) + 1
-    const newTrapId = `${letter}${nextNum}`
+    const newTrapId = `${areaPrefix}${nextNum}`
     // Inherit config from the current trapezoid
     const sourceConfig = trapezoidConfigs?.[selectedTrapezoidId] || {}
     setTrapezoidConfigs(prev => ({ ...prev, [newTrapId]: { ...sourceConfig } }))

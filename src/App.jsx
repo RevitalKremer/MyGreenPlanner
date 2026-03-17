@@ -141,7 +141,7 @@ function App() {
     if (data.baseline) setBaseline(data.baseline)
     if (data.panels) {
       const mode = data.project?.mode || 'scratch'
-      const areaLetter = (idx) => String.fromCharCode(65 + (idx || 0))
+      const areaLetter = (idx) => data.areas?.[idx]?.label || String.fromCharCode(65 + (idx || 0))
       setPanels(data.panels.map(p => {
         const area = p.area ?? p.row ?? 0
         const trapezoidId = p.trapezoidId ?? (mode === 'plan' ? `${areaLetter(area)}1` : 'A1')
@@ -436,7 +436,7 @@ function App() {
             const totalSlope = orients.reduce((s, o) => s + (o === 'vertical' ? 238.2 : 113.4), 0) + (n - 1) * 2.5
             const backH = frontH + totalSlope * Math.sin(angleRad)
             // Store per-area trapezoid config so editor defaults are correct (not 0)
-            const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
+            const trapezoidId = `${group.label || String.fromCharCode(65 + groupIdx)}1`
             groupTrapConfigs[trapezoidId] = { angle, frontHeight: frontH, backHeight: backH }
             if (!group.baseline) return
             const generated = generatePanelLayout(
