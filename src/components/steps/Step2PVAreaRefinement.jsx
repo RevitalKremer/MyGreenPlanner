@@ -87,7 +87,7 @@ export default function Step2PVAreaRefinement({
     const id = Date.now()
     const newGroup = {
       id,
-      label: `Group ${rowGroups.length + 1}`,
+      label: String.fromCharCode(65 + rowGroups.length),
       color: GROUP_COLORS[rowGroups.length % GROUP_COLORS.length],
       baseline: null,
       angle: '',
@@ -494,7 +494,13 @@ export default function Step2PVAreaRefinement({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.75rem', background: `${group.color}18`, cursor: 'pointer' }}
                         onClick={() => setDiagramGroupId(group.id)}>
                         <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.color, flexShrink: 0 }}/>
-                        <span style={{ fontWeight: '700', fontSize: '0.85rem', flex: 1, color: '#333' }}>{group.label}</span>
+                        <input
+                          type="text"
+                          value={group.label}
+                          onChange={e => updateGroup(group.id, 'label', e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          style={{ fontWeight: '700', fontSize: '0.85rem', flex: 1, color: '#333', border: 'none', background: 'transparent', outline: 'none', cursor: 'text', minWidth: 0, padding: 0 }}
+                        />
                         <span style={{ fontSize: '0.72rem', color: group.baseline ? '#4caf50' : '#ff9800', fontWeight: '600' }}>
                           {group.baseline ? '✓ baseline' : '⚠ no baseline'}
                         </span>
