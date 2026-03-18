@@ -3,8 +3,8 @@ import {
   computeRowConstruction,
   assignTypes,
 } from '../../utils/constructionCalculator'
-import RailLayoutTab from './RailLayoutTab'
-import BasesPlanTab  from './BasesPlanTab'
+import RailLayoutTab from './step4/RailLayoutTab'
+import BasesPlanTab  from './step4/BasesPlanTab'
 import { computeRowRailLayout } from '../../utils/railLayoutService'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS } from './step4/constants'
 import LayoutView from './step4/LayoutView'
