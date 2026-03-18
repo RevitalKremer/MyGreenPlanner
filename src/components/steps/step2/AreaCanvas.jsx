@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
+
+const DRAW_COLOR = '#FF00FF'
 
 export default function AreaCanvas({
   uploadedImageData, viewZoom, setViewZoom,
@@ -11,8 +14,23 @@ export default function AreaCanvas({
   handleImageClick, isDrawingAnything,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
+  const [mousePos, setMousePos] = useState(null)
 
   const labelFontSize = imageRef ? Math.max(12, Math.min(36, imageRef.naturalWidth * 0.012)) : 14
+  const dotR     = imageRef ? Math.max(2, imageRef.naturalWidth * 0.002) : 2
+  const lineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) : 1
+  const dashArray = imageRef
+    ? `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
+    : '6,3'
+
+  const toImageCoords = (e) => {
+    if (!imageRef) return null
+    const rect = imageRef.getBoundingClientRect()
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * imageRef.naturalWidth,
+      y: ((e.clientY - rect.top) / rect.height) * imageRef.naturalHeight,
+    }
+  }
 
   const handleContainerMouseDown = (e) => {
     if (e.button !== 0 || isDrawingAnything) return
@@ -20,12 +38,17 @@ export default function AreaCanvas({
   }
 
   const handleContainerMouseMove = (e) => {
-    if (!panRef.current) return
-    const dx = e.clientX - panRef.current.startX
-    const dy = e.clientY - panRef.current.startY
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      if (!panActive) setPanActive(true)
-      setPanOffset({ x: panRef.current.startPanX + dx, y: panRef.current.startPanY + dy })
+    if (panRef.current) {
+      const dx = e.clientX - panRef.current.startX
+      const dy = e.clientY - panRef.current.startY
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        if (!panActive) setPanActive(true)
+        setPanOffset({ x: panRef.current.startPanX + dx, y: panRef.current.startPanY + dy })
+      }
+    }
+    if (isDrawingAnything) {
+      const pos = toImageCoords(e)
+      if (pos) setMousePos(pos)
     }
   }
 
@@ -33,6 +56,14 @@ export default function AreaCanvas({
     panRef.current = null
     setPanActive(false)
   }
+
+  const handleContainerMouseLeave = () => {
+    panRef.current = null
+    setPanActive(false)
+    setMousePos(null)
+  }
+
+  const activeGroup = activeGroupId ? areas.find(g => g.id === activeGroupId) : null
 
   return (
     <div className="uploaded-image-view" ref={viewportRef} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative' }}>
@@ -43,7 +74,7 @@ export default function AreaCanvas({
         onMouseDown={handleContainerMouseDown}
         onMouseMove={handleContainerMouseMove}
         onMouseUp={handleContainerMouseUp}
-        onMouseLeave={handleContainerMouseUp}
+        onMouseLeave={handleContainerMouseLeave}
       >
         <img
           ref={(el) => { if (el) setImageRef(el) }}
@@ -79,16 +110,23 @@ export default function AreaCanvas({
               </>
             )}
 
-            {/* Reference line */}
+            {/* Reference line (drawn) */}
             {referenceLine && (
               <>
-                <line x1={referenceLine.start.x} y1={referenceLine.start.y} x2={referenceLine.end.x} y2={referenceLine.end.y} stroke="#FF5722" strokeWidth="2" strokeDasharray="8,4"/>
-                <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r="4" fill="#FF5722" stroke="white" strokeWidth="1.5"/>
-                <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r="4" fill="#FF5722" stroke="white" strokeWidth="1.5"/>
+                <line x1={referenceLine.start.x} y1={referenceLine.start.y} x2={referenceLine.end.x} y2={referenceLine.end.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray}/>
+                <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={dotR} fill={DRAW_COLOR}/>
+                <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={dotR} fill={DRAW_COLOR}/>
               </>
             )}
+
+            {/* Reference line: first click dot */}
             {isDrawingLine && lineStart && (
-              <circle cx={lineStart.x} cy={lineStart.y} r="4" fill="#FF5722" stroke="white" strokeWidth="1.5"/>
+              <circle cx={lineStart.x} cy={lineStart.y} r={dotR} fill={DRAW_COLOR}/>
+            )}
+
+            {/* Reference line: live preview */}
+            {isDrawingLine && lineStart && mousePos && (
+              <line x1={lineStart.x} y1={lineStart.y} x2={mousePos.x} y2={mousePos.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray}/>
             )}
 
             {/* Group baselines (plan mode) */}
@@ -112,13 +150,23 @@ export default function AreaCanvas({
               )
             ))}
 
-            {/* Active group baseline first click */}
-            {activeGroupId && baselineDrawStart && (
+            {/* Baseline: first click dot */}
+            {activeGroup && baselineDrawStart && (
               <circle
                 cx={baselineDrawStart[0]} cy={baselineDrawStart[1]}
-                r={labelFontSize * 0.4}
-                fill={areas.find(g => g.id === activeGroupId)?.color || '#fff'}
-                stroke="white" strokeWidth="2"
+                r={dotR}
+                fill={activeGroup.color}
+              />
+            )}
+
+            {/* Baseline: live preview */}
+            {activeGroup && baselineDrawStart && mousePos && (
+              <line
+                x1={baselineDrawStart[0]} y1={baselineDrawStart[1]}
+                x2={mousePos.x} y2={mousePos.y}
+                stroke={activeGroup.color}
+                strokeWidth={lineW}
+                strokeDasharray={dashArray}
               />
             )}
           </svg>
@@ -129,7 +177,7 @@ export default function AreaCanvas({
           <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,152,0,0.92)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             {isDrawingLine
               ? (lineStart ? 'Click second point to finish reference line' : 'Click first point of reference line')
-              : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${areas.find(g => g.id === activeGroupId)?.label}`)}
+              : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${activeGroup?.label}`)}
           </div>
         )}
       </div>

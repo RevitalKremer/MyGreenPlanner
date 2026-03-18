@@ -20,6 +20,7 @@ export default function PanelCanvas({
   const [isSpaceDown, setIsSpaceDown] = useState(false)
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
   const [rectSelect, setRectSelect] = useState(null)
+  const [mousePos, setMousePos] = useState(null)
   const willDeselectRef = useRef(false)
 
   // Space bar for pan-anywhere
@@ -143,6 +144,7 @@ export default function PanelCanvas({
 
   const handleSVGMouseMove = (e) => {
     const { x, y } = svgCoords(e)
+    setMousePos({ x, y })
 
     if (rectSelect) { setRectSelect(prev => ({ ...prev, endX: x, endY: y })); return }
 
@@ -206,7 +208,7 @@ export default function PanelCanvas({
   }
 
   const handleMouseLeave = () => {
-    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null)
+    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -234,8 +236,11 @@ export default function PanelCanvas({
           }}
         />
 
-        {imageRef && (
-          <svg
+        {imageRef && (() => {
+          const dotR     = Math.max(2, imageRef.naturalWidth * 0.002)
+          const lineW    = Math.max(1, imageRef.naturalWidth * 0.001)
+          const dashArray = `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
+          return (<svg
             viewBox={`0 0 ${imageRef.naturalWidth} ${imageRef.naturalHeight}`}
             preserveAspectRatio="xMidYMid meet"
             style={{
@@ -259,10 +264,10 @@ export default function PanelCanvas({
               {showDistances && distanceMeasurement?.p2 && (
                 <>
                   <marker id="dist-arrow-start" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 1,3" fill="rgba(255,255,255,0.9)" />
+                    <polygon points="3,1 3,5 1,3" fill="#C4D600" />
                   </marker>
                   <marker id="dist-arrow-end" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 5,3" fill="rgba(255,255,255,0.9)" />
+                    <polygon points="3,1 3,5 5,3" fill="#C4D600" />
                   </marker>
                 </>
               )}
@@ -279,13 +284,18 @@ export default function PanelCanvas({
             {/* Baseline */}
             {showBaseline && baseline?.p1 && baseline?.p2 && (
               <>
-                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke="#FF0000" strokeWidth="2" strokeDasharray="8,4" />
-                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r="4" fill="#FF0000" stroke="white" strokeWidth="1.5" />
-                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r="4" fill="#FF0000" stroke="white" strokeWidth="1.5" />
+                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke="#FF00FF" strokeWidth={lineW} strokeDasharray={dashArray} />
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill="#FF00FF" />
+                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r={dotR} fill="#FF00FF" />
               </>
             )}
             {baseline?.p1 && !baseline?.p2 && (
-              <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r="4" fill="#FF0000" stroke="white" strokeWidth="1.5" />
+              <>
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill="#FF00FF" />
+                {mousePos && (
+                  <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={mousePos.x} y2={mousePos.y} stroke="#FF00FF" strokeWidth={lineW} strokeDasharray={dashArray} />
+                )}
+              </>
             )}
 
             {/* Solar panels */}
@@ -348,21 +358,31 @@ export default function PanelCanvas({
             {showDistances && distanceMeasurement && refinedArea && (() => {
               const { pixelToCmRatio } = refinedArea
               const { p1, p2 } = distanceMeasurement
-              if (!p2) return <circle cx={p1[0]} cy={p1[1]} r="3" fill="white" opacity="0.9" />
+              if (!p2) return (
+                <>
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
+                  {mousePos && (
+                    <line x1={p1[0]} y1={p1[1]} x2={mousePos.x} y2={mousePos.y}
+                      stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray} />
+                  )}
+                </>
+              )
               const distPx = Math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
               const distCm = distPx * pixelToCmRatio
               const distM = (distCm / 100).toFixed(2)
               const midX = (p1[0] + p2[0]) / 2, midY = (p1[1] + p2[1]) / 2
+              const fs = Math.max(10, imageRef.naturalWidth * 0.012)
+              const lw = fs * 7, lh = fs * 2.8
               return (
                 <>
                   <line x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]}
-                    stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" strokeDasharray="4,3"
+                    stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray}
                     markerStart="url(#dist-arrow-start)" markerEnd="url(#dist-arrow-end)" />
-                  <circle cx={p1[0]} cy={p1[1]} r="3" fill="white" opacity="0.9" />
-                  <circle cx={p2[0]} cy={p2[1]} r="3" fill="white" opacity="0.9" />
-                  <rect x={midX - 34} y={midY - 13} width="68" height="26" fill="rgba(15,15,15,0.78)" rx="13" />
-                  <text x={midX} y={midY - 1} textAnchor="middle" fill="white" fontSize="10" fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
-                  <text x={midX} y={midY + 9} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize="7.5" fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
+                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill="#C4D600" />
+                  <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill="rgba(15,15,15,0.78)" rx={lh/2} />
+                  <text x={midX} y={midY - fs*0.15} textAnchor="middle" fill="white" fontSize={fs} fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
+                  <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
                 </>
               )
             })()}
@@ -379,8 +399,8 @@ export default function PanelCanvas({
                   style={{ pointerEvents: 'none' }} />
               )
             })()}
-          </svg>
-        )}
+          </svg>)
+        })()}
       </div>
 
       {/* Floating navigator */}
