@@ -116,8 +116,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
 
   const blockW  = blockWidthCm * SC
-  const lb_x = x0 - blockW / 2, lb_w = blockW
-  const rb_x = x1 - blockW / 2, rb_w = blockW
+  const diagTopX  = x0 + diagTopPct  * bW
+  const diagBaseX = x0 + diagBasePct * bW
+  const lb_x = x0,          lb_w = blockW  // left edge of block aligns with left post
+  const rb_x = x1 - blockW, rb_w = blockW  // right edge of block aligns with right post
 
   const DC = '#222'
   const TC = '#aaa'
@@ -127,8 +129,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
   const beamAngleDeg = Math.atan2(topY1 - topY0, x1 - x0) * 180 / Math.PI
 
-  const diagTopX  = x0 + diagTopPct  * bW
-  const diagBaseX = x0 + diagBasePct * bW
   const diagLenCm = Math.sqrt((diagBaseX - diagTopX) ** 2 + (baseY - beamY(diagTopX)) ** 2) / SC
 
   const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
