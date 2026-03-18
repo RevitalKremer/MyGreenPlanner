@@ -6,6 +6,7 @@ import {
 import RailLayoutTab from './step4/RailLayoutTab'
 import BasesPlanTab  from './step4/BasesPlanTab'
 import { computeRowRailLayout } from '../../utils/railLayoutService'
+import { isHorizontalOrientation, isEmptyOrientation, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS } from './step4/constants'
 import Step4Sidebar from './step4/Step4Sidebar'
 import LayoutView from './step4/LayoutView'
@@ -118,6 +119,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       return computeRowConstruction(panelCount, angle, frontLegH, {
         railOverhang,
         maxSpan,
+        railOffsetCm: s.railOffsetCm,
+        connOffsetCm: s.connOffsetCm,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
@@ -134,68 +137,49 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     const trapId = effectiveSelectedTrapId
     if (!trapId) return null
 
-    const trapPanels = panels.filter(p =>
-      (p.area ?? p.row) === areaKey && p.trapezoidId === trapId
-    )
-    const panelCount = trapPanels.length || 1
     const globalCfg = refinedArea?.panelConfig || {}
     const override = trapezoidConfigs[trapId] || {}
     const angle = override.angle ?? globalCfg.angle ?? 0
     const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
+    const linesPerRow = override.linesPerRow ?? globalCfg.linesPerRow ?? 1
+    const lineOrientations = (override.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
     const s = getSettings(selectedRowIdx)
     const railOverhang = s.railOverhangCm
     const maxSpan = s.maxSpanCm
+    const portraitDepthCm = s.panelLengthCm ?? 238.2
     const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angle * Math.PI / 180))
 
-    const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
-    let measuredRowLength, measuredLineDepth
-    if (pixelToCmRatio && trapPanels.length > 0) {
-      const rl = computeRowRailLayout(trapPanels, pixelToCmRatio)
-      if (rl?.frame?.localBounds) {
-        const { minX, maxX, minY, maxY } = rl.frame.localBounds
-        measuredRowLength = (maxX - minX) * pixelToCmRatio + 2 * railOverhang
-        measuredLineDepth = (maxY - minY) * pixelToCmRatio
-      }
-    }
+    const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
+      sum + (isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm) + (i > 0 ? PANEL_GAP_CM : 0), 0)
 
-    const [rc] = assignTypes([computeRowConstruction(panelCount, angle, frontLegH, {
+    const [rc] = assignTypes([computeRowConstruction(1, angle, frontLegH, {
       railOverhang,
       maxSpan,
-      ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
-      ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
+      lineDepthCm,
+      railOffsetCm: s.railOffsetCm,
+      connOffsetCm: s.connOffsetCm,
     })])
     return rc
-  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, panels, refinedArea, trapezoidConfigs, areaSettings, globalSettings])
+  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings])
 
   const selectedRowLineDepths = useMemo(() => {
-    const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
-    if (!pixelToCmRatio || selectedRowIdx == null) return null
-    const rowKey = rowKeys[selectedRowIdx]
-    if (rowKey == null) return null
-    const rowPanels = effectiveSelectedTrapId
-      ? panels.filter(p => (p.area ?? p.row ?? 'unassigned') === rowKey && p.trapezoidId === effectiveSelectedTrapId)
-      : panels.filter(p => (p.area ?? p.row ?? 'unassigned') === rowKey)
-    if (rowPanels.length === 0) return null
-    const rl = computeRowRailLayout(rowPanels, pixelToCmRatio)
-    if (!rl) return null
+    if (selectedRowIdx == null) return null
+    const trapId = effectiveSelectedTrapId
+    if (!trapId) return null
 
-    const lineMap = {}
-    for (const pr of rl.panelLocalRects) {
-      const li = pr.line ?? 0
-      if (!lineMap[li]) lineMap[li] = { minY: Infinity, maxY: -Infinity }
-      lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
-      lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
-    }
+    const globalCfg = refinedArea?.panelConfig || {}
+    const override = trapezoidConfigs[trapId] || {}
+    const linesPerRow = override.linesPerRow ?? globalCfg.linesPerRow ?? 1
+    const lineOrientations = (override.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+    const s = getSettings(selectedRowIdx)
+    const portraitDepthCm = s.panelLengthCm ?? 238.2
 
-    const sorted = Object.entries(lineMap)
-      .map(([li, b]) => ({ lineIdx: Number(li), ...b }))
-      .sort((a, b) => a.lineIdx - b.lineIdx)
-
-    return sorted.map((line, i) => ({
-      depthCm:      (line.maxY - line.minY)                    * pixelToCmRatio,
-      gapBeforeCm:  i === 0 ? 0 : (line.minY - sorted[i-1].maxY) * pixelToCmRatio,
+    return lineOrientations.map((o, i) => ({
+      depthCm: isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
+      gapBeforeCm: i === 0 ? 0 : PANEL_GAP_CM,
+      isEmpty: isEmptyOrientation(o),
     }))
-  }, [panels, refinedArea, selectedRowIdx, rowKeys])
+  }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings])
 
   const tabs = [
     { key: 'detail', label: 'Trapezoids Details' },
