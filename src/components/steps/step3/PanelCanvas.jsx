@@ -306,10 +306,10 @@ export default function PanelCanvas({
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
               const trapId = panel.trapezoidId || 'A1'
               const hasOverride = !!trapezoidConfigs?.[trapId]
-              let fill, stroke, strokeWidth
-              if (isHovered) { fill = 'rgba(244, 67, 54, 0.65)'; stroke = '#f44336'; strokeWidth = '1' }
-              else if (isSelected) { fill = 'rgba(209,227,243,0.2)'; stroke = '#003f7f'; strokeWidth = '1' }
-              else { fill = 'rgba(135, 206, 235, 0.5)'; stroke = '#4682B4'; strokeWidth = '1' }
+              let fill, borderColor, ibw
+              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = '#f44336'; ibw = panel.width * 0.012 }
+              else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
+              else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
               const bh = panel.width * 0.36
               const bw = bh * (trapId.length > 2 ? 2.8 : 1.9)
@@ -319,16 +319,22 @@ export default function PanelCanvas({
                   <g transform={`rotate(${panel.rotation || 0} ${cx} ${cy})`}>
                     <rect
                       x={panel.x} y={panel.y} width={panel.width} height={panel.height}
-                      fill={fill} stroke={stroke} strokeWidth={strokeWidth}
+                      fill={fill} stroke="none"
                       style={{ cursor: activeTool === 'delete' ? 'pointer' : activeTool === 'move' ? 'grab' : 'default' }}
                       onMouseEnter={() => activeTool === 'delete' && setHoveredPanelId(panel.id)}
                       onMouseLeave={() => setHoveredPanelId(null)}
+                    />
+                    <rect
+                      x={panel.x + ibw / 2} y={panel.y + ibw / 2}
+                      width={panel.width - ibw} height={panel.height - ibw}
+                      fill="none" stroke={borderColor} strokeWidth={ibw}
+                      style={{ pointerEvents: 'none' }}
                     />
                   </g>
                   {!isHovered && (
                     <>
                       <rect x={cx - bw / 2} y={cy - bh / 2} width={bw} height={bh} rx={bh / 2}
-                        fill={isSelected ? 'rgba(0,60,140,0.72)' : 'rgba(15,15,15,0.55)'}
+                        fill={isSelected ? 'rgba(0,62,126,0.82)' : 'rgba(15,15,15,0.55)'}
                         style={{ pointerEvents: 'none' }} />
                       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
                         fontSize={fs} fontWeight="600" fill="white"
@@ -427,8 +433,8 @@ export default function PanelCanvas({
             return (
               <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
                 <rect x={mmX} y={mmY} width={mmW} height={mmH}
-                  fill={isSel ? 'rgba(0,63,127,0.7)' : 'rgba(70,130,180,0.55)'}
-                  stroke={isSel ? '#003f7f' : '#4682B4'} strokeWidth="0.5" />
+                  fill={isSel ? 'rgba(0,62,126,0.7)' : 'rgba(70,130,180,0.55)'}
+                  stroke={isSel ? '#003e7e' : '#4682B4'} strokeWidth="0.5" />
               </g>
             )
           })}

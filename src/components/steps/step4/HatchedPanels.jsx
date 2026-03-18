@@ -14,7 +14,8 @@ export default function HatchedPanels({ panels, rowKeys, selectedRowIdx, toSvg, 
     const isSelected = selectedRowIdx === null || rowKey === selectedRowIdx
     const opacity = isSelected ? 1 : 0.25
     const fill = isSelected ? SELECTED_FILL : PANEL_FILL
-    const borderW = 4 / pixelToCmRatio * sc
+    const borderColor = isSelected ? '#003e7e' : '#4682B4'
+    const ibw = Math.max(1, sw * 0.015)
 
     const hatchLines = []
     const step = 8, inset = 2
@@ -29,7 +30,9 @@ export default function HatchedPanels({ panels, rowKeys, selectedRowIdx, toSvg, 
 
     return (
       <g key={panel.id} opacity={opacity} transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}>
-        <rect x={sx} y={sy} width={sw} height={sh} fill={fill} stroke="#003f7f" strokeWidth={borderW} />
+        <rect x={sx} y={sy} width={sw} height={sh} fill={fill} stroke="none" />
+        <rect x={sx + ibw / 2} y={sy + ibw / 2} width={sw - ibw} height={sh - ibw}
+          fill="none" stroke={borderColor} strokeWidth={ibw} style={{ pointerEvents: 'none' }} />
         <g transform={`translate(${sx}, ${sy})`}>
           <clipPath id={`${clipIdPrefix}-${panel.id}`}>
             <rect x={inset} y={inset} width={sw - inset * 2} height={sh - inset * 2} />
