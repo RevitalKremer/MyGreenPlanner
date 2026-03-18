@@ -298,8 +298,20 @@ export default function PanelCanvas({
               </>
             )}
 
+            {/* Ghost panels (empty lines) */}
+            {panels.filter(p => p.isEmpty).map(panel => {
+              const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
+              const ibw = panel.width * 0.004
+              return (
+                <g key={panel.id} transform={`rotate(${panel.rotation || 0} ${cx} ${cy})`} style={{ pointerEvents: 'none' }}>
+                  <rect x={panel.x + ibw / 2} y={panel.y + ibw / 2} width={panel.width - ibw} height={panel.height - ibw}
+                    fill="none" stroke="#aaaaaa" strokeWidth={ibw} strokeDasharray={`${ibw * 6} ${ibw * 3}`} />
+                </g>
+              )
+            })}
+
             {/* Solar panels */}
-            {panels.map(panel => {
+            {panels.filter(p => !p.isEmpty).map(panel => {
               const isSelected = selectedPanels.includes(panel.id)
               const hasSelection = selectedPanels.length > 0
               const isHovered = activeTool === 'delete' && hoveredPanelId === panel.id
@@ -423,7 +435,7 @@ export default function PanelCanvas({
           viewportRect={getMinimapViewportRect()}
         >
           <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
-          {panels.map(p => {
+          {panels.filter(p => !p.isEmpty).map(p => {
             const mmX = p.x / imageRef.naturalWidth  * MM_W
             const mmY = p.y / imageRef.naturalHeight * MM_H
             const mmW = p.width  / imageRef.naturalWidth  * MM_W

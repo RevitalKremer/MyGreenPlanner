@@ -213,7 +213,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                       <rect
                         x={cx - len/2} y={cy - PANEL_THICK_PX/2}
                         width={len} height={PANEL_THICK_PX}
-                        fill="#6a70ac" stroke="#293189" strokeWidth="1"
+                        fill={seg.isEmpty ? 'white' : '#6a70ac'}
+                        stroke={seg.isEmpty ? '#ddd' : '#293189'}
+                        strokeWidth="1"
+                        strokeDasharray={seg.isEmpty ? '4,3' : undefined}
                         transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
                       />
                       {hl('panel') && (
@@ -232,6 +235,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
               {/* ── Cross-rails 40×40mm profile ── */}
               {railXs.map((cx, ci) => {
+                const segIdx = Math.floor(ci / 2)
+                const isEmptySeg = segments[segIdx]?.isEmpty
+                const railFill   = '#7c3aed'
+                const railStroke = isEmptySeg ? '#ddd' : '#642165'
                 const cy = beamY(cx)
                 const beamTop  = -BEAM_THICK_PX / 2
                 const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
@@ -245,7 +252,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                   <g key={ci}>
                     <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                       <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                        fill="#7c3aed" stroke="#642165" strokeWidth="1" />
+                        fill={isEmptySeg ? 'white' : railFill}
+                        stroke={isEmptySeg ? '#ddd' : railStroke}
+                        strokeWidth="1"
+                        strokeDasharray={isEmptySeg ? '3,2' : undefined} />
                       {hl('cross-rails') && (
                         <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                           fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
@@ -254,7 +264,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                     </g>
                     <text x={lx} y={ly}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize="7.5" fontWeight="700" fill="#642165"
+                      fontSize="7.5" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
                     >{distCm}</text>
                   </g>

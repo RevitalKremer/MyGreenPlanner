@@ -236,6 +236,33 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
           }
           currentRotX += lc.widthPx + panelGapPx
         }
+      } else {
+        // Empty line: generate ghost markers at the same positions
+        let currentRotX = startX
+        while (currentRotX + lc.widthPx <= endX) {
+          if (isPanelInRotatedPolygon(currentRotX, lineY, lc.widthPx, lc.projectionPx)) {
+            const rotCenterX = currentRotX + lc.widthPx / 2
+            const rotCenterY = lineY + lc.projectionPx / 2
+            const dx = rotCenterX - centerX
+            const dy = rotCenterY - centerY
+            const originalCenterX = centerX + dx * Math.cos(roofOrientation) - dy * Math.sin(roofOrientation)
+            const originalCenterY = centerY + dx * Math.sin(roofOrientation) + dy * Math.cos(roofOrientation)
+            generatedPanels.push({
+              id: panelId++,
+              x: originalCenterX - lc.widthPx / 2,
+              y: originalCenterY - lc.projectionPx / 2,
+              width: lc.widthPx,
+              height: lc.projectionPx,
+              widthCm: lc.widthCm,
+              heightCm: lc.heightCm,
+              rotation: roofOrientation * (180 / Math.PI),
+              row: rowIndex,
+              line: lineIdx,
+              isEmpty: true,
+            })
+          }
+          currentRotX += lc.widthPx + panelGapPx
+        }
       }
       lineY += lc.projectionPx + panelGapPx
     }
