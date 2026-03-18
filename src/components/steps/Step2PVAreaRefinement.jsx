@@ -333,9 +333,9 @@ export default function Step2PVAreaRefinement({
                 mmWidth={MM_W}
                 mmHeight={MM_H}
                 onPanToPoint={panToMinimapPoint}
+                viewportRect={getMinimapViewportRect()}
               >
                 <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.2)" />
-                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
               </CanvasNavigator>
             )}
           </div>

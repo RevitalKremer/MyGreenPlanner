@@ -4,6 +4,7 @@ import {
   DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM,
 } from '../../utils/basePlanService'
 import { localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_RAIL_OFFSET_CM } from '../../utils/railLayoutService'
+import CanvasNavigator from '../shared/CanvasNavigator'
 
 const PANEL_FILL   = '#cfe3f5'
 
@@ -104,8 +105,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const panRef = useRef(null)
   const containerRef = useRef(null)
   const contentRef   = useRef(null)
-  const minimapDragRef = useRef(false)
-  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
 
   const handleWheel = (e) => {
     e.preventDefault()
@@ -511,10 +510,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
           </div>
         </div>
 
-        {/* ── Floating right panel ── */}
+        {/* ── Floating layers panel (top-right) ── */}
         <div style={{
           position: 'absolute', top: '16px', right: '16px', zIndex: 10,
-          width: panelCollapsed ? '36px' : '190px',
+          width: panelCollapsed ? '36px' : '160px',
           background: 'white', borderRadius: '10px',
           boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
           border: '1px solid #e0e0e0', overflow: 'hidden',
@@ -525,13 +524,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
             padding: '0.5rem 0.65rem', cursor: 'pointer', background: '#fafafa',
             borderBottom: panelCollapsed ? 'none' : '1px solid #f0f0f0',
           }}>
-            {!panelCollapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#555', whiteSpace: 'nowrap' }}>Display</span>}
+            {!panelCollapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#555', whiteSpace: 'nowrap' }}>Layers</span>}
             <span style={{ fontSize: '0.75rem', color: '#aaa', marginLeft: 'auto' }}>{panelCollapsed ? '◀' : '▶'}</span>
           </div>
           {!panelCollapsed && (
             <div style={{ padding: '0.6rem 0.75rem' }}>
-              <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Layers</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.7rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.6rem' }}>
                 {[['Bases', showBases, setShowBases], ['Base IDs', showBaseIDs, setShowBaseIDs], ['Rails', showRails, setShowRails], ['Dimensions', showDimensions, setShowDimensions], ['Diagonals', showDiagonals, setShowDiagonals]].map(([label, checked, setter]) => (
                   <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? '#333' : '#aaa', fontWeight: '500' }}>
                     <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
@@ -539,41 +537,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   </label>
                 ))}
               </div>
-              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.6rem', marginBottom: '0.3rem' }}>
-                <div style={{ fontSize: '0.63rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Zoom — {(zoom * 100).toFixed(0)}%</div>
-                <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.2rem' }}>
-                  {[['−', () => setZoom(z => Math.max(0.3, z - 0.1))], ['100%', resetView], ['+', () => setZoom(z => Math.min(8, z + 0.1))]].map(([lbl, fn]) => (
-                    <button key={lbl} onClick={fn} style={{ flex: 1, padding: '0.3rem 0', background: 'white', color: '#666', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{lbl}</button>
-                  ))}
-                </div>
-                <div style={{ fontSize: '0.63rem', color: '#ccc' }}>Scroll to zoom</div>
-                {zoom > 1 && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <div onClick={() => setMinimapCollapsed(c => !c)} style={{ fontSize: '0.58rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <span>Navigator</span><span style={{ fontSize: '0.52rem' }}>{minimapCollapsed ? '▲' : '▼'}</span>
-                    </div>
-                    {!minimapCollapsed && (
-                      <div
-                        style={{ width: MM_W, height: MM_H, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', boxShadow: '0 1px 5px rgba(0,0,0,0.18)', position: 'relative', background: '#1e2433' }}
-                        onMouseDown={(e) => { minimapDragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
-                        onMouseMove={(e) => { if (!minimapDragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
-                        onMouseUp={() => { minimapDragRef.current = false }}
-                        onMouseLeave={() => { minimapDragRef.current = false }}
-                      >
-                        <svg width={MM_W} height={MM_H} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
-                          {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.08)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
                 {totalBases} bases total
               </div>
             </div>
           )}
         </div>
+
+        {/* ── Floating navigator (bottom-right) ── */}
+        <CanvasNavigator
+          viewZoom={zoom}
+          onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+          onZoomReset={resetView}
+          onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+          mmWidth={MM_W}
+          mmHeight={MM_H}
+          onPanToPoint={panToMinimapPoint}
+          viewportRect={getMinimapViewportRect()}
+        />
 
       </div>
 

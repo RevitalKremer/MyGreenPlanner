@@ -4,15 +4,18 @@ import { useState, useRef } from 'react'
  * Floating navigator panel — always visible in the bottom-right of the canvas.
  * Contains zoom controls and a minimap. Can be hidden to a small icon button.
  *
- * @param {number}   viewZoom       - current zoom level (e.g. 1.2)
- * @param {function} onZoomIn       - () => void
- * @param {function} onZoomOut      - () => void
- * @param {function} onZoomReset    - () => void  (also resets pan)
- * @param {string}   imageData      - background image URL for minimap
- * @param {number}   mmWidth        - minimap pixel width
- * @param {number}   mmHeight       - minimap pixel height
- * @param {function} onPanToPoint   - (mmX, mmY) => void
- * @param {ReactNode} children      - SVG overlay content (dim rect + overlay + viewport rect)
+ * @param {number}   viewZoom      - current zoom level (e.g. 1.2)
+ * @param {function} onZoomIn      - () => void
+ * @param {function} onZoomOut     - () => void
+ * @param {function} onZoomReset   - () => void  (also resets pan)
+ * @param {string}   [imageData]   - background image URL; when absent the minimap
+ *                                   shows a dark background (vector diagram mode)
+ * @param {number}   mmWidth       - minimap pixel width
+ * @param {number}   mmHeight      - minimap pixel height
+ * @param {function} onPanToPoint  - (mmX, mmY) => void
+ * @param {{x,y,w,h}|null} [viewportRect] - current visible region in minimap coords;
+ *                                          rendered as a white dashed rectangle
+ * @param {ReactNode} [children]   - extra SVG overlay content (dim rect, panel rects, etc.)
  */
 export default function CanvasNavigator({
   viewZoom,
@@ -23,6 +26,7 @@ export default function CanvasNavigator({
   mmWidth,
   mmHeight,
   onPanToPoint,
+  viewportRect,
   children,
 }) {
   const [hidden, setHidden] = useState(false)
@@ -116,26 +120,26 @@ export default function CanvasNavigator({
         </div>
       </div>
 
-      {/* Minimap */}
-      {imageData && (
-        <>
-          <div style={{ fontSize: '0.6rem', color: '#777', marginBottom: '0.22rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Navigator
-          </div>
-          <div
-            style={{ width: mmWidth, height: mmHeight, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', position: 'relative' }}
-            onMouseDown={(e) => { dragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); onPanToPoint(e.clientX - r.left, e.clientY - r.top) }}
-            onMouseMove={(e) => { if (!dragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); onPanToPoint(e.clientX - r.left, e.clientY - r.top) }}
-            onMouseUp={() => { dragRef.current = false }}
-            onMouseLeave={() => { dragRef.current = false }}
-          >
-            <img src={imageData} alt="" style={{ position: 'absolute', top: 0, left: 0, width: mmWidth, height: mmHeight, objectFit: 'fill', pointerEvents: 'none' }} />
-            <svg width={mmWidth} height={mmHeight} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
-              {children}
-            </svg>
-          </div>
-        </>
-      )}
+      {/* Minimap — always shown; imageData optional (dark bg when absent) */}
+      <div style={{ fontSize: '0.6rem', color: '#777', marginBottom: '0.22rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Navigator
+      </div>
+      <div
+        style={{ width: mmWidth, height: mmHeight, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', position: 'relative', background: imageData ? undefined : '#1e2433' }}
+        onMouseDown={(e) => { dragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); onPanToPoint(e.clientX - r.left, e.clientY - r.top) }}
+        onMouseMove={(e) => { if (!dragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); onPanToPoint(e.clientX - r.left, e.clientY - r.top) }}
+        onMouseUp={() => { dragRef.current = false }}
+        onMouseLeave={() => { dragRef.current = false }}
+      >
+        {imageData && <img src={imageData} alt="" style={{ position: 'absolute', top: 0, left: 0, width: mmWidth, height: mmHeight, objectFit: 'fill', pointerEvents: 'none' }} />}
+        <svg width={mmWidth} height={mmHeight} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+          {children}
+          {viewportRect && (
+            <rect x={viewportRect.x} y={viewportRect.y} width={viewportRect.w} height={viewportRect.h}
+              fill="rgba(255,255,255,0.10)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" />
+          )}
+        </svg>
+      </div>
     </div>
   )
 }
