@@ -407,7 +407,7 @@ export function useProjectState() {
           const orients = (group.lineOrientations || ['vertical']).slice(0, n)
           const backH = computePanelBackHeight(frontH, angle, orients, n)
           const trapezoidId = `${group.label || String.fromCharCode(65 + groupIdx)}1`
-          groupTrapConfigs[trapezoidId] = { angle, frontHeight: frontH, backHeight: backH }
+          groupTrapConfigs[trapezoidId] = { angle, frontHeight: frontH, backHeight: backH, linesPerRow: n, lineOrientations: orients }
           if (!group.baseline) return
           const generated = generatePanelLayout(
             { polygon: roofPolygon, pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },

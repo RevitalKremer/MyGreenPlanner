@@ -141,10 +141,11 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
 
     const globalCfg = refinedArea?.panelConfig || {}
     const override = trapezoidConfigs[trapId] || {}
+    const areaGroup = areas[areaKey] || {}
     const angle = override.angle ?? globalCfg.angle ?? 0
     const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
-    const linesPerRow = override.linesPerRow ?? globalCfg.linesPerRow ?? 1
-    const lineOrientations = (override.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+    const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
+    const lineOrientations = (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
     const s = getSettings(selectedRowIdx)
     const railOverhang = s.railOverhangCm
     const maxSpan = s.maxSpanCm
@@ -164,7 +165,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       connOffsetCm: s.connOffsetCm,
     })])
     return rc
-  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings])
+  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas])
 
   const selectedRowLineDepths = useMemo(() => {
     if (selectedRowIdx == null) return null
@@ -173,8 +174,10 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
 
     const globalCfg = refinedArea?.panelConfig || {}
     const override = trapezoidConfigs[trapId] || {}
-    const linesPerRow = override.linesPerRow ?? globalCfg.linesPerRow ?? 1
-    const lineOrientations = (override.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+    const areaKey2 = rowKeys[selectedRowIdx]
+    const areaGroup2 = areas[areaKey2] || {}
+    const linesPerRow = override.linesPerRow ?? areaGroup2.linesPerRow ?? globalCfg.linesPerRow ?? 1
+    const lineOrientations = (override.lineOrientations ?? areaGroup2.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
     const s = getSettings(selectedRowIdx)
     const portraitDepthCm = s.panelLengthCm ?? 238.2
 
@@ -183,7 +186,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       gapBeforeCm: i === 0 ? 0 : PANEL_GAP_CM,
       isEmpty: isEmptyOrientation(o),
     }))
-  }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings])
+  }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings, areas, rowKeys])
 
   const tabs = [
     { key: 'detail', label: 'Trapezoids Details' },
