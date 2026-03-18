@@ -177,11 +177,6 @@ export default function TrapezoidConfigEditor({
         </div>
       </div>
 
-      {/* Summary row */}
-      <div style={{ marginTop: '0.35rem', padding: '0.3rem 0.5rem', background: '#f8f9fa', borderRadius: '5px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
-        <span>Panel back height: <strong style={{ color: '#555' }}>{backHeight.toFixed(1)} cm</strong></span>
-        <span>Slope depth: <strong style={{ color: '#555' }}>{totalSlope.toFixed(1)} cm</strong></span>
-      </div>
     </div>
   )
 }

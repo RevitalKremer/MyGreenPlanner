@@ -1,4 +1,3 @@
-import { computeTotalSlopeDepth } from '../../../utils/trapezoidGeometry'
 import { isHorizontalOrientation, isEmptyOrientation } from '../../../utils/trapezoidGeometry'
 
 export default function PlanConfigPanel({
@@ -9,7 +8,6 @@ export default function PlanConfigPanel({
   diagramGroupId, setDiagramGroupId,
   addGroup, updateGroup, removeGroup,
   updateGroupLinesPerRow, toggleGroupOrientation, toggleGroupEmptyOrientation,
-  getGroupBackHeight,
   referenceLine, referenceLineLengthCm,
 }) {
   return (
@@ -29,9 +27,7 @@ export default function PlanConfigPanel({
       )}
 
       {areas.map(group => {
-        const groupBackH = getGroupBackHeight(group)
         const isActive = activeGroupId === group.id
-        const groupTotalSlope = computeTotalSlopeDepth(group.lineOrientations, group.linesPerRow)
         return (
           <div key={group.id} style={{ marginBottom: '0.75rem', border: `2px solid ${group.color}`, borderRadius: '8px', overflow: 'hidden' }}>
             {/* Group header */}
@@ -121,13 +117,6 @@ export default function PlanConfigPanel({
                 })}
               </div>
 
-              {/* Calculated values */}
-              {group.frontHeight !== '' && group.angle !== '' && (
-                <div style={{ padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '6px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
-                  <span>Panel back height: <strong style={{ color: '#555' }}>{groupBackH.toFixed(1)} cm</strong></span>
-                  <span>Slope depth: <strong style={{ color: '#555' }}>{groupTotalSlope.toFixed(1)} cm</strong></span>
-                </div>
-              )}
             </div>
           </div>
         )

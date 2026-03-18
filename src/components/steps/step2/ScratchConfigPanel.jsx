@@ -5,7 +5,6 @@ export default function ScratchConfigPanel({
   panelAngle, setPanelAngle,
   linesPerRow, lineOrientations,
   handleLinesPerRowChange, handleToggleOrientation, handleToggleEmptyOrientation,
-  computedBackHeight, totalSlope,
   referenceLine, referenceLineLengthCm,
 }) {
   return (
@@ -68,16 +67,6 @@ export default function ScratchConfigPanel({
           })}
         </div>
       </div>
-
-      {/* Back height + slope depth (calculated) */}
-      {(panelFrontHeight !== '' && panelAngle !== '') && (
-        <div style={{ marginBottom: '1.1rem', padding: '0.6rem 0.75rem', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
-          <span style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>PANEL BACK HEIGHT (calculated)</span>
-          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{(computedBackHeight || 0).toFixed(1)} cm</div>
-          <div style={{ marginTop: '0.4rem', borderTop: '1px solid #e8e8e8', paddingTop: '0.4rem', fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>SLOPE DEPTH (total)</div>
-          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{totalSlope.toFixed(1)} cm</div>
-        </div>
-      )}
 
       {/* Validation */}
       <div style={{ padding: '0.85rem', background: referenceLine && referenceLineLengthCm && panelFrontHeight && panelAngle ? '#e8f5e9' : '#fff3cd', borderRadius: '8px', fontSize: '0.82rem' }}>

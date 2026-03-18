@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  computePanelBackHeight, computeTotalSlopeDepth,
+  computePanelBackHeight,
   toggleOrientation, toggleEmptyOrientation,
 } from '../../utils/trapezoidGeometry'
 import AreaCanvas from './step2/AreaCanvas'
@@ -160,7 +160,7 @@ export default function Step2PVAreaRefinement({
   const diagBackH   = dg ? getGroupBackHeight(dg)             : (computedBackHeight || 0)
   const diagLPR     = dg ? (dg.linesPerRow || 1)              : linesPerRow
   const diagOrients = dg ? (dg.lineOrientations || ['vertical']) : lineOrientations
-  const totalSlope  = computeTotalSlopeDepth(diagOrients, diagLPR)
+
 
   return (
     <>
@@ -264,7 +264,6 @@ export default function Step2PVAreaRefinement({
                     updateGroupLinesPerRow={updateGroupLinesPerRow}
                     toggleGroupOrientation={toggleGroupOrientation}
                     toggleGroupEmptyOrientation={toggleGroupEmptyOrientation}
-                    getGroupBackHeight={getGroupBackHeight}
                     referenceLine={referenceLine} referenceLineLengthCm={referenceLineLengthCm}
                   />
                 ) : (
@@ -275,7 +274,6 @@ export default function Step2PVAreaRefinement({
                     handleLinesPerRowChange={handleLinesPerRowChange}
                     handleToggleOrientation={handleToggleOrientation}
                     handleToggleEmptyOrientation={handleToggleEmptyOrientation}
-                    computedBackHeight={computedBackHeight} totalSlope={totalSlope}
                     referenceLine={referenceLine} referenceLineLengthCm={referenceLineLengthCm}
                   />
                 )}
