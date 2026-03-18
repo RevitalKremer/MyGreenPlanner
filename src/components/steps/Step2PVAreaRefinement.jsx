@@ -5,7 +5,7 @@ import {
   isHorizontalOrientation, isEmptyOrientation,
 } from '../../utils/trapezoidGeometry'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
-import MinimapView from '../shared/MinimapView'
+import CanvasNavigator from '../shared/CanvasNavigator'
 
 const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', '#FF9800', '#4CAF50', '#00BCD4']
 
@@ -321,6 +321,23 @@ export default function Step2PVAreaRefinement({
                 </div>
               )}
             </div>
+
+            {/* Floating navigator — zoom controls + minimap */}
+            {imageRef && (
+              <CanvasNavigator
+                viewZoom={viewZoom}
+                onZoomOut={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
+                onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
+                onZoomIn={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
+                imageData={uploadedImageData.imageData}
+                mmWidth={MM_W}
+                mmHeight={MM_H}
+                onPanToPoint={panToMinimapPoint}
+              >
+                <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.2)" />
+                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+              </CanvasNavigator>
+            )}
           </div>
         ) : (
           <div className="step-content">
@@ -363,32 +380,6 @@ export default function Step2PVAreaRefinement({
               </select>
             )}
 
-            {/* Zoom */}
-            <div style={{ marginBottom: '0.6rem' }}>
-              <div style={{ fontSize: '0.72rem', color: '#aaa', marginBottom: '0.3rem' }}>🔍 Zoom: {(viewZoom * 100).toFixed(0)}%</div>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                {['−', '100%', '+'].map((label, i) => (
-                  <button key={i}
-                    onClick={() => { const z = i === 0 ? Math.max(0.5, viewZoom - 0.1) : i === 2 ? Math.min(3, viewZoom + 0.1) : 1; setViewZoom(z); if (i === 1) setPanOffset({ x: 0, y: 0 }) }}
-                    style={{ flex: 1, padding: '0.4rem', background: 'white', color: '#666', border: '1px solid #C4D600', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: i === 1 ? '0.72rem' : '0.9rem' }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Minimap Navigator — shown only when zoomed in */}
-            {viewZoom > 1 && imageRef && (
-              <MinimapView
-                imageData={uploadedImageData.imageData}
-                width={MM_W}
-                height={MM_H}
-                onPanToPoint={panToMinimapPoint}
-              >
-                <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.2)" />
-                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
-              </MinimapView>
-            )}
 
             {hasValues ? (
               <svg viewBox="0 0 300 180" style={{ width: '100%', height: 'auto', background: '#f8f9fa', borderRadius: '6px' }}>

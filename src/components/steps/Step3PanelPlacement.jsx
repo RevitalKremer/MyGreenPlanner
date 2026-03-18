@@ -5,7 +5,7 @@ import {
   isHorizontalOrientation, isEmptyOrientation,
 } from '../../utils/trapezoidGeometry'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
-import MinimapView from '../shared/MinimapView'
+import CanvasNavigator from '../shared/CanvasNavigator'
 
 export default function Step3PanelPlacement({
   projectMode = 'scratch',
@@ -952,6 +952,35 @@ export default function Step3PanelPlacement({
               )}
             </div>
 
+            {/* Floating navigator — zoom controls + minimap */}
+            {imageRef && (
+              <CanvasNavigator
+                viewZoom={viewZoom}
+                onZoomOut={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
+                onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
+                onZoomIn={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
+                imageData={uploadedImageData.imageData}
+                mmWidth={MM_W}
+                mmHeight={MM_H}
+                onPanToPoint={panToMinimapPoint}
+              >
+                <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
+                {panels.map(p => {
+                  const mmX = p.x / imageRef.naturalWidth  * MM_W
+                  const mmY = p.y / imageRef.naturalHeight * MM_H
+                  const mmW = p.width  / imageRef.naturalWidth  * MM_W
+                  const mmH = p.height / imageRef.naturalHeight * MM_H
+                  const cx = mmX + mmW / 2, cy = mmY + mmH / 2
+                  const isSel = selectedPanels.includes(p.id)
+                  return (
+                    <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
+                      <rect x={mmX} y={mmY} width={mmW} height={mmH} fill={isSel ? 'rgba(0,63,127,0.7)' : 'rgba(70,130,180,0.55)'} stroke={isSel ? '#003f7f' : '#4682B4'} strokeWidth="0.5" />
+                    </g>
+                  )
+                })}
+                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.10)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+              </CanvasNavigator>
+            )}
           </div>
         ) : (
           <div className="step-content">
@@ -1682,74 +1711,6 @@ export default function Step3PanelPlacement({
                 </div>
               )
             })()}
-
-            {/* Divider */}
-            <div style={{ borderTop: '1px solid #f0f0f0', marginBottom: '0.85rem' }} />
-
-            {/* Zoom controls */}
-            <div style={{ marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.7rem', color: '#aaa', fontWeight: '600', marginBottom: '0.35rem' }}>
-                🔍 Zoom: {(viewZoom * 100).toFixed(0)}%
-              </div>
-              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                <button
-                  onClick={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
-                  style={{
-                    flex: 1, padding: '0.4rem',
-                    background: 'white', color: '#666',
-                    border: '1px solid #ddd', borderRadius: '6px',
-                    cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem'
-                  }}
-                >−</button>
-                <button
-                  onClick={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
-                  style={{
-                    flex: 1, padding: '0.4rem',
-                    background: 'white', color: '#666',
-                    border: '1px solid #ddd', borderRadius: '6px',
-                    cursor: 'pointer', fontWeight: '600', fontSize: '0.7rem'
-                  }}
-                >100%</button>
-                <button
-                  onClick={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
-                  style={{
-                    flex: 1, padding: '0.4rem',
-                    background: 'white', color: '#666',
-                    border: '1px solid #ddd', borderRadius: '6px',
-                    cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem'
-                  }}
-                >+</button>
-              </div>
-              <div style={{ fontSize: '0.68rem', color: '#ccc', marginTop: '0.25rem' }}>
-                Mouse wheel to zoom
-              </div>
-            </div>
-
-            {/* Minimap Navigator — shown only when zoomed in */}
-            {viewZoom > 1 && imageRef && (
-              <MinimapView
-                imageData={uploadedImageData.imageData}
-                width={MM_W}
-                height={MM_H}
-                onPanToPoint={panToMinimapPoint}
-              >
-                <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
-                {panels.map(p => {
-                  const mmX = p.x / imageRef.naturalWidth  * MM_W
-                  const mmY = p.y / imageRef.naturalHeight * MM_H
-                  const mmW = p.width  / imageRef.naturalWidth  * MM_W
-                  const mmH = p.height / imageRef.naturalHeight * MM_H
-                  const cx = mmX + mmW / 2, cy = mmY + mmH / 2
-                  const isSel = selectedPanels.includes(p.id)
-                  return (
-                    <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
-                      <rect x={mmX} y={mmY} width={mmW} height={mmH} fill={isSel ? 'rgba(0,63,127,0.7)' : 'rgba(70,130,180,0.55)'} stroke={isSel ? '#003f7f' : '#4682B4'} strokeWidth="0.5" />
-                    </g>
-                  )
-                })}
-                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.10)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
-              </MinimapView>
-            )}
 
             {/* Clear ruler (always visible when measurement exists) */}
             {distanceMeasurement?.p2 && (
