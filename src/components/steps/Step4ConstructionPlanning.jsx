@@ -119,6 +119,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       return computeRowConstruction(panelCount, angle, frontLegH, {
         railOverhang,
         maxSpan,
+        railOffsetCm: s.railOffsetCm,
+        connOffsetCm: s.connOffsetCm,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
@@ -154,6 +156,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       railOverhang,
       maxSpan,
       lineDepthCm,
+      railOffsetCm: s.railOffsetCm,
+      connOffsetCm: s.connOffsetCm,
     })])
     return rc
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings])

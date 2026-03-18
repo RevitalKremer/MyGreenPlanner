@@ -1,5 +1,7 @@
 import { ACCENT } from './constants'
 
+const fmt = (v) => parseFloat(v.toFixed(1)).toString()
+
 const SECTIONS = [
   {
     tabKey: 'detail', label: 'Trapezoids',
@@ -111,7 +113,7 @@ export default function Step4Sidebar({
                   {rc.panelCount} panels · {rc.angle}° · {rc.numTrapezoids} frames
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#888' }}>
-                  Rail: {(rc.rowLength / 100).toFixed(2)} m
+                  Rail: {fmt(rc.rowLength / 100)} m
                 </div>
               </div>
 

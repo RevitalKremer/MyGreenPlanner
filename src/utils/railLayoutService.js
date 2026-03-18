@@ -1,4 +1,4 @@
-export const DEFAULT_RAIL_OFFSET_CM = 49.1
+export const DEFAULT_RAIL_OFFSET_CM = 44.1
 export const DEFAULT_RAIL_OVERHANG_CM = 4
 export const DEFAULT_STOCK_LENGTHS_MM = [4800, 6000]
 
