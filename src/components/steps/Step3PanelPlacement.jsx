@@ -4,6 +4,8 @@ import {
   toggleOrientation, toggleEmptyOrientation,
   isHorizontalOrientation, isEmptyOrientation,
 } from '../../utils/trapezoidGeometry'
+import { useImagePanZoom } from '../../hooks/useImagePanZoom'
+import MinimapView from '../shared/MinimapView'
 
 export default function Step3PanelPlacement({
   projectMode = 'scratch',
@@ -40,17 +42,12 @@ export default function Step3PanelPlacement({
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
-  const [panActive, setPanActive] = useState(false)
+  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const [isSpaceDown, setIsSpaceDown] = useState(false)
-  const panRef = useRef(null)
   const willDeselectRef = useRef(false)
   const [rectSelect, setRectSelect] = useState(null)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
-  const [minimapCollapsed, setMinimapCollapsed] = useState(false)
-  const viewportRef = useRef(null)
-  const minimapDragRef = useRef(false)
   const [trapIdOverride, setTrapIdOverride] = useState(null)
 
   const NUDGE_PX = 5
@@ -418,45 +415,6 @@ export default function Step3PanelPlacement({
   }
 
   // ── SVG interaction ───────────────────────────────────────────────────────────
-
-  // ── Minimap helpers ───────────────────────────────────────────────────────────
-  const MM_W = 180
-  const MM_H = imageRef
-    ? Math.min(120, Math.round(MM_W * imageRef.naturalHeight / Math.max(imageRef.naturalWidth, 1)))
-    : 100
-
-  // Convert a click/drag position inside the minimap to a pan that centers that image point
-  const panToMinimapPoint = (mmX, mmY) => {
-    if (!imageRef || !viewportRef.current) return
-    const imgRect = imageRef.getBoundingClientRect()
-    const vpRect  = viewportRef.current.getBoundingClientRect()
-    // Map minimap coords → image coords → current screen coords
-    const screenX = imgRect.left + (mmX / MM_W) * imgRect.width
-    const screenY = imgRect.top  + (mmY / MM_H) * imgRect.height
-    // Shift so that point lands at viewport centre
-    setPanOffset(prev => ({
-      x: prev.x + (vpRect.left + vpRect.width  / 2) - screenX,
-      y: prev.y + (vpRect.top  + vpRect.height / 2) - screenY,
-    }))
-  }
-
-  // Compute the viewport rectangle in minimap pixel space
-  const getMinimapViewportRect = () => {
-    if (!imageRef || !viewportRef.current) return null
-    const imgRect = imageRef.getBoundingClientRect()
-    const vpRect  = viewportRef.current.getBoundingClientRect()
-    const ol = Math.max(vpRect.left,   imgRect.left)
-    const or = Math.min(vpRect.right,  imgRect.right)
-    const ot = Math.max(vpRect.top,    imgRect.top)
-    const ob = Math.min(vpRect.bottom, imgRect.bottom)
-    if (or <= ol || ob <= ot) return null
-    return {
-      x: (ol - imgRect.left) / imgRect.width  * MM_W,
-      y: (ot - imgRect.top)  / imgRect.height * MM_H,
-      w: (or - ol)           / imgRect.width  * MM_W,
-      h: (ob - ot)           / imgRect.height * MM_H,
-    }
-  }
 
   const getSVGCursor = () => {
     if (isSpaceDown) return panActive ? 'grabbing' : 'grab'
@@ -1769,43 +1727,28 @@ export default function Step3PanelPlacement({
 
             {/* Minimap Navigator — shown only when zoomed in */}
             {viewZoom > 1 && imageRef && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div
-                  onClick={() => setMinimapCollapsed(c => !c)}
-                  style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                >
-                  <span>Navigator</span>
-                  <span style={{ fontSize: '0.55rem' }}>{minimapCollapsed ? '▲' : '▼'}</span>
-                </div>
-                {!minimapCollapsed && (
-                  <div
-                    style={{ width: MM_W, height: MM_H, borderRadius: '6px', overflow: 'hidden', cursor: 'crosshair', boxShadow: '0 1px 6px rgba(0,0,0,0.2)', position: 'relative' }}
-                    onMouseDown={(e) => { minimapDragRef.current = true; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
-                    onMouseMove={(e) => { if (!minimapDragRef.current) return; const r = e.currentTarget.getBoundingClientRect(); panToMinimapPoint(e.clientX - r.left, e.clientY - r.top) }}
-                    onMouseUp={() => { minimapDragRef.current = false }}
-                    onMouseLeave={() => { minimapDragRef.current = false }}
-                  >
-                    <img src={uploadedImageData.imageData} alt="" style={{ position: 'absolute', top: 0, left: 0, width: MM_W, height: MM_H, objectFit: 'fill', pointerEvents: 'none' }} />
-                    <svg width={MM_W} height={MM_H} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
-                      <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
-                      {panels.map(p => {
-                        const mmX = p.x / imageRef.naturalWidth  * MM_W
-                        const mmY = p.y / imageRef.naturalHeight * MM_H
-                        const mmW = p.width  / imageRef.naturalWidth  * MM_W
-                        const mmH = p.height / imageRef.naturalHeight * MM_H
-                        const cx = mmX + mmW / 2, cy = mmY + mmH / 2
-                        const isSel = selectedPanels.includes(p.id)
-                        return (
-                          <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
-                            <rect x={mmX} y={mmY} width={mmW} height={mmH} fill={isSel ? 'rgba(0,63,127,0.7)' : 'rgba(70,130,180,0.55)'} stroke={isSel ? '#003f7f' : '#4682B4'} strokeWidth="0.5" />
-                          </g>
-                        )
-                      })}
-                      {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.10)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
-                    </svg>
-                  </div>
-                )}
-              </div>
+              <MinimapView
+                imageData={uploadedImageData.imageData}
+                width={MM_W}
+                height={MM_H}
+                onPanToPoint={panToMinimapPoint}
+              >
+                <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
+                {panels.map(p => {
+                  const mmX = p.x / imageRef.naturalWidth  * MM_W
+                  const mmY = p.y / imageRef.naturalHeight * MM_H
+                  const mmW = p.width  / imageRef.naturalWidth  * MM_W
+                  const mmH = p.height / imageRef.naturalHeight * MM_H
+                  const cx = mmX + mmW / 2, cy = mmY + mmH / 2
+                  const isSel = selectedPanels.includes(p.id)
+                  return (
+                    <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
+                      <rect x={mmX} y={mmY} width={mmW} height={mmH} fill={isSel ? 'rgba(0,63,127,0.7)' : 'rgba(70,130,180,0.55)'} stroke={isSel ? '#003f7f' : '#4682B4'} strokeWidth="0.5" />
+                    </g>
+                  )
+                })}
+                {(() => { const vr = getMinimapViewportRect(); if (!vr) return null; return <rect x={vr.x} y={vr.y} width={vr.w} height={vr.h} fill="rgba(255,255,255,0.10)" stroke="white" strokeWidth="1.5" strokeDasharray="3,2" /> })()}
+              </MinimapView>
             )}
 
             {/* Clear ruler (always visible when measurement exists) */}
