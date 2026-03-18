@@ -49,7 +49,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
   const padR = Math.max(100, panelExtCm * SC + 70)
   const padT = 55
-  const padB = blockH + 150
+  const padB = blockH + 290
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
@@ -57,8 +57,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const baseY     = hF + padT
   const topY0     = baseY - hR
   const topY1     = baseY - hF
-  const blockBotY = baseY + blockH
-
   const x0 = padL
   const x1 = padL + bW
 
@@ -110,6 +108,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const rail2X = railXs[railXs.length - 1] ?? x1
 
   const BEAM_THICK_PX = 4 * SC
+  const blockTopY = baseY + BEAM_THICK_PX / 2
+  const blockBotY = blockTopY + blockH
   const PANEL_THICK_PX = 6
   const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + 10 + PANEL_THICK_PX / 2
   const panOffX = -Math.sin(angleRad) * PANEL_OFFSET_PX
@@ -194,6 +194,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 </marker>
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
+
+              {/* ── Blocks ── */}
+              <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
 
               {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
               <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
@@ -302,14 +306,33 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 )
               })}
 
-              {/* ── Blocks ── */}
-              <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-              <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              {/* ── Punches on base beam ── */}
+              {[x0 + 2 * SC, x0 + diagBasePct * bW, x1 - 2 * SC].map((px, i) => (
+                <circle key={i} cx={px} cy={baseY} r={2}
+                  fill="white" stroke="#555" strokeWidth="1" />
+              ))}
+
+              {/* ── Punches on top (slope) beam ── */}
+              {(() => {
+                const dx = x1 - x0, dy = topY1 - topY0
+                const beamLenPx = Math.sqrt(dx * dx + dy * dy)
+                const ux = dx / beamLenPx, uy = dy / beamLenPx
+                const pts = [
+                  { x: x0 + 2 * SC * ux, y: topY0 + 2 * SC * uy },
+                  { x: diagTopX, y: beamY(diagTopX) },
+                  { x: x1 - 2 * SC * ux, y: topY1 - 2 * SC * uy },
+                ]
+                return pts.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={2}
+                    fill="white" stroke="#555" strokeWidth="1" />
+                ))
+              })()}
+
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                  <rect x={lb_x - 5} y={baseY - 5} width={lb_w + 10} height={blockH + 10}
+                  <rect x={lb_x - 5} y={blockTopY - 5} width={lb_w + 10} height={blockH + 10}
                     fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
-                  <rect x={rb_x - 5} y={baseY - 5} width={rb_w + 10} height={blockH + 10}
+                  <rect x={rb_x - 5} y={blockTopY - 5} width={rb_w + 10} height={blockH + 10}
                     fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
                 </g>
               )}
@@ -346,7 +369,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 label={fmt(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad))}
                 off={-22} />
 
-              <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
+              <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
                 label={fmt(BLOCK_H_CM)} off={-14} />
 
               <Dim ax1={x1} ay1={baseY} ax2={x1} ay2={topY1}
@@ -366,19 +389,84 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
               <Dim ax1={x0} ay1={blockBotY + 18} ax2={x1} ay2={blockBotY + 18}
                 label={fmt(baseLength)} off={14} />
 
-              {/* ── TBD section ── */}
-              {[0, 1].map(row => {
-                const ry = blockBotY + 44 + row * 28
+              {/* ── Base beam punch sketch ── */}
+              {(() => {
+                const ry       = blockBotY + 130
+                const barH     = 12
+                const beamL    = x0
+                const beamR    = x1
+                const barW     = beamR - beamL
+                const barCy    = ry + barH / 2
+                const punches  = [x0 + 2 * SC, x0 + diagBasePct * bW, x1 - 2 * SC]
+                const punchLabelsCm = [
+                  2,
+                  fmt(diagBasePct * baseLength),
+                  fmt(baseLength - 2),
+                ]
+                const totalCm = fmt(baseLength)
                 return (
-                  <g key={row}>
-                    <rect x={x0 - railOffH} y={ry} width={bW + 2 * railOffH} height={22}
-                      fill="#f6f6f6" stroke="#ccc" strokeWidth="1" strokeDasharray="4,3" rx="3" />
-                    <text x={x0 - railOffH + (bW + 2 * railOffH) / 2} y={ry + 11}
-                      textAnchor="middle" dominantBaseline="middle"
-                      fontSize="9" fill="#bbb" fontWeight="700">TBD</text>
+                  <g>
+                    {/* label */}
+                    <text x={beamL} y={ry - 5}
+                      fontSize="8" fill="#888" fontWeight="600">Base beam — punch positions</text>
+                    {/* profile bar */}
+                    <rect x={beamL} y={ry} width={barW} height={barH}
+                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
+                    {/* punch circles */}
+                    {punches.map((px, i) => (
+                      <circle key={i} cx={px} cy={barCy} r={2}
+                        fill="white" stroke="#555" strokeWidth="1" />
+                    ))}
+                    {/* position labels */}
+                    {punches.map((px, i) => (
+                      <text key={i} x={px} y={ry + barH + 10}
+                        textAnchor="middle" fontSize="8" fill="#555" fontWeight="600">
+                        {punchLabelsCm[i]}
+                      </text>
+                    ))}
+                    {/* total length dim */}
+                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22}
+                      label={totalCm} off={10} />
                   </g>
                 )
-              })}
+              })()}
+
+              {/* ── Slope beam punch sketch ── */}
+              {(() => {
+                const ry       = blockBotY + 52
+                const barH     = 12
+                const beamL    = x0
+                const beamR    = x1
+                const barW     = beamR - beamL
+                const barCy    = ry + barH / 2
+                const punches  = [
+                  beamL + (2 / topBeamLength) * barW,
+                  beamL + diagTopPct * barW,
+                  beamL + ((topBeamLength - 2) / topBeamLength) * barW,
+                ]
+                const punchLabelsCm = [2, fmt(diagTopPct * topBeamLength), fmt(topBeamLength - 2)]
+                return (
+                  <g>
+                    <text x={beamL} y={ry - 5}
+                      fontSize="8" fill="#888" fontWeight="600">Slope beam — punch positions</text>
+                    <rect x={beamL} y={ry} width={barW} height={barH}
+                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
+                    {punches.map((px, i) => (
+                      <circle key={i} cx={px} cy={barCy} r={2}
+                        fill="white" stroke="#555" strokeWidth="1" />
+                    ))}
+                    {punches.map((px, i) => (
+                      <text key={i} x={px} y={ry + barH + 10}
+                        textAnchor="middle" fontSize="8" fill="#555" fontWeight="600">
+                        {punchLabelsCm[i]}
+                      </text>
+                    ))}
+                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22}
+                      label={fmt(topBeamLength)} off={10} />
+                  </g>
+                )
+              })()}
+
             </svg>
 
             {/* Members table */}

@@ -14,8 +14,8 @@ const SECTIONS = [
       ['Rail Profile Size (mm)', 'connEdgeDistMm',  5,   0],
       ['Min Rails Portrait',     'connMinPortrait', 1,   1],
       ['Min Rails Landscape',    'connMinLandscape',1,   1],
-      ['Diagonal Top (%)',       'diagTopPct',      1,   0],
-      ['Diagonal Base (%)',      'diagBasePct',     1,   0],
+      ['Diagonal Top (%)',       'diagTopPct',      1,   0, 100],
+      ['Diagonal Base (%)',      'diagBasePct',     1,   0, 100],
     ],
   },
   {
@@ -48,11 +48,16 @@ export default function Step4Sidebar({
 }) {
   const isOverride = (key) => !!(areaSettings[selectedRowIdx] && key in areaSettings[selectedRowIdx])
 
-  const numInput = (key, step, min) => {
+  const numInput = (key, step, min, max) => {
     const s = getSettings(selectedRowIdx)
     return (
-      <input type="number" value={s[key]} step={step} min={min}
-        onChange={e => updateSetting(selectedRowIdx, key, parseFloat(e.target.value) || 0)}
+      <input type="number" value={s[key]} step={step} min={min} {...(max != null ? { max } : {})}
+        onChange={e => {
+          let v = parseFloat(e.target.value) || 0
+          if (min != null) v = Math.max(min, v)
+          if (max != null) v = Math.min(max, v)
+          updateSetting(selectedRowIdx, key, v)
+        }}
         onFocus={() => setHighlightParam(key)}
         onBlur={() => setHighlightParam(null)}
         style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
@@ -61,7 +66,7 @@ export default function Step4Sidebar({
     )
   }
 
-  const field = (label, key, step, min) => {
+  const field = (label, key, step, min, max) => {
     const isActive = highlightParam === key
     return (
       <div key={key} style={{ marginBottom: '0.45rem' }}>
@@ -69,7 +74,7 @@ export default function Step4Sidebar({
           {isActive && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FFB300', display: 'inline-block', flexShrink: 0, animation: 'hlPulse 0.75s ease-in-out infinite' }} />}
           {label}
         </div>
-        {numInput(key, step, min)}
+        {numInput(key, step, min, max)}
       </div>
     )
   }
@@ -162,7 +167,7 @@ export default function Step4Sidebar({
             </div>
             {isOpen && (
               <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
-                {sec.fields.map(([lbl, key, step, min]) => field(lbl, key, step, min))}
+                {sec.fields.map(([lbl, key, step, min, max]) => field(lbl, key, step, min, max))}
                 {sec.tabKey === 'rails' && (
                   <div style={{ marginBottom: '0.45rem' }}>
                     <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Stock Lengths (mm)</div>
