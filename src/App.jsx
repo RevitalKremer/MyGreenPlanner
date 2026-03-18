@@ -1,648 +1,24 @@
-import { useState, useEffect } from 'react'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
-import HelpPanel from './components/HelpPanel'
-import { SAM2Service } from './services/sam2Service'
-import { generatePanelLayout, createManualPanel } from './utils/panelUtils'
+import HelpButton from './components/HelpButton'
+import { useProjectState } from './hooks/useProjectState'
 import './App.css'
 
+const TOTAL_STEPS = 5
+const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
+
 function App() {
-  // App-level screen
-  const [appScreen, setAppScreen] = useState('welcome') // 'welcome' | 'wizard'
-  const [currentProject, setCurrentProject] = useState(null) // { name, location, date }
+  const s = useProjectState()
 
-  // Wizard state
-  const [currentStep, setCurrentStep] = useState(1)
-  const totalSteps = 5
-  
-  // Step 1: Roof allocation
-  const [selectedPoint, setSelectedPoint] = useState(null)
-  const [roofPolygon, setRoofPolygon] = useState(null)
-  const [backendStatus, setBackendStatus] = useState({ status: 'checking', model_loaded: false })
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [uploadedImageMode, setUploadedImageMode] = useState(true)
-  const [uploadedImageData, setUploadedImageData] = useState(null)
-  const [imageRef, setImageRef] = useState(null)
-  
-  // Step 2: PV area refinement
-  const [refinedArea, setRefinedArea] = useState(null)
-  const [panelType, setPanelType] = useState('AIKO-G670-MCH72Mw')
-  const [referenceLine, setReferenceLine] = useState(null) // { start: {x, y}, end: {x, y} }
-  const [referenceLineLengthCm, setReferenceLineLengthCm] = useState('')
-  const [panelFrontHeight, setPanelFrontHeight] = useState('')
-  const [linesPerRow, setLinesPerRow] = useState(1)
-  const [lineOrientations, setLineOrientations] = useState(['vertical'])
-  const [panelAngle, setPanelAngle] = useState('')
-  const [isDrawingLine, setIsDrawingLine] = useState(false)
-
-  // Derived: back height computed from angle, frontHeight, and line config
-  const getComputedBackHeight = () => {
-    const angle = parseFloat(panelAngle) || 0
-    const frontH = parseFloat(panelFrontHeight) || 0
-    const angleRad = angle * Math.PI / 180
-    const totalSlopeLen = lineOrientations.reduce(
-      (sum, o) => sum + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0
-    ) + (linesPerRow - 1) * 2.5
-    return frontH + totalSlopeLen * Math.sin(angleRad)
-  }
-
-  const [lineStart, setLineStart] = useState(null)
-  
-  // Step 3: Solar panel placement
-  const [baseline, setBaseline] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn baseline for first row
-  const [showBaseline, setShowBaseline] = useState(true) // Toggle to show/hide baseline
-  const [showDistances, setShowDistances] = useState(true) // Toggle to show/hide distance measurements
-  const [distanceMeasurement, setDistanceMeasurement] = useState(null) // { p1: [x, y], p2: [x, y] } - user-drawn distance measurement
-  const [panels, setPanels] = useState([]) // Array of panel objects { ...panel, area, trapezoidId }
-  const [areas, setAreas] = useState([]) // Area groups (was rowGroups)
-  const [selectedPanels, setSelectedPanels] = useState([]) // Array of selected panel IDs
-  const [dragState, setDragState] = useState(null) // { panelIds, startX, startY, originalPositions }
-  const [rotationState, setRotationState] = useState(null) // { panelIds, centerX, centerY, startAngle, originalRotations }
-  const [viewZoom, setViewZoom] = useState(1) // Zoom level for Step 3 view (independent of uploadedImageData.scale)
-  const [trapezoidConfigs, setTrapezoidConfigs] = useState({}) // Per-trapezoid overrides: { [trapezoidId]: { angle, frontHeight, backHeight } }
-
-  // Step 4: Construction planning settings (persisted for export)
-  const [step4GlobalSettings, setStep4GlobalSettings] = useState(null) // null = use Step4 defaults
-  const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
-  
-  const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
-  const [showHelp, setShowHelp] = useState(false)
-
-  const stepTitles = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
-
-  useEffect(() => {
-    // Check backend health on mount
-    checkBackend()
-  }, [])
-
-  const checkBackend = async () => {
-    const status = await SAM2Service.checkHealth()
-    setBackendStatus(status)
-  }
-
-  const resetWizardState = () => {
-    setCurrentStep(1)
-    setSelectedPoint(null)
-    setRoofPolygon(null)
-    setIsProcessing(false)
-    setUploadedImageMode(true)
-    setUploadedImageData(null)
-    setImageRef(null)
-    setRefinedArea(null)
-    setPanelType('AIKO-G670-MCH72Mw')
-    setReferenceLine(null)
-    setReferenceLineLengthCm('')
-    setPanelFrontHeight('')
-    setLinesPerRow(1)
-    setLineOrientations(['vertical'])
-    setPanelAngle('')
-    setIsDrawingLine(false)
-    setLineStart(null)
-    setPanels([])
-    setAreas([])
-    setSelectedPanels([])
-    setDragState(null)
-    setRotationState(null)
-    setTrapezoidConfigs({})
-    setStep4GlobalSettings(null)
-    setStep4AreaSettings(null)
-  }
-
-  const handleStartOver = () => {
-    if (confirm('Return to the welcome screen? All unsaved progress will be lost.')) {
-      resetWizardState()
-      setCurrentProject(null)
-      setAppScreen('welcome')
-    }
-  }
-
-  const handleCreateProject = (projectInfo) => {
-    setCurrentProject(projectInfo)
-    setAppScreen('wizard')
-  }
-
-  const handleImportProject = (data) => {
-    resetWizardState()
-    setCurrentProject(data.project)
-    if (data.uploadedImageData) setUploadedImageData(data.uploadedImageData)
-    if (data.roofPolygon) setRoofPolygon(data.roofPolygon)
-    if (data.referenceLine) setReferenceLine(data.referenceLine)
-    if (data.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(data.referenceLineLengthCm))
-    if (data.panelType) setPanelType(data.panelType)
-    if (data.panelFrontHeight !== undefined) setPanelFrontHeight(String(data.panelFrontHeight))
-    if (data.panelAngle !== undefined) setPanelAngle(String(data.panelAngle))
-    if (data.linesPerRow !== undefined) setLinesPerRow(data.linesPerRow)
-    if (data.lineOrientations) setLineOrientations(data.lineOrientations)
-    if (data.refinedArea) setRefinedArea(data.refinedArea)
-    if (data.baseline) setBaseline(data.baseline)
-    if (data.panels) {
-      const mode = data.project?.mode || 'scratch'
-      const areaLetter = (idx) => data.areas?.[idx]?.label || String.fromCharCode(65 + (idx || 0))
-      setPanels(data.panels.map(p => {
-        const area = p.area ?? p.row ?? 0
-        const trapezoidId = p.trapezoidId ?? (mode === 'plan' ? `${areaLetter(area)}1` : 'A1')
-        return { ...p, area, trapezoidId }
-      }))
-    }
-    if (data.areas) setAreas(data.areas)
-    else if (data.rowGroups) setAreas(data.rowGroups)
-    if (data.trapezoidConfigs) {
-      setTrapezoidConfigs(data.trapezoidConfigs)
-    } else if (data.rowConfigs) {
-      // Migrate old rowConfigs (integer-keyed) to trapezoidId-keyed
-      const mode = data.project?.mode || 'scratch'
-      const migrated = {}
-      if (mode === 'plan') {
-        Object.entries(data.rowConfigs).forEach(([key, value]) => {
-          const idx = parseInt(key)
-          if (!isNaN(idx)) migrated[`${String.fromCharCode(65 + idx)}1`] = value
-        })
-      } else {
-        const first = Object.values(data.rowConfigs)[0]
-        if (first) migrated['A1'] = first
-      }
-      setTrapezoidConfigs(migrated)
-    }
-    if (data.step4GlobalSettings) setStep4GlobalSettings(data.step4GlobalSettings)
-    if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
-    else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
-    if (data.currentStep) setCurrentStep(data.currentStep)
-    setAppScreen('wizard')
-  }
-
-
-  const handleExportProject = () => {
-    const data = {
-      version: '1.0',
-      project: currentProject,
-      currentStep,
-      uploadedImageData: uploadedImageData
-        ? { ...uploadedImageData, file: undefined }
-        : null,
-      roofPolygon,
-      referenceLine,
-      referenceLineLengthCm,
-      panelType,
-      panelFrontHeight,
-      panelAngle,
-      linesPerRow,
-      lineOrientations,
-      refinedArea,
-      baseline,
-      panels,
-      areas,
-      trapezoidConfigs,
-      step4GlobalSettings,
-      step4AreaSettings,
-    }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    const safeName = (currentProject?.name || 'project').replace(/[^\p{L}\p{N}]/gu, '_')
-    const dateStr = new Date().toISOString().split('T')[0]
-    a.href = url
-    a.download = `${safeName}_${dateStr}.mgp`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // Auto-generate panel layout based on Step 2 configuration
-  const generatePanelLayoutHandler = () => {
-    if (!refinedArea || !refinedArea.polygon || !refinedArea.pixelToCmRatio) {
-      alert('Missing configuration data from Step 2')
-      return
-    }
-
-    if (!baseline) {
-      alert('Please draw a baseline for the first row of panels')
-      return
-    }
-
-    const generatedPanels = generatePanelLayout(refinedArea, baseline)
-    // Add area and trapezoidId fields (scratch mode: all areas share trapezoid "A1")
-    setPanels(generatedPanels.map(p => ({ ...p, area: p.row, trapezoidId: 'A1' })))
-  }
-
-  const regeneratePlanPanelsHandler = () => {
-    if (!refinedArea || !refinedArea.pixelToCmRatio || areas.length === 0) {
-      alert('Missing configuration from Step 2')
-      return
-    }
-    let nextId = 1
-    const allPanels = []
-    areas.forEach((group, groupIdx) => {
-      if (!group.baseline) return
-      const angle = parseFloat(group.angle) || 0
-      const frontH = parseFloat(group.frontHeight) || 0
-      const angleRad = angle * Math.PI / 180
-      const n = group.linesPerRow || 1
-      const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-      const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
-      const backH = frontH + totalSlope * Math.sin(angleRad)
-      const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
-      const generated = generatePanelLayout(
-        { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
-        group.baseline,
-        true
-      )
-      generated.forEach(p => allPanels.push({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
-    })
-    setPanels(allPanels)
-  }
-
-  const regenerateSingleRowHandler = (areaKey) => {
-    if (!refinedArea || !refinedArea.pixelToCmRatio) return
-
-    if (projectMode === 'plan') {
-      const groupIdx = areaKey
-      const group = areas[groupIdx]
-      if (!group || !group.baseline) return
-      const angle = parseFloat(group.angle) || 0
-      const frontH = parseFloat(group.frontHeight) || 0
-      const angleRad = angle * Math.PI / 180
-      const n = group.linesPerRow || 1
-      const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-      const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
-      const backH = frontH + totalSlope * Math.sin(angleRad)
-      const trapezoidId = `${String.fromCharCode(65 + groupIdx)}1`
-      const generated = generatePanelLayout(
-        { polygon: roofPolygon, pixelToCmRatio: refinedArea.pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
-        group.baseline,
-        true
-      )
-      setPanels(prev => {
-        const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
-        let nextId = maxId + 1
-        const newAreaPanels = generated.map(p => ({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
-        return [...prev.filter(p => (p.area ?? p.row) !== areaKey), ...newAreaPanels]
-      })
-      setSelectedPanels([])
-    } else {
-      // Scratch mode: re-run full generation, splice back only the target area.
-      // We can't use p.row === areaKey because areaKey may be a normalized sequential
-      // number assigned after spatial sub-splitting, not the original generation row.
-      // Instead, find the matching cluster by spatial proximity to the existing area centroid.
-      if (!baseline) return
-      const allGenerated = generatePanelLayout(refinedArea, baseline)
-      setPanels(prev => {
-        const existingAreaPanels = prev.filter(p => (p.area ?? p.row) === areaKey)
-        if (existingAreaPanels.length === 0) return prev
-        const cx = existingAreaPanels.reduce((s, p) => s + p.x + p.width / 2, 0) / existingAreaPanels.length
-        const cy = existingAreaPanels.reduce((s, p) => s + p.y + p.height / 2, 0) / existingAreaPanels.length
-        // Find the row in the new generation whose panel is closest to the existing area centroid
-        let minDist = Infinity, matchRow = null
-        allGenerated.forEach(p => {
-          const d = Math.hypot((p.x + p.width / 2) - cx, (p.y + p.height / 2) - cy)
-          if (d < minDist) { minDist = d; matchRow = p.row }
-        })
-        // From that row, take only panels spatially near the existing area (handles sub-splits)
-        const xs = existingAreaPanels.map(p => p.x + p.width / 2)
-        const ys = existingAreaPanels.map(p => p.y + p.height / 2)
-        const radius = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + existingAreaPanels[0].width * 3
-        const areaPanels = allGenerated.filter(p => p.row === matchRow &&
-          Math.hypot((p.x + p.width / 2) - cx, (p.y + p.height / 2) - cy) <= radius)
-        const maxId = prev.reduce((m, p) => Math.max(m, p.id), 0)
-        let nextId = maxId + 1
-        const trapId = existingAreaPanels[0]?.trapezoidId || 'A1'
-        const newAreaPanels = areaPanels.map(p => ({ ...p, id: nextId++, area: areaKey, trapezoidId: trapId }))
-        return [...prev.filter(p => (p.area ?? p.row) !== areaKey), ...newAreaPanels]
-      })
-      setSelectedPanels([])
-    }
-  }
-
-  const addManualPanel = () => {
-    const newPanel = createManualPanel(refinedArea, baseline, panels)
-    if (!newPanel) return
-
-    // Add to panels array
-    setPanels([...panels, newPanel])
-    
-    // Select the new panel
-    setSelectedPanels([newPanel.id])
-    
-    console.log('Manual panel added below baseline:', newPanel)
-  }
-
-  const handlePointSelect = async (point, mapInstance, bounds) => {
-    console.log('Point selected:', point, 'bounds:', bounds)
-    setSelectedPoint(point)
-    setIsProcessing(true)
-    
-    try {
-      // Check backend status
-      if (backendStatus.status !== 'running' || !backendStatus.model_loaded) {
-        alert('Backend is not ready. Please make sure the Python backend is running.')
-        setIsProcessing(false)
-        return
-      }
-
-      // Get current zoom level
-      const zoom = mapInstance.getZoom()
-      
-      // Log map container dimensions
-      const mapContainer = mapInstance.getContainer()
-      const mapSize = mapInstance.getSize()
-      console.log('Map viewport dimensions:', { 
-        width: mapSize.x, 
-        height: mapSize.y,
-        containerWidth: mapContainer.offsetWidth,
-        containerHeight: mapContainer.offsetHeight
-      })
-      
-      console.log('Sending to backend:', { lat: point.lat, lng: point.lng, zoom, bounds })
-      
-      // Call backend to fetch tiles and run SAM2 (avoids CORS issues)
-      const result = await SAM2Service.segmentRoofFromMap(
-        point.lat,
-        point.lng,
-        zoom,
-        bounds
-      )
-      
-      console.log('SAM2 result:', result)
-      
-      if (result && result.geometry) {
-        // Log bounds comparison
-        if (result.properties.actual_bounds) {
-          console.log('\n🗺️ BOUNDS COMPARISON:')
-          console.log('  Requested bounds (map viewport):', bounds)
-          console.log('  Actual bounds (backend tiles):', result.properties.actual_bounds)
-          console.log('  ⚠️ If these differ significantly, polygon will be misaligned!')
-        }
-        
-        // Backend returns [lng, lat], but Leaflet needs [lat, lng]
-        const coordinates = result.geometry.coordinates[0].map(coord => {
-          return [coord[1], coord[0]]  // Convert [lng, lat] to [lat, lng]
-        })
-        
-        setRoofPolygon({
-          coordinates: coordinates,
-          area: result.properties.area_pixels,
-          confidence: result.properties.confidence,
-          actualBounds: result.properties.actual_bounds
-        })
-        
-        // Fit map to actual bounds if available
-        if (result.properties.actual_bounds && mapInstance) {
-          const actualBounds = result.properties.actual_bounds
-          mapInstance.fitBounds([
-            [actualBounds.south, actualBounds.west],
-            [actualBounds.north, actualBounds.east]
-          ], { padding: [50, 50] })
-          console.log('✅ Map fitted to actual_bounds from backend')
-        }
-      }
-      
-      setIsProcessing(false)
-      
-    } catch (error) {
-      console.error('Error processing roof:', error)
-      alert(`Error: ${error.message}`)
-      setIsProcessing(false)
-    }
-  }
-
-  const handleImageUploaded = (imageData) => {
-    console.log('Image uploaded:', imageData)
-    setUploadedImageData(imageData)
-    setUploadedImageMode(true)
-  }
-
-  const handleNext = () => {
-    if (currentStep < totalSteps) {
-      if (currentStep === 2) {
-        const pixelLength = Math.sqrt(
-          Math.pow(referenceLine.end.x - referenceLine.start.x, 2) +
-          Math.pow(referenceLine.end.y - referenceLine.start.y, 2)
-        )
-        const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-
-        if (projectMode === 'plan') {
-          // Generate panels from every area group
-          let nextId = 1
-          const allPanels = []
-          const groupTrapConfigs = {}
-          areas.forEach((group, groupIdx) => {
-            const angle = parseFloat(group.angle) || 0
-            const frontH = parseFloat(group.frontHeight) || 0
-            const angleRad = angle * Math.PI / 180
-            const n = group.linesPerRow || 1
-            const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-            const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
-            const backH = frontH + totalSlope * Math.sin(angleRad)
-            // Store per-area trapezoid config so editor defaults are correct (not 0)
-            const trapezoidId = `${group.label || String.fromCharCode(65 + groupIdx)}1`
-            groupTrapConfigs[trapezoidId] = { angle, frontHeight: frontH, backHeight: backH }
-            if (!group.baseline) return
-            const generated = generatePanelLayout(
-              { polygon: roofPolygon, pixelToCmRatio, panelConfig: { frontHeight: frontH, backHeight: backH, angle, linesPerRow: n, lineOrientations: orients } },
-              group.baseline,
-              true // singleRow: each group baseline generates exactly 1 row
-            )
-            generated.forEach(p => allPanels.push({ ...p, id: nextId++, area: groupIdx, trapezoidId }))
-          })
-          setRefinedArea({
-            polygon: roofPolygon,
-            panelType,
-            referenceLine,
-            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-            pixelToCmRatio,
-            panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
-          })
-          setPanels(allPanels)
-          // Initialize trapezoidConfigs from group settings, preserving any existing overrides
-          setTrapezoidConfigs(prev => {
-            const next = {}
-            Object.keys(groupTrapConfigs).forEach(trapId => {
-              next[trapId] = { ...(prev[trapId] || {}), ...groupTrapConfigs[trapId] }
-            })
-            return next
-          })
-        } else {
-          setRefinedArea({
-            polygon: roofPolygon,
-            panelType,
-            referenceLine,
-            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-            pixelToCmRatio,
-            panelConfig: {
-              frontHeight: parseFloat(panelFrontHeight),
-              backHeight: getComputedBackHeight(),
-              angle: parseFloat(panelAngle),
-              linesPerRow,
-              lineOrientations: [...lineOrientations]
-            },
-            panelFrontHeight: parseFloat(panelFrontHeight),
-            panelAngle: parseFloat(panelAngle)
-          })
-        }
-      }
-
-      if (currentStep === 3) {
-        // Remove trapezoid configs for trapezoids with no panels assigned
-        setTrapezoidConfigs(prev => {
-          const usedIds = new Set(panels.map(p => p.trapezoidId).filter(Boolean))
-          const next = {}
-          for (const [id, cfg] of Object.entries(prev)) {
-            if (usedIds.has(id)) next[id] = cfg
-          }
-          return next
-        })
-      }
-
-      const nextStep = currentStep + 1
-      console.log(`\n${'─'.repeat(40)}\n  STEP ${nextStep}\n${'─'.repeat(40)}`)
-      if (nextStep === 3) {
-        const baselines = projectMode === 'plan'
-          ? areas.filter(g => g.baseline).length
-          : baseline ? 1 : 0
-        console.log(`  Mode: ${projectMode} | Baselines: ${baselines}`)
-        if (projectMode === 'plan') {
-          areas.forEach((g, i) => console.log(`  Baseline ${i + 1}:`, g.baseline ? `p1=${JSON.stringify(g.baseline.p1)} p2=${JSON.stringify(g.baseline.p2)}` : 'none'))
-        } else {
-          console.log(`  Baseline:`, baseline ? `p1=${JSON.stringify(baseline.p1)} p2=${JSON.stringify(baseline.p2)}` : 'none')
-        }
-      }
-      setCurrentStep(nextStep)
-    }
-  }
-
-  const handleBack = () => {
-    if (currentStep > 1) {
-      console.log(`\n${'─'.repeat(40)}\n  STEP ${currentStep - 1}\n${'─'.repeat(40)}`)
-      setCurrentStep(prev => prev - 1)
-    }
-  }
-
-  const canProceedToNextStep = () => {
-    switch (currentStep) {
-      case 1:
-        return roofPolygon !== null
-      case 2:
-        if (projectMode === 'plan') {
-          return (
-            referenceLine !== null &&
-            referenceLineLengthCm !== '' &&
-            parseFloat(referenceLineLengthCm) > 0 &&
-            areas.length > 0 &&
-            areas.every(g =>
-              g.baseline !== null &&
-              g.frontHeight !== '' &&
-              parseFloat(g.frontHeight) >= 0 &&
-              g.angle !== '' &&
-              parseFloat(g.angle) >= 0 &&
-              parseFloat(g.angle) <= 30
-            )
-          )
-        }
-        return (
-          referenceLine !== null &&
-          referenceLineLengthCm !== '' &&
-          parseFloat(referenceLineLengthCm) > 0 &&
-          panelFrontHeight !== '' &&
-          parseFloat(panelFrontHeight) >= 0 &&
-          panelAngle !== '' &&
-          parseFloat(panelAngle) >= 0 &&
-          parseFloat(panelAngle) <= 30
-        )
-      case 3:
-        return panels.length > 0
-      case 4:
-        return true
-      case 5:
-        return true
-      default:
-        return false
-    }
-  }
-
-  const dataURLtoBlob = (dataURL) => {
-    // Convert base64 data URL to Blob
-    const arr = dataURL.split(',')
-    const mime = arr[0].match(/:(.*?);/)[1]
-    const bstr = atob(arr[1])
-    let n = bstr.length
-    const u8arr = new Uint8Array(n)
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n)
-    }
-    return new Blob([u8arr], { type: mime })
-  }
-
-  const handleImageClick = async (event) => {
-    if (!uploadedImageData) return
-    
-    const img = event.target
-    const rect = img.getBoundingClientRect()
-    
-    // Get click position relative to the image
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
-    
-    // Convert to pixel coordinates (accounting for any scaling)
-    const scaleX = img.naturalWidth / rect.width
-    const scaleY = img.naturalHeight / rect.height
-    
-    const pixelX = Math.round(x * scaleX)
-    const pixelY = Math.round(y * scaleY)
-    
-    console.log('📷 UPLOADED IMAGE:')
-    console.log('  Display dimensions:', { width: rect.width, height: rect.height })
-    console.log('  Natural dimensions:', { width: img.naturalWidth, height: img.naturalHeight })
-    console.log('  Click position (display):', { x, y })
-    console.log('  Click position (natural):', { x: pixelX, y: pixelY })
-    console.log('  Scale factors:', { scaleX, scaleY })
-    
-    // Store the clicked point
-    setSelectedPoint({ x: pixelX, y: pixelY })
-    setIsProcessing(true)
-    
-    try {
-      // Check backend status
-      if (backendStatus.status !== 'running' || !backendStatus.model_loaded) {
-        alert('Backend is not ready. Please make sure the Python backend is running.')
-        setIsProcessing(false)
-        return
-      }
-      
-      // Convert data URL to Blob
-      const imageBlob = dataURLtoBlob(uploadedImageData.imageData)
-      
-      // Send to SAM2 for segmentation
-      const result = await SAM2Service.segmentRoofPixel(
-        imageBlob,
-        pixelX,
-        pixelY
-      )
-      
-      console.log('SAM2 result:', result)
-      
-      if (result && result.geometry) {
-        setRoofPolygon({
-          coordinates: result.geometry.coordinates[0],
-          area: result.properties.area_pixels,
-          confidence: result.properties.confidence
-        })
-      }
-      
-    } catch (error) {
-      console.error('Error processing roof:', error)
-      alert('Failed to process roof. Check console for details.')
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  if (appScreen === 'welcome') {
+  if (s.appScreen === 'welcome') {
     return (
       <WelcomeScreen
-        onCreateProject={handleCreateProject}
-        onImportProject={handleImportProject}
+        onCreateProject={s.handleCreateProject}
+        onImportProject={s.handleImportProject}
       />
     )
   }
@@ -656,18 +32,18 @@ function App() {
             <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '68px', width: 'auto' }} />
             <div>
               <h1>MyGreenPlanner</h1>
-              {currentProject?.name ? (
+              {s.currentProject?.name ? (
                 <>
                   <p className="header-subtitle" style={{ fontWeight: '600', color: '#C4D600' }}>
-                    {currentProject.name}
-                    {currentProject.location && (
+                    {s.currentProject.name}
+                    {s.currentProject.location && (
                       <span style={{ fontWeight: '400', color: '#aaa', marginLeft: '0.5rem' }}>
-                        · {currentProject.location}
+                        · {s.currentProject.location}
                       </span>
                     )}
                   </p>
                   <p className="header-subtitle" style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: '1px' }}>
-                    Created {currentProject.date ? new Date(currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                    Created {s.currentProject.date ? new Date(s.currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                   </p>
                 </>
               ) : (
@@ -681,159 +57,130 @@ function App() {
               <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '28px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.85 }} />
             </div>
             <button
-              onClick={handleExportProject}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#C4D600', color: '#333',
-                border: 'none', borderRadius: '6px',
-                cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem'
-              }}
+              onClick={s.handleExportProject}
+              style={{ padding: '0.5rem 1rem', background: '#C4D600', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
             >
               ↓ Export
             </button>
-            <button className="btn-start-over" onClick={handleStartOver}>
+            <button className="btn-start-over" onClick={s.handleStartOver}>
               Start Over
             </button>
+            <HelpButton currentStep={s.currentStep} />
           </div>
         </div>
       </header>
-      
+
       <main className="app-main">
-        {/* Step 1: Allocate Roof */}
-        {currentStep === 1 && (
+        {s.currentStep === 1 && (
           <Step1RoofAllocation
-            uploadedImageMode={uploadedImageMode}
-            setUploadedImageMode={setUploadedImageMode}
-            backendStatus={backendStatus}
-            uploadedImageData={uploadedImageData}
-            handleImageUploaded={handleImageUploaded}
-            imageRef={imageRef}
-            setImageRef={setImageRef}
-            handleImageClick={handleImageClick}
-            roofPolygon={roofPolygon}
-            selectedPoint={selectedPoint}
-            setSelectedPoint={setSelectedPoint}
-            setRoofPolygon={setRoofPolygon}
-            handlePointSelect={handlePointSelect}
+            uploadedImageMode={s.uploadedImageMode}
+            setUploadedImageMode={s.setUploadedImageMode}
+            backendStatus={s.backendStatus}
+            uploadedImageData={s.uploadedImageData}
+            handleImageUploaded={s.handleImageUploaded}
+            imageRef={s.imageRef}
+            setImageRef={s.setImageRef}
+            handleImageClick={s.handleImageClick}
+            roofPolygon={s.roofPolygon}
+            selectedPoint={s.selectedPoint}
+            setSelectedPoint={s.setSelectedPoint}
+            setRoofPolygon={s.setRoofPolygon}
+            handlePointSelect={s.handlePointSelect}
           />
         )}
 
-        {/* Step 2: Refine PV Area */}
-        {currentStep === 2 && (
+        {s.currentStep === 2 && (
           <Step2PVAreaRefinement
-            uploadedImageData={uploadedImageData}
-            roofPolygon={roofPolygon}
-            imageRef={imageRef}
-            setImageRef={setImageRef}
-            viewZoom={viewZoom}
-            setViewZoom={setViewZoom}
-            isDrawingLine={isDrawingLine}
-            setIsDrawingLine={setIsDrawingLine}
-            lineStart={lineStart}
-            setLineStart={setLineStart}
-            referenceLine={referenceLine}
-            setReferenceLine={setReferenceLine}
-            referenceLineLengthCm={referenceLineLengthCm}
-            setReferenceLineLengthCm={setReferenceLineLengthCm}
-            panelType={panelType}
-            setPanelType={setPanelType}
-            panelFrontHeight={panelFrontHeight}
-            setPanelFrontHeight={setPanelFrontHeight}
-            linesPerRow={linesPerRow}
-            setLinesPerRow={setLinesPerRow}
-            lineOrientations={lineOrientations}
-            setLineOrientations={setLineOrientations}
-            computedBackHeight={getComputedBackHeight()}
-            panelAngle={panelAngle}
-            setPanelAngle={setPanelAngle}
-            projectMode={projectMode}
-            areas={areas}
-            setAreas={setAreas}
+            uploadedImageData={s.uploadedImageData}
+            roofPolygon={s.roofPolygon}
+            imageRef={s.imageRef}
+            setImageRef={s.setImageRef}
+            viewZoom={s.viewZoom}
+            setViewZoom={s.setViewZoom}
+            isDrawingLine={s.isDrawingLine}
+            setIsDrawingLine={s.setIsDrawingLine}
+            lineStart={s.lineStart}
+            setLineStart={s.setLineStart}
+            referenceLine={s.referenceLine}
+            setReferenceLine={s.setReferenceLine}
+            referenceLineLengthCm={s.referenceLineLengthCm}
+            setReferenceLineLengthCm={s.setReferenceLineLengthCm}
+            panelType={s.panelType}
+            setPanelType={s.setPanelType}
+            panelFrontHeight={s.panelFrontHeight}
+            setPanelFrontHeight={s.setPanelFrontHeight}
+            linesPerRow={s.linesPerRow}
+            setLinesPerRow={s.setLinesPerRow}
+            lineOrientations={s.lineOrientations}
+            setLineOrientations={s.setLineOrientations}
+            computedBackHeight={s.getComputedBackHeight()}
+            panelAngle={s.panelAngle}
+            setPanelAngle={s.setPanelAngle}
+            projectMode={s.projectMode}
+            areas={s.areas}
+            setAreas={s.setAreas}
           />
         )}
 
-        {/* Step 3: Place Solar Panels */}
-        {/* Step 3: Place Solar Panels */}
-        {currentStep === 3 && (
+        {s.currentStep === 3 && (
           <Step3PanelPlacement
-            projectMode={projectMode}
-            uploadedImageData={uploadedImageData}
-            roofPolygon={roofPolygon}
-            refinedArea={refinedArea}
-            imageRef={imageRef}
-            setImageRef={setImageRef}
-            baseline={baseline}
-            setBaseline={setBaseline}
-            panels={panels}
-            setPanels={setPanels}
-            selectedPanels={selectedPanels}
-            setSelectedPanels={setSelectedPanels}
-            dragState={dragState}
-            setDragState={setDragState}
-            rotationState={rotationState}
-            setRotationState={setRotationState}
-            viewZoom={viewZoom}
-            setViewZoom={setViewZoom}
-            showBaseline={showBaseline}
-            setShowBaseline={setShowBaseline}
-            showDistances={showDistances}
-            setShowDistances={setShowDistances}
-            distanceMeasurement={distanceMeasurement}
-            setDistanceMeasurement={setDistanceMeasurement}
-            generatePanelLayoutHandler={generatePanelLayoutHandler}
-            regeneratePlanPanelsHandler={regeneratePlanPanelsHandler}
-            regenerateSingleRowHandler={regenerateSingleRowHandler}
-            areas={areas}
-            addManualPanel={addManualPanel}
-            trapezoidConfigs={trapezoidConfigs}
-            setTrapezoidConfigs={setTrapezoidConfigs}
+            projectMode={s.projectMode}
+            uploadedImageData={s.uploadedImageData}
+            roofPolygon={s.roofPolygon}
+            refinedArea={s.refinedArea}
+            imageRef={s.imageRef}
+            setImageRef={s.setImageRef}
+            baseline={s.baseline}
+            setBaseline={s.setBaseline}
+            panels={s.panels}
+            setPanels={s.setPanels}
+            selectedPanels={s.selectedPanels}
+            setSelectedPanels={s.setSelectedPanels}
+            dragState={s.dragState}
+            setDragState={s.setDragState}
+            rotationState={s.rotationState}
+            setRotationState={s.setRotationState}
+            viewZoom={s.viewZoom}
+            setViewZoom={s.setViewZoom}
+            showBaseline={s.showBaseline}
+            setShowBaseline={s.setShowBaseline}
+            showDistances={s.showDistances}
+            setShowDistances={s.setShowDistances}
+            distanceMeasurement={s.distanceMeasurement}
+            setDistanceMeasurement={s.setDistanceMeasurement}
+            generatePanelLayoutHandler={s.generatePanelLayoutHandler}
+            regeneratePlanPanelsHandler={s.regeneratePlanPanelsHandler}
+            regenerateSingleRowHandler={s.regenerateSingleRowHandler}
+            areas={s.areas}
+            addManualPanel={s.addManualPanel}
+            trapezoidConfigs={s.trapezoidConfigs}
+            setTrapezoidConfigs={s.setTrapezoidConfigs}
           />
         )}
 
-        {/* Step 4: Construction Planning */}
-        {currentStep === 4 && (
+        {s.currentStep === 4 && (
           <Step4ConstructionPlanning
-            panels={panels}
-            refinedArea={refinedArea}
-            trapezoidConfigs={trapezoidConfigs}
-            areas={areas}
-            initialGlobalSettings={step4GlobalSettings}
-            initialAreaSettings={step4AreaSettings}
-            onSettingsChange={(g, a) => { setStep4GlobalSettings(g); setStep4AreaSettings(a) }}
+            panels={s.panels}
+            refinedArea={s.refinedArea}
+            trapezoidConfigs={s.trapezoidConfigs}
+            areas={s.areas}
+            initialGlobalSettings={s.step4GlobalSettings}
+            initialAreaSettings={s.step4AreaSettings}
+            onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
           />
         )}
 
-        {/* Step 5: Finalize & Export */}
-        {currentStep === 5 && (
+        {s.currentStep === 5 && (
           <div className="step-content">
             <Step5PdfReport
-              panels={panels}
-              refinedArea={refinedArea}
-              rowConfigs={rowConfigs}
-              project={currentProject}
+              panels={s.panels}
+              refinedArea={s.refinedArea}
+              project={s.currentProject}
             />
           </div>
         )}
-        
-        {/* Help button */}
-        <button
-          onClick={() => setShowHelp(true)}
-          title="Help & Guidelines"
-          style={{
-            position: 'absolute', bottom: '1.25rem', right: '1.25rem',
-            width: '38px', height: '38px', borderRadius: '50%',
-            background: 'white', border: '2px solid #C4D600',
-            color: '#C4D600', fontSize: '1rem', fontWeight: '800',
-            cursor: 'pointer', zIndex: 900,
-            boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#C4D600'; e.currentTarget.style.color = 'white' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#C4D600' }}
-        >?</button>
 
-        {isProcessing && (
+        {s.isProcessing && (
           <div className="processing-overlay">
             <div className="spinner"></div>
             <p>Analyzing roof...</p>
@@ -841,40 +188,27 @@ function App() {
         )}
       </main>
 
-      {showHelp && (
-        <HelpPanel currentStep={currentStep} onClose={() => setShowHelp(false)} />
-      )}
-
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
-        <button
-          className="btn-nav btn-back"
-          onClick={handleBack}
-          disabled={currentStep === 1}
-        >
+        <button className="btn-nav btn-back" onClick={s.handleBack} disabled={s.currentStep === 1}>
           ← Back
         </button>
 
         <div className="wizard-steps">
-          {Array.from({ length: totalSteps }, (_, i) => i + 1).map(step => (
-            <div
-              key={step}
-              className={`wizard-step ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}
-            >
-              <div className="step-number">
-                {currentStep > step ? '✓' : step}
-              </div>
-              <div className="step-name">{stepTitles[step - 1]}</div>
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(step => (
+            <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
+              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
+              <div className="step-name">{STEP_TITLES[step - 1]}</div>
             </div>
           ))}
         </div>
 
         <button
           className="btn-nav btn-next"
-          onClick={handleNext}
-          disabled={!canProceedToNextStep()}
+          onClick={() => s.handleNext(TOTAL_STEPS)}
+          disabled={!s.canProceedToNextStep()}
         >
-          {currentStep === totalSteps ? 'Finish' : 'Next →'}
+          {s.currentStep === TOTAL_STEPS ? 'Finish' : 'Next →'}
         </button>
       </footer>
     </div>
