@@ -1,4 +1,9 @@
 import { useState, useRef } from 'react'
+import {
+  computePanelBackHeight, computeTotalSlopeDepth,
+  toggleOrientation, toggleEmptyOrientation,
+  isHorizontalOrientation, isEmptyOrientation,
+} from '../../utils/trapezoidGeometry'
 
 const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', '#FF9800', '#4CAF50', '#00BCD4']
 
@@ -77,27 +82,12 @@ export default function Step2PVAreaRefinement({
     })
   }
 
-  const toggleOrientation = (idx) => {
-    setLineOrientations(prev => {
-      const next = [...prev]
-      const o = next[idx]
-      next[idx] = o === 'vertical' ? 'horizontal' : o === 'horizontal' ? 'vertical'
-        : o === 'empty-vertical' ? 'empty-horizontal' : o === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
-      return next
-    })
+  const handleToggleOrientation = (idx) => {
+    setLineOrientations(prev => { const next = [...prev]; next[idx] = toggleOrientation(next[idx]); return next })
   }
 
-  const toggleEmptyOrientation = (idx) => {
-    setLineOrientations(prev => {
-      const next = [...prev]
-      const o = next[idx]
-      if (o === 'vertical') next[idx] = 'empty-vertical'
-      else if (o === 'horizontal') next[idx] = 'empty-horizontal'
-      else if (o === 'empty-vertical') next[idx] = 'vertical'
-      else if (o === 'empty-horizontal') next[idx] = 'horizontal'
-      else next[idx] = 'vertical'
-      return next
-    })
+  const handleToggleEmptyOrientation = (idx) => {
+    setLineOrientations(prev => { const next = [...prev]; next[idx] = toggleEmptyOrientation(next[idx]); return next })
   }
 
   // ── Plan mode helpers ────────────────────────────────────────────────────
@@ -143,9 +133,7 @@ export default function Step2PVAreaRefinement({
     setAreas(prev => prev.map(g => {
       if (g.id !== id) return g
       const next = [...g.lineOrientations]
-      const o = next[idx]
-      next[idx] = o === 'vertical' ? 'horizontal' : o === 'horizontal' ? 'vertical'
-        : o === 'empty-vertical' ? 'empty-horizontal' : o === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
+      next[idx] = toggleOrientation(next[idx])
       return { ...g, lineOrientations: next }
     }))
   }
@@ -154,25 +142,18 @@ export default function Step2PVAreaRefinement({
     setAreas(prev => prev.map(g => {
       if (g.id !== id) return g
       const next = [...g.lineOrientations]
-      const o = next[idx]
-      if (o === 'vertical') next[idx] = 'empty-vertical'
-      else if (o === 'horizontal') next[idx] = 'empty-horizontal'
-      else if (o === 'empty-vertical') next[idx] = 'vertical'
-      else if (o === 'empty-horizontal') next[idx] = 'horizontal'
-      else next[idx] = 'vertical'
+      next[idx] = toggleEmptyOrientation(next[idx])
       return { ...g, lineOrientations: next }
     }))
   }
 
-  const getGroupBackHeight = (group) => {
-    const angle = parseFloat(group.angle) || 0
-    const frontH = parseFloat(group.frontHeight) || 0
-    const angleRad = angle * Math.PI / 180
-    const n = group.linesPerRow || 1
-    const orients = (group.lineOrientations || ['vertical']).slice(0, n)
-    const totalSlope = orients.reduce((s, o) => s + ((o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2), 0) + (n - 1) * 2.5
-    return frontH + totalSlope * Math.sin(angleRad)
-  }
+  const getGroupBackHeight = (group) =>
+    computePanelBackHeight(
+      parseFloat(group.frontHeight) || 0,
+      parseFloat(group.angle) || 0,
+      group.lineOrientations,
+      group.linesPerRow || 1
+    )
 
   // ── Unified image click handler ──────────────────────────────────────────
   const handleImageClick = (e) => {
@@ -210,9 +191,9 @@ export default function Step2PVAreaRefinement({
 
   // Cross-section diagram computations (same formulas as before, using diag* values)
   const angleRad    = diagAngle * Math.PI / 180
-  const lineDepths  = diagOrients.slice(0, diagLPR).map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
+  const lineDepths  = diagOrients.slice(0, diagLPR).map(o => isHorizontalOrientation(o) ? 113.4 : 238.2)
   const groundY = 160, startX = 40
-  const totalSlope  = lineDepths.reduce((s, d) => s + d, 0) + (diagLPR - 1) * 2.5
+  const totalSlope  = computeTotalSlopeDepth(diagOrients, diagLPR)
   const totalHoriz  = totalSlope * Math.cos(angleRad)
   const availW = 200
   const scaleW = totalHoriz > 0 ? availW / totalHoriz : 1
@@ -227,8 +208,8 @@ export default function Step2PVAreaRefinement({
     const dx = d * Math.cos(angleRad) * diagramScale
     const dy = d * Math.sin(angleRad) * diagramScale
     const dO = diagOrients[i]
-    const dEmp = dO === 'empty' || dO === 'empty-vertical' || dO === 'empty-horizontal'
-    const dLabel = dEmp ? 'Ø' : (dO === 'horizontal' || dO === 'empty-horizontal') ? 'H' : 'V'
+    const dEmp = isEmptyOrientation(dO)
+    const dLabel = dEmp ? 'Ø' : isHorizontalOrientation(dO) ? 'H' : 'V'
     segments.push({ x1: cx, y1: cy, x2: cx + dx, y2: cy - dy, label: dLabel, isEmpty: dEmp })
     cx += dx + gap * Math.cos(angleRad) * diagramScale
     cy -= dy + gap * Math.sin(angleRad) * diagramScale
@@ -586,8 +567,7 @@ export default function Step2PVAreaRefinement({
                 {areas.map(group => {
                   const groupBackH = getGroupBackHeight(group)
                   const isActive = activeGroupId === group.id
-                  const groupLineDepths = group.lineOrientations.slice(0, group.linesPerRow).map(o => o === 'vertical' ? 238.2 : 113.4)
-                  const groupTotalSlope = groupLineDepths.reduce((s, d) => s + d, 0) + (group.linesPerRow - 1) * 2.5
+                  const groupTotalSlope = computeTotalSlopeDepth(group.lineOrientations, group.linesPerRow)
                   return (
                     <div key={group.id} style={{ marginBottom: '0.75rem', border: `2px solid ${group.color}`, borderRadius: '8px', overflow: 'hidden' }}>
                       {/* Group header */}
@@ -659,8 +639,8 @@ export default function Step2PVAreaRefinement({
                         {/* Orientations */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           {group.lineOrientations.slice(0, group.linesPerRow).map((o, idx) => {
-                            const isEmpty = o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
-                            const isH = o === 'horizontal' || o === 'empty-horizontal'
+                            const isEmpty = isEmptyOrientation(o)
+                            const isH = isHorizontalOrientation(o)
                             return (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                 <span
@@ -743,16 +723,16 @@ export default function Step2PVAreaRefinement({
                   </label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {lineOrientations.map((o, idx) => {
-                      const isEmpty = o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
-                      const isH = o === 'horizontal' || o === 'empty-horizontal'
+                      const isEmpty = isEmptyOrientation(o)
+                      const isH = isHorizontalOrientation(o)
                       return (
                         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span
-                            onClick={() => toggleEmptyOrientation(idx)}
+                            onClick={() => handleToggleEmptyOrientation(idx)}
                             title="Click to mark/unmark line as empty (no panels)"
                             style={{ fontSize: '0.78rem', width: '46px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? '#bbb' : '#777', textDecoration: isEmpty ? 'line-through' : 'none' }}
                           >Line {idx+1}</span>
-                          <button onClick={() => toggleOrientation(idx)}
+                          <button onClick={() => handleToggleOrientation(idx)}
                             style={{ flex: 1, padding: '0.35rem 0.5rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
                             {isH ? '▬ Horizontal (landscape)' : '▮ Vertical (portrait)'}
                           </button>

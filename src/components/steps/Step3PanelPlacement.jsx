@@ -1,4 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import {
+  computePanelBackHeight, computeTotalSlopeDepth,
+  toggleOrientation, toggleEmptyOrientation,
+  isHorizontalOrientation, isEmptyOrientation,
+} from '../../utils/trapezoidGeometry'
 
 export default function Step3PanelPlacement({
   projectMode = 'scratch',
@@ -369,9 +374,7 @@ export default function Step3PanelPlacement({
     const fH    = field === 'frontHeight'      ? parseFloat(rawValue)  : (current.frontHeight      ?? globalCfg.frontHeight      ?? 0)
     const lpr   = field === 'linesPerRow'      ? rawValue              : (current.linesPerRow      ?? globalCfg.linesPerRow      ?? 1)
     const orients = field === 'lineOrientations' ? rawValue            : (current.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical'])
-    const lineDepths = (orients || ['vertical']).slice(0, lpr).map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
-    const totalSlope = lineDepths.reduce((s, d) => s + d, 0) + (lineDepths.length - 1) * 2.5
-    newOverride.backHeight = parseFloat((fH + totalSlope * Math.sin((a || 0) * Math.PI / 180)).toFixed(1))
+    newOverride.backHeight = parseFloat(computePanelBackHeight(fH, a || 0, orients, lpr).toFixed(1))
 
     // For numeric fields, store parsed value
     if (field === 'angle' || field === 'frontHeight') newOverride[field] = parseFloat(rawValue)
@@ -1546,9 +1549,7 @@ export default function Step3PanelPlacement({
                 : null
               const _effectiveLinesPerRow = (override.linesPerRow ?? _planArea?.linesPerRow ?? globalCfg.linesPerRow) || 1
               const _effectiveLineOrientations = (override.lineOrientations ?? _planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
-              const _lineDepths = _effectiveLineOrientations.slice(0, _effectiveLinesPerRow)
-                .map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
-              const totalSlope = _lineDepths.reduce((s, d) => s + d, 0) + (_lineDepths.length - 1) * 2.5
+              const totalSlope = computeTotalSlopeDepth(_effectiveLineOrientations, _effectiveLinesPerRow)
 
               // Trapezoid cross-section geometry
               const W = 130, H = 62, groundY = H - 8
@@ -1588,9 +1589,9 @@ export default function Step3PanelPlacement({
                     const effectiveLinesPerRow = (override.linesPerRow ?? planArea?.linesPerRow ?? globalCfg.linesPerRow) || 1
                     const effectiveLineOrientations = (override.lineOrientations ?? planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
                     const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
-                      .map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
+                      .map(o => isHorizontalOrientation(o) ? 113.4 : 238.2)
                     const angleRad2 = angle * Math.PI / 180
-                    const totalSlopePrev = lineDepths.reduce((s, d) => s + d, 0) + (lineDepths.length - 1) * 2.5
+                    const totalSlopePrev = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow)
                     const totalHoriz = totalSlopePrev * Math.cos(angleRad2)
                     const scaleW2 = totalHoriz > 0 ? (W - 30) / totalHoriz : 1
                     const scaleH2 = backHeight > 0 ? (H - 18) / backHeight : 1
@@ -1605,8 +1606,8 @@ export default function Step3PanelPlacement({
                       const gdx = gap * Math.cos(angleRad2) * sc
                       const gdy = gap * Math.sin(angleRad2) * sc
                       const liO = effectiveLineOrientations[li]
-                      const isH = liO === 'horizontal' || liO === 'empty-horizontal'
-                      const isEmp = liO === 'empty' || liO === 'empty-vertical' || liO === 'empty-horizontal'
+                      const isH = isHorizontalOrientation(liO)
+                      const isEmp = isEmptyOrientation(liO)
                       segs.push({ x1: sx, y1: sy, x2: sx + sdx, y2: sy - sdy, isH, isEmp })
                       sx = sx + sdx + gdx
                       sy = sy - sdy - gdy
@@ -1673,8 +1674,7 @@ export default function Step3PanelPlacement({
                           const slicedOrients = newOrients.slice(0, n)
                           const a  = cur.angle       ?? gCfg.angle       ?? 0
                           const fH = cur.frontHeight ?? gCfg.frontHeight ?? 0
-                          const lds = slicedOrients.map(o => (o === 'horizontal' || o === 'empty-horizontal') ? 113.4 : 238.2)
-                          const bH = parseFloat((fH + (lds.reduce((s, d) => s + d, 0) + (n - 1) * 2.5) * Math.sin((a || 0) * Math.PI / 180)).toFixed(1))
+                          const bH = parseFloat(computePanelBackHeight(fH, a || 0, slicedOrients, n).toFixed(1))
                           setTrapezoidConfigs(prev => ({ ...prev, [selectedTrapezoidId]: { ...cur, linesPerRow: n, lineOrientations: slicedOrients, backHeight: bH } }))
                         }}
                           style={{ flex: 1, padding: '0.4rem', background: _effectiveLinesPerRow === n ? '#1565C0' : 'white', color: _effectiveLinesPerRow === n ? 'white' : '#555', border: `2px solid ${_effectiveLinesPerRow === n ? '#1565C0' : '#e0e0e0'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
@@ -1691,19 +1691,14 @@ export default function Step3PanelPlacement({
                     </label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                       {_effectiveLineOrientations.slice(0, _effectiveLinesPerRow).map((o, idx) => {
-                        const isEmpty = o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
-                        const isH = o === 'horizontal' || o === 'empty-horizontal'
+                        const isEmpty = isEmptyOrientation(o)
+                        const isH = isHorizontalOrientation(o)
                         return (
                           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span
                               onClick={() => {
                                 const newOrients = [..._effectiveLineOrientations]
-                                const cur = newOrients[idx]
-                                if (cur === 'vertical') newOrients[idx] = 'empty-vertical'
-                                else if (cur === 'horizontal') newOrients[idx] = 'empty-horizontal'
-                                else if (cur === 'empty-vertical') newOrients[idx] = 'vertical'
-                                else if (cur === 'empty-horizontal') newOrients[idx] = 'horizontal'
-                                else newOrients[idx] = 'vertical'
+                                newOrients[idx] = toggleEmptyOrientation(newOrients[idx])
                                 updateTrapezoidConfig('lineOrientations', newOrients)
                               }}
                               title="Click to mark/unmark line as empty (no panels)"
@@ -1711,9 +1706,7 @@ export default function Step3PanelPlacement({
                             >Line {idx + 1}</span>
                             <button onClick={() => {
                               const newOrients = [..._effectiveLineOrientations]
-                              const cur = newOrients[idx]
-                              newOrients[idx] = cur === 'vertical' ? 'horizontal' : cur === 'horizontal' ? 'vertical'
-                                : cur === 'empty-vertical' ? 'empty-horizontal' : cur === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
+                              newOrients[idx] = toggleOrientation(newOrients[idx])
                               updateTrapezoidConfig('lineOrientations', newOrients)
                             }}
                               style={{ flex: 1, padding: '0.32rem 0.5rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
