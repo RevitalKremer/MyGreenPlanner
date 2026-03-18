@@ -1,4 +1,5 @@
 import { DEFAULT_RAIL_OFFSET_CM } from '../../../utils/railLayoutService'
+import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { PARAM_GROUP } from './constants'
@@ -16,6 +17,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const blockWidthCm  = settings.blockWidthCm  ?? 70
   const connOffsetCm  = settings.connOffsetCm  ?? 5
   const panelLengthCm = settings.panelLengthCm ?? 238.2
+  const diagTopPct    = (settings.diagTopPct  ?? 25) / 100
+  const diagBasePct   = (settings.diagBasePct ?? 90) / 100
 
   // Highlight helpers
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
@@ -124,6 +127,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
   const beamAngleDeg = Math.atan2(topY1 - topY0, x1 - x0) * 180 / Math.PI
 
+  const diagTopX  = x0 + diagTopPct  * bW
+  const diagBaseX = x0 + diagBasePct * bW
+  const diagLenCm = Math.sqrt((diagBaseX - diagTopX) ** 2 + (baseY - beamY(diagTopX)) ** 2) / SC
+
   const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
     const col = tbd ? TC : DC
     const mk  = tbd ? 't' : 'k'
@@ -172,6 +179,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
               {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad))} cm
+              <span style={{ fontWeight: '400', color: '#999', marginLeft: '0.5rem' }}>
+                · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
+              </span>
             </div>
 
             <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
@@ -190,7 +200,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
               {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />}
               <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
               <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-              <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+              <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
+                stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+              <Dim ax1={diagTopX} ay1={beamY(diagTopX)} ax2={diagBaseX} ay2={baseY}
+                label={fmt(diagLenCm)} off={-16} />
               {/* Rail-clamp offset highlight */}
               {hl('rail-clamp') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
@@ -384,7 +397,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                     ['Top beam',   rc.topBeamLength],
                     ['Rear leg',   rc.heightRear],
                     ['Front leg',  rc.heightFront],
-                    ['Diagonal',   rc.diagonalLength],
+                    ['Diagonal',   diagLenCm],
                   ].map(([name, val]) => (
                     <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
                       <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>

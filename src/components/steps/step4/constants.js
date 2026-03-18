@@ -10,6 +10,8 @@ export const SETTINGS_DEFAULTS = {
   panelLengthCm:    238.2,
   blockHeightCm:    30,
   blockWidthCm:     70,
+  diagTopPct:       25,
+  diagBasePct:      90,
   connEdgeDistMm:   DEFAULT_RAIL_EDGE_DIST_MM,
   connMinPortrait:  DEFAULT_RAIL_MIN_PORTRAIT,
   connMinLandscape: DEFAULT_RAIL_MIN_LANDSCAPE,

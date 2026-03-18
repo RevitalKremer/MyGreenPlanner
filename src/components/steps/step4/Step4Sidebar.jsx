@@ -5,16 +5,17 @@ const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 const SECTIONS = [
   {
     tabKey: 'detail', label: 'Trapezoids',
-    keys: ['railOffsetCm','connOffsetCm','panelLengthCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape'],
+    keys: ['railOffsetCm','connOffsetCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape','diagTopPct','diagBasePct'],
     fields: [
       ['Rail Clamp Offset (cm)', 'railOffsetCm',    0.1, 0],
       ['Cross-Rail Offset (cm)', 'connOffsetCm',    0.5, 0],
-      ['Panel Length (cm)',      'panelLengthCm',   0.1, 10],
       ['Block Height (cm)',      'blockHeightCm',   1,   1],
       ['Block Width (cm)',       'blockWidthCm',    1,   1],
-      ['Rail Edge Dist (mm)',    'connEdgeDistMm',  5,   0],
+      ['Rail Profile Size (mm)', 'connEdgeDistMm',  5,   0],
       ['Min Rails Portrait',     'connMinPortrait', 1,   1],
       ['Min Rails Landscape',    'connMinLandscape',1,   1],
+      ['Diagonal Top (%)',       'diagTopPct',      1,   0],
+      ['Diagonal Base (%)',      'diagBasePct',     1,   0],
     ],
   },
   {
