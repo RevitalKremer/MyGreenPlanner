@@ -684,6 +684,20 @@ function App() {
             <button className="btn-start-over" onClick={handleStartOver}>
               Start Over
             </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              title="Help & Guidelines"
+              style={{
+                width: '34px', height: '34px', borderRadius: '50%',
+                background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(196,214,0,0.7)',
+                color: '#C4D600', fontSize: '0.95rem', fontWeight: '800',
+                cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#C4D600'; e.currentTarget.style.color = '#333' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#C4D600' }}
+            >?</button>
           </div>
         </div>
       </header>
@@ -805,23 +819,6 @@ function App() {
           </div>
         )}
         
-        {/* Help button */}
-        <button
-          onClick={() => setShowHelp(true)}
-          title="Help & Guidelines"
-          style={{
-            position: 'absolute', bottom: '1.25rem', right: '1.25rem',
-            width: '38px', height: '38px', borderRadius: '50%',
-            background: 'white', border: '2px solid #C4D600',
-            color: '#C4D600', fontSize: '1rem', fontWeight: '800',
-            cursor: 'pointer', zIndex: 900,
-            boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#C4D600'; e.currentTarget.style.color = 'white' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#C4D600' }}
-        >?</button>
 
         {isProcessing && (
           <div className="processing-overlay">
