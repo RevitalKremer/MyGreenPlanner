@@ -54,7 +54,7 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
   const svgCentX = PAD + (bboxW / 2) * sc, svgCentY = PAD + (bboxH / 2) * sc
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white', position: 'relative' }}>
 
       {/* Diagram canvas */}
       <div
@@ -166,15 +166,6 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
           }
         />
 
-        <CanvasNavigator
-          viewZoom={zoom}
-          onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
-          onZoomReset={resetView}
-          onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
-          mmWidth={MM_W} mmHeight={MM_H}
-          onPanToPoint={panToMinimapPoint}
-          viewportRect={getMinimapViewportRect()}
-        />
       </div>
 
       {/* Rail Schedule table */}
@@ -194,6 +185,15 @@ export default function RailLayoutTab({ panels = [], refinedArea, selectedRowIdx
         )}
       </div>
 
+      <CanvasNavigator
+        viewZoom={zoom}
+        onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+        onZoomReset={resetView}
+        onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+        mmWidth={MM_W} mmHeight={MM_H}
+        onPanToPoint={panToMinimapPoint}
+        viewportRect={getMinimapViewportRect()}
+      />
     </div>
   )
 }

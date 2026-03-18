@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ACCENT } from './constants'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -46,6 +47,8 @@ export default function Step4Sidebar({
   highlightParam, setHighlightParam,
   areaSettings,
 }) {
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false)
+
   const isOverride = (key) => !!(areaSettings[selectedRowIdx] && key in areaSettings[selectedRowIdx])
 
   const numInput = (key, step, min, max) => {
@@ -152,8 +155,19 @@ export default function Step4Sidebar({
         })}
       </div>
 
+      {/* Settings collapse toggle */}
+      {selectedRC && (
+        <div
+          onClick={() => setSettingsCollapsed(c => !c)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 1rem', cursor: 'pointer', borderTop: '1px solid #e8e8e8', background: '#f5f5f5' }}
+        >
+          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Settings</span>
+          <span style={{ fontSize: '0.7rem', color: '#bbb' }}>{settingsCollapsed ? '▲' : '▼'}</span>
+        </div>
+      )}
+
       {/* Settings sections (per-row, one per tab) */}
-      {selectedRC && SECTIONS.map(sec => {
+      {selectedRC && !settingsCollapsed && SECTIONS.map(sec => {
         const isOpen = activeTab === sec.tabKey
         const s = getSettings(selectedRowIdx)
         return (
