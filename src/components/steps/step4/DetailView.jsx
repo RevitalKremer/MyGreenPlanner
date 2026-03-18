@@ -1,70 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
 import { DEFAULT_RAIL_OFFSET_CM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
-import { ACCENT, PARAM_GROUP } from './constants'
+import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
+import { PARAM_GROUP } from './constants'
 
 export default function DetailView({ rc, panelLines = null, settings = {}, highlightParam = null }) {
-  const [zoom, setZoom]             = useState(1)
-  const [panOffset, setPanOffset]   = useState({ x: 0, y: 0 })
-  const [isPanning, setIsPanning]   = useState(false)
-  const [panStart, setPanStart]     = useState(null)
-  const containerRef = useRef(null)
-  const contentRef = useRef(null)
-
-  const MM_W = 180
-  const MM_H = 100
-
-  const panToMinimapPoint = (mmX, mmY) => {
-    if (!contentRef.current || !containerRef.current) return
-    const contentRect = contentRef.current.getBoundingClientRect()
-    const naturalW = contentRect.width / zoom
-    const naturalH = contentRect.height / zoom
-    if (naturalW <= 0 || naturalH <= 0) return
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const contentX = (mmX / MM_W) * naturalW
-    const contentY = (mmY / MM_H) * naturalH
-    setPanOffset({
-      x: containerRect.width  / 2 - contentX * zoom,
-      y: containerRect.height / 2 - contentY * zoom,
-    })
-  }
-
-  const getMinimapViewportRect = () => {
-    if (!contentRef.current || !containerRef.current) return null
-    const contentRect = contentRef.current.getBoundingClientRect()
-    const naturalW = contentRect.width / zoom
-    const naturalH = contentRect.height / zoom
-    if (naturalW <= 0 || naturalH <= 0) return null
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const visLeft = -panOffset.x / zoom
-    const visTop  = -panOffset.y / zoom
-    const visW = containerRect.width  / zoom
-    const visH = containerRect.height / zoom
-    return {
-      x: Math.max(0, visLeft / naturalW * MM_W),
-      y: Math.max(0, visTop  / naturalH * MM_H),
-      w: Math.min(MM_W, visW  / naturalW * MM_W),
-      h: Math.min(MM_H, visH  / naturalH * MM_H),
-    }
-  }
+  const {
+    zoom, setZoom, panOffset, panActive,
+    containerRef, contentRef,
+    handleWheel, startPan, handleMouseMove, stopPan, resetView,
+    MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
+  } = useCanvasPanZoom()
 
   const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
   const blockHeightCm = settings.blockHeightCm ?? 30
   const blockWidthCm  = settings.blockWidthCm  ?? 70
   const connOffsetCm  = settings.connOffsetCm  ?? 5
   const panelLengthCm = settings.panelLengthCm ?? 238.2
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onWheel = (e) => {
-      e.preventDefault()
-      const factor = e.deltaY < 0 ? 1.1 : 0.909
-      setZoom(z => Math.max(0.25, Math.min(6, z * factor)))
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [])
 
   // Highlight helpers
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
@@ -202,220 +153,223 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
       {/* ── Zoom / pan area ── */}
       <div
         ref={containerRef}
-        style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: isPanning ? 'grabbing' : 'grab' }}
-        onMouseDown={e => { setIsPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }) }}
-        onMouseMove={e => { if (isPanning && panStart) setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }) }}
-        onMouseUp={() => { setIsPanning(false); setPanStart(null) }}
-        onMouseLeave={() => { setIsPanning(false); setPanStart(null) }}
+        style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: panActive ? 'grabbing' : 'grab' }}
+        onWheel={handleWheel}
+        onMouseDown={startPan}
+        onMouseMove={handleMouseMove}
+        onMouseUp={stopPan}
+        onMouseLeave={stopPan}
       >
-        <div ref={contentRef} style={{
-          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
-          transformOrigin: '0 0',
-          padding: '1rem 1.5rem',
-          display: 'inline-block',
-        }}>
-          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
-            Type {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Base {baseLength.toFixed(0)} cm · Front {heightFront.toFixed(1)} cm
-          </div>
+        <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
+          <div ref={contentRef} style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
+            padding: '1rem 1.5rem',
+            display: 'inline-block',
+          }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
+              Type {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Base {baseLength.toFixed(0)} cm · Front {heightFront.toFixed(1)} cm
+            </div>
 
-          <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
-            <defs>
-              <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
-              </marker>
-              <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
-              </marker>
-              <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
-            </defs>
+            <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
+              <defs>
+                <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+                  <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
+                </marker>
+                <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+                  <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
+                </marker>
+                <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
+              </defs>
 
-            {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
-            <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-            {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />}
-            <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-            <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-            <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
-            {/* Rail-clamp offset highlight */}
-            {hl('rail-clamp') && (
-              <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                <line x1={panelX1} y1={panelY1} x2={x0} y2={topY0}
-                  stroke="#FFB300" strokeWidth="8" strokeLinecap="round" opacity="0.6" />
-                <circle cx={x0} cy={topY0} r={10} fill="none" stroke="#FFB300" strokeWidth="2.5" />
-              </g>
-            )}
+              {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
+              <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+              {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />}
+              <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+              <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+              <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+              {/* Rail-clamp offset highlight */}
+              {hl('rail-clamp') && (
+                <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                  <line x1={panelX1} y1={panelY1} x2={x0} y2={topY0}
+                    stroke="#FFB300" strokeWidth="8" strokeLinecap="round" opacity="0.6" />
+                  <circle cx={x0} cy={topY0} r={10} fill="none" stroke="#FFB300" strokeWidth="2.5" />
+                </g>
+              )}
 
-            {/* ── Panel bars (one per line, offset above beam+rails) ── */}
-            {(() => {
-              let dCm = 0
-              return segments.map((seg, idx) => {
-                dCm += seg.gapBeforeCm
-                const start = atSlope(dCm)
-                dCm += seg.depthCm
-                const end = atSlope(dCm)
-                const cx  = (start.x + end.x) / 2 + panOffX
-                const cy  = (start.y + end.y) / 2 + panOffY
-                const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
-                return (
-                  <g key={idx}>
-                    <rect
-                      x={cx - len/2} y={cy - PANEL_THICK_PX/2}
-                      width={len} height={PANEL_THICK_PX}
-                      fill="#6a70ac" stroke="#293189" strokeWidth="1"
-                      transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
-                    />
-                    {hl('panel') && (
+              {/* ── Panel bars (one per line, offset above beam+rails) ── */}
+              {(() => {
+                let dCm = 0
+                return segments.map((seg, idx) => {
+                  dCm += seg.gapBeforeCm
+                  const start = atSlope(dCm)
+                  dCm += seg.depthCm
+                  const end = atSlope(dCm)
+                  const cx  = (start.x + end.x) / 2 + panOffX
+                  const cy  = (start.y + end.y) / 2 + panOffY
+                  const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
+                  return (
+                    <g key={idx}>
                       <rect
-                        x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
-                        width={len + 10} height={PANEL_THICK_PX + 10}
-                        fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                        x={cx - len/2} y={cy - PANEL_THICK_PX/2}
+                        width={len} height={PANEL_THICK_PX}
+                        fill="#6a70ac" stroke="#293189" strokeWidth="1"
                         transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
-                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
                       />
-                    )}
+                      {hl('panel') && (
+                        <rect
+                          x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
+                          width={len + 10} height={PANEL_THICK_PX + 10}
+                          fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                          transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
+                          style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
+                        />
+                      )}
+                    </g>
+                  )
+                })
+              })()}
+
+              {/* ── Cross-rails 40×40mm profile ── */}
+              {railXs.map((cx, ci) => {
+                const cy = beamY(cx)
+                const beamTop  = -BEAM_THICK_PX / 2
+                const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
+                const RW = 4 * SC, RH = 4 * SC
+                const midY = (beamTop + panBot) / 2
+                const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
+                const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
+                const lx = cx + (-Math.sin(angleRad)) * labelOffPx
+                const ly = cy + (-Math.cos(angleRad)) * labelOffPx
+                return (
+                  <g key={ci}>
+                    <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
+                      <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
+                        fill="#7c3aed" stroke="#642165" strokeWidth="1" />
+                      {hl('cross-rails') && (
+                        <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
+                          fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                          style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                      )}
+                    </g>
+                    <text x={lx} y={ly}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize="7.5" fontWeight="700" fill="#642165"
+                      transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
+                    >{distCm}</text>
                   </g>
                 )
-              })
-            })()}
+              })}
 
-            {/* ── Cross-rails 40×40mm profile ── */}
-            {railXs.map((cx, ci) => {
-              const cy = beamY(cx)
-              const beamTop  = -BEAM_THICK_PX / 2
-              const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
-              const RW = 4 * SC, RH = 4 * SC
-              const midY = (beamTop + panBot) / 2
-              const distCm = Math.round((cx - x0) / (SC * Math.cos(angleRad)))
-              const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
-              const lx = cx + (-Math.sin(angleRad)) * labelOffPx
-              const ly = cy + (-Math.cos(angleRad)) * labelOffPx
-              return (
-                <g key={ci}>
-                  <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
-                    <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                      fill="#7c3aed" stroke="#642165" strokeWidth="1" />
-                    {hl('cross-rails') && (
-                      <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
-                        fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
-                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                    )}
+              {/* ── Rail support profiles (vertical, beam → base) ── */}
+              {railXs.slice(1, -1).map((cx, ci) => {
+                const sx = cx - 4 * Math.cos(angleRad) * SC
+                const topY = beamY(sx)
+                const lenCm = (baseY - topY) / SC
+                return (
+                  <g key={ci}>
+                    <line x1={sx} y1={topY} x2={sx} y2={baseY}
+                      stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+                    <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY}
+                      label={lenCm.toFixed(1)} off={14} />
                   </g>
-                  <text x={lx} y={ly}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize="7.5" fontWeight="700" fill="#642165"
-                    transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
-                  >{distCm}</text>
+                )
+              })}
+
+              {/* ── Blocks ── */}
+              <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              {hl('blocks') && (
+                <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                  <rect x={lb_x - 5} y={baseY - 5} width={lb_w + 10} height={blockH + 10}
+                    fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                  <rect x={rb_x - 5} y={baseY - 5} width={rb_w + 10} height={blockH + 10}
+                    fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
                 </g>
-              )
-            })}
+              )}
 
-            {/* ── Rail support profiles (vertical, beam → base) ── */}
-            {railXs.slice(1, -1).map((cx, ci) => {
-              const sx = cx - 4 * Math.cos(angleRad) * SC
-              const topY = beamY(sx)
-              const lenCm = (baseY - topY) / SC
-              return (
-                <g key={ci}>
-                  <line x1={sx} y1={topY} x2={sx} y2={baseY}
-                    stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-                  <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY}
-                    label={lenCm.toFixed(1)} off={14} />
-                </g>
-              )
-            })}
+              {/* ── Green floor line ── */}
+              <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
+                stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
-            {/* ── Blocks ── */}
-            <rect x={lb_x} y={baseY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-            <rect x={rb_x} y={baseY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-            {hl('blocks') && (
-              <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                <rect x={lb_x - 5} y={baseY - 5} width={lb_w + 10} height={blockH + 10}
-                  fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
-                <rect x={rb_x - 5} y={baseY - 5} width={rb_w + 10} height={blockH + 10}
-                  fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
-              </g>
-            )}
+              {/* ── Angle label at front leg top ── */}
+              <text x={x1 + 8} y={topY1 + 14} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
 
-            {/* ── Green floor line ── */}
-            <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
-              stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
+              {/* ── Dimension annotations ── */}
+              <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
+                label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 14)} />
 
-            {/* ── Angle label at front leg top ── */}
-            <text x={x1 + 8} y={topY1 + 14} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
+              {(() => {
+                const splitOff = -(PANEL_OFFSET_PX + 30)
+                const toCm = (dx) => Math.round(dx / SC / Math.cos(angleRad))
+                return (<>
+                  <Dim ax1={panelX1} ay1={panelY1} ax2={rail1X} ay2={beamY(rail1X)}
+                    label={`${toCm(rail1X - panelX1)}`} off={splitOff} />
+                  <Dim ax1={rail1X} ay1={beamY(rail1X)} ax2={rail2X} ay2={beamY(rail2X)}
+                    label={`${toCm(rail2X - rail1X)}`} off={splitOff} />
+                  <Dim ax1={rail2X} ay1={beamY(rail2X)} ax2={panelX2} ay2={panelY2}
+                    label={`${toCm(panelX2 - rail2X)}`} off={splitOff} />
+                </>)
+              })()}
 
-            {/* ── Dimension annotations ── */}
-            <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
-              label={`${topBeamLength.toFixed(0)}`} off={-(PANEL_OFFSET_PX + 14)} />
+              {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
+                label={`${heightRear.toFixed(1)}`} off={-28} />}
 
-            {(() => {
-              const splitOff = -(PANEL_OFFSET_PX + 30)
-              const toCm = (dx) => Math.round(dx / SC / Math.cos(angleRad))
-              return (<>
-                <Dim ax1={panelX1} ay1={panelY1} ax2={rail1X} ay2={beamY(rail1X)}
-                  label={`${toCm(rail1X - panelX1)}`} off={splitOff} />
-                <Dim ax1={rail1X} ay1={beamY(rail1X)} ax2={rail2X} ay2={beamY(rail2X)}
-                  label={`${toCm(rail2X - rail1X)}`} off={splitOff} />
-                <Dim ax1={rail2X} ay1={beamY(rail2X)} ax2={panelX2} ay2={panelY2}
-                  label={`${toCm(panelX2 - rail2X)}`} off={splitOff} />
-              </>)
-            })()}
+              <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
+                   ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
+                label={`${(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)).toFixed(1)}`}
+                off={-22} />
 
-            {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
-              label={`${heightRear.toFixed(1)}`} off={-28} />}
+              <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
+                label={`${BLOCK_H_CM}`} off={-14} />
 
-            <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
-                 ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
-              label={`${(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)).toFixed(1)}`}
-              off={-22} />
+              <Dim ax1={x1} ay1={baseY} ax2={x1} ay2={topY1}
+                label={`${heightFront.toFixed(1)}`} off={38} />
 
-            <Dim ax1={lb_x} ay1={baseY} ax2={lb_x} ay2={blockBotY}
-              label={`${BLOCK_H_CM}`} off={-14} />
+              <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY1}
+                label={`${(BLOCK_H_CM + heightFront).toFixed(1)}`} off={55} />
 
-            <Dim ax1={x1} ay1={baseY} ax2={x1} ay2={topY1}
-              label={`${heightFront.toFixed(1)}`} off={38} />
+              {/* ── TBD section ── */}
+              {[0, 1].map(row => {
+                const ry = blockBotY + 12 + row * 28
+                return (
+                  <g key={row}>
+                    <rect x={x0 - railOffH} y={ry} width={bW + 2 * railOffH} height={22}
+                      fill="#f6f6f6" stroke="#ccc" strokeWidth="1" strokeDasharray="4,3" rx="3" />
+                    <text x={x0 - railOffH + (bW + 2 * railOffH) / 2} y={ry + 11}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize="9" fill="#bbb" fontWeight="700">TBD</text>
+                  </g>
+                )
+              })}
+            </svg>
 
-            <Dim ax1={x1} ay1={blockBotY} ax2={x1} ay2={topY1}
-              label={`${(BLOCK_H_CM + heightFront).toFixed(1)}`} off={55} />
-
-            {/* ── TBD section ── */}
-            {[0, 1].map(row => {
-              const ry = blockBotY + 12 + row * 28
-              return (
-                <g key={row}>
-                  <rect x={x0 - railOffH} y={ry} width={bW + 2 * railOffH} height={22}
-                    fill="#f6f6f6" stroke="#ccc" strokeWidth="1" strokeDasharray="4,3" rx="3" />
-                  <text x={x0 - railOffH + (bW + 2 * railOffH) / 2} y={ry + 11}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize="9" fill="#bbb" fontWeight="700">TBD</text>
-                </g>
-              )
-            })}
-          </svg>
-
-          {/* Members table */}
-          <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ background: '#f5f5f5' }}>
-                  <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Element</th>
-                  <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Length (cm)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  ['Base beam',  rc.baseLength],
-                  ['Top beam',   rc.topBeamLength],
-                  ['Rear leg',   rc.heightRear],
-                  ['Front leg',  rc.heightFront],
-                  ['Diagonal',   rc.diagonalLength],
-                ].map(([name, val]) => (
-                  <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>
-                    <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: '#222' }}>{val.toFixed(1)}</td>
+            {/* Members table */}
+            <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#f5f5f5' }}>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Element</th>
+                    <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Length (cm)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {[
+                    ['Base beam',  rc.baseLength],
+                    ['Top beam',   rc.topBeamLength],
+                    ['Rear leg',   rc.heightRear],
+                    ['Front leg',  rc.heightFront],
+                    ['Diagonal',   rc.diagonalLength],
+                  ].map(([name, val]) => (
+                    <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
+                      <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>
+                      <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: '#222' }}>{val.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -424,7 +378,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
       <CanvasNavigator
         viewZoom={zoom}
         onZoomOut={() => setZoom(z => Math.max(0.25, z * 0.833))}
-        onZoomReset={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }}
+        onZoomReset={resetView}
         onZoomIn={() => setZoom(z => Math.min(6, z * 1.2))}
         mmWidth={MM_W}
         mmHeight={MM_H}
