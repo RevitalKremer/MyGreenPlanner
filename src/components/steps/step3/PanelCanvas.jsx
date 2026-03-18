@@ -311,7 +311,7 @@ export default function PanelCanvas({
               else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
               else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
-              const bh = panel.width * 0.36
+              const bh = Math.min(panel.width, panel.height) * 0.36
               const bw = bh * (trapId.length > 2 ? 2.8 : 1.9)
               const fs = bh * 0.62
               return (
