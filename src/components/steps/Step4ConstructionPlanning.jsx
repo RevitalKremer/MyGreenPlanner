@@ -6,7 +6,7 @@ import {
 import RailLayoutTab from './step4/RailLayoutTab'
 import BasesPlanTab  from './step4/BasesPlanTab'
 import { computeRowRailLayout } from '../../utils/railLayoutService'
-import { PARAM_GROUP, SETTINGS_DEFAULTS } from './step4/constants'
+import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS } from './step4/constants'
 import Step4Sidebar from './step4/Step4Sidebar'
 import LayoutView from './step4/LayoutView'
 import RowsView from './step4/RowsView'
