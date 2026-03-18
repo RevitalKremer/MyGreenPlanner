@@ -31,6 +31,8 @@ export const PARAM_GROUP = {
   connMinPortrait:  'cross-rails',
   connMinLandscape: 'cross-rails',
   panelLengthCm:    'panel',         // detail tab: panel bars
+  diagTopPct:       'diagonal',      // detail tab: diagonal brace
+  diagBasePct:      'diagonal',
   blockHeightCm:    'blocks',        // detail tab: block rects
   blockWidthCm:     'blocks',
   railOverhangCm:   'rail-ends',     // rails tab + rows tab

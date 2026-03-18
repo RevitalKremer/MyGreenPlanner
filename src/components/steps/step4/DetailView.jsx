@@ -12,13 +12,14 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
-  const railOffsetCm  = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
-  const blockHeightCm = settings.blockHeightCm ?? 30
-  const blockWidthCm  = settings.blockWidthCm  ?? 70
-  const connOffsetCm  = settings.connOffsetCm  ?? 5
-  const panelLengthCm = settings.panelLengthCm ?? 238.2
-  const diagTopPct    = (settings.diagTopPct  ?? 25) / 100
-  const diagBasePct   = (settings.diagBasePct ?? 90) / 100
+  const railOffsetCm   = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
+  const blockHeightCm  = settings.blockHeightCm ?? 30
+  const blockWidthCm   = settings.blockWidthCm  ?? 70
+  const connOffsetCm   = settings.connOffsetCm  ?? 5
+  const connEdgeDistCm = (settings.connEdgeDistMm ?? 40) / 10
+  const panelLengthCm  = settings.panelLengthCm ?? 238.2
+  const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
+  const diagBasePct    = (settings.diagBasePct ?? 90) / 100
 
   // Highlight helpers
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
@@ -108,7 +109,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const rail2X = railXs[railXs.length - 1] ?? x1
 
   const BEAM_THICK_PX = 4 * SC
-  const blockTopY = baseY + BEAM_THICK_PX / 2
+  const blockTopY = baseY + BEAM_THICK_PX   // blocks sit below the outer bottom face of the base beam
   const blockBotY = blockTopY + blockH
   const PANEL_THICK_PX = 6
   const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + 10 + PANEL_THICK_PX / 2
@@ -178,7 +179,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
             display: 'inline-block',
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
-              {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad))} cm
+              {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
               <span style={{ fontWeight: '400', color: '#999', marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
               </span>
@@ -199,13 +200,23 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
               <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
               <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
 
-              {/* ── Structure (40×40 mm profile → BEAM_THICK_PX stroke) ── */}
-              <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-              {hR > 0 && <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />}
-              <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-              <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+              {/* ── Structure: outer-face-aligned rects + inward-shifted top beam ── */}
+              {/* Base beam: outer top face at baseY, extends DOWN */}
+              <rect x={x0} y={baseY} width={bW} height={BEAM_THICK_PX} fill="#404040" />
+              {/* Rear leg: outer left face at x0, extends RIGHT (inward) */}
+              {hR > 0 && <rect x={x0} y={topY0} width={BEAM_THICK_PX} height={hR} fill="#404040" />}
+              {/* Front leg: outer right face at x1, extends LEFT (inward) */}
+              <rect x={x1 - BEAM_THICK_PX} y={topY1} width={BEAM_THICK_PX} height={hF} fill="#404040" />
+              {/* Top beam: centered on reference line (outer top face = panel surface) */}
+              <line x1={x0} y1={topY0} x2={x1} y2={topY1}
+                stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
                 stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+              {hl('diagonal') && (
+                <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
+                  stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
+                  style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+              )}
               <Dim ax1={diagTopX} ay1={beamY(diagTopX)} ax2={diagBaseX} ay2={baseY}
                 label={fmt(diagLenCm)} off={-16} />
               {/* Rail-clamp offset highlight */}
@@ -308,7 +319,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
               {/* ── Punches on base beam ── */}
               {[x0 + 2 * SC, x0 + diagBasePct * bW, x1 - 2 * SC].map((px, i) => (
-                <circle key={i} cx={px} cy={baseY} r={2}
+                <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                   fill="white" stroke="#555" strokeWidth="1" />
               ))}
 
@@ -338,7 +349,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
               )}
 
               {/* ── Green floor line ── */}
-              <line x1={panelX1 - 10} y1={blockBotY} x2={panelX2 + 20} y2={blockBotY}
+              <line x1={panelX1 - 35} y1={blockBotY} x2={panelX2 + 45} y2={blockBotY}
                 stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
               {/* ── Angle label inside trapezoid ── */}
@@ -361,26 +372,26 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 </>)
               })()}
 
-              {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
+              {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={blockTopY}
                 label={fmt(heightRear)} off={55} />}
 
-              <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
-                   ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
-                label={fmt(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad))}
+              <Dim ax1={panelX1} ay1={blockBotY}
+                   ax2={panelX1} ay2={panelY1 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
+                label={fmt(BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))}
                 off={-22} />
 
               <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
                 label={fmt(BLOCK_H_CM)} off={-14} />
 
-              <Dim ax1={x1} ay1={baseY} ax2={x1} ay2={topY1}
+              <Dim ax1={x1} ay1={blockTopY} ax2={x1} ay2={topY1 + Math.cos(angleRad) * BEAM_THICK_PX / 2}
                 label={fmt(heightFront)} off={38} />
 
               {(() => {
-                const panelFrontHeight = BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)
+                const panelFrontHeight = BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
                 const panelBackHeight  = panelFrontHeight + totalPanelDepthCm * Math.sin(angleRad)
                 return (
-                  <Dim ax1={panelX2 + panOffX} ay1={blockBotY}
-                       ax2={panelX2 + panOffX} ay2={panelY2 + panOffY}
+                  <Dim ax1={panelX2} ay1={blockBotY}
+                       ax2={panelX2} ay2={panelY2 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
                     label={fmt(panelBackHeight)} off={28} />
                 )
               })()}

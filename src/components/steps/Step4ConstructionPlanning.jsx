@@ -103,7 +103,9 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       const s = getSettings(i)
       const railOverhang = s.railOverhangCm
       const maxSpan      = s.maxSpanCm
-      const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angle * Math.PI / 180))
+      const angleRad0 = angle * Math.PI / 180
+      const connH0 = (s.connEdgeDistMm ?? 40) / 10
+      const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad0) - connH0 * Math.cos(angleRad0))
 
       let measuredRowLength, measuredLineDepth
       if (pixelToCmRatio) {
@@ -147,7 +149,9 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     const railOverhang = s.railOverhangCm
     const maxSpan = s.maxSpanCm
     const portraitDepthCm = s.panelLengthCm ?? 238.2
-    const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angle * Math.PI / 180))
+    const angleRad1 = angle * Math.PI / 180
+    const connH1 = (s.connEdgeDistMm ?? 40) / 10
+    const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad1) - connH1 * Math.cos(angleRad1))
 
     const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
       sum + (isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm) + (i > 0 ? PANEL_GAP_CM : 0), 0)
