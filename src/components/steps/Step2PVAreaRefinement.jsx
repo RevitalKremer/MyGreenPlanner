@@ -633,12 +633,12 @@ export default function Step2PVAreaRefinement({
                           />
                         </div>
 
-                        {/* Front Height */}
+                        {/* Panel Front Height */}
                         <div>
-                          <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Front Height (cm)</label>
+                          <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Panel Front Height (cm from floor)</label>
                           <input type="number" min="0" step="0.1" value={group.frontHeight}
                             onChange={e => updateGroup(group.id, 'frontHeight', e.target.value)}
-                            placeholder="cm"
+                            placeholder="cm from floor"
                             style={{ width: '100%', padding: '0.45rem', border: '1.5px solid #e0e0e0', borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                           />
                         </div>
@@ -677,10 +677,10 @@ export default function Step2PVAreaRefinement({
                           })}
                         </div>
 
-                        {/* Back height + slope depth (calculated) */}
+                        {/* Panel back height + slope depth (calculated) */}
                         {group.frontHeight !== '' && group.angle !== '' && (
                           <div style={{ padding: '0.4rem 0.6rem', background: '#f8f9fa', borderRadius: '6px', fontSize: '0.75rem', color: '#777', display: 'flex', gap: '1rem' }}>
-                            <span>Back height: <strong style={{ color: '#555' }}>{groupBackH.toFixed(1)} cm</strong></span>
+                            <span>Panel back height: <strong style={{ color: '#555' }}>{groupBackH.toFixed(1)} cm</strong></span>
                             <span>Slope depth: <strong style={{ color: '#555' }}>{groupTotalSlope.toFixed(1)} cm</strong></span>
                           </div>
                         )}
@@ -703,12 +703,12 @@ export default function Step2PVAreaRefinement({
             ) : (
               /* ── SCRATCH MODE: existing single config ── */
               <>
-                {/* Front Height */}
+                {/* Panel Front Height */}
                 <div style={{ marginBottom: '1.1rem' }}>
-                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Front Height (cm)</label>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Panel Front Height (cm from floor)</label>
                   <input type="number" min="0" step="0.1" value={panelFrontHeight}
                     onChange={(e) => setPanelFrontHeight(e.target.value)}
-                    placeholder="Elevation from roof surface"
+                    placeholder="Panel front edge height from floor"
                     style={{ width: '100%', padding: '0.6rem', border: '2px solid #e0e0e0', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -765,7 +765,7 @@ export default function Step2PVAreaRefinement({
                 {/* Back height + slope depth display */}
                 {(panelFrontHeight !== '' && panelAngle !== '') && (
                   <div style={{ marginBottom: '1.1rem', padding: '0.6rem 0.75rem', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>BACK HEIGHT (calculated)</span>
+                    <span style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>PANEL BACK HEIGHT (calculated)</span>
                     <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{(computedBackHeight || 0).toFixed(1)} cm</div>
                     <div style={{ marginTop: '0.4rem', borderTop: '1px solid #e8e8e8', paddingTop: '0.4rem', fontSize: '0.72rem', color: '#aaa', fontWeight: '600' }}>SLOPE DEPTH (total)</div>
                     <div style={{ fontSize: '1rem', fontWeight: '700', color: '#555', marginTop: '2px' }}>{totalSlope.toFixed(1)} cm</div>

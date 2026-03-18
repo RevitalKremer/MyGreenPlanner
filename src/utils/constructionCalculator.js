@@ -7,7 +7,9 @@ export const PANEL_LENGTH_CM = 238.2  // depth along slope
  * Compute full construction geometry for one row.
  * @param {number} panelCount  - number of panels in the row
  * @param {number} angle       - tilt angle in degrees
- * @param {number} frontHeight - mounting height at low edge (cm)
+ * @param {number} frontHeight - front (lower) leg height above block, in cm
+ *                               NOTE: this is NOT panelFrontHeight (panel edge from floor).
+ *                               Callers must derive: frontHeight = panelFrontHeight - blockHeightCm + railOffsetCm * sin(angle)
  * @param {object} config      - optional overrides: railOverhang, maxSpan, baseLength
  */
 export function computeRowConstruction(panelCount, angle, frontHeight, config = {}) {

@@ -623,7 +623,7 @@ function DetailView({ rc, panelLines = null, settings = {}, highlightParam = nul
             {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={baseY}
               label={`${heightRear.toFixed(1)}`} off={-28} />}
 
-            {/* Panel tip height from floor (far left) */}
+            {/* Panel front edge height from floor (= panelFrontHeight user input) */}
             <Dim ax1={panelX1 + panOffX} ay1={blockBotY}
                  ax2={panelX1 + panOffX} ay2={panelY1 + panOffY}
               label={`${(BLOCK_H_CM + heightRear - RAIL_CM * Math.sin(angleRad)).toFixed(1)}`}
@@ -876,10 +876,13 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       const trapId = `${String.fromCharCode(65 + areaKey)}1`
       const override = trapezoidConfigs[trapId] || {}
       const angle = override.angle ?? globalCfg.angle ?? 0
-      const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
+      // panelFrontH = panel front edge height from floor (user input)
+      // frontLegH   = trapezoid front (lower) leg height above block (derived)
+      const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
       const s = getSettings(i)
       const railOverhang = s.railOverhangCm
       const maxSpan      = s.maxSpanCm
+      const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angle * Math.PI / 180))
 
       // Derive actual row length and line depth from placed panel positions
       let measuredRowLength, measuredLineDepth
@@ -893,7 +896,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
         }
       }
 
-      return computeRowConstruction(panelCount, angle, frontHeight, {
+      return computeRowConstruction(panelCount, angle, frontLegH, {
         railOverhang,
         maxSpan,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
@@ -920,10 +923,11 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     const globalCfg = refinedArea?.panelConfig || {}
     const override = trapezoidConfigs[trapId] || {}
     const angle = override.angle ?? globalCfg.angle ?? 0
-    const frontHeight = override.frontHeight ?? globalCfg.frontHeight ?? 0
+    const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
     const s = getSettings(selectedRowIdx)
     const railOverhang = s.railOverhangCm
     const maxSpan = s.maxSpanCm
+    const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angle * Math.PI / 180))
 
     const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
     let measuredRowLength, measuredLineDepth
@@ -936,7 +940,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       }
     }
 
-    const [rc] = assignTypes([computeRowConstruction(panelCount, angle, frontHeight, {
+    const [rc] = assignTypes([computeRowConstruction(panelCount, angle, frontLegH, {
       railOverhang,
       maxSpan,
       ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
