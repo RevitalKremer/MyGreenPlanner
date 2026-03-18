@@ -6,6 +6,7 @@ import {
 } from '../../utils/trapezoidGeometry'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
 import CanvasNavigator from '../shared/CanvasNavigator'
+import CrossSectionDiagram from './step2/CrossSectionDiagram'
 
 const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', '#FF9800', '#4CAF50', '#00BCD4']
 
@@ -184,34 +185,8 @@ export default function Step2PVAreaRefinement({
   const diagBackH   = dg ? getGroupBackHeight(dg)             : (computedBackHeight || 0)
   const diagLPR     = dg ? (dg.linesPerRow || 1)              : linesPerRow
   const diagOrients = dg ? (dg.lineOrientations || ['vertical']) : lineOrientations
-  const hasValues   = diagFrontH > 0 || diagAngle > 0
-
-  // Cross-section diagram computations (same formulas as before, using diag* values)
-  const angleRad    = diagAngle * Math.PI / 180
-  const lineDepths  = diagOrients.slice(0, diagLPR).map(o => isHorizontalOrientation(o) ? 113.4 : 238.2)
-  const groundY = 160, startX = 40
-  const totalSlope  = computeTotalSlopeDepth(diagOrients, diagLPR)
-  const totalHoriz  = totalSlope * Math.cos(angleRad)
-  const availW = 200
-  const scaleW = totalHoriz > 0 ? availW / totalHoriz : 1
-  const scaleH = diagBackH > 0 ? (groundY - 20) / diagBackH : 1
-  const diagramScale = Math.min(scaleW, scaleH, 0.7)
-
-  const segments = []
-  let cx = startX, cy = groundY - diagFrontH * diagramScale
-  for (let i = 0; i < diagLPR; i++) {
-    const d = lineDepths[i]
-    const gap = i < diagLPR - 1 ? 2.5 : 0
-    const dx = d * Math.cos(angleRad) * diagramScale
-    const dy = d * Math.sin(angleRad) * diagramScale
-    const dO = diagOrients[i]
-    const dEmp = isEmptyOrientation(dO)
-    const dLabel = dEmp ? 'Ø' : isHorizontalOrientation(dO) ? 'H' : 'V'
-    segments.push({ x1: cx, y1: cy, x2: cx + dx, y2: cy - dy, label: dLabel, isEmpty: dEmp })
-    cx += dx + gap * Math.cos(angleRad) * diagramScale
-    cy -= dy + gap * Math.sin(angleRad) * diagramScale
-  }
-  const endX = cx, endY = cy
+  // totalSlope used in scratch-mode config panel summary
+  const totalSlope = computeTotalSlopeDepth(diagOrients, diagLPR)
 
   // Font size for SVG labels (scales with image width)
   const labelFontSize = imageRef ? Math.max(12, Math.min(36, imageRef.naturalWidth * 0.012)) : 14
@@ -381,52 +356,14 @@ export default function Step2PVAreaRefinement({
             )}
 
 
-            {hasValues ? (
-              <svg viewBox="0 0 300 180" style={{ width: '100%', height: 'auto', background: '#f8f9fa', borderRadius: '6px' }}>
-                <line x1="10" y1={groundY} x2="290" y2={groundY} stroke="#bbb" strokeWidth="1.5"/>
-                <text x="150" y="175" textAnchor="middle" fontSize="9" fill="#bbb">Roof surface</text>
-                {diagFrontH > 0 && (
-                  <>
-                    <line x1={startX} y1={groundY} x2={startX} y2={groundY - diagFrontH * diagramScale} stroke="#FF5722" strokeWidth="1.5" strokeDasharray="3,3"/>
-                    <text x={startX - 3} y={groundY - diagFrontH * diagramScale / 2} textAnchor="end" fontSize="8" fill="#FF5722" fontWeight="600">{diagFrontH}cm</text>
-                  </>
-                )}
-                {diagBackH > 0 && (
-                  <>
-                    <line x1={endX} y1={groundY} x2={endX} y2={groundY - diagBackH * diagramScale} stroke="#C4D600" strokeWidth="1.5" strokeDasharray="3,3"/>
-                    <text x={endX + 3} y={groundY - diagBackH * diagramScale / 2} textAnchor="start" fontSize="8" fill="#888" fontWeight="600">{diagBackH.toFixed(1)}cm</text>
-                  </>
-                )}
-                {segments.map((seg, i) => {
-                  const midX = (seg.x1 + seg.x2) / 2
-                  const midY = (seg.y1 + seg.y2) / 2
-                  return (
-                    <g key={i}>
-                      <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={seg.isEmpty ? '4 3' : undefined}/>
-                      <circle cx={midX} cy={midY - 8} r="7" fill={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'}/>
-                      <text x={midX} y={midY - 8} textAnchor="middle" dominantBaseline="middle" fontSize="7.5" fill="white" fontWeight="700">{seg.label}</text>
-                    </g>
-                  )
-                })}
-                {diagAngle > 0 && segments.length > 0 && (
-                  <>
-                    <path d={`M ${startX + 25} ${groundY} A 25 25 0 0 1 ${startX + 25 * Math.cos(angleRad)} ${groundY - 25 * Math.sin(angleRad)}`} stroke="#555" strokeWidth="1.2" fill="none"/>
-                    <text x={startX + 32} y={groundY - 8} fontSize="8.5" fill="#555" fontWeight="600">{diagAngle.toFixed(1)}°</text>
-                  </>
-                )}
-                {diagFrontH === 0 && <circle cx={startX} cy={groundY} r="3" fill="#FF5722"/>}
-              </svg>
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f9fa', borderRadius: '6px', padding: '2rem', textAlign: 'center', color: '#bbb', fontSize: '0.85rem' }}>
-                {projectMode === 'plan' ? 'Add a group and enter measurements' : 'Enter measurements to see diagram'}
-              </div>
-            )}
-            {hasValues && diagLPR > 1 && (
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', justifyContent: 'center' }}>
-                <span style={{ fontSize: '0.72rem', color: '#1565C0', fontWeight: '600' }}>■ Vertical</span>
-                <span style={{ fontSize: '0.72rem', color: '#FF9800', fontWeight: '600' }}>■ Horizontal</span>
-              </div>
-            )}
+            <CrossSectionDiagram
+              angle={diagAngle}
+              frontHeight={diagFrontH}
+              backHeight={diagBackH}
+              linesPerRow={diagLPR}
+              orientations={diagOrients}
+              projectMode={projectMode}
+            />
             </>}
           </div>
         )}
