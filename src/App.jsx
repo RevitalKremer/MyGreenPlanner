@@ -5,7 +5,7 @@ import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
-import HelpPanel from './components/HelpPanel'
+import HelpButton from './components/HelpButton'
 import { SAM2Service } from './services/sam2Service'
 import { generatePanelLayout, createManualPanel } from './utils/panelUtils'
 import { computePanelBackHeight, computeTotalSlopeDepth } from './utils/trapezoidGeometry'
@@ -64,7 +64,6 @@ function App() {
   const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
   
   const projectMode = currentProject?.mode || 'scratch' // 'scratch' | 'plan'
-  const [showHelp, setShowHelp] = useState(false)
 
   const stepTitles = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
@@ -684,20 +683,7 @@ function App() {
             <button className="btn-start-over" onClick={handleStartOver}>
               Start Over
             </button>
-            <button
-              onClick={() => setShowHelp(true)}
-              title="Help & Guidelines"
-              style={{
-                width: '34px', height: '34px', borderRadius: '50%',
-                background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(196,214,0,0.7)',
-                color: '#C4D600', fontSize: '0.95rem', fontWeight: '800',
-                cursor: 'pointer', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#C4D600'; e.currentTarget.style.color = '#333' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#C4D600' }}
-            >?</button>
+            <HelpButton currentStep={currentStep} />
           </div>
         </div>
       </header>
@@ -827,10 +813,6 @@ function App() {
           </div>
         )}
       </main>
-
-      {showHelp && (
-        <HelpPanel currentStep={currentStep} onClose={() => setShowHelp(false)} />
-      )}
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
