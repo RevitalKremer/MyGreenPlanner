@@ -27,18 +27,13 @@ export default function RowsView({ rowConstructions, rowLabels = [], highlightPa
         const railLabel = `${2}×${(rc.rowLength / 100).toFixed(1)}m`
         const totalH = depthSc + 48
         const svgW = W + 70
-        const widthArrowColor = hlEnds ? '#FFB300' : '#222'
+        const widthArrowColor = hlEnds ? '#FFB300' : '#17a9cf'
 
         return (
           <div key={i} style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#888', marginBottom: '4px' }}>{rowLabels[i] ?? `Area ${i + 1}`}</div>
             <svg width={svgW} height={totalH} style={{ display: 'block', overflow: 'visible' }}>
               <ArrowDefs />
-              {/* Row width arrow */}
-              <g style={hlEnds ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
-                <line x1={30} y1={8} x2={30 + W} y2={8} stroke={widthArrowColor} strokeWidth={hlEnds ? 2 : 1} markerEnd="url(#arr)" markerStart="url(#arr)" />
-                <text x={30 + W / 2} y={5} fontSize="9" fontWeight="700" fill={widthArrowColor} textAnchor="middle">{Math.round(rc.rowLength * 10)}</text>
-              </g>
               {/* Rectangle */}
               <rect x={30} y={20} width={W} height={depthSc}
                 fill="#cfe3f5" stroke="#3a6ea5" strokeWidth="1.5" />
@@ -55,6 +50,21 @@ export default function RowsView({ rowConstructions, rowLabels = [], highlightPa
               {/* Label */}
               <text x={30 + W / 2} y={20 + depthSc / 2 + 4} fontSize="13" fontWeight="800" fill="#1a3a5c"
                 textAnchor="middle">{railLabel}</text>
+              {/* Row width dimension ON the top border */}
+              <g style={hlEnds ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}}>
+                {/* Tick marks at both ends */}
+                <line x1={30}     y1={14} x2={30}     y2={26} stroke={widthArrowColor} strokeWidth={hlEnds ? 2 : 1.2} />
+                <line x1={30 + W} y1={14} x2={30 + W} y2={26} stroke={widthArrowColor} strokeWidth={hlEnds ? 2 : 1.2} />
+                {/* Span line along the top border */}
+                <line x1={30} y1={20} x2={30 + W} y2={20}
+                  stroke={widthArrowColor} strokeWidth={hlEnds ? 2 : 1} />
+                {/* Label on a white background, centered */}
+                <rect x={30 + W / 2 - 20} y={12} width={40} height={11} fill="white" />
+                <text x={30 + W / 2} y={21} fontSize="9" fontWeight="700"
+                  fill={widthArrowColor} textAnchor="middle" dominantBaseline="auto">
+                  {Math.round(rc.rowLength * 10)}
+                </text>
+              </g>
               {/* Depth arrow on right */}
               <line x1={30 + W + 10} y1={20} x2={30 + W + 10} y2={20 + depthSc} stroke="#222" strokeWidth="1" markerEnd="url(#arr)" markerStart="url(#arr)" />
               <text x={30 + W + 22} y={20 + depthSc / 2} fontSize="9" fontWeight="700" fill="#222" dominantBaseline="middle">{Math.round(panelDepth * 10)}</text>

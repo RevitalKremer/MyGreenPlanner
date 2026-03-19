@@ -1,21 +1,20 @@
-import { DEFAULT_RAIL_OFFSET_CM } from '../../../utils/railLayoutService'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { PARAM_GROUP } from './constants'
 
-export default function DetailView({ rc, panelLines = null, settings = {}, highlightParam = null }) {
+export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null }) {
   const {
     zoom, setZoom, panOffset, panActive,
     containerRef, contentRef,
-    handleWheel, startPan, handleMouseMove, stopPan, resetView,
+    startPan, handleMouseMove, stopPan, resetView,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
-  const railOffsetCm   = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
+  // Rail offset = first rail of first line (derived from lineRails)
+  const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
   const blockHeightCm  = settings.blockHeightCm ?? 30
   const blockWidthCm   = settings.blockWidthCm  ?? 70
-  const crossRailOffsetCm   = settings.crossRailOffsetCm  ?? 5
   const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
@@ -72,39 +71,23 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
-  const beamOffX = crossRailOffsetCm * SC * Math.cos(angleRad)
-  const railXs = (() => {
-    const xs = []
+  // Build rail items from lineRails: each entry carries the SVG x position,
+  // segment index, and the offset-within-segment in cm.
+  const railItems = (() => {
+    const items = []
     let dCm = 0
     for (let si = 0; si < segments.length; si++) {
       const seg = segments[si]
       dCm += seg.gapBeforeCm
-      const startX  = atSlope(dCm).x
-      const endX    = atSlope(dCm + seg.depthCm).x
-      const centerX = (startX + endX) / 2
-
-      const leftEdge  = si === 0                    ? panelX1 : startX
-      const rightEdge = si === segments.length - 1  ? panelX2 : endX
-
-      let lcX = leftEdge  < x0 ? x0 + beamOffX : startX + beamOffX
-      let rcX = rightEdge > x1 ? x1 - beamOffX : endX   - beamOffX
-
-      const leftDist  = centerX - lcX
-      const rightDist = rcX - centerX
-      if (leftDist >= 0 && rightDist >= 0) {
-        if (leftDist <= rightDist) {
-          rcX = centerX + leftDist
-        } else {
-          lcX = centerX - rightDist
-        }
+      const segRails = lineRails?.[si] ?? []
+      for (const offsetCm of segRails) {
+        items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm })
       }
-
-      xs.push(lcX)
-      xs.push(rcX)
       dCm += seg.depthCm
     }
-    return xs
+    return items
   })()
+  const railXs = railItems.map(r => r.cx)
   const rail1X = railXs[0] ?? x0
   const rail2X = railXs[railXs.length - 1] ?? x1
 
@@ -165,7 +148,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
       <div
         ref={containerRef}
         style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: panActive ? 'grabbing' : 'grab' }}
-        onWheel={handleWheel}
         onMouseDown={startPan}
         onMouseMove={handleMouseMove}
         onMouseUp={stopPan}
@@ -264,18 +246,17 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 })
               })()}
 
-              {/* ── Cross-rails 40×40mm profile ── */}
-              {railXs.map((cx, ci) => {
-                const segIdx = Math.floor(ci / 2)
+              {/* ── Cross-rails profile (size from crossRailEdgeDistMm) ── */}
+              {railItems.map(({ cx, segIdx, offsetCm }, ci) => {
                 const isEmptySeg = segments[segIdx]?.isEmpty
                 const railFill   = '#7c3aed'
                 const railStroke = isEmptySeg ? '#ddd' : '#642165'
                 const cy = beamY(cx)
                 const beamTop  = -BEAM_THICK_PX / 2
                 const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
-                const RW = 4 * SC, RH = 4 * SC
+                const RW = crossRailEdgeDistCm * SC
+                const RH = crossRailEdgeDistCm * SC
                 const midY = (beamTop + panBot) / 2
-                const distCm = fmt((cx - x0) / (SC * Math.cos(angleRad)))
                 const labelOffPx = PANEL_OFFSET_PX + PANEL_THICK_PX + 10
                 const lx = cx + (-Math.sin(angleRad)) * labelOffPx
                 const ly = cy + (-Math.cos(angleRad)) * labelOffPx
@@ -297,14 +278,14 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="7.5" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
-                    >{distCm}</text>
+                    >{fmt(offsetCm)}</text>
                   </g>
                 )
               })}
 
               {/* ── Rail support profiles (vertical, beam → base) ── */}
               {railXs.slice(1, -1).map((cx, ci) => {
-                const sx = cx - 4 * Math.cos(angleRad) * SC
+                const sx = cx - crossRailEdgeDistCm * Math.cos(angleRad) * SC
                 const topY = beamY(sx)
                 const lenCm = (baseY - topY) / SC
                 return (

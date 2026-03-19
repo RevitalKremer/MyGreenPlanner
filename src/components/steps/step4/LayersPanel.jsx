@@ -4,8 +4,9 @@ import { useState } from 'react'
  * Floating collapsible layers/visibility toggle panel (top-right of canvas).
  * layers: [{ label, checked, setter }]
  * summary: optional JSX shown at the bottom when expanded
+ * actions: optional [{ label, onClick, style }] buttons shown below summary
  */
-export default function LayersPanel({ layers, summary }) {
+export default function LayersPanel({ layers, summary, actions }) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -33,6 +34,15 @@ export default function LayersPanel({ layers, summary }) {
           {summary && (
             <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', fontSize: '0.73rem', color: '#888' }}>
               {summary}
+            </div>
+          )}
+          {actions?.length > 0 && (
+            <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {actions.map(({ label, onClick, style: btnStyle }) => (
+                <button key={label} onClick={onClick} style={{ padding: '0.22rem 0.4rem', fontSize: '0.62rem', fontWeight: '600', borderRadius: '4px', cursor: 'pointer', ...btnStyle }}>
+                  {label}
+                </button>
+              ))}
             </div>
           )}
         </div>
