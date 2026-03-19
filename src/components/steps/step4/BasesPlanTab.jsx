@@ -3,7 +3,7 @@ import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_M
 import { localToScreen, DEFAULT_RAIL_OVERHANG_CM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { fmt, getPanelsBoundingBox, buildRowGroups } from './tabUtils'
+import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
@@ -25,7 +25,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const [showDiagonals,  setShowDiagonals]  = useState(true)
   const [tableOpen,      setTableOpen]      = useState(true)
 
-  const { zoom, setZoom, panOffset, panActive, containerRef, contentRef, handleWheel, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const railConfig = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
@@ -122,11 +122,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     const ex2s = [fe2x + apX * EXT_GAP, fe2y + apY * EXT_GAP], ex2e = [ax2 - apX * EXT_OVR, ay2 - apY * EXT_OVR]
                     return (
                       <g key={`ann-${si}`}>
-                        <line x1={ex1s[0]} y1={ex1s[1]} x2={ex1e[0]} y2={ex1e[1]} stroke="#000" strokeWidth="0.8" />
-                        <line x1={ex2s[0]} y1={ex2s[1]} x2={ex2e[0]} y2={ex2e[1]} stroke="#000" strokeWidth="0.8" />
-                        <line x1={ax1} y1={ay1} x2={ax2} y2={ay2} stroke="#000" strokeWidth="1" />
-                        <line x1={ax1 - px * TICK} y1={ay1 - py * TICK} x2={ax1 + px * TICK} y2={ay1 + py * TICK} stroke="#000" strokeWidth="1.2" />
-                        <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke="#000" strokeWidth="1.2" />
+                        <line x1={ex1s[0]} y1={ex1s[1]} x2={ex1e[0]} y2={ex1e[1]} stroke="#000" strokeWidth={0.8 / zoom} />
+                        <line x1={ex2s[0]} y1={ex2s[1]} x2={ex2e[0]} y2={ex2e[1]} stroke="#000" strokeWidth={0.8 / zoom} />
+                        <line x1={ax1} y1={ay1} x2={ax2} y2={ay2} stroke="#000" strokeWidth={1 / zoom} />
+                        <line x1={ax1 - px * TICK} y1={ay1 - py * TICK} x2={ax1 + px * TICK} y2={ay1 + py * TICK} stroke="#000" strokeWidth={1.2 / zoom} />
+                        <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke="#000" strokeWidth={1.2 / zoom} />
                         <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
                           <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
                           <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill="#000">{label}</text>
@@ -256,7 +256,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
             { label: 'Dimensions', checked: showDimensions, setter: setShowDimensions },
             { label: 'Diagonals',  checked: showDiagonals,  setter: setShowDiagonals },
           ]}
-          summary={`${totalBases} bases total`}
+          summary={null}
         />
 
       </div>
@@ -266,6 +266,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
         <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: '#f8f9fa', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           <span style={{ fontSize: '0.6rem' }}>{tableOpen ? '▾' : '▸'}</span>
           Base Schedule
+          <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: '#888', textTransform: 'none', letterSpacing: 0 }}>
+            ({totalBases} bases)
+          </span>
         </button>
         {tableOpen && (
           <div style={{ overflowY: 'auto', maxHeight: '260px', padding: '0.5rem 1.25rem 1rem' }}>
