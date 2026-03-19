@@ -1,7 +1,46 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ACCENT, PARAM_SCHEMA, PARAM_GROUP } from './constants'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
+
+// Number input that lets the user finish typing before clamping/committing.
+// Commits on blur immediately, or after 500 ms of no changes.
+function DebouncedNumberInput({ value, min, max, step, onCommit, onFocus, onBlur, style }) {
+  const [raw, setRaw] = useState(String(value))
+  const timerRef = useRef(null)
+  const focusedRef = useRef(false)
+
+  // Sync display when external value changes and input is not focused
+  useEffect(() => {
+    if (!focusedRef.current) setRaw(String(value))
+  }, [value])
+
+  const commit = (str) => {
+    clearTimeout(timerRef.current)
+    let v = parseFloat(str)
+    if (isNaN(v)) v = value
+    if (min != null) v = Math.max(min, v)
+    if (max != null) v = Math.min(max, v)
+    setRaw(String(v))
+    onCommit(v)
+  }
+
+  return (
+    <input
+      type="number"
+      value={raw}
+      step={step ?? 1}
+      style={style}
+      onFocus={() => { focusedRef.current = true; onFocus?.() }}
+      onChange={(e) => {
+        setRaw(e.target.value)
+        clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => commit(e.target.value), 500)
+      }}
+      onBlur={(e) => { focusedRef.current = false; commit(e.target.value); onBlur?.() }}
+    />
+  )
+}
 
 // Small "?" bubble that shows default / min / max on hover
 function InfoTooltip({ param }) {
@@ -176,16 +215,9 @@ export default function Step4Sidebar({
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
-          <input type="number" value={val}
-            step={step ?? 1}
-            {...(min != null ? { min } : {})}
-            {...(max != null ? { max } : {})}
-            onChange={e => {
-              let v = parseFloat(e.target.value) || 0
-              if (min != null) v = Math.max(min, v)
-              if (max != null) v = Math.min(max, v)
-              updateGlobalSetting(key, v)
-            }}
+          <DebouncedNumberInput
+            value={val} min={min} max={max} step={step}
+            onCommit={v => updateGlobalSetting(key, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
@@ -199,16 +231,9 @@ export default function Step4Sidebar({
     return (
       <div key={key} style={{ marginBottom: '0.45rem' }}>
         {labelNode}
-        <input type="number" value={s[key] ?? param.default}
-          step={step ?? 1}
-          {...(min != null ? { min } : {})}
-          {...(max != null ? { max } : {})}
-          onChange={e => {
-            let v = parseFloat(e.target.value) || 0
-            if (min != null) v = Math.max(min, v)
-            if (max != null) v = Math.min(max, v)
-            updateSetting(selectedRowIdx, key, v)
-          }}
+        <DebouncedNumberInput
+          value={s[key] ?? param.default} min={min} max={max} step={step}
+          onCommit={v => updateSetting(selectedRowIdx, key, v)}
           onFocus={() => setHighlightParam(key)}
           onBlur={() => setHighlightParam(null)}
           style={{
