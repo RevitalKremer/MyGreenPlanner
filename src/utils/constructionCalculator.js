@@ -9,7 +9,8 @@ export const PANEL_LENGTH_CM = 238.2  // depth along slope
  * @param {number} angle       - tilt angle in degrees
  * @param {number} frontHeight - front (lower) leg height above block, in cm
  *                               NOTE: this is NOT panelFrontHeight (panel edge from floor).
- *                               Callers must derive: frontHeight = panelFrontHeight - blockHeightCm + railOffsetCm * sin(angle)
+ *                               Callers must derive: frontHeight = panelFrontHeight - blockHeightCm + railOffsetCm*sin(angle) - crossRailEdgeDistCm*cos(angle)
+ *                               where crossRailEdgeDistCm is the cross-rail profile height (leg ends at slope beam top, not panel bottom)
  * @param {object} config      - optional overrides: railOverhang, maxSpan, baseLength
  */
 export function computeRowConstruction(panelCount, angle, frontHeight, config = {}) {
@@ -28,7 +29,7 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
   // Use actual measured line depth if provided (multi-line rows), else single panel length
   const lineDepthCm  = config.lineDepthCm  ?? PANEL_LENGTH_CM
   const railOffsetCm = config.railOffsetCm ?? 0
-  const connOffsetCm = config.connOffsetCm ?? 0
+  const crossRailOffsetCm = config.crossRailOffsetCm ?? 0
   const baseLength   = config.baseLength
     ?? Math.cos(angleRad) * (lineDepthCm - 2 * railOffsetCm)
 

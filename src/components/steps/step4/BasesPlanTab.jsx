@@ -15,7 +15,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
   const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
   const railOffsetCm   = settings.railOffsetCm   ?? DEFAULT_RAIL_OFFSET_CM
-  const connOffsetCm   = settings.connOffsetCm   ?? 5
+  const crossRailOffsetCm   = settings.crossRailOffsetCm   ?? 5
 
   const [showBases,      setShowBases]      = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -62,7 +62,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const svgCentY = PAD + (bboxH / 2) * sc
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white', position: 'relative' }}>
 
       {/* Diagram canvas */}
       <div
@@ -136,7 +136,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
 
                   const rc = rowConstructions[i]
                   const railOffPx  = railOffsetCm / pixelToCmRatio
-                  const connOffPx  = connOffsetCm  / pixelToCmRatio
+                  const connOffPx  = crossRailOffsetCm  / pixelToCmRatio
                   const topBeamPx  = rc ? rc.topBeamLength / pixelToCmRatio : 0
                   const panelRearY = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
                   const rearLegY   = panelRearY + railOffPx
@@ -258,15 +258,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
           summary={`${totalBases} bases total`}
         />
 
-        <CanvasNavigator
-          viewZoom={zoom}
-          onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
-          onZoomReset={resetView}
-          onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
-          mmWidth={MM_W} mmHeight={MM_H}
-          onPanToPoint={panToMinimapPoint}
-          viewportRect={getMinimapViewportRect()}
-        />
       </div>
 
       {/* Base Schedule table */}
@@ -282,6 +273,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
         )}
       </div>
 
+      <CanvasNavigator
+        viewZoom={zoom}
+        onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+        onZoomReset={resetView}
+        onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+        mmWidth={MM_W} mmHeight={MM_H}
+        onPanToPoint={panToMinimapPoint}
+        viewportRect={getMinimapViewportRect()}
+      />
     </div>
   )
 }

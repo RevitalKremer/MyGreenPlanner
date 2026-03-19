@@ -35,7 +35,7 @@ export default function CanvasNavigator({
   const zoomPct = (viewZoom * 100).toFixed(0) + '%'
 
   const panelStyle = {
-    position: 'absolute', bottom: 16, right: 16,
+    position: 'absolute', bottom: 16, left: 16,
     zIndex: 100,
     userSelect: 'none',
   }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ACCENT } from './constants'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -5,17 +6,17 @@ const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 const SECTIONS = [
   {
     tabKey: 'detail', label: 'Trapezoids',
-    keys: ['railOffsetCm','connOffsetCm','blockHeightCm','blockWidthCm','connEdgeDistMm','connMinPortrait','connMinLandscape','diagTopPct','diagBasePct'],
+    keys: ['railOffsetCm','crossRailOffsetCm','blockHeightCm','blockWidthCm','crossRailEdgeDistMm','crossRailMinPortrait','crossRailMinLandscape','diagTopPct','diagBasePct'],
     fields: [
-      ['Rail Clamp Offset (cm)', 'railOffsetCm',    0.1, 0],
-      ['Cross-Rail Offset (cm)', 'connOffsetCm',    0.5, 0],
-      ['Block Height (cm)',      'blockHeightCm',   1,   1],
-      ['Block Width (cm)',       'blockWidthCm',    1,   1],
-      ['Rail Profile Size (mm)', 'connEdgeDistMm',  5,   0],
-      ['Min Rails Portrait',     'connMinPortrait', 1,   1],
-      ['Min Rails Landscape',    'connMinLandscape',1,   1],
-      ['Diagonal Top (%)',       'diagTopPct',      1,   0],
-      ['Diagonal Base (%)',      'diagBasePct',     1,   0],
+      ['Rail Clamp Offset (cm)', 'railOffsetCm',         0.1, 0],
+      ['Cross-Rail Offset (cm)', 'crossRailOffsetCm',    0.5, 0],
+      ['Block Height (cm)',      'blockHeightCm',        1,   1],
+      ['Block Width (cm)',       'blockWidthCm',         1,   1],
+      ['Rail Profile Size (mm)', 'crossRailEdgeDistMm',  5,   0],
+      ['Min Rails Portrait',     'crossRailMinPortrait', 1,   1],
+      ['Min Rails Landscape',    'crossRailMinLandscape',1,   1],
+      ['Diagonal Top (%)',       'diagTopPct',      1,   0, 100],
+      ['Diagonal Base (%)',      'diagBasePct',     1,   0, 100],
     ],
   },
   {
@@ -46,13 +47,20 @@ export default function Step4Sidebar({
   highlightParam, setHighlightParam,
   areaSettings,
 }) {
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false)
+
   const isOverride = (key) => !!(areaSettings[selectedRowIdx] && key in areaSettings[selectedRowIdx])
 
-  const numInput = (key, step, min) => {
+  const numInput = (key, step, min, max) => {
     const s = getSettings(selectedRowIdx)
     return (
-      <input type="number" value={s[key]} step={step} min={min}
-        onChange={e => updateSetting(selectedRowIdx, key, parseFloat(e.target.value) || 0)}
+      <input type="number" value={s[key]} step={step} min={min} {...(max != null ? { max } : {})}
+        onChange={e => {
+          let v = parseFloat(e.target.value) || 0
+          if (min != null) v = Math.max(min, v)
+          if (max != null) v = Math.min(max, v)
+          updateSetting(selectedRowIdx, key, v)
+        }}
         onFocus={() => setHighlightParam(key)}
         onBlur={() => setHighlightParam(null)}
         style={{ width: '100%', padding: '0.22rem 0.4rem', boxSizing: 'border-box',
@@ -61,7 +69,7 @@ export default function Step4Sidebar({
     )
   }
 
-  const field = (label, key, step, min) => {
+  const field = (label, key, step, min, max) => {
     const isActive = highlightParam === key
     return (
       <div key={key} style={{ marginBottom: '0.45rem' }}>
@@ -69,7 +77,7 @@ export default function Step4Sidebar({
           {isActive && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FFB300', display: 'inline-block', flexShrink: 0, animation: 'hlPulse 0.75s ease-in-out infinite' }} />}
           {label}
         </div>
-        {numInput(key, step, min)}
+        {numInput(key, step, min, max)}
       </div>
     )
   }
@@ -147,8 +155,19 @@ export default function Step4Sidebar({
         })}
       </div>
 
+      {/* Settings collapse toggle */}
+      {selectedRC && (
+        <div
+          onClick={() => setSettingsCollapsed(c => !c)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 1rem', cursor: 'pointer', borderTop: '1px solid #e8e8e8', background: '#f5f5f5' }}
+        >
+          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Settings</span>
+          <span style={{ fontSize: '0.7rem', color: '#bbb' }}>{settingsCollapsed ? '▲' : '▼'}</span>
+        </div>
+      )}
+
       {/* Settings sections (per-row, one per tab) */}
-      {selectedRC && SECTIONS.map(sec => {
+      {selectedRC && !settingsCollapsed && SECTIONS.map(sec => {
         const isOpen = activeTab === sec.tabKey
         const s = getSettings(selectedRowIdx)
         return (
@@ -162,7 +181,7 @@ export default function Step4Sidebar({
             </div>
             {isOpen && (
               <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
-                {sec.fields.map(([lbl, key, step, min]) => field(lbl, key, step, min))}
+                {sec.fields.map(([lbl, key, step, min, max]) => field(lbl, key, step, min, max))}
                 {sec.tabKey === 'rails' && (
                   <div style={{ marginBottom: '0.45rem' }}>
                     <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '2px' }}>Stock Lengths (mm)</div>
