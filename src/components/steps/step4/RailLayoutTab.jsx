@@ -350,13 +350,13 @@ export default function RailLayoutTab({
 
                           return (
                             <g key={`${i}-${rail.railId}`}>
-                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="round" />}
+                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="square" />}
                               {hlRail && showRails && <>
-                                <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="round" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                                <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="round" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                                <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                                <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                               </>}
-                              {hlCuts    && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="round" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                              {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="round" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                              {hlCuts    && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                              {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
                               {showAnnotation && showDimensions && <>
                                 {useTopAnchor ? <>
                                   {/* Extension lines from rail endpoints up to strip annotation line */}

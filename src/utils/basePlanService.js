@@ -2,6 +2,7 @@ import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, getPanel
 
 export const DEFAULT_BASE_EDGE_OFFSET_MM  = 300   // 30 cm from each end
 export const DEFAULT_BASE_SPACING_MM      = 2000  // max 2 m between bases
+export const DEFAULT_BASE_OVERHANG_CM     = 5     // cm from rail center to base end (both sides)
 export const DEFAULT_RAIL_EDGE_DIST_MM    = 40
 export const DEFAULT_RAIL_MIN_PORTRAIT    = 2
 export const DEFAULT_RAIL_MIN_LANDSCAPE   = 1

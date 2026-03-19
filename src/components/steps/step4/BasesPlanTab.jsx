@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM } from '../../../utils/basePlanService'
-import { localToScreen, DEFAULT_RAIL_OVERHANG_CM } from '../../../utils/railLayoutService'
+import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
+import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
@@ -8,19 +8,22 @@ import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
 
-const BASE_COLOR = '#000000'
+const BASE_COLOR      = '#000000'
+const RAIL_COLOR_FILL = '#642165'
 
 export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, lineRails = null, highlightGroup = null }) {
-  const edgeOffsetMm      = settings.edgeOffsetMm      ?? DEFAULT_BASE_EDGE_OFFSET_MM
-  const spacingMm         = settings.spacingMm         ?? DEFAULT_BASE_SPACING_MM
-  const railOverhangCm    = settings.railOverhangCm    ?? DEFAULT_RAIL_OVERHANG_CM
-  const crossRailOffsetCm = settings.crossRailOffsetCm ?? 5
+  const edgeOffsetMm        = settings.edgeOffsetMm        ?? DEFAULT_BASE_EDGE_OFFSET_MM
+  const spacingMm           = settings.spacingMm           ?? DEFAULT_BASE_SPACING_MM
+  const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
+  const crossRailOffsetCm   = settings.crossRailOffsetCm   ?? 5
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
+  const baseOverhangCm      = settings.baseOverhangCm      ?? DEFAULT_BASE_OVERHANG_CM
   // Derive rail offset from lineRails (first rail of first line), fall back to 0
   const railOffsetCm = lineRails?.[0]?.[0] ?? 0
 
   const [showBases,      setShowBases]      = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
-  const [showRails,      setShowRails]      = useState(true)
+  const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
   const [tableOpen,      setTableOpen]      = useState(true)
@@ -28,14 +31,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const { zoom, setZoom, panOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
-  const railConfig = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
-  const baseConfig = useMemo(() => ({ edgeOffsetMm, spacingMm }), [edgeOffsetMm, spacingMm])
+  const railConfig     = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
+  const baseConfig     = useMemo(() => ({ edgeOffsetMm, spacingMm }), [edgeOffsetMm, spacingMm])
+  const railLayoutConfig = useMemo(() => ({
+    lineRails,
+    overhangCm: railOverhangCm,
+    stockLengths: settings.stockLengths ?? DEFAULT_STOCK_LENGTHS_MM,
+  }), [lineRails, railOverhangCm, settings.stockLengths])
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
   const basePlans = useMemo(() =>
     rowKeys.map(rowKey => computeRowBasePlan(rowGroups[rowKey], pixelToCmRatio, railConfig, baseConfig)),
     [rowKeys, rowGroups, pixelToCmRatio, railConfig, baseConfig]
+  )
+
+  const railLayouts = useMemo(() =>
+    rowKeys.map(rowKey => computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, railLayoutConfig)),
+    [rowKeys, rowGroups, pixelToCmRatio, railLayoutConfig]
   )
 
   const totalBases = basePlans.reduce((s, bp) => s + (bp?.baseCount ?? 0), 0)
@@ -136,12 +149,25 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                   })
 
                   const rc = rowConstructions[i]
-                  const railOffPx  = railOffsetCm / pixelToCmRatio
-                  const connOffPx  = crossRailOffsetCm  / pixelToCmRatio
-                  const topBeamPx  = rc ? rc.topBeamLength / pixelToCmRatio : 0
-                  const panelRearY = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
-                  const rearLegY   = panelRearY + railOffPx
-                  const frontLegY  = panelRearY + railOffPx + topBeamPx
+                  const railOffPx      = railOffsetCm    / pixelToCmRatio
+                  const connOffPx      = crossRailOffsetCm / pixelToCmRatio
+                  const baseOverhangPx = baseOverhangCm  / pixelToCmRatio
+                  const panelRearY     = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
+                  const rearLegY       = panelRearY + railOffPx
+                  // frontLegY: last rail of last line (mirrors how rail layer is positioned)
+                  let frontLegY = rearLegY
+                  if (lineRails && lines && lines.length > 0) {
+                    for (const ln of lines) {
+                      const lnRails = lineRails[ln.lineIdx]
+                      if (lnRails && lnRails.length > 0) {
+                        const lastRailY = ln.minY + lnRails[lnRails.length - 1] / pixelToCmRatio
+                        if (lastRailY > frontLegY) frontLegY = lastRailY
+                      }
+                    }
+                  }
+                  // Base extends baseOverhangPx past each rail on both ends
+                  const baseTopY    = rearLegY  - baseOverhangPx
+                  const baseBottomY = frontLegY + baseOverhangPx
                   const PROFILE_THICK = 4 / pixelToCmRatio * sc
 
                   const railLocalYs = [];
@@ -159,20 +185,41 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                     railLocalYs.push(lcY, rcY)
                   })
 
+                  const railProfileSvg = (crossRailEdgeDistMm / 10 / pixelToCmRatio) * sc
+
                   return (
                     <g key={`bp-${i}`} opacity={rowOpacity}>
+                      {/* Running rails — read-only layer */}
+                      {showRailLines && railLayouts[i]?.rails.map(rail => {
+                        const [rx1, ry1] = toSvg(rail.screenStart.x, rail.screenStart.y)
+                        const [rx2, ry2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
+                        return (
+                          <line key={rail.railId} x1={rx1} y1={ry1} x2={rx2} y2={ry2}
+                            stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="square" />
+                        )
+                      })}
                       {showBases && bases.map((base, bi) => {
-                        const beamTop    = localToScreen({ x: base.localX, y: rearLegY  }, frame.center, angleRad)
-                        const beamBottom = localToScreen({ x: base.localX, y: frontLegY }, frame.center, angleRad)
+                        const beamTop    = localToScreen({ x: base.localX, y: baseTopY    }, frame.center, angleRad)
+                        const beamBottom = localToScreen({ x: base.localX, y: baseBottomY }, frame.center, angleRad)
                         const [btx, bty] = toSvg(beamTop.x, beamTop.y)
                         const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
                         const isEdgeBase = bi === 0 || bi === bases.length - 1
                         const hlThisBase = (highlightGroup === 'base-edges' && isEdgeBase) || highlightGroup === 'trap-spacing'
+                        const hlOverhang = highlightGroup === 'base-overhang'
+                        // SVG coords of the rail intersection points (for overhang highlight)
+                        const srear  = localToScreen({ x: base.localX, y: rearLegY  }, frame.center, angleRad)
+                        const sfront = localToScreen({ x: base.localX, y: frontLegY }, frame.center, angleRad)
+                        const [rtx, rty] = toSvg(srear.x,  srear.y)
+                        const [rfx, rfy] = toSvg(sfront.x, sfront.y)
                         return (
                           <g key={`base-${bi}`}>
-                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="round" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="round" />
+                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                            {hlOverhang && <>
+                              <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                              <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                            </>}
+                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
                             {showBaseIDs && (() => {
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (
@@ -181,20 +228,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                                 </g>
                               )
                             })()}
-                            {showRails && railLocalYs.map((localY, ci) => {
-                              const sp = localToScreen({ x: base.localX, y: localY }, frame.center, frame.angleRad)
-                              const [cx, cy] = toSvg(sp.x, sp.y)
-                              const CW = 4 / pixelToCmRatio * sc, CH = 4 / pixelToCmRatio * sc
-                              const hlRail = highlightGroup === 'cross-rails'
-                              return (
-                                <g key={`conn-${ci}`}>
-                                  <g transform={`translate(${cx},${cy}) rotate(${lineAngle})`}>
-                                    <rect x={-CW/2} y={-CH/2} width={CW} height={CH} fill="#d1e3f3" stroke="#642165" strokeWidth="1" />
-                                    {hlRail && <rect x={-CW/2 - 4} y={-CH/2 - 4} width={CW + 8} height={CH + 8} fill="none" stroke="#FFB300" strokeWidth="2" rx="2" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                                  </g>
-                                </g>
-                              )
-                            })}
                           </g>
                         )
                       })}
@@ -250,11 +283,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
 
         <LayersPanel
           layers={[
-            { label: 'Bases',      checked: showBases,      setter: setShowBases },
-            { label: 'Base IDs',   checked: showBaseIDs,    setter: setShowBaseIDs },
-            { label: 'Rails',      checked: showRails,      setter: setShowRails },
-            { label: 'Dimensions', checked: showDimensions, setter: setShowDimensions },
-            { label: 'Diagonals',  checked: showDiagonals,  setter: setShowDiagonals },
+            { label: 'Bases',       checked: showBases,      setter: setShowBases },
+            { label: 'Base IDs',    checked: showBaseIDs,    setter: setShowBaseIDs },
+            { label: 'Rail lines',  checked: showRailLines,  setter: setShowRailLines },
+            { label: 'Dimensions',  checked: showDimensions, setter: setShowDimensions },
+            { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
         />
