@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -27,9 +27,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
-  const [tableOpen,      setTableOpen]      = useState(true)
+  const [tableOpen,      setTableOpen]      = useState(false)
 
-  const { zoom, setZoom, panOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const svgRef     = useRef(null)
@@ -64,6 +64,30 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
     return getPanelsBoundingBox(panels)
   }, [panels])
 
+  const PAD  = 24, MAX_W = 900
+  const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
+  const sc   = bboxW > 0 ? MAX_W / bboxW : 1
+
+  // Auto-pan to selected row when selection changes
+  useEffect(() => {
+    if (selectedRowIdx == null) return
+    const selectedKey = rowKeys[selectedRowIdx]
+    const rowPanels   = rowGroups[selectedKey] ?? []
+    if (rowPanels.length === 0) return
+    const rb = getPanelsBoundingBox(rowPanels)
+    const cx = PAD + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
+    const cy = PAD + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
+    const CONTENT_PAD = 20
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return
+      const { width: cw, height: ch } = containerRef.current.getBoundingClientRect()
+      setPanOffset({
+        x: cw / 2 - (cx + CONTENT_PAD) * zoom,
+        y: ch / 2 - (cy + CONTENT_PAD) * zoom,
+      })
+    })
+  }, [selectedRowIdx, rowKeys, rowGroups, bbox, sc, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (rowKeys.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#aaa', fontSize: '0.95rem' }}>
@@ -71,10 +95,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
       </div>
     )
   }
-
-  const PAD = 24, MAX_W = 900
-  const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
-  const sc   = bboxW > 0 ? MAX_W / bboxW : 1
   const svgW = MAX_W + PAD * 2
   const svgH = bboxH * sc + PAD * 2
   const toSvg = (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
@@ -230,7 +250,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (
                                 <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
-                                  <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle" fontSize={100 / zoom} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
+                                  <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
                                 </g>
                               )
                             })()}
