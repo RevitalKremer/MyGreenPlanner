@@ -104,8 +104,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       const railOverhang = s.railOverhangCm
       const maxSpan      = s.maxSpanCm
       const angleRad0 = angle * Math.PI / 180
-      const connH0 = (s.connEdgeDistMm ?? 40) / 10
-      const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad0) - connH0 * Math.cos(angleRad0))
+      const crossRailH0 = (s.crossRailEdgeDistMm ?? 40) / 10
+      const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad0) - crossRailH0 * Math.cos(angleRad0))
 
       let measuredRowLength, measuredLineDepth
       if (pixelToCmRatio) {
@@ -122,7 +122,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
         railOverhang,
         maxSpan,
         railOffsetCm: s.railOffsetCm,
-        connOffsetCm: s.connOffsetCm,
+        crossRailOffsetCm: s.crossRailOffsetCm,
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
@@ -151,8 +151,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     const maxSpan = s.maxSpanCm
     const portraitDepthCm = s.panelLengthCm ?? 238.2
     const angleRad1 = angle * Math.PI / 180
-    const connH1 = (s.connEdgeDistMm ?? 40) / 10
-    const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad1) - connH1 * Math.cos(angleRad1))
+    const crossRailH1 = (s.crossRailEdgeDistMm ?? 40) / 10
+    const frontLegH = Math.max(0, panelFrontH - s.blockHeightCm + s.railOffsetCm * Math.sin(angleRad1) - crossRailH1 * Math.cos(angleRad1))
 
     const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
       sum + (isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm) + (i > 0 ? PANEL_GAP_CM : 0), 0)
@@ -162,7 +162,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       maxSpan,
       lineDepthCm,
       railOffsetCm: s.railOffsetCm,
-      connOffsetCm: s.connOffsetCm,
+      crossRailOffsetCm: s.crossRailOffsetCm,
     })])
     return rc
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas])

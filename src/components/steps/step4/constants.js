@@ -6,15 +6,15 @@ export const ACCENT = '#C4D600'
 export const SETTINGS_DEFAULTS = {
   // Trapezoids & Rails (detail tab)
   railOffsetCm:     DEFAULT_RAIL_OFFSET_CM,
-  connOffsetCm:     5,
+  crossRailOffsetCm: 5,
   panelLengthCm:    238.2,
   blockHeightCm:    15,
   blockWidthCm:     50,
   diagTopPct:       25,
   diagBasePct:      90,
-  connEdgeDistMm:   DEFAULT_RAIL_EDGE_DIST_MM,
-  connMinPortrait:  DEFAULT_RAIL_MIN_PORTRAIT,
-  connMinLandscape: DEFAULT_RAIL_MIN_LANDSCAPE,
+  crossRailEdgeDistMm:   DEFAULT_RAIL_EDGE_DIST_MM,
+  crossRailMinPortrait:  DEFAULT_RAIL_MIN_PORTRAIT,
+  crossRailMinLandscape: DEFAULT_RAIL_MIN_LANDSCAPE,
   // Rails (rails tab)
   railOverhangCm:   DEFAULT_RAIL_OVERHANG_CM,
   stockLengths:     DEFAULT_STOCK_LENGTHS_MM,
@@ -26,10 +26,10 @@ export const SETTINGS_DEFAULTS = {
 
 export const PARAM_GROUP = {
   railOffsetCm:     'rail-clamp',    // detail tab: panel-rear clamp area
-  connOffsetCm:     'cross-rails',   // detail tab: cross-rail rects
-  connEdgeDistMm:   'cross-rails',
-  connMinPortrait:  'cross-rails',
-  connMinLandscape: 'cross-rails',
+  crossRailOffsetCm:     'cross-rails',   // detail tab: cross-rail rects
+  crossRailEdgeDistMm:   'cross-rails',
+  crossRailMinPortrait:  'cross-rails',
+  crossRailMinLandscape: 'cross-rails',
   panelLengthCm:    'panel',         // detail tab: panel bars
   diagTopPct:       'diagonal',      // detail tab: diagonal brace
   diagBasePct:      'diagonal',

@@ -15,8 +15,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
   const railOffsetCm   = settings.railOffsetCm  ?? DEFAULT_RAIL_OFFSET_CM
   const blockHeightCm  = settings.blockHeightCm ?? 30
   const blockWidthCm   = settings.blockWidthCm  ?? 70
-  const connOffsetCm   = settings.connOffsetCm  ?? 5
-  const connEdgeDistCm = (settings.connEdgeDistMm ?? 40) / 10
+  const crossRailOffsetCm   = settings.crossRailOffsetCm  ?? 5
+  const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
   const diagBasePct    = (settings.diagBasePct ?? 90) / 100
@@ -72,7 +72,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
-  const beamOffX = connOffsetCm * SC * Math.cos(angleRad)
+  const beamOffX = crossRailOffsetCm * SC * Math.cos(angleRad)
   const railXs = (() => {
     const xs = []
     let dCm = 0
@@ -179,7 +179,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
             display: 'inline-block',
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
-              {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
+              {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
               <span style={{ fontWeight: '400', color: '#999', marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
               </span>
@@ -377,7 +377,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
 
               <Dim ax1={panelX1} ay1={blockBotY}
                    ax2={panelX1} ay2={panelY1 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
-                label={fmt(BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))}
+                label={fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))}
                 off={-22} />
 
               <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
@@ -387,7 +387,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, highl
                 label={fmt(heightFront)} off={38} />
 
               {(() => {
-                const panelFrontHeight = BLOCK_H_CM + heightRear + connEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
+                const panelFrontHeight = BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
                 const panelBackHeight  = panelFrontHeight + totalPanelDepthCm * Math.sin(angleRad)
                 return (
                   <Dim ax1={panelX2} ay1={blockBotY}

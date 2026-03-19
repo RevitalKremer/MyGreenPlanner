@@ -15,7 +15,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
   const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
   const railOffsetCm   = settings.railOffsetCm   ?? DEFAULT_RAIL_OFFSET_CM
-  const connOffsetCm   = settings.connOffsetCm   ?? 5
+  const crossRailOffsetCm   = settings.crossRailOffsetCm   ?? 5
 
   const [showBases,      setShowBases]      = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -136,7 +136,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
 
                   const rc = rowConstructions[i]
                   const railOffPx  = railOffsetCm / pixelToCmRatio
-                  const connOffPx  = connOffsetCm  / pixelToCmRatio
+                  const connOffPx  = crossRailOffsetCm  / pixelToCmRatio
                   const topBeamPx  = rc ? rc.topBeamLength / pixelToCmRatio : 0
                   const panelRearY = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
                   const rearLegY   = panelRearY + railOffPx
