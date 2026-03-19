@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM } from '../../../utils/basePlanService'
-import { localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_RAIL_OFFSET_CM } from '../../../utils/railLayoutService'
+import { localToScreen, DEFAULT_RAIL_OVERHANG_CM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { fmt, getPanelsBoundingBox, buildRowGroups } from './tabUtils'
@@ -10,12 +10,13 @@ import BasesTable from './BasesTable'
 
 const BASE_COLOR = '#000000'
 
-export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, highlightGroup = null }) {
-  const edgeOffsetMm   = settings.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM
-  const spacingMm      = settings.spacingMm      ?? DEFAULT_BASE_SPACING_MM
-  const railOverhangCm = settings.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
-  const railOffsetCm   = settings.railOffsetCm   ?? DEFAULT_RAIL_OFFSET_CM
-  const crossRailOffsetCm   = settings.crossRailOffsetCm   ?? 5
+export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, lineRails = null, highlightGroup = null }) {
+  const edgeOffsetMm      = settings.edgeOffsetMm      ?? DEFAULT_BASE_EDGE_OFFSET_MM
+  const spacingMm         = settings.spacingMm         ?? DEFAULT_BASE_SPACING_MM
+  const railOverhangCm    = settings.railOverhangCm    ?? DEFAULT_RAIL_OVERHANG_CM
+  const crossRailOffsetCm = settings.crossRailOffsetCm ?? 5
+  // Derive rail offset from lineRails (first rail of first line), fall back to 0
+  const railOffsetCm = lineRails?.[0]?.[0] ?? 0
 
   const [showBases,      setShowBases]      = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -67,7 +68,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
       {/* Diagram canvas */}
       <div
         style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fafafa', cursor: panActive ? 'grabbing' : 'grab' }}
-        onWheel={handleWheel} onMouseDown={startPan} onMouseMove={handleMouseMove} onMouseUp={stopPan} onMouseLeave={stopPan}
+        onMouseDown={startPan} onMouseMove={handleMouseMove} onMouseUp={stopPan} onMouseLeave={stopPan}
         ref={containerRef}
       >
         <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>

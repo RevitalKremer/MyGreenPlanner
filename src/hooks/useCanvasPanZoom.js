@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const MM_W = 180
 const MM_H = 100
@@ -19,6 +19,15 @@ export function useCanvasPanZoom() {
     e.preventDefault()
     setZoom(z => Math.max(0.3, Math.min(8, z + (e.deltaY > 0 ? -0.15 : 0.15))))
   }
+
+  // Attach wheel listener with { passive: false } so preventDefault() works.
+  // React's onWheel prop registers passive listeners in modern browsers.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  })
 
   const startPan = (e) => {
     panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: panOffset.x, startPanY: panOffset.y }
