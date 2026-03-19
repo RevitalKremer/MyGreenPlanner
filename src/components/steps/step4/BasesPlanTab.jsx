@@ -224,7 +224,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (
                                 <g transform={`rotate(${lineAngle} ${bx} ${by})`}>
-                                  <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle" fontSize={10 / zoom} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
+                                  <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle" fontSize={100 / zoom} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{rc?.typeLetter ?? '?'}{rc?.panelsPerSpan ?? ''}</text>
                                 </g>
                               )
                             })()}
@@ -232,8 +232,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         )
                       })}
 
-                      {showDiagonals && showBases && bases.length >= 2 && railLocalYs.length >= 2 && (() => {
-                        const n = bases.length, C1 = railLocalYs[0], Cm = railLocalYs[railLocalYs.length - 1]
+                      {showDiagonals && showBases && bases.length >= 2 && (() => {
+                        const n = bases.length
                         const heightAtY_mm = (localY) => {
                           if (!rc || frontLegY <= rearLegY) return 0
                           const t = Math.max(0, Math.min(1, (localY - rearLegY) / (frontLegY - rearLegY)))
@@ -242,22 +242,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                         const pairs = n === 2 ? [[0, 1]] : [[0, 1], [n - 1, n - 2]]
                         return pairs.flatMap(([ai, bi], pi) => {
                           const ba = bases[ai], bb = bases[bi]
-                          return [C1, Cm].map((railY, di) => {
-                            const pa = localToScreen({ x: ba.localX, y: railY }, frame.center, angleRad)
-                            const pb = localToScreen({ x: bb.localX, y: railY }, frame.center, angleRad)
+                          const horizMm = Math.abs(bb.localX - ba.localX) * pixelToCmRatio * 10
+                          // Two lines: top-of-A→top-of-B and bottom-of-A→bottom-of-B (diagonals in vertical plane)
+                          return [baseTopY, baseBottomY].map((edgeY, di) => {
+                            const pa = localToScreen({ x: ba.localX, y: edgeY }, frame.center, angleRad)
+                            const pb = localToScreen({ x: bb.localX, y: edgeY }, frame.center, angleRad)
                             const [x1, y1] = toSvg(pa.x, pa.y), [x2, y2] = toSvg(pb.x, pb.y)
-                            const horizMm = Math.abs(bb.localX - ba.localX) * pixelToCmRatio * 10
-                            const vertMm  = heightAtY_mm(railY)
+                            const vertMm  = heightAtY_mm(edgeY)
                             const distMm  = Math.round(Math.sqrt(horizMm ** 2 + vertMm ** 2))
                             const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
                             const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                             const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
-                            const fs = 11 / zoom, bgW = String(distMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 4 / zoom
+                            const fs = 11 / zoom, bgW = String(distMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 7 / zoom
                             return (
                               <g key={`diag-${pi}-${di}`}>
                                 <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="cyan" strokeWidth={PROFILE_THICK} />
-                                <circle cx={x1} cy={y1} r={dotR} fill="cyan" stroke="#006" strokeWidth={0.5/zoom} />
-                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke="cyan" strokeWidth={1/zoom} />
+                                <circle cx={x1} cy={y1} r={dotR} fill="cyan" stroke="#006" strokeWidth={1/zoom} />
+                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke="cyan" strokeWidth={2/zoom} />
                                 <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
                                   <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5/zoom} rx={1/zoom} />
                                   <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill="#000">{distMm}</text>
