@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { computeRowBasePlan, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -7,11 +7,12 @@ import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
+import BasePlanOverlay from './BasePlanOverlay'
 
 const BASE_COLOR      = '#000000'
 const RAIL_COLOR_FILL = '#642165'
 
-export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, lineRails = null, highlightGroup = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx = null, rowConstructions = [], settings = {}, lineRails = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null }) {
   const edgeOffsetMm        = settings.edgeOffsetMm        ?? DEFAULT_BASE_EDGE_OFFSET_MM
   const spacingMm           = settings.spacingMm           ?? DEFAULT_BASE_SPACING_MM
   const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
@@ -31,8 +32,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const { zoom, setZoom, panOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
-  const railConfig     = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
-  const baseConfig     = useMemo(() => ({ edgeOffsetMm, spacingMm }), [edgeOffsetMm, spacingMm])
+  const svgRef     = useRef(null)
+  const railConfig = useMemo(() => ({ overhangCm: railOverhangCm }), [railOverhangCm])
+  const baseConfig = useMemo(() => ({ edgeOffsetMm, spacingMm }), [edgeOffsetMm, spacingMm])
   const railLayoutConfig = useMemo(() => ({
     lineRails,
     overhangCm: railOverhangCm,
@@ -42,8 +44,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
   const basePlans = useMemo(() =>
-    rowKeys.map(rowKey => computeRowBasePlan(rowGroups[rowKey], pixelToCmRatio, railConfig, baseConfig)),
-    [rowKeys, rowGroups, pixelToCmRatio, railConfig, baseConfig]
+    rowKeys.map((rowKey, i) => {
+      const customOffsets = customBasesMap[i]
+      const cfg = customOffsets?.length > 0 ? { ...baseConfig, customOffsets } : baseConfig
+      return computeRowBasePlan(rowGroups[rowKey], pixelToCmRatio, railConfig, cfg)
+    }),
+    [rowKeys, rowGroups, pixelToCmRatio, railConfig, baseConfig, customBasesMap]
   )
 
   const railLayouts = useMemo(() =>
@@ -87,7 +93,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
         <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
           <div ref={contentRef} style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
             <div style={{ padding: '1.25rem 1.25rem 0' }}>
-              <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+              <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                 <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
                 <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
@@ -274,6 +280,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
                           {segAnnotations}
                         </g>
                       )}
+
+                      <BasePlanOverlay
+                        bp={bp}
+                        zoom={zoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
+                        svgRef={svgRef} toSvg={toSvg}
+                        spacingMm={spacingMm} edgeOffsetMm={edgeOffsetMm}
+                        isSelected={i === selectedRowIdx}
+                        onBasesChange={onBasesChange ? (offsets) => onBasesChange(i, offsets) : null}
+                      />
                     </g>
                   )
                 })}
@@ -291,6 +306,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, selectedRowIdx 
             { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
+          actions={onResetBases ? [
+            { label: 'Reset to defaults', onClick: onResetBases, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } },
+          ] : undefined}
         />
 
       </div>

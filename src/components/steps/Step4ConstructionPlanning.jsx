@@ -22,7 +22,8 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
   const [activeTab, setActiveTab] = useState('rails')
   const [globalSettings, setGlobalSettings] = useState(() => initialGlobalSettings ?? SETTINGS_DEFAULTS)
   const [areaSettings,   setAreaSettings]   = useState(() => initialAreaSettings   ?? {})
-  const [highlightParam, setHighlightParam] = useState(null)
+  const [highlightParam,  setHighlightParam]  = useState(null)
+  const [customBasesMap,  setCustomBasesMap]  = useState({})
 
   useEffect(() => {
     onSettingsChange?.(globalSettings, areaSettings)
@@ -86,6 +87,16 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
   }, [])
 
   // Reset all per-area rails settings back to factory defaults for this area.
+  const resetBases = useCallback((areaIdx) => {
+    const basesAreaParams = PARAM_SCHEMA.filter(p => p.section === 'bases' && p.scope === 'area')
+    setCustomBasesMap(prev => { const c = { ...prev }; delete c[areaIdx]; return c })
+    setAreaSettings(prev => {
+      const copy = { ...(prev[areaIdx] || {}) }
+      basesAreaParams.forEach(p => { copy[p.key] = p.default })
+      return { ...prev, [areaIdx]: copy }
+    })
+  }, [])
+
   const resetLineRails = useCallback((areaIdx) => {
     const railAreaParams = PARAM_SCHEMA.filter(
       p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing'
@@ -146,7 +157,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
       const s          = getSettings(i)
       const railOverhang = s.railOverhangCm
-      const maxSpan      = s.maxSpanCm
+      const maxSpan      = (s.spacingMm ?? 2000) / 10
       const angleRad0    = angle * Math.PI / 180
       const crossRailH0  = (s.crossRailEdgeDistMm ?? 40) / 10
 
@@ -194,7 +205,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
     const s           = getSettings(selectedRowIdx)
     const railOverhang = s.railOverhangCm
-    const maxSpan      = s.maxSpanCm
+    const maxSpan      = (s.spacingMm ?? 2000) / 10
     const portraitDepthCm = s.panelLengthCm ?? 238.2
     const angleRad1    = angle * Math.PI / 180
     const crossRailH1  = (s.crossRailEdgeDistMm ?? 40) / 10
@@ -429,6 +440,11 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               settings={getSettings(selectedRowIdx)}
               lineRails={selectedLineRails}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
+              customBasesMap={customBasesMap}
+              onBasesChange={(rowIdx, offsets) =>
+                setCustomBasesMap(prev => ({ ...prev, [rowIdx]: offsets }))
+              }
+              onResetBases={() => resetBases(selectedRowIdx)}
             />
           </div>
         </div>

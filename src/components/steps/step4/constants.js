@@ -18,7 +18,6 @@ export const PARAM_SCHEMA = [
   { key: 'edgeOffsetMm',        label: 'Edge Offset (mm)',        section: 'bases',  scope: 'area',   type: 'number',   step: 10,  min: 0,   max: 1000, default: DEFAULT_BASE_EDGE_OFFSET_MM, highlightGroup: 'base-edges'   },
   { key: 'spacingMm',           label: 'Base Spacing (mm)',       section: 'bases',  scope: 'area',   type: 'number',   step: 50,  min: 100, max: 5000, default: DEFAULT_BASE_SPACING_MM,     highlightGroup: 'base-spacing' },
   { key: 'baseOverhangCm',      label: 'Base Overhang (cm)',      section: 'bases',  scope: 'area',   type: 'number',   step: 0.5, min: 0,   max: 50,   default: DEFAULT_BASE_OVERHANG_CM,    highlightGroup: 'base-overhang'},
-  { key: 'maxSpanCm',           label: 'Max Span (cm)',           section: 'bases',  scope: 'area',   type: 'number',   step: 5,   min: 50,  max: 400,  default: 165,                         highlightGroup: 'trap-spacing'},
   // ── detail · area ─────────────────────────────────────────────────────────
   { key: 'blockHeightCm',       label: 'Block Height (cm)',       section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 100,  default: 15,  highlightGroup: 'blocks'   },
   { key: 'blockWidthCm',        label: 'Block Width (cm)',        section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 200,  default: 50,  highlightGroup: 'blocks'   },

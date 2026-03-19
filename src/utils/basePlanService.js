@@ -1,4 +1,4 @@
-import { computeRowRailLayout, localToScreen, DEFAULT_RAIL_OVERHANG_CM, getPanelOrientation } from './railLayoutService'
+import { computeRowRailLayout, localToScreen, getPanelOrientation } from './railLayoutService'
 
 export const DEFAULT_BASE_EDGE_OFFSET_MM  = 300   // 30 cm from each end
 export const DEFAULT_BASE_SPACING_MM      = 2000  // max 2 m between bases
@@ -36,31 +36,40 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
   }
   const lines = Object.values(lineMap).sort((a, b) => a.lineIdx - b.lineIdx)
 
-  const railOverhangCm = railConfig.overhangCm ?? DEFAULT_RAIL_OVERHANG_CM
-  const railOverhangPx = railOverhangCm / pixelToCmRatio
-
-  const frameXMinPx  = localBounds.minX - railOverhangPx
-  const frameXMaxPx  = localBounds.maxX + railOverhangPx
+  // Frame spans panel edges (not rail ends)
+  const frameXMinPx   = localBounds.minX
+  const frameXMaxPx   = localBounds.maxX
   const frameLengthPx = frameXMaxPx - frameXMinPx
   const frameLengthMm = Math.round(frameLengthPx * pixelToCmRatio * 10)
 
   // Even distribution: first base at edgeOffset, last base at (frameLength - edgeOffset),
   // number of spans = ceil(innerSpan / maxSpacing), then divide evenly.
-  const innerSpanMm     = frameLengthMm - 2 * edgeOffsetMm
-  const numSpans        = Math.max(1, Math.ceil(innerSpanMm / spacingMm))
-  const actualSpacingMm = innerSpanMm / numSpans
-  const numBases        = numSpans + 1
+  const innerSpanMm = frameLengthMm - 2 * edgeOffsetMm
 
-  const bases = []
-  for (let i = 0; i < numBases; i++) {
-    const offsetFromStartMm = Math.round(edgeOffsetMm + i * actualSpacingMm)
+  const makeBase = (offsetFromStartMm) => {
     const xPx = frameXMinPx + (offsetFromStartMm / 10) / pixelToCmRatio
     const screenTop    = localToScreen({ x: xPx, y: localBounds.minY }, center, angleRad)
     const screenBottom = localToScreen({ x: xPx, y: localBounds.maxY }, center, angleRad)
-    bases.push({ localX: xPx, screenTop, screenBottom, offsetFromStartMm })
+    return { localX: xPx, screenTop, screenBottom, offsetFromStartMm }
   }
 
-  const lastGapMm = edgeOffsetMm  // by definition, last base is always at edgeOffset from right end
+  let bases, actualSpacingMm
+  if (baseConfig.customOffsets && baseConfig.customOffsets.length > 0) {
+    bases = baseConfig.customOffsets.map(makeBase)
+    actualSpacingMm = bases.length > 1
+      ? Math.max(...bases.slice(1).map((b, i) => b.offsetFromStartMm - bases[i].offsetFromStartMm))
+      : 0
+  } else {
+    const numSpans    = Math.max(1, Math.ceil(innerSpanMm / spacingMm))
+    actualSpacingMm   = innerSpanMm / numSpans
+    const numBases    = numSpans + 1
+    bases = []
+    for (let i = 0; i < numBases; i++) {
+      bases.push(makeBase(Math.round(edgeOffsetMm + i * actualSpacingMm)))
+    }
+  }
+
+  const lastGapMm = edgeOffsetMm
 
   return {
     frame: { center, angleRad, localBounds, frameXMinPx, frameXMaxPx },
