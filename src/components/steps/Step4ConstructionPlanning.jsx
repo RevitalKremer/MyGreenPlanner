@@ -179,7 +179,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     return assignTypes(rcs)
   }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels])
 
-  const selectedRC = rowConstructions[selectedRowIdx] ?? null
+const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
   const selectedTrapezoidRC = useMemo(() => {
     if (selectedRowIdx == null) return null
