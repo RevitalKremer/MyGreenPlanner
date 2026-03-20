@@ -34,3 +34,15 @@ export function buildRowGroups(panels) {
   const keys = Object.keys(map).map(Number).sort((a, b) => a - b)
   return { map, keys }
 }
+
+/** Group panels by trapezoidId, return { map, keys } (keys sorted alphabetically) */
+export function buildTrapezoidGroups(panels) {
+  const map = {}
+  for (const p of panels) {
+    const key = p.trapezoidId ?? 'A1'
+    if (!map[key]) map[key] = []
+    map[key].push(p)
+  }
+  const keys = Object.keys(map).sort()
+  return { map, keys }
+}

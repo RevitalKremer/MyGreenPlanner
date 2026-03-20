@@ -21,6 +21,7 @@ export default function BasePlanOverlay({
   edgeOffsetMm,
   toSvg,
   isSelected,
+  overrideBarLocalY,
   onBasesChange,
 }) {
   const dragging   = useRef(null)
@@ -41,8 +42,8 @@ export default function BasePlanOverlay({
   const barH     = BAR_H     / zoom
   const handleSz = HANDLE_SZ / zoom
 
-  // Bar is placed below the panels
-  const barLocalY = localBounds.maxY + 20 / zoom
+  // Bar Y: use area-wide override if provided, otherwise default to above this trap's panels
+  const barLocalY = overrideBarLocalY ?? localBounds.minY - 20 / zoom
 
   const lxToSvg = (localX) => {
     const s = localToScreen({ x: localX, y: barLocalY }, center, angleRad)

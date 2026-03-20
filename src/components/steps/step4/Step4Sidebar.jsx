@@ -105,6 +105,9 @@ export default function Step4Sidebar({
   panelDepthsCm,
   onRailSpacingChange,
   onApplyRailsToAllAreas,
+  getTrapBasesSettings,
+  updateTrapBaseSetting,
+  applyBasesToAll,
 }) {
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
@@ -221,6 +224,28 @@ export default function Step4Sidebar({
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
+        </div>
+      )
+    }
+
+    // ── number · trapezoid (per-subarea bases settings)
+    if (scope === 'trapezoid') {
+      const trapSettings = getTrapBasesSettings?.(effectiveSelectedTrapId) ?? {}
+      const val = trapSettings[key] ?? param.default
+      const overridden = !!(effectiveSelectedTrapId && trapezoidConfigs[effectiveSelectedTrapId] && key in trapezoidConfigs[effectiveSelectedTrapId])
+      return (
+        <div key={key} style={{ marginBottom: '0.45rem' }}>
+          {labelNode}
+          <DebouncedNumberInput
+            value={val} min={min} max={max} step={step}
+            onCommit={v => updateTrapBaseSetting?.(effectiveSelectedTrapId, key, v)}
+            onFocus={() => setHighlightParam(key)}
+            onBlur={() => setHighlightParam(null)}
+            style={{
+              ...baseInputStyle,
+              border: `1px solid ${isActive ? '#FFB300' : overridden ? '#FFB74D' : '#ddd'}`,
+              fontWeight: overridden ? '700' : '400',
+            }} />
         </div>
       )
     }
@@ -356,9 +381,9 @@ export default function Step4Sidebar({
                 {areaParams.map(p => renderParam(p))}
                 {/* Apply button */}
                 {applyBtn(
-                  sec.tabKey === 'rails'
-                    ? onApplyRailsToAllAreas
-                    : () => applySection(selectedRowIdx, areaKeys)
+                  sec.tabKey === 'rails'  ? onApplyRailsToAllAreas :
+                  sec.tabKey === 'bases'  ? applyBasesToAll :
+                  () => applySection(selectedRowIdx, areaKeys)
                 )}
                 {/* Global params — rendered after the apply button */}
                 {globalParams.length > 0 && (

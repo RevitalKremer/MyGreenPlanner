@@ -15,9 +15,9 @@ export const PARAM_SCHEMA = [
   { key: 'crossRailEdgeDistMm', label: 'Rail Profile Size (mm)',  section: 'rails',  scope: 'global', type: 'number',   step: 5,   min: 20,  max: 100,  default: DEFAULT_RAIL_EDGE_DIST_MM, highlightGroup: 'cross-rails'   },
   { key: 'stockLengths',        label: 'Stock Lengths (mm)',      section: 'rails',  scope: 'global', type: 'array',                                   default: DEFAULT_STOCK_LENGTHS_MM,  highlightGroup: 'rail-cuts'     },
   // ── bases · area ─────────────────────────────────────────────────────────
-  { key: 'edgeOffsetMm',        label: 'Edge Offset (mm)',        section: 'bases',  scope: 'area',   type: 'number',   step: 10,  min: 0,   max: 1000, default: DEFAULT_BASE_EDGE_OFFSET_MM, highlightGroup: 'base-edges'   },
-  { key: 'spacingMm',           label: 'Base Spacing (mm)',       section: 'bases',  scope: 'area',   type: 'number',   step: 50,  min: 100, max: 5000, default: DEFAULT_BASE_SPACING_MM,     highlightGroup: 'base-spacing' },
-  { key: 'baseOverhangCm',      label: 'Base Overhang (cm)',      section: 'bases',  scope: 'area',   type: 'number',   step: 0.5, min: 0,   max: 50,   default: DEFAULT_BASE_OVERHANG_CM,    highlightGroup: 'base-overhang'},
+  { key: 'edgeOffsetMm',        label: 'Edge Offset (mm)',        section: 'bases',  scope: 'trapezoid', type: 'number',   step: 10,  min: 0,   max: 1000, default: DEFAULT_BASE_EDGE_OFFSET_MM, highlightGroup: 'base-edges'   },
+  { key: 'spacingMm',           label: 'Base Spacing (mm)',       section: 'bases',  scope: 'trapezoid', type: 'number',   step: 50,  min: 100, max: 5000, default: DEFAULT_BASE_SPACING_MM,     highlightGroup: 'base-spacing' },
+  { key: 'baseOverhangCm',      label: 'Base Overhang (cm)',      section: 'bases',  scope: 'trapezoid', type: 'number',   step: 0.5, min: 0,   max: 50,   default: DEFAULT_BASE_OVERHANG_CM,    highlightGroup: 'base-overhang'},
   // ── detail · area ─────────────────────────────────────────────────────────
   { key: 'blockHeightCm',       label: 'Block Height (cm)',       section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 100,  default: 15,  highlightGroup: 'blocks'   },
   { key: 'blockWidthCm',        label: 'Block Width (cm)',        section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 200,  default: 50,  highlightGroup: 'blocks'   },

@@ -395,7 +395,7 @@ export default function RailLayoutTab({
               { label: 'Rails',            checked: showRails,           setter: setShowRails },
               { label: 'Dimensions',       checked: showDimensions,      setter: setShowDimensions },
               { label: 'Material summary', checked: showMaterialSummary, setter: setShowMaterialSummary },
-              { label: 'Cross-section',    checked: showCrossSection,    setter: setShowCrossSection },
+              { label: 'Edit bar',         checked: showCrossSection,    setter: setShowCrossSection },
             ]}
             summary={null}
             actions={[

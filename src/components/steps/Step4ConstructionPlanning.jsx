@@ -8,6 +8,7 @@ import BasesPlanTab  from './step4/BasesPlanTab'
 import { computeRowRailLayout, initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step4/constants'
+import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step4Sidebar from './step4/Step4Sidebar'
 import LayoutView from './step4/LayoutView'
 import RowsView from './step4/RowsView'
@@ -38,7 +39,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step4 component ────────────────────────────────────────────────────
 
-export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange }) {
+export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('rails')
@@ -110,17 +111,6 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     }))
   }, [])
 
-  // Reset all per-area rails settings back to factory defaults for this area.
-  const resetBases = useCallback((areaIdx) => {
-    const basesAreaParams = PARAM_SCHEMA.filter(p => p.section === 'bases' && p.scope === 'area')
-    setCustomBasesMap(prev => { const c = { ...prev }; delete c[areaIdx]; return c })
-    setAreaSettings(prev => {
-      const copy = { ...(prev[areaIdx] || {}) }
-      basesAreaParams.forEach(p => { copy[p.key] = p.default })
-      return { ...prev, [areaIdx]: copy }
-    })
-  }, [])
-
   const resetLineRails = useCallback((areaIdx) => {
     const railAreaParams = PARAM_SCHEMA.filter(
       p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing'
@@ -132,6 +122,37 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       return { ...prev, [areaIdx]: copy }
     })
   }, [])
+
+  // ─── Per-trapezoid bases settings ─────────────────────────────────────────
+
+  const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
+
+  const getTrapBasesSettings = useCallback((trapId) => {
+    const cfg = trapezoidConfigs[trapId] || {}
+    return {
+      edgeOffsetMm:   cfg.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM,
+      spacingMm:      cfg.spacingMm      ?? DEFAULT_BASE_SPACING_MM,
+      baseOverhangCm: cfg.baseOverhangCm ?? DEFAULT_BASE_OVERHANG_CM,
+    }
+  }, [trapezoidConfigs])
+
+  const updateTrapBaseSetting = useCallback((trapId, key, value) => {
+    if (!setTrapezoidConfigs) return
+    setTrapezoidConfigs(prev => ({
+      ...prev,
+      [trapId]: { ...(prev[trapId] || {}), [key]: value }
+    }))
+  }, [setTrapezoidConfigs])
+
+  const resetTrapBases = useCallback((trapId) => {
+    setCustomBasesMap(prev => { const c = { ...prev }; delete c[trapId]; return c })
+    if (!setTrapezoidConfigs) return
+    setTrapezoidConfigs(prev => {
+      const copy = { ...(prev[trapId] || {}) }
+      TRAP_BASES_KEYS.forEach(k => delete copy[k])
+      return { ...prev, [trapId]: copy }
+    })
+  }, [setTrapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Row data ─────────────────────────────────────────────────────────────
 
@@ -168,6 +189,19 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
   const effectiveSelectedTrapId = selectedTrapezoidId ??
     (rowKeys[selectedRowIdx] != null ? (areaTrapezoidMap[rowKeys[selectedRowIdx]]?.[0] ?? null) : null)
 
+  const applyBasesToAll = useCallback(() => {
+    if (!setTrapezoidConfigs || !effectiveSelectedTrapId) return
+    const trapBases = getTrapBasesSettings(effectiveSelectedTrapId)
+    const allTrapIds = Object.values(areaTrapezoidMap).flat()
+    setTrapezoidConfigs(prev => {
+      const next = { ...prev }
+      allTrapIds.forEach(trapId => {
+        next[trapId] = { ...(prev[trapId] || {}), ...trapBases }
+      })
+      return next
+    })
+  }, [getTrapBasesSettings, effectiveSelectedTrapId, areaTrapezoidMap, setTrapezoidConfigs])
+
   // ─── Construction calculations ────────────────────────────────────────────
 
   const rowConstructions = useMemo(() => {
@@ -175,13 +209,14 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     const rcs = rowKeys.map((areaKey, i) => {
       const panelCount = rowPanelCounts[areaKey] || 1
       const globalCfg  = refinedArea?.panelConfig || {}
-      const trapId     = `${String.fromCharCode(65 + areaKey)}1`
+      const trapId     = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
       const override   = trapezoidConfigs[trapId] || {}
       const angle      = override.angle ?? globalCfg.angle ?? 0
       const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
       const s          = getSettings(i)
+      const trapBases  = getTrapBasesSettings(trapId)
       const railOverhang = s.railOverhangCm
-      const maxSpan      = (s.spacingMm ?? 2000) / 10
+      const maxSpan      = (trapBases.spacingMm ?? 2000) / 10
       const angleRad0    = angle * Math.PI / 180
       const crossRailH0  = (s.crossRailEdgeDistMm ?? 40) / 10
 
@@ -210,7 +245,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
         railOverhang,
         maxSpan,
         railOffsetCm,
-        baseOverhangCm: s.baseOverhangCm ?? 0,
+        baseOverhangCm: trapBases.baseOverhangCm ?? 0,
         crossRailOffsetCm: s.crossRailOffsetCm,
         ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
@@ -218,7 +253,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       })
     })
     return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels])
+  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels, areaTrapezoidMap, getTrapBasesSettings])
 
 const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
@@ -234,8 +269,9 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const angle       = override.angle ?? globalCfg.angle ?? 0
     const panelFrontH = override.frontHeight ?? globalCfg.frontHeight ?? 0
     const s           = getSettings(selectedRowIdx)
+    const trapBases1  = getTrapBasesSettings(trapId)
     const railOverhang = s.railOverhangCm
-    const maxSpan      = (s.spacingMm ?? 2000) / 10
+    const maxSpan      = (trapBases1.spacingMm ?? 2000) / 10
     const portraitDepthCm = s.panelLengthCm ?? 238.2
     const angleRad1    = angle * Math.PI / 180
     const crossRailH1  = (s.crossRailEdgeDistMm ?? 40) / 10
@@ -258,12 +294,12 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       maxSpan,
       lineDepthCm,
       railOffsetCm,
-      baseOverhangCm: s.baseOverhangCm ?? 0,
+      baseOverhangCm: trapBases1.baseOverhangCm ?? 0,
       crossRailOffsetCm: s.crossRailOffsetCm,
       ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
     })])
     return rc
-  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas])
+  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas, getTrapBasesSettings])
 
   const selectedRowLineDepths = useMemo(() => {
     if (selectedRowIdx == null) return null
@@ -303,6 +339,43 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     selectedLineOrientations.map(o => lineSlopeDepth(o)),
     [selectedLineOrientations]
   )
+
+  // ─── Per-trapezoid derived maps (for BasesPlanTab) ────────────────────────
+
+  // lineRails per trapezoid — same as area's lineRails (rails span the full row)
+  const trapLineRailsMap = useMemo(() => {
+    const map = {}
+    rowKeys.forEach((areaKey, i) => {
+      const trapIds = areaTrapezoidMap[areaKey] || []
+      const lineOrs = getLineOrientations(areaKey, trapIds[0] ?? `${String.fromCharCode(65 + areaKey)}1`)
+      const rails   = getLineRails(i, lineOrs)
+      trapIds.forEach(trapId => { map[trapId] = rails })
+    })
+    return map
+  }, [rowKeys, areaTrapezoidMap, getLineOrientations, getLineRails])
+
+  // Merged settings per trapezoid: area-level (global+area) + trap-level bases
+  const trapSettingsMap = useMemo(() => {
+    const map = {}
+    rowKeys.forEach((areaKey, i) => {
+      const s = getSettings(i)
+      const trapIds = areaTrapezoidMap[areaKey] || []
+      trapIds.forEach(trapId => {
+        map[trapId] = { ...s, ...getTrapBasesSettings(trapId) }
+      })
+    })
+    return map
+  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Row construction per trapezoid (for type label on bases canvas)
+  const trapRCMap = useMemo(() => {
+    const map = {}
+    rowKeys.forEach((areaKey, i) => {
+      const trapIds = areaTrapezoidMap[areaKey] || []
+      trapIds.forEach(trapId => { map[trapId] = rowConstructions[i] })
+    })
+    return map
+  }, [rowKeys, areaTrapezoidMap, rowConstructions])
 
   // ─── Rail spacing derived from lineRails (source of truth) ───────────────
 
@@ -421,6 +494,9 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         panelDepthsCm={selectedLinePanelDepths}
         onRailSpacingChange={onRailSpacingChange}
         onApplyRailsToAllAreas={applyRailsToAllAreas}
+        getTrapBasesSettings={getTrapBasesSettings}
+        updateTrapBaseSetting={updateTrapBaseSetting}
+        applyBasesToAll={applyBasesToAll}
       />
 
       {/* ── Main content ── */}
@@ -473,15 +549,16 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <BasesPlanTab
               panels={panels} refinedArea={refinedArea}
-              selectedRowIdx={selectedRowIdx} rowConstructions={rowConstructions}
-              settings={getSettings(selectedRowIdx)}
-              lineRails={selectedLineRails}
+              effectiveSelectedTrapId={effectiveSelectedTrapId}
+              trapSettingsMap={trapSettingsMap}
+              trapLineRailsMap={trapLineRailsMap}
+              trapRCMap={trapRCMap}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              onBasesChange={(rowIdx, offsets) =>
-                setCustomBasesMap(prev => ({ ...prev, [rowIdx]: offsets }))
+              onBasesChange={(trapId, offsets) =>
+                setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
               }
-              onResetBases={() => resetBases(selectedRowIdx)}
+              onResetBases={() => resetTrapBases(effectiveSelectedTrapId)}
             />
           </div>
         </div>
