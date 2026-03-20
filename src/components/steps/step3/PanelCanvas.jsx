@@ -11,7 +11,7 @@ export default function PanelCanvas({
   dragState, setDragState,
   rotationState, setRotationState,
   distanceMeasurement, setDistanceMeasurement,
-  showBaseline, showDistances,
+  showBaseline, showDistances, showHGridlines, showVGridlines, snapToGridlines,
   refinedArea, trapezoidConfigs,
   activeTool, projectMode,
   getRowPanelIds,
@@ -173,10 +173,46 @@ export default function PanelCanvas({
         return { ...panel, x: newCx - panel.width / 2, y: newCy - panel.height / 2, rotation: (od.rotation + angleDelta) % 360 }
       }))
     } else if (dragState) {
-      const dx = x - dragState.startX, dy = y - dragState.startY
+      const rawDx = x - dragState.startX, rawDy = y - dragState.startY
+      let finalDx = rawDx, finalDy = rawDy
+
+      if (snapToGridlines && (showHGridlines || showVGridlines)) {
+        const refId = dragState.panelIds[0]
+        const refPanel = panels.find(p => p.id === refId)
+        if (refPanel) {
+          const areaKey = refPanel.area ?? refPanel.row
+          const stationary = panels.filter(p => !dragState.panelIds.includes(p.id) && (p.area ?? p.row) === areaKey && !p.isEmpty)
+          if (stationary.length > 0) {
+            const orig = dragState.originalPositions[refId]
+            const cx = orig.x + refPanel.width / 2 + rawDx
+            const cy = orig.y + refPanel.height / 2 + rawDy
+            const r = (refPanel.rotation || 0) * Math.PI / 180
+            const cosR = Math.cos(r), sinR = Math.sin(r)
+            const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+            const hw = refPanel.width / 2, hh = refPanel.height / 2
+            const THRESH = Math.max(refPanel.width, refPanel.height) * 0.35
+            if (showHGridlines) {
+              const centerPerp = cx * vx + cy * vy
+              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy; return [pOff - p.height/2, pOff + p.height/2] })
+              const candidates = offsets.flatMap(g => [g - hh, g + hh])
+              const nearest = candidates.reduce((b, c) => Math.abs(c - centerPerp) < Math.abs(b - centerPerp) ? c : b)
+              if (Math.abs(nearest - centerPerp) < THRESH) { finalDx += (nearest - centerPerp) * vx; finalDy += (nearest - centerPerp) * vy }
+            }
+            if (showVGridlines) {
+              const cx2 = orig.x + refPanel.width / 2 + finalDx, cy2 = orig.y + refPanel.height / 2 + finalDy
+              const centerPar = cx2 * ux + cy2 * uy
+              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy; return [pOff - p.width/2, pOff + p.width/2] })
+              const candidates = offsets.flatMap(g => [g - hw, g + hw])
+              const nearest = candidates.reduce((b, c) => Math.abs(c - centerPar) < Math.abs(b - centerPar) ? c : b)
+              if (Math.abs(nearest - centerPar) < THRESH) { finalDx += (nearest - centerPar) * ux; finalDy += (nearest - centerPar) * uy }
+            }
+          }
+        }
+      }
+
       setPanels(prev => prev.map(panel => {
         if (!dragState.panelIds.includes(panel.id)) return panel
-        return { ...panel, x: dragState.originalPositions[panel.id].x + dx, y: dragState.originalPositions[panel.id].y + dy }
+        return { ...panel, x: dragState.originalPositions[panel.id].x + finalDx, y: dragState.originalPositions[panel.id].y + finalDy }
       }))
     }
   }
@@ -297,6 +333,44 @@ export default function PanelCanvas({
                 )}
               </>
             )}
+
+            {/* Gridlines — dashed lines at panel edges, extended across canvas — selected area only */}
+            {(showHGridlines || showVGridlines) && imageRef && (() => {
+              const selAreaKey = selectedPanels.length > 0
+                ? (() => { const sp = panels.find(p => selectedPanels.includes(p.id)); return sp ? (sp.area ?? sp.row) : null })()
+                : null
+              if (selAreaKey === null) return null
+              return panels.filter(p => !p.isEmpty && (p.area ?? p.row) === selAreaKey).map(panel => {
+                const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
+                const r  = (panel.rotation || 0) * Math.PI / 180
+                const cosR = Math.cos(r), sinR = Math.sin(r)
+                const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
+                const gw  = Math.max(1, imageRef.naturalWidth * 0.001)
+                const gd  = `${imageRef.naturalWidth * 0.006} ${imageRef.naturalWidth * 0.003}`
+                const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+                const hw = panel.width / 2, hh = panel.height / 2
+                // horizontal = top/bottom edges (run along panel width direction)
+                // vertical   = left/right edges  (run along panel height direction)
+                const edges = [
+                  ...(showHGridlines ? [
+                    { mx: cx - hh * vx, my: cy - hh * vy, dx: ux, dy: uy },
+                    { mx: cx + hh * vx, my: cy + hh * vy, dx: ux, dy: uy },
+                  ] : []),
+                  ...(showVGridlines ? [
+                    { mx: cx - hw * ux, my: cy - hw * uy, dx: vx, dy: vy },
+                    { mx: cx + hw * ux, my: cy + hw * uy, dx: vx, dy: vy },
+                  ] : []),
+                ]
+                return edges.map((e, ei) => (
+                  <line key={`${panel.id}-gl${ei}`}
+                    x1={e.mx - ext * e.dx} y1={e.my - ext * e.dy}
+                    x2={e.mx + ext * e.dx} y2={e.my + ext * e.dy}
+                    stroke="rgba(160,160,160,0.65)" strokeWidth={gw} strokeDasharray={gd}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ))
+              })
+            })()}
 
             {/* Ghost panels (empty lines) */}
             {panels.filter(p => p.isEmpty).map(panel => {

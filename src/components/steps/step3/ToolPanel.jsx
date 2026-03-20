@@ -14,6 +14,9 @@ export default function ToolPanel({
   projectMode, areas, getAreaKey,
   updateTrapezoidConfig, resetTrapezoidConfig,
   showBaseline, setShowBaseline,
+  showHGridlines, setShowHGridlines,
+  showVGridlines, setShowVGridlines,
+  snapToGridlines, setSnapToGridlines,
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -87,6 +90,24 @@ export default function ToolPanel({
           <button style={toolBtnStyle('measure')} onClick={() => handleToolChange('measure')} title="Measure distance">
             <span style={{ fontSize: '0.85rem' }}>📏</span>{toolLabel('Ruler')}
           </button>
+        </div>
+      </div>
+
+      {/* Gridlines + Snap */}
+      <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <button
+            onClick={() => setShowHGridlines(!showHGridlines)}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: showHGridlines ? '#F3F9E6' : 'white', color: showHGridlines ? '#5a7a00' : '#aaa', border: `1px solid ${showHGridlines ? '#C4D600' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+          >⊟ H-Grid</button>
+          <button
+            onClick={() => setShowVGridlines(!showVGridlines)}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? '#F3F9E6' : 'white', color: showVGridlines ? '#5a7a00' : '#aaa', border: `1px solid ${showVGridlines ? '#C4D600' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+          >⊞ V-Grid</button>
+          <button
+            onClick={() => setSnapToGridlines(!snapToGridlines)}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? '#e8f0ff' : 'white', color: snapToGridlines ? '#1a4fd6' : '#aaa', border: `1px solid ${snapToGridlines ? '#7baaf7' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+          >⌖ Snap</button>
         </div>
       </div>
 
