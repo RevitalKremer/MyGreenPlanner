@@ -8,17 +8,20 @@ import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
+import RulerTool from '../../shared/RulerTool'
 
 const BASE_COLOR      = '#000000'
 const RAIL_COLOR_FILL = '#642165'
 
 export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null }) {
   const [showBases,      setShowBases]      = useState(true)
+  const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
   const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
   const [showEditBar,    setShowEditBar]    = useState(true)
+  const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
 
   const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
@@ -197,8 +200,46 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   const railProfileSvg = (crossRailEdgeMm / 10 / pixelToCmRatio) * sc
 
+                  // Block positions along the base line (plan view)
+                  const blockWidthCm   = trapS.blockWidthCm ?? 50
+                  const blockDepthCm   = trapS.blockDepthCm ?? 50
+                  const blockWidthLocal = blockWidthCm / pixelToCmRatio        // along-beam dimension (local frame)
+                  const blockWidthSvg  = blockWidthLocal * sc                  // SVG pixels along beam
+                  const blockDepthSvg  = (blockDepthCm / pixelToCmRatio) * sc // SVG pixels perpendicular to beam
+                  const numBlocks = Math.max(2, (lines || []).reduce((sum, ln) => {
+                    return sum + (ln.orientation === 'LANDSCAPE' ? 1 : 2)
+                  }, 0))
+                  const numCenterBlocks = numBlocks - 2
+                  const innerRailYs = [...railLocalYs].sort((a, b) => a - b).slice(1, -1)
+                  const centerBlockYs = numCenterBlocks === 0 ? [] : innerRailYs.slice(-numCenterBlocks)
+                  const allBlockYCenters = [
+                    baseTopY    + blockWidthLocal / 2,
+                    ...centerBlockYs,
+                    baseBottomY - blockWidthLocal / 2,
+                  ]
+
                   return (
                     <g key={`bp-${trapId}`} opacity={trapOpacity}>
+                      {/* Blocks — rendered first (below rails and diagonals) */}
+                      {showBlocks && bases.map((base, bi) => {
+                        const beamTop    = localToScreen({ x: base.localX, y: baseTopY    }, frame.center, angleRad)
+                        const beamBottom = localToScreen({ x: base.localX, y: baseBottomY }, frame.center, angleRad)
+                        const [btx, bty] = toSvg(beamTop.x, beamTop.y)
+                        const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
+                        const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                        return allBlockYCenters.map((blockCenterY, bki) => {
+                          const sp = localToScreen({ x: base.localX, y: blockCenterY }, frame.center, angleRad)
+                          const [bkx, bky] = toSvg(sp.x, sp.y)
+                          return (
+                            <rect key={`blk-${bi}-${bki}`}
+                              x={bkx - blockWidthSvg / 2} y={bky - blockDepthSvg / 2}
+                              width={blockWidthSvg} height={blockDepthSvg}
+                              fill="#c0c0c0" stroke="#777" strokeWidth={0.5 / zoom}
+                              transform={`rotate(${lineAngle} ${bkx} ${bky})`}
+                            />
+                          )
+                        })
+                      })}
                       {/* Running rails — read-only layer */}
                       {showRailLines && railLayouts[i]?.rails.map(rail => {
                         const [rx1, ry1] = toSvg(rail.screenStart.x, rail.screenStart.y)
@@ -414,9 +455,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           </div>
         </div>
 
+        <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc / pixelToCmRatio} containerRef={containerRef} />
+
         <LayersPanel
           layers={[
             { label: 'Bases',       checked: showBases,      setter: setShowBases },
+            { label: 'Blocks',      checked: showBlocks,     setter: setShowBlocks },
             { label: 'Base IDs',    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: 'Rail lines',  checked: showRailLines,  setter: setShowRailLines },
             { label: 'Edit bar',    checked: showEditBar,    setter: setShowEditBar },
@@ -424,9 +468,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
             { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
-          actions={onResetBases ? [
-            { label: 'Reset to defaults', onClick: onResetBases, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } },
-          ] : undefined}
+          actions={[
+            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+            { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
+          ]}
         />
 
       </div>

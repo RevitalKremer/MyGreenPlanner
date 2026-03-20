@@ -7,6 +7,7 @@ import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import RailsTable from './RailsTable'
 import RailCrossSectionOverlay from './RailCrossSectionOverlay'
+import RulerTool from '../../shared/RulerTool'
 
 const RAIL_COLOR_FILL = '#642165'
 
@@ -31,6 +32,7 @@ export default function RailLayoutTab({
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
   const [showCrossSection,    setShowCrossSection]    = useState(true)
+  const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
 
   const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
@@ -390,6 +392,8 @@ export default function RailLayoutTab({
             </div>
           </div>
 
+          <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc / pixelToCmRatio} containerRef={containerRef} />
+
           <LayersPanel
             layers={[
               { label: 'Rails',            checked: showRails,           setter: setShowRails },
@@ -401,6 +405,7 @@ export default function RailLayoutTab({
             actions={[
               { label: 'Apply to all areas', onClick: onApplyRailsToAll, style: { color: '#555', background: '#f0f0f0', border: '1px solid #ddd' } },
               { label: 'Reset to defaults',  onClick: onResetRails,      style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } },
+              { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
             ]}
           />
         </div>

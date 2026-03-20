@@ -4,10 +4,12 @@ import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
+import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null }) {
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showPunches,     setShowPunches]     = useState(true)
+  const [rulerActive,     setRulerActive]     = useState(false)
 
   const {
     zoom, setZoom, panOffset, panActive,
@@ -557,11 +559,18 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
         </div>
       </div>
 
+      <RulerTool active={rulerActive} zoom={zoom} pxPerCm={2.2} containerRef={containerRef} />
+
       {/* ── Layers panel ── */}
-      <LayersPanel layers={[
-        { label: 'Annotations', checked: showAnnotations, setter: setShowAnnotations },
-        { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
-      ]} />
+      <LayersPanel
+        layers={[
+          { label: 'Annotations', checked: showAnnotations, setter: setShowAnnotations },
+          { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
+        ]}
+        actions={[
+          { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
+        ]}
+      />
 
       {/* ── Floating navigator ── */}
       <CanvasNavigator
