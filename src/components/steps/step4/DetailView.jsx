@@ -13,8 +13,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
   // Rail offset = first rail of first line (derived from lineRails)
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
-  const blockHeightCm  = settings.blockHeightCm ?? 30
-  const blockWidthCm   = settings.blockWidthCm  ?? 70
+  const blockHeightCm  = settings.blockHeightCm  ?? 30
+  const blockWidthCm   = settings.blockWidthCm   ?? 70
+  const blockPunchCm   = Math.min(settings.blockPunchCm ?? 9, blockWidthCm)
   const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
@@ -212,11 +213,29 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               </defs>
 
               {/* ── Blocks ── */}
-              <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-              {centerBlockXs.map((bx, i) => (
-                <rect key={i} x={bx} y={blockTopY} width={blockW} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-              ))}
-              <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              {(() => {
+                const PUNCH_CM = blockPunchCm
+                const punchOff = PUNCH_CM * SC
+                const baseCm = (svgX) => fmt((svgX - legX0) / SC)
+                // end blocks: punch 9 cm from outer (base-aligned) edge; center blocks: 9 cm from left edge
+                const lbPunchX = lb_x + punchOff           // 9 cm from base start
+                const rbPunchX = rb_x + rb_w - punchOff    // 9 cm from base end
+                return (<>
+                  <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+                  <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(lbPunchX)}</text>
+                  {centerBlockXs.map((bx, i) => {
+                    const px = bx + punchOff
+                    return (
+                      <g key={i}>
+                        <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+                        <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(px)}</text>
+                      </g>
+                    )
+                  })}
+                  <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+                  <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(rbPunchX)}</text>
+                </>)
+              })()}
 
               {/* ── Structure: outer-face-aligned rects + inward-shifted top beam ── */}
               {/* Base beam: outer top face at baseY, extends DOWN — includes overhang */}
