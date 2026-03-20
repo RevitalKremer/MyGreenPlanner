@@ -21,8 +21,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   // Rail offset = first rail of first line (derived from lineRails)
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
   const blockHeightCm  = settings.blockHeightCm  ?? 30
-  const blockWidthCm   = settings.blockWidthCm   ?? 50
-  const blockPunchCm   = Math.min(settings.blockPunchCm ?? 9, blockWidthCm)
+  const blockLengthCm   = settings.blockLengthCm   ?? 50
+  const blockPunchCm   = Math.min(settings.blockPunchCm ?? 9, blockLengthCm)
   const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
@@ -121,7 +121,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const panOffX = -Math.sin(angleRad) * PANEL_OFFSET_PX
   const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
 
-  const blockW  = blockWidthCm * SC
+  const blockW  = blockLengthCm * SC
   const diagTopX  = legX0 + diagTopPct  * legBW
   const diagBaseX = legX0 + diagBasePct * legBW
   const lb_x = legX0,              lb_w = blockW  // left block aligns with rear leg (beam end)
