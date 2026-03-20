@@ -111,6 +111,15 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     }))
   }, [])
 
+  const resetDetailSettings = useCallback((areaIdx) => {
+    const detailParams = PARAM_SCHEMA.filter(p => p.section === 'detail')
+    setAreaSettings(prev => {
+      const copy = { ...(prev[areaIdx] || {}) }
+      detailParams.forEach(p => delete copy[p.key])
+      return { ...prev, [areaIdx]: copy }
+    })
+  }, [])
+
   const resetLineRails = useCallback((areaIdx) => {
     const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area'   && p.type !== 'rail-spacing')
     const railGlobalParams = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'global')
@@ -532,7 +541,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
           {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} /></div>}
           {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
           {activeTab === 'rails'  && (
             <div style={{ height: '100%', overflow: 'hidden' }}>

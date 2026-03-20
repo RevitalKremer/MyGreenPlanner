@@ -6,7 +6,7 @@ import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null }) {
+export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null }) {
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showPunches,     setShowPunches]     = useState(true)
   const [rulerActive,     setRulerActive]     = useState(false)
@@ -21,7 +21,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   // Rail offset = first rail of first line (derived from lineRails)
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
   const blockHeightCm  = settings.blockHeightCm  ?? 30
-  const blockWidthCm   = settings.blockWidthCm   ?? 70
+  const blockWidthCm   = settings.blockWidthCm   ?? 50
   const blockPunchCm   = Math.min(settings.blockPunchCm ?? 9, blockWidthCm)
   const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
@@ -568,6 +568,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
           { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
         ]}
         actions={[
+          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
           { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
         ]}
       />
