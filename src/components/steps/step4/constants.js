@@ -21,6 +21,7 @@ export const PARAM_SCHEMA = [
   // ── detail · area ─────────────────────────────────────────────────────────
   { key: 'blockHeightCm',       label: 'Block Height (cm)',       section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 100,  default: 15,  highlightGroup: 'blocks'   },
   { key: 'blockWidthCm',        label: 'Block Width (cm)',        section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 1,   max: 200,  default: 50,  highlightGroup: 'blocks'   },
+  { key: 'blockPunchCm',        label: 'Block Punch Distance (cm)', section: 'detail', scope: 'area', type: 'number',   step: 0.5, min: 4,   max: 200,  default: 9,   highlightGroup: 'blocks'   },
   { key: 'diagTopPct',          label: 'Diagonal Top (%)',        section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 0,   max: 100,  default: 25,  highlightGroup: 'diagonal' },
   { key: 'diagBasePct',         label: 'Diagonal Base (%)',       section: 'detail', scope: 'area',   type: 'number',   step: 1,   min: 0,   max: 100,  default: 90,  highlightGroup: 'diagonal' },
 ]
