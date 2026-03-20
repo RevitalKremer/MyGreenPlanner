@@ -3,7 +3,7 @@ export const DEFAULT_RAIL_SPACING_HORIZONTAL_CM = 70
 export const MIN_RAIL_SPACING_VERTICAL_CM       = 130
 export const MIN_RAIL_SPACING_HORIZONTAL_CM     = 60
 export const DEFAULT_RAIL_OVERHANG_CM           = 4
-export const DEFAULT_STOCK_LENGTHS_MM           = [4800, 6000]
+export const DEFAULT_STOCK_LENGTHS_MM           = [5000, 6000]
 
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm, spacingCm) {

@@ -163,6 +163,7 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             trapezoidConfigs={s.trapezoidConfigs}
+            setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
             initialGlobalSettings={s.step4GlobalSettings}
             initialAreaSettings={s.step4AreaSettings}

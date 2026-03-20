@@ -82,3 +82,57 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
     lastGapMm,
   }
 }
+
+/**
+ * Consolidate bases across sub-areas within the same area.
+ * Within each area group, if a base from a shallower sub-area falls within a deeper
+ * sub-area's x-extent, the shallower base is removed.
+ *
+ * @param {Object} areaTrapsMap  { areaKey: [trapId, ...] }
+ * @param {Object} basePlansMap  { trapId: basePlan }
+ * @returns {Object} { trapId: filteredBases[] }
+ */
+export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
+  // Start with a copy of all bases
+  const result = {}
+  for (const [trapId, bp] of Object.entries(basePlansMap)) {
+    if (bp) result[trapId] = [...bp.bases]
+  }
+
+  for (const trapIds of Object.values(areaTrapsMap)) {
+    if (trapIds.length <= 1) continue
+
+    // Build per-trap metadata for comparison
+    const trapInfos = trapIds.map(trapId => {
+      const bp = basePlansMap[trapId]
+      if (!bp) return null
+      const { frame } = bp
+      const depth = frame.localBounds.maxY - frame.localBounds.minY
+      const width = frame.frameXMaxPx - frame.frameXMinPx
+      const { angleRad } = frame
+      const centerProj = frame.center.x * Math.cos(angleRad) + frame.center.y * Math.sin(angleRad)
+      const xProjMin = centerProj + frame.frameXMinPx
+      const xProjMax = centerProj + frame.frameXMaxPx
+      return { trapId, depth, width, angleRad, xProjMin, xProjMax }
+    }).filter(Boolean)
+
+    // For each trap, remove bases that fall strictly within a "winning" trap's x-extent
+    for (const infoA of trapInfos) {
+      result[infoA.trapId] = result[infoA.trapId].filter(base => {
+        const xProjBase = base.screenTop.x * Math.cos(infoA.angleRad) + base.screenTop.y * Math.sin(infoA.angleRad)
+        for (const infoB of trapInfos) {
+          if (infoB.trapId === infoA.trapId) continue
+          if (xProjBase > infoB.xProjMin && xProjBase < infoB.xProjMax) {
+            // B wins if deeper, or same depth but wider x-extent
+            if (infoB.depth > infoA.depth || (infoB.depth === infoA.depth && infoB.width >= infoA.width)) {
+              return false
+            }
+          }
+        }
+        return true
+      })
+    }
+  }
+
+  return result
+}
