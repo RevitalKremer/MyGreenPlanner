@@ -206,7 +206,7 @@ export default function Step4Sidebar({
               e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
-            placeholder="e.g. 4800, 6000"
+            placeholder="e.g. 5000, 6000"
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
         </div>
       )

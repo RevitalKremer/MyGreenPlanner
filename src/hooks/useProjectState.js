@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
@@ -49,6 +49,10 @@ export function useProjectState() {
   const [step4GlobalSettings, setStep4GlobalSettings] = useState(null)
   const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
 
+  // Fingerprint of the areas config used to last generate panels.
+  // Only regenerate in plan mode when this changes (prevents wiping subgroups on back→forward).
+  const panelGenFingerprint = useRef(null)
+
   const projectMode = currentProject?.mode || 'scratch'
 
   const getComputedBackHeight = () =>
@@ -91,6 +95,7 @@ export function useProjectState() {
     setTrapezoidConfigs({})
     setStep4GlobalSettings(null)
     setStep4AreaSettings(null)
+    panelGenFingerprint.current = null
   }
 
   const handleStartOver = () => {
@@ -151,6 +156,14 @@ export function useProjectState() {
     if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
     else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
     if (data.currentStep) setCurrentStep(data.currentStep)
+    // Treat imported panels as already generated so back→forward doesn't wipe them.
+    if (data.panels && data.areas) {
+      const importedAreas = data.areas ?? data.rowGroups ?? []
+      panelGenFingerprint.current = JSON.stringify(importedAreas.map(g => ({
+        angle: g.angle, frontHeight: g.frontHeight, linesPerRow: g.linesPerRow,
+        lineOrientations: g.lineOrientations, baseline: g.baseline,
+      })))
+    }
     setAppScreen('wizard')
   }
 
@@ -397,6 +410,15 @@ export function useProjectState() {
       const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
 
       if (projectMode === 'plan') {
+        // Compute a fingerprint of the generation inputs. Only regenerate if something changed
+        // since the last generation — this prevents wiping user-created subgroups (B1/B2) when
+        // the user navigates back to Step 2 and forward again without changing anything.
+        const currentFingerprint = JSON.stringify(areas.map(g => ({
+          angle: g.angle, frontHeight: g.frontHeight, linesPerRow: g.linesPerRow,
+          lineOrientations: g.lineOrientations, baseline: g.baseline,
+        })))
+        const needsRegen = panelGenFingerprint.current !== currentFingerprint
+
         let nextId = 1
         const allPanels = []
         const groupTrapConfigs = {}
@@ -422,7 +444,10 @@ export function useProjectState() {
           pixelToCmRatio,
           panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
         })
-        setPanels(allPanels)
+        if (needsRegen) {
+          setPanels(allPanels)
+          panelGenFingerprint.current = currentFingerprint
+        }
         setTrapezoidConfigs(prev => {
           const next = {}
           Object.keys(groupTrapConfigs).forEach(trapId => {

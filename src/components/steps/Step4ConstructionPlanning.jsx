@@ -112,14 +112,18 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
   }, [])
 
   const resetLineRails = useCallback((areaIdx) => {
-    const railAreaParams = PARAM_SCHEMA.filter(
-      p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing'
-    )
+    const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area'   && p.type !== 'rail-spacing')
+    const railGlobalParams = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'global')
     setAreaSettings(prev => {
       const copy = { ...(prev[areaIdx] || {}) }
       delete copy.lineRails
       railAreaParams.forEach(p => { copy[p.key] = p.default })
       return { ...prev, [areaIdx]: copy }
+    })
+    setGlobalSettings(prev => {
+      const copy = { ...prev }
+      railGlobalParams.forEach(p => { copy[p.key] = p.default })
+      return copy
     })
   }, [])
 

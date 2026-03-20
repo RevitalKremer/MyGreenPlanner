@@ -236,6 +236,7 @@ export default function Step3PanelPlacement({
     setTrapezoidConfigs(prev => ({ ...prev, [newTrapId]: { ...sourceConfig } }))
     const selIds = new Set(selectedPanels)
     setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: newTrapId } : p))
+    setTrapIdOverride(newTrapId)
   }
 
   const sharedTrapIds = useMemo(() => {
