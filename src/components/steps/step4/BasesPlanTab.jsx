@@ -202,10 +202,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   // Block positions along the base line (plan view)
                   const blockLengthCm   = trapS.blockLengthCm ?? 50
-                  const blockDepthCm   = trapS.blockDepthCm ?? 50
+                  const blockWidthCm   = trapS.blockWidthCm ?? 24
                   const blockLengthLocal = blockLengthCm / pixelToCmRatio        // along-beam dimension (local frame)
                   const blockLengthSvg  = blockLengthLocal * sc                  // SVG pixels along beam
-                  const blockDepthSvg  = (blockDepthCm / pixelToCmRatio) * sc // SVG pixels perpendicular to beam
+                  const blockWidthSvg  = (blockWidthCm / pixelToCmRatio) * sc // SVG pixels perpendicular to beam
                   const numBlocks = Math.max(2, (lines || []).reduce((sum, ln) => {
                     return sum + (ln.orientation === 'LANDSCAPE' ? 1 : 2)
                   }, 0))
@@ -232,8 +232,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                           const [bkx, bky] = toSvg(sp.x, sp.y)
                           return (
                             <rect key={`blk-${bi}-${bki}`}
-                              x={bkx - blockLengthSvg / 2} y={bky - blockDepthSvg / 2}
-                              width={blockLengthSvg} height={blockDepthSvg}
+                              x={bkx - blockLengthSvg / 2} y={bky - blockWidthSvg / 2}
+                              width={blockLengthSvg} height={blockWidthSvg}
                               fill="#c0c0c0" stroke="#777" strokeWidth={0.5 / zoom}
                               transform={`rotate(${lineAngle} ${bkx} ${bky})`}
                             />
