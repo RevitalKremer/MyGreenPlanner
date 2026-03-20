@@ -8,7 +8,7 @@ export default function ToolPanel({
   selectedPanels, selectedAreaLabel, selectedRowAngle,
   nudgeRow, rotateSelectedRow, addPanelToRow, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
-  allSelectedSameArea, selectedAreaTrapIds, selectedTrapezoidId,
+  selectedAreaTrapIds, selectedTrapezoidId,
   reassignToTrapezoid, addTrapezoid,
   selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   projectMode, areas, getAreaKey,
@@ -139,34 +139,6 @@ export default function ToolPanel({
               <div style={{ fontSize: '0.68rem', color: '#bbb', textAlign: 'center', marginTop: '0.4rem' }}>
                 or drag on canvas
               </div>
-              {/* Trapezoid assignment */}
-              {allSelectedSameArea && selectedAreaTrapIds.length > 0 && (
-                <div style={{ marginTop: '0.65rem', borderTop: '1px solid #f0f0f0', paddingTop: '0.55rem' }}>
-                  <div style={{ fontSize: '0.65rem', color: '#aaa', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-                    Trapezoid
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#5a6600', background: '#e8f2b0', padding: '2px 8px', borderRadius: '10px' }}>{selectedTrapezoidId || '—'}</span>
-                    {selectedAreaTrapIds.length > 1 && (
-                      <select
-                        value={selectedTrapezoidId || ''}
-                        onChange={e => reassignToTrapezoid(e.target.value)}
-                        style={{ flex: 1, padding: '0.2rem 0.3rem', fontSize: '0.72rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
-                      >
-                        {selectedAreaTrapIds.map(tid => (
-                          <option key={tid} value={tid}>{tid}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <button
-                    onClick={addTrapezoid}
-                    style={{ width: '100%', padding: '0.35rem', background: '#f0f4e8', color: '#5a6600', border: '1px solid #C4D600', borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem' }}
-                  >
-                    ＋ New Trapezoid for Selection
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             <div style={{ fontSize: '0.8rem', color: '#bbb', textAlign: 'center', paddingTop: '0.5rem', lineHeight: 1.6 }}>
@@ -283,6 +255,9 @@ export default function ToolPanel({
           getAreaKey={getAreaKey}
           updateTrapezoidConfig={updateTrapezoidConfig}
           resetTrapezoidConfig={resetTrapezoidConfig}
+          selectedAreaTrapIds={selectedAreaTrapIds}
+          reassignToTrapezoid={reassignToTrapezoid}
+          addTrapezoid={addTrapezoid}
         />
       )}
 

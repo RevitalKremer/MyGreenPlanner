@@ -173,7 +173,7 @@ export default function RowSidebar({
                               <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? '#5a6600' : '#888', background: isTrapSelected ? '#e8f2b0' : '#f0f0f0', padding: '1px 6px', borderRadius: '10px', letterSpacing: '0.02em' }}>{trapId}</span>
                               <span style={{ fontSize: '0.72rem', color: '#aaa', marginLeft: 'auto' }}>{trapPanels.length} panels</span>
                               {!!trapezoidConfigs?.[trapId] && (
-                                <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#FF9800', flexShrink: 0 }} />
+                                <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#C4D600', flexShrink: 0 }} />
                               )}
                             </div>
                           )

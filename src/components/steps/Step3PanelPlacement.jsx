@@ -41,13 +41,13 @@ export default function Step3PanelPlacement({
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [trapIdOverride, setTrapIdOverride] = useState(null)
-  const [showHGridlines, setShowHGridlines] = useState(true)
-  const [showVGridlines, setShowVGridlines] = useState(true)
+  const [showHGridlines, setShowHGridlines] = useState(false)
+  const [showVGridlines, setShowVGridlines] = useState(false)
   const [snapToGridlines, setSnapToGridlines] = useState(false)
 
-  // Clear trapezoid override when panels are fully deselected
+  // Clear trapezoid override whenever selection changes
   useEffect(() => {
-    if (selectedPanels.length === 0) setTrapIdOverride(null)
+    setTrapIdOverride(null)
   }, [selectedPanels])
 
   // ── Derived row data ────────────────────────────────────────────────────────
@@ -235,7 +235,11 @@ export default function Step3PanelPlacement({
   const getAreaKey = (panel) =>
     (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
-  const selectedTrapezoidId = trapIdOverride ?? (selectedRow ? (selectedRow[0].trapezoidId || null) : null)
+  const selectedTrapezoidId = trapIdOverride ?? (
+    selectedPanels.length > 0
+      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || null)
+      : null
+  )
 
   const areaLabel = (areaKey, i) => {
     const g = areas[areaKey]?.label
@@ -355,6 +359,7 @@ export default function Step3PanelPlacement({
   const reassignToTrapezoid = (trapId) => {
     const selIds = new Set(selectedPanels)
     setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: trapId } : p))
+    setTrapIdOverride(trapId)
   }
 
   const updateTrapezoidConfig = (field, rawValue) => {

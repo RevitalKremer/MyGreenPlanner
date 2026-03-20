@@ -345,8 +345,9 @@ export default function PanelCanvas({
                 const r  = (panel.rotation || 0) * Math.PI / 180
                 const cosR = Math.cos(r), sinR = Math.sin(r)
                 const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
-                const gw  = Math.max(1, imageRef.naturalWidth * 0.001)
-                const gd  = `${imageRef.naturalWidth * 0.006} ${imageRef.naturalWidth * 0.003}`
+                const gapPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
+                const gw  = Math.max(1, gapPx)
+                const gd  = `${gapPx * 2} ${gapPx}`
                 const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
                 const hw = panel.width / 2, hh = panel.height / 2
                 // horizontal = top/bottom edges (run along panel width direction)
@@ -429,7 +430,7 @@ export default function PanelCanvas({
                       </text>
                       {hasOverride && (
                         <circle cx={cx + bw / 2 - bh * 0.18} cy={cy - bh / 2 + bh * 0.18}
-                          r={bh * 0.2} fill="#FF9800" style={{ pointerEvents: 'none' }} />
+                          r={bh * 0.2} fill="#C4D600" style={{ pointerEvents: 'none' }} />
                       )}
                     </>
                   )}
