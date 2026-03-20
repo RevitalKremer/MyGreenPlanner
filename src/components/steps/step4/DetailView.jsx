@@ -119,6 +119,25 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const lb_x = legX0,              lb_w = blockW  // left block aligns with rear leg (beam end)
   const rb_x = legX1 - blockW,     rb_w = blockW  // right block aligns with front leg (beam end)
 
+  // Center blocks: 2 per vertical line, 1 per horizontal, min 2 total → numCenterBlocks = numBlocks - 2
+  // Prefer rails with larger globalOffsetCm (closer to high/rear leg)
+  const numBlocks = Math.max(2, segments.reduce((sum, seg) => {
+    if (seg.isEmpty) return sum
+    return sum + (seg.isHorizontal ? 1 : 2)
+  }, 0))
+  const numCenterBlocks = numBlocks - 2
+  // Inner rails = exclude outermost first and last; prefer rails with larger globalOffsetCm (higher elevation = closer to high leg)
+  const centerBlockXs = (() => {
+    if (numCenterBlocks === 0) return []
+    const innerRails = [...railItems]
+      .sort((a, b) => a.globalOffsetCm - b.globalOffsetCm)
+      .slice(1, -1)                        // exclude outermost first and last
+    return innerRails
+      .slice(-numCenterBlocks)             // take last N = highest globalOffsetCm = closest to high leg
+      .sort((a, b) => a.cx - b.cx)        // re-sort left→right for rendering
+      .map(r => legX0 + (r.globalOffsetCm - RAIL_CM + baseOverhangCm) * Math.cos(angleRad) * SC - blockW / 2)
+  })()
+
   const DC = '#222'
   const TC = '#aaa'
 
@@ -194,6 +213,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
               {/* ── Blocks ── */}
               <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              {centerBlockXs.map((bx, i) => (
+                <rect key={i} x={bx} y={blockTopY} width={blockW} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
+              ))}
               <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
 
               {/* ── Structure: outer-face-aligned rects + inward-shifted top beam ── */}
@@ -338,6 +360,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
                   <rect x={lb_x - 5} y={blockTopY - 5} width={lb_w + 10} height={blockH + 10}
                     fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                  {centerBlockXs.map((bx, i) => (
+                    <rect key={i} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
+                      fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                  ))}
                   <rect x={rb_x - 5} y={blockTopY - 5} width={rb_w + 10} height={blockH + 10}
                     fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
                 </g>

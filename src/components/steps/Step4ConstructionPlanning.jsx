@@ -323,6 +323,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       depthCm: isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
       gapBeforeCm: i === 0 ? 0 : PANEL_GAP_CM,
       isEmpty: isEmptyOrientation(o),
+      isHorizontal: isHorizontalOrientation(o),
     }))
   }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings, areas, rowKeys])
 
