@@ -1,9 +1,14 @@
+import { useState } from 'react'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { PARAM_GROUP } from './constants'
+import LayersPanel from './LayersPanel'
 
 export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null }) {
+  const [showAnnotations, setShowAnnotations] = useState(true)
+  const [showPunches,     setShowPunches]     = useState(true)
+
   const {
     zoom, setZoom, panOffset, panActive,
     containerRef, contentRef,
@@ -222,18 +227,18 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const rbPunchX = rb_x + rb_w - punchOff    // 9 cm from base end
                 return (<>
                   <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                  <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(lbPunchX)}</text>
+                  {showPunches && <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(lbPunchX)}</text>}
                   {centerBlockXs.map((bx, i) => {
                     const px = bx + punchOff
                     return (
                       <g key={i}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                        <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(px)}</text>
+                        {showPunches && <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(px)}</text>}
                       </g>
                     )
                   })}
                   <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                  <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(rbPunchX)}</text>
+                  {showPunches && <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(rbPunchX)}</text>}
                 </>)
               })()}
 
@@ -254,8 +259,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
                   style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
               )}
-              <Dim ax1={diagTopX} ay1={beamY(diagTopX)} ax2={diagBaseX} ay2={baseY}
-                label={fmt(diagLenCm)} off={-16} />
+              {showAnnotations && <Dim ax1={diagTopX} ay1={beamY(diagTopX)} ax2={diagBaseX} ay2={baseY}
+                label={fmt(diagLenCm)} off={-16} />}
               {/* Rail-clamp offset highlight */}
               {hl('rail-clamp') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
@@ -329,11 +334,11 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                           style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                       )}
                     </g>
-                    <text x={lx} y={ly}
+                    {showPunches && <text x={lx} y={ly}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="7.5" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
-                    >{fmt(globalOffsetCm - RAIL_CM + baseOverhangCm)}</text>
+                    >{fmt(globalOffsetCm - RAIL_CM + baseOverhangCm)}</text>}
                   </g>
                 )
               })}
@@ -347,20 +352,20 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={ci}>
                     <line x1={sx} y1={topY} x2={sx} y2={baseY}
                       stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
-                    <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY}
-                      label={fmt(lenCm)} off={14} />
+                    {showAnnotations && <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY}
+                      label={fmt(lenCm)} off={14} />}
                   </g>
                 )
               })}
 
               {/* ── Punches on base beam ── */}
-              {[legX0 + 2 * SC, diagBaseX, legX1 - 2 * SC].map((px, i) => (
+              {showPunches && [legX0 + 2 * SC, diagBaseX, legX1 - 2 * SC].map((px, i) => (
                 <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                   fill="white" stroke="#555" strokeWidth="1" />
               ))}
 
               {/* ── Punches on top (slope) beam ── */}
-              {(() => {
+              {showPunches && (() => {
                 const dx = topExtX1 - topExtX0, dy = topExtY1 - topExtY0
                 const beamLenPx = Math.sqrt(dx * dx + dy * dy)
                 const ux = dx / beamLenPx, uy = dy / beamLenPx
@@ -396,52 +401,54 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               <text x={legX1 - 32} y={topExtY1 + 22} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
 
               {/* ── Dimension annotations ── */}
-              <Dim ax1={topExtX0} ay1={topExtY0} ax2={topExtX1} ay2={topExtY1}
-                label={fmt(topBeamLength)} off={-(PANEL_OFFSET_PX + 14)} />
+              {showAnnotations && <>
+                <Dim ax1={topExtX0} ay1={topExtY0} ax2={topExtX1} ay2={topExtY1}
+                  label={fmt(topBeamLength)} off={-(PANEL_OFFSET_PX + 14)} />
 
-              {(() => {
-                const splitOff = -(PANEL_OFFSET_PX + 30)
-                const toCm = (dx) => fmt(dx / SC / Math.cos(angleRad))
-                return (<>
-                  <Dim ax1={panelX1} ay1={panelY1} ax2={rail1X} ay2={beamY(rail1X)}
-                    label={toCm(rail1X - panelX1)} off={splitOff} />
-                  <Dim ax1={rail1X} ay1={beamY(rail1X)} ax2={rail2X} ay2={beamY(rail2X)}
-                    label={toCm(rail2X - rail1X)} off={splitOff} />
-                  <Dim ax1={rail2X} ay1={beamY(rail2X)} ax2={panelX2} ay2={panelY2}
-                    label={toCm(panelX2 - rail2X)} off={splitOff} />
-                </>)
-              })()}
+                {(() => {
+                  const splitOff = -(PANEL_OFFSET_PX + 30)
+                  const toCm = (dx) => fmt(dx / SC / Math.cos(angleRad))
+                  return (<>
+                    <Dim ax1={panelX1} ay1={panelY1} ax2={rail1X} ay2={beamY(rail1X)}
+                      label={toCm(rail1X - panelX1)} off={splitOff} />
+                    <Dim ax1={rail1X} ay1={beamY(rail1X)} ax2={rail2X} ay2={beamY(rail2X)}
+                      label={toCm(rail2X - rail1X)} off={splitOff} />
+                    <Dim ax1={rail2X} ay1={beamY(rail2X)} ax2={panelX2} ay2={panelY2}
+                      label={toCm(panelX2 - rail2X)} off={splitOff} />
+                  </>)
+                })()}
 
-              {(hR - OHy) > 0 && <Dim ax1={legX0} ay1={topExtY0} ax2={legX0} ay2={blockTopY}
-                label={fmt((hR - OHy) / SC)} off={55} />}
+                {(hR - OHy) > 0 && <Dim ax1={legX0} ay1={topExtY0} ax2={legX0} ay2={blockTopY}
+                  label={fmt((hR - OHy) / SC)} off={55} />}
 
-              <Dim ax1={panelX1} ay1={blockBotY}
-                   ax2={panelX1} ay2={panelY1 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
-                label={fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))}
-                off={-22} />
+                <Dim ax1={panelX1} ay1={blockBotY}
+                     ax2={panelX1} ay2={panelY1 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
+                  label={fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))}
+                  off={-22} />
 
-              <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
-                label={fmt(BLOCK_H_CM)} off={-14} />
+                <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
+                  label={fmt(BLOCK_H_CM)} off={-14} />
 
-              <Dim ax1={legX1} ay1={blockTopY} ax2={legX1} ay2={topExtY1 + Math.cos(angleRad) * BEAM_THICK_PX / 2}
-                label={fmt((hF + OHy) / SC)} off={38} />
+                <Dim ax1={legX1} ay1={blockTopY} ax2={legX1} ay2={topExtY1 + Math.cos(angleRad) * BEAM_THICK_PX / 2}
+                  label={fmt((hF + OHy) / SC)} off={38} />
 
-              {(() => {
-                const panelFrontHeight = BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
-                const panelBackHeight  = panelFrontHeight + totalPanelDepthCm * Math.sin(angleRad)
-                return (
-                  <Dim ax1={panelX2} ay1={blockBotY}
-                       ax2={panelX2} ay2={panelY2 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
-                    label={fmt(panelBackHeight)} off={28} />
-                )
-              })()}
+                {(() => {
+                  const panelFrontHeight = BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
+                  const panelBackHeight  = panelFrontHeight + totalPanelDepthCm * Math.sin(angleRad)
+                  return (
+                    <Dim ax1={panelX2} ay1={blockBotY}
+                         ax2={panelX2} ay2={panelY2 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
+                      label={fmt(panelBackHeight)} off={28} />
+                  )
+                })()}
 
-              {/* ── Base dimension (full beam including overhang) ── */}
-              <Dim ax1={x0 - OHx} ay1={blockBotY + 18} ax2={x1 + OHx} ay2={blockBotY + 18}
-                label={fmt(baseBeamLength)} off={14} />
+                {/* ── Base dimension (full beam including overhang) ── */}
+                <Dim ax1={x0 - OHx} ay1={blockBotY + 18} ax2={x1 + OHx} ay2={blockBotY + 18}
+                  label={fmt(baseBeamLength)} off={14} />
+              </>}
 
               {/* ── Base beam punch sketch ── */}
-              {(() => {
+              {showPunches && (() => {
                 const ry       = blockBotY + 130
                 const barH     = 12
                 const beamL    = x0 - OHx
@@ -483,7 +490,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })()}
 
               {/* ── Slope beam punch sketch ── */}
-              {(() => {
+              {showPunches && (() => {
                 const ry       = blockBotY + 52
                 const barH     = 12
                 const beamL    = x0 - OHx
@@ -549,6 +556,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
           </div>
         </div>
       </div>
+
+      {/* ── Layers panel ── */}
+      <LayersPanel layers={[
+        { label: 'Annotations', checked: showAnnotations, setter: setShowAnnotations },
+        { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
+      ]} />
 
       {/* ── Floating navigator ── */}
       <CanvasNavigator
