@@ -26,14 +26,19 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
   if (!rc) return <div style={{ padding: '2rem', color: '#aaa' }}>Select a row to see its trapezoid detail</div>
 
-  const { heightRear, heightFront, baseLength, angle, topBeamLength } = rc
+  const baseOverhangCm = settings.baseOverhangCm ?? 0
+  const { heightRear, heightFront, baseLength, baseBeamLength: rcBaseBeamLength, angle, topBeamLength } = rc
+  const baseBeamLength = rcBaseBeamLength ?? (baseLength + 2 * baseOverhangCm)
 
   const SC         = 2.2
   const RAIL_CM    = railOffsetCm
   const BLOCK_H_CM = blockHeightCm
 
   const angleRad = angle * Math.PI / 180
-  const bW      = baseLength   * SC
+  const bW      = baseLength   * SC   // leg-to-leg horizontal span
+  // Overhang is along the slope; decompose into horizontal (OHx) and vertical (OHy) SVG components
+  const OHx     = baseOverhangCm * Math.cos(angleRad) * SC
+  const OHy     = baseOverhangCm * Math.sin(angleRad) * SC
   const hR      = heightRear   * SC
   const hF      = heightFront  * SC
   const railOffH = RAIL_CM * Math.cos(angleRad) * SC
@@ -45,9 +50,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
     : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + seg.gapBeforeCm + seg.depthCm, 0)
 
-  const padL = Math.max(120, railOffH + 40)
+  const padL = Math.max(120, railOffH + OHx + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
-  const padR = Math.max(100, panelExtCm * SC + 70)
+  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx) + 70)
   const padT = 55
   const padB = blockH + 290
 
@@ -61,6 +66,15 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const x1 = padL + bW
 
   const slope   = (topY1 - topY0) / bW
+  // Slope beam extended endpoints: overhang is along the slope → decompose into OHx/OHy
+  // Extending backward (rear side): x decreases, y increases (lower in SVG)
+  // Extending forward (front side): x increases, y decreases (higher in SVG)
+  const topExtX0 = x0 - OHx, topExtY0 = topY0 + OHy
+  const topExtX1 = x1 + OHx, topExtY1 = topY1 - OHy
+  // Leg positions at trapezoid ends (beam ends, including overhang)
+  const legX0 = topExtX0
+  const legX1 = topExtX1
+  const legBW = bW + 2 * OHx
   const panelX1 = x0 - railOffH
   const panelY1 = topY0 + railOffV
   const atSlope = (dCm) => ({
@@ -81,7 +95,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       dCm += seg.gapBeforeCm
       const segRails = lineRails?.[si] ?? []
       for (const offsetCm of segRails) {
-        items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm })
+        items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm, globalOffsetCm: dCm + offsetCm })
       }
       dCm += seg.depthCm
     }
@@ -100,10 +114,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
 
   const blockW  = blockWidthCm * SC
-  const diagTopX  = x0 + diagTopPct  * bW
-  const diagBaseX = x0 + diagBasePct * bW
-  const lb_x = x0,          lb_w = blockW  // left edge of block aligns with left post
-  const rb_x = x1 - blockW, rb_w = blockW  // right edge of block aligns with right post
+  const diagTopX  = legX0 + diagTopPct  * legBW
+  const diagBaseX = legX0 + diagBasePct * legBW
+  const lb_x = legX0,              lb_w = blockW  // left block aligns with rear leg (beam end)
+  const rb_x = legX1 - blockW,     rb_w = blockW  // right block aligns with front leg (beam end)
 
   const DC = '#222'
   const TC = '#aaa'
@@ -183,14 +197,14 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
 
               {/* ── Structure: outer-face-aligned rects + inward-shifted top beam ── */}
-              {/* Base beam: outer top face at baseY, extends DOWN */}
-              <rect x={x0} y={baseY} width={bW} height={BEAM_THICK_PX} fill="#404040" />
-              {/* Rear leg: outer left face at x0, extends RIGHT (inward) */}
-              {hR > 0 && <rect x={x0} y={topY0} width={BEAM_THICK_PX} height={hR} fill="#404040" />}
-              {/* Front leg: outer right face at x1, extends LEFT (inward) */}
-              <rect x={x1 - BEAM_THICK_PX} y={topY1} width={BEAM_THICK_PX} height={hF} fill="#404040" />
-              {/* Top beam: centered on reference line (outer top face = panel surface) */}
-              <line x1={x0} y1={topY0} x2={x1} y2={topY1}
+              {/* Base beam: outer top face at baseY, extends DOWN — includes overhang */}
+              <rect x={x0 - OHx} y={baseY} width={bW + 2*OHx} height={BEAM_THICK_PX} fill="#404040" />
+              {/* Rear leg: aligned with trapezoid rear end (beam end), extends RIGHT (inward) */}
+              {(hR - OHy) > 0 && <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill="#404040" />}
+              {/* Front leg: aligned with trapezoid front end (beam end), extends LEFT (inward) */}
+              <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill="#404040" />
+              {/* Top beam: extended by overhang on each side */}
+              <line x1={topExtX0} y1={topExtY0} x2={topExtX1} y2={topExtY1}
                 stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
                 stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
@@ -247,7 +261,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })()}
 
               {/* ── Cross-rails profile (size from crossRailEdgeDistMm) ── */}
-              {railItems.map(({ cx, segIdx, offsetCm }, ci) => {
+              {railItems.map(({ cx, segIdx, globalOffsetCm }, ci) => {
                 const isEmptySeg = segments[segIdx]?.isEmpty
                 const railFill   = '#7c3aed'
                 const railStroke = isEmptySeg ? '#ddd' : '#642165'
@@ -278,7 +292,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="7.5" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
-                    >{fmt(offsetCm)}</text>
+                    >{fmt(globalOffsetCm - RAIL_CM + baseOverhangCm)}</text>
                   </g>
                 )
               })}
@@ -299,20 +313,20 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })}
 
               {/* ── Punches on base beam ── */}
-              {[x0 + 2 * SC, x0 + diagBasePct * bW, x1 - 2 * SC].map((px, i) => (
+              {[legX0 + 2 * SC, diagBaseX, legX1 - 2 * SC].map((px, i) => (
                 <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                   fill="white" stroke="#555" strokeWidth="1" />
               ))}
 
               {/* ── Punches on top (slope) beam ── */}
               {(() => {
-                const dx = x1 - x0, dy = topY1 - topY0
+                const dx = topExtX1 - topExtX0, dy = topExtY1 - topExtY0
                 const beamLenPx = Math.sqrt(dx * dx + dy * dy)
                 const ux = dx / beamLenPx, uy = dy / beamLenPx
                 const pts = [
-                  { x: x0 + 2 * SC * ux, y: topY0 + 2 * SC * uy },
+                  { x: topExtX0 + 2 * SC * ux, y: topExtY0 + 2 * SC * uy },
                   { x: diagTopX, y: beamY(diagTopX) },
-                  { x: x1 - 2 * SC * ux, y: topY1 - 2 * SC * uy },
+                  { x: topExtX1 - 2 * SC * ux, y: topExtY1 - 2 * SC * uy },
                 ]
                 return pts.map((p, i) => (
                   <circle key={i} cx={p.x} cy={p.y} r={2}
@@ -334,10 +348,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
               {/* ── Angle label inside trapezoid ── */}
-              <text x={x1 - 32} y={topY1 + 22} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
+              <text x={legX1 - 32} y={topExtY1 + 22} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
 
               {/* ── Dimension annotations ── */}
-              <Dim ax1={x0} ay1={topY0} ax2={x1} ay2={topY1}
+              <Dim ax1={topExtX0} ay1={topExtY0} ax2={topExtX1} ay2={topExtY1}
                 label={fmt(topBeamLength)} off={-(PANEL_OFFSET_PX + 14)} />
 
               {(() => {
@@ -353,8 +367,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 </>)
               })()}
 
-              {hR > 0 && <Dim ax1={x0} ay1={topY0} ax2={x0} ay2={blockTopY}
-                label={fmt(heightRear)} off={55} />}
+              {(hR - OHy) > 0 && <Dim ax1={legX0} ay1={topExtY0} ax2={legX0} ay2={blockTopY}
+                label={fmt((hR - OHy) / SC)} off={55} />}
 
               <Dim ax1={panelX1} ay1={blockBotY}
                    ax2={panelX1} ay2={panelY1 + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
@@ -364,8 +378,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
                 label={fmt(BLOCK_H_CM)} off={-14} />
 
-              <Dim ax1={x1} ay1={blockTopY} ax2={x1} ay2={topY1 + Math.cos(angleRad) * BEAM_THICK_PX / 2}
-                label={fmt(heightFront)} off={38} />
+              <Dim ax1={legX1} ay1={blockTopY} ax2={legX1} ay2={topExtY1 + Math.cos(angleRad) * BEAM_THICK_PX / 2}
+                label={fmt((hF + OHy) / SC)} off={38} />
 
               {(() => {
                 const panelFrontHeight = BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad)
@@ -377,25 +391,25 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 )
               })()}
 
-              {/* ── Base dimension ── */}
-              <Dim ax1={x0} ay1={blockBotY + 18} ax2={x1} ay2={blockBotY + 18}
-                label={fmt(baseLength)} off={14} />
+              {/* ── Base dimension (full beam including overhang) ── */}
+              <Dim ax1={x0 - OHx} ay1={blockBotY + 18} ax2={x1 + OHx} ay2={blockBotY + 18}
+                label={fmt(baseBeamLength)} off={14} />
 
               {/* ── Base beam punch sketch ── */}
               {(() => {
                 const ry       = blockBotY + 130
                 const barH     = 12
-                const beamL    = x0
-                const beamR    = x1
+                const beamL    = x0 - OHx
+                const beamR    = x1 + OHx
                 const barW     = beamR - beamL
                 const barCy    = ry + barH / 2
-                const punches  = [x0 + 2 * SC, x0 + diagBasePct * bW, x1 - 2 * SC]
+                const punches  = [beamL + 2 * SC, x0 + diagBasePct * bW, beamR - 2 * SC]
                 const punchLabelsCm = [
                   2,
-                  fmt(diagBasePct * baseLength),
-                  fmt(baseLength - 2),
+                  fmt(baseOverhangCm * Math.cos(angleRad) + diagBasePct * baseLength),
+                  fmt(baseBeamLength - 2),
                 ]
-                const totalCm = fmt(baseLength)
+                const totalCm = fmt(baseBeamLength)
                 return (
                   <g>
                     {/* label */}
@@ -427,8 +441,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {(() => {
                 const ry       = blockBotY + 52
                 const barH     = 12
-                const beamL    = x0
-                const beamR    = x1
+                const beamL    = x0 - OHx
+                const beamR    = x1 + OHx
                 const barW     = beamR - beamL
                 const barCy    = ry + barH / 2
                 const punches  = [
@@ -473,7 +487,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 </thead>
                 <tbody>
                   {[
-                    ['Base beam',  rc.baseLength],
+                    ['Base beam',  baseBeamLength],
                     ['Top beam',   rc.topBeamLength],
                     ['Rear leg',   rc.heightRear],
                     ['Front leg',  rc.heightFront],
