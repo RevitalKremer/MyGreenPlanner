@@ -277,7 +277,17 @@ export default function Step3PanelPlacement({
 
     areaKeyToRows.forEach(rowGroups => {
       if (rowGroups.length <= 1) return
+      const seenTrapIds = new Set(rowGroups[0].map(p => p.trapezoidId).filter(Boolean))
       for (let gi = 1; gi < rowGroups.length; gi++) {
+        const thisTrapIds = rowGroups[gi].map(p => p.trapezoidId).filter(Boolean)
+        // If all panels in this physical subgroup have trapezoidIds not seen in any
+        // prior subgroup, they are already distinguished — don't create a new area key.
+        const hasOverlap = thisTrapIds.some(t => seenTrapIds.has(t))
+        if (!hasOverlap && thisTrapIds.length > 0) {
+          thisTrapIds.forEach(t => seenTrapIds.add(t))
+          continue
+        }
+        thisTrapIds.forEach(t => seenTrapIds.add(t))
         const newKey = nextAreaKey++
         rowGroups[gi].forEach(panel => panelUpdates.set(panel.id, newKey))
       }
