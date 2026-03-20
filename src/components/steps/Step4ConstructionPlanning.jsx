@@ -14,13 +14,37 @@ import RowsView from './step4/RowsView'
 import DetailView from './step4/DetailView'
 import BOMView from './step4/BOMView'
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Compute horizontal base-beam span from actual first-to-last rail positions across all
+// panel lines.  lineRails: { [li]: [offsetCm, ...] }, offsets measured from each line's
+// front edge.  getLineDepth(li) → slope depth (cm) for line li.
+function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLineDepth) {
+  let dCm = 0
+  let firstRailGlobal = null
+  let lastRailGlobal  = null
+  for (let li = 0; li < lineOrientations.length; li++) {
+    if (li > 0) dCm += PANEL_GAP_CM
+    for (const r of (lineRails[li] ?? [])) {
+      const g = dCm + r
+      if (firstRailGlobal === null) firstRailGlobal = g
+      lastRailGlobal = g
+    }
+    dCm += getLineDepth(li)
+  }
+  if (firstRailGlobal == null || lastRailGlobal == null || lastRailGlobal <= firstRailGlobal) return null
+  return Math.cos(angleRad) * (lastRailGlobal - firstRailGlobal)
+}
+
 // ─── Main Step4 component ────────────────────────────────────────────────────
 
 export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('rails')
-  const [globalSettings, setGlobalSettings] = useState(() => initialGlobalSettings ?? SETTINGS_DEFAULTS)
+  const [globalSettings, setGlobalSettings] = useState(() =>
+    initialGlobalSettings ? { ...SETTINGS_DEFAULTS, ...initialGlobalSettings } : SETTINGS_DEFAULTS
+  )
   const [areaSettings,   setAreaSettings]   = useState(() => initialAreaSettings   ?? {})
   const [highlightParam,  setHighlightParam]  = useState(null)
   const [customBasesMap,  setCustomBasesMap]  = useState({})
@@ -178,11 +202,17 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
         }
       }
 
+      const computedBaseLength = computeBaseLengthFromRails(
+        lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li])
+      )
+
       return computeRowConstruction(panelCount, angle, frontLegH, {
         railOverhang,
         maxSpan,
         railOffsetCm,
+        baseOverhangCm: s.baseOverhangCm ?? 0,
         crossRailOffsetCm: s.crossRailOffsetCm,
+        ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
@@ -218,12 +248,19 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
       sum + (isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm) + (i > 0 ? PANEL_GAP_CM : 0), 0)
 
+    const computedBaseLength = computeBaseLengthFromRails(
+      lineOrientations, lineRails, angleRad1,
+      (li) => isHorizontalOrientation(lineOrientations[li]) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm
+    )
+
     const [rc] = assignTypes([computeRowConstruction(1, angle, frontLegH, {
       railOverhang,
       maxSpan,
       lineDepthCm,
       railOffsetCm,
+      baseOverhangCm: s.baseOverhangCm ?? 0,
       crossRailOffsetCm: s.crossRailOffsetCm,
+      ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
     })])
     return rc
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas])

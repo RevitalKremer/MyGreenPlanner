@@ -30,16 +30,23 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
   const lineDepthCm  = config.lineDepthCm  ?? PANEL_LENGTH_CM
   const railOffsetCm = config.railOffsetCm ?? 0
   const crossRailOffsetCm = config.crossRailOffsetCm ?? 0
+  // baseLength = horizontal leg-to-leg span (first rail to last rail, projected)
   const baseLength   = config.baseLength
     ?? Math.cos(angleRad) * (lineDepthCm - 2 * railOffsetCm)
 
-  // Trapezoid heights
-  const heightRear  = frontHeight                                   // low side
-  const heightFront = frontHeight + baseLength * Math.tan(angleRad) // high side
+  // Base/slope beam physical lengths include overhang beyond each leg.
+  // baseOverhangCm is measured ALONG THE SLOPE (same direction as lineRails offsets).
+  const baseOverhangCm = config.baseOverhangCm ?? 0
+  // Slope beam = rail-to-rail distance along slope + 2 × slope overhang
+  const topBeamLength  = baseLength / Math.cos(angleRad) + 2 * baseOverhangCm
+  // Horizontal base beam = slope beam projected onto ground
+  const baseBeamLength = topBeamLength * Math.cos(angleRad)
 
-  // Member lengths
-  const topBeamLength    = Math.sqrt(baseLength ** 2 + (heightFront - heightRear) ** 2)
-  // Diagonal: from top of rear leg → bottom of front leg
+  // Trapezoid heights — use leg span (baseLength), not full beam
+  const heightRear  = frontHeight                                    // low side
+  const heightFront = frontHeight + baseLength * Math.tan(angleRad)  // high side
+
+  // Diagonal: from top of rear leg → bottom of front leg (within leg span)
   const diagonalLength   = Math.sqrt(baseLength ** 2 + heightFront ** 2)
 
   // Trapezoid count and spacing along row
@@ -56,8 +63,9 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
     frontHeight,
     heightRear,
     heightFront,
-    baseLength,
-    topBeamLength,
+    baseLength,      // horizontal leg-to-leg span (first–last rail projection)
+    baseBeamLength,  // physical base beam = baseLength + 2×overhang
+    topBeamLength,   // physical slope beam = baseBeamLength / cos(angle)
     diagonalLength,
     numTrapezoids,
     spacing,        // cm between trapezoids
@@ -95,7 +103,7 @@ export function buildBOM(rowConstructions) {
 
   rowConstructions.forEach(rc => {
     const T = rc.numTrapezoids
-    add('Base beam',    rc.baseLength,     T)
+    add('Base beam',    rc.baseBeamLength ?? rc.baseLength, T)
     add('Top beam',     rc.topBeamLength,  T)
     add('Rear leg',     rc.heightRear,     T)
     add('Front leg',    rc.heightFront,    T)
