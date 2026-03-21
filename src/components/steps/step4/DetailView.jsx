@@ -462,16 +462,23 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: baseY, width: legX1 - activeBeamR, height: BEAM_THICK_PX })}
 
               {/* ── Rear leg: ghost or active ── */}
-              {(hR - OHy) > 0 && (legIsGhostFull[0]
-                ? ghostLine({ x1: legX0 + BEAM_THICK_PX/2, y1: topExtY0, x2: legX0 + BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-              )}
+              {(() => {
+                const legTopY = beamY(legX0) - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                const legH    = baseY + BEAM_THICK_PX - legTopY
+                return legH > 0 && (legIsGhostFull[0]
+                  ? ghostLine({ x1: legX0 + BEAM_THICK_PX/2, y1: legTopY, x2: legX0 + BEAM_THICK_PX/2, y2: baseY + BEAM_THICK_PX, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
+                  : <rect x={legX0} y={legTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                )
+              })()}
 
               {/* ── Front leg: ghost or active ── */}
-              {legIsGhostFull[allLegXs.length - 1]
-                ? ghostLine({ x1: legX1 - BEAM_THICK_PX/2, y1: topExtY1, x2: legX1 - BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-              }
+              {(() => {
+                const legTopY = beamY(legX1) - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                const legH    = baseY + BEAM_THICK_PX - legTopY
+                return legIsGhostFull[allLegXs.length - 1]
+                  ? ghostLine({ x1: legX1 - BEAM_THICK_PX/2, y1: legTopY, x2: legX1 - BEAM_THICK_PX/2, y2: baseY + BEAM_THICK_PX, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
+                  : <rect x={legX1 - BEAM_THICK_PX} y={legTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+              })()}
 
               {/* ── Slope beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBeamL, y2: beamY(activeBeamL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
@@ -614,7 +621,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })}
 
               {/* ── Punches on base beam ── */}
-              {showPunches && [legX0 + 2 * SC, ...diagonals.map(d => d.botX), legX1 - 2 * SC].map((px, i) => (
+              {showPunches && [legX0 + 2 * SC, ...diagonals.map(d => d.botX), ...innerLegXs.filter((_, ci) => !innerLegIsGhost[ci]), legX1 - 2 * SC].map((px, i) => (
                 <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                   fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
               ))}
@@ -627,6 +634,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const pts = [
                   { x: topExtX0 + 2 * SC * ux, y: topExtY0 + 2 * SC * uy },
                   ...diagonals.map(d => ({ x: d.topX, y: d.topY })),
+                  ...innerLegXs.filter((_, ci) => !innerLegIsGhost[ci]).map(sx => ({ x: sx, y: beamY(sx) })),
                   { x: topExtX1 - 2 * SC * ux, y: topExtY1 - 2 * SC * uy },
                 ]
                 return pts.map((p, i) => (
@@ -717,8 +725,13 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const barCy = ry + barH / 2
                 const activeBarW        = activeBeamR - activeBeamL
                 const activeBeamLenCm   = activeBarW / SC
-                const punches       = [activeBeamL + 2 * SC, ...activeDiags.map(d => d.botX), activeBeamR - 2 * SC]
-                const punchLabelsCm = ['2', ...activeDiags.map(d => fmt((d.botX - activeBeamL) / SC)), fmt(activeBeamLenCm - 2)]
+                const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
+                const baseMiddle = [
+                  ...activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - activeBeamL) / SC) })),
+                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBeamL) / SC) })),
+                ].sort((a, b) => a.x - b.x)
+                const punches       = [activeBeamL + 2 * SC, ...baseMiddle.map(e => e.x), activeBeamR - 2 * SC]
+                const punchLabelsCm = ['2', ...baseMiddle.map(e => e.label), fmt(activeBeamLenCm - 2)]
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'bot') return null
                   const span = findSpan(barHover.svgX)
@@ -788,8 +801,13 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 // End punches: 2cm from active beam ends, using same x-scale as full slope beam
                 const leftEndX  = activeBeamL + (2 / topBeamLength) * legBW
                 const rightEndX = activeBeamR - (2 / topBeamLength) * legBW
-                const punches       = [leftEndX, ...activeDiags.map(d => d.topX), rightEndX]
-                const punchLabelsCm = ['2', ...activeDiags.map(d => fmt((d.topX - activeBeamL) / legBW * topBeamLength)), fmt(activeSlopeBeamLenCm - 2)]
+                const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
+                const slopeMiddle = [
+                  ...activeDiags.map(d => ({ x: d.topX, label: fmt((d.topX - activeBeamL) / legBW * topBeamLength) })),
+                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBeamL) / legBW * topBeamLength) })),
+                ].sort((a, b) => a.x - b.x)
+                const punches       = [leftEndX, ...slopeMiddle.map(e => e.x), rightEndX]
+                const punchLabelsCm = ['2', ...slopeMiddle.map(e => e.label), fmt(activeSlopeBeamLenCm - 2)]
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'top') return null
                   const span = findSpan(barHover.svgX)
