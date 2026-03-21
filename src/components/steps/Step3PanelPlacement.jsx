@@ -41,10 +41,13 @@ export default function Step3PanelPlacement({
 }) {
   const [activeTool, setActiveTool] = useState('move')
   const [trapIdOverride, setTrapIdOverride] = useState(null)
+  const [showHGridlines, setShowHGridlines] = useState(false)
+  const [showVGridlines, setShowVGridlines] = useState(false)
+  const [snapToGridlines, setSnapToGridlines] = useState(false)
 
-  // Clear trapezoid override when panels are fully deselected
+  // Clear trapezoid override whenever selection changes
   useEffect(() => {
-    if (selectedPanels.length === 0) setTrapIdOverride(null)
+    setTrapIdOverride(null)
   }, [selectedPanels])
 
   // ── Derived row data ────────────────────────────────────────────────────────
@@ -180,12 +183,63 @@ export default function Step3PanelPlacement({
     setSelectedPanels(prev => [...prev, newId])
   }
 
+  // ── Auto-snap when snapToGridlines is turned on ───────────────────────────────
+
+  useEffect(() => {
+    if (!snapToGridlines || selectedPanels.length === 0) return
+    const selP = panels.find(p => selectedPanels.includes(p.id))
+    if (!selP) return
+    const areaKey = selP.area ?? selP.row
+    const areaPanels = panels.filter(p => !p.isEmpty && (p.area ?? p.row) === areaKey)
+    if (areaPanels.length < 2) return
+    const r = (areaPanels[0].rotation || 0) * Math.PI / 180
+    const cosR = Math.cos(r), sinR = Math.sin(r)
+    const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+    const sorted = [...areaPanels].sort((a, b) => {
+      const aCx = a.x + a.width / 2, aCy = a.y + a.height / 2
+      const bCx = b.x + b.width / 2, bCy = b.y + b.height / 2
+      return (aCx * ux + aCy * uy) - (bCx * ux + bCy * uy)
+    })
+    const anchors = [sorted[0]]
+    const updates = {}
+    for (let i = 1; i < sorted.length; i++) {
+      const panel = sorted[i]
+      const hw = panel.width / 2, hh = panel.height / 2
+      const THRESH = Math.max(panel.width, panel.height) * 0.4
+      let corrX = 0, corrY = 0
+      if (showHGridlines) {
+        const centerPerp = (panel.x + hw) * vx + (panel.y + hh) * vy
+        const offsets = anchors.flatMap(p => { const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy; return [pOff - p.height/2, pOff + p.height/2] })
+        const candidates = offsets.flatMap(g => [g - hh, g + hh])
+        const nearest = candidates.reduce((b, c) => Math.abs(c - centerPerp) < Math.abs(b - centerPerp) ? c : b)
+        if (Math.abs(nearest - centerPerp) < THRESH) { corrX += (nearest - centerPerp) * vx; corrY += (nearest - centerPerp) * vy }
+      }
+      if (showVGridlines) {
+        const cx2 = panel.x + hw + corrX, cy2 = panel.y + hh + corrY
+        const centerPar = cx2 * ux + cy2 * uy
+        const offsets = anchors.flatMap(p => { const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy; return [pOff - p.width/2, pOff + p.width/2] })
+        const candidates = offsets.flatMap(g => [g - hw, g + hw])
+        const nearest = candidates.reduce((b, c) => Math.abs(c - centerPar) < Math.abs(b - centerPar) ? c : b)
+        if (Math.abs(nearest - centerPar) < THRESH) { corrX += (nearest - centerPar) * ux; corrY += (nearest - centerPar) * uy }
+      }
+      const snappedPanel = { ...panel, x: panel.x + corrX, y: panel.y + corrY }
+      if (Math.abs(corrX) > 0.5 || Math.abs(corrY) > 0.5) updates[panel.id] = { x: snappedPanel.x, y: snappedPanel.y }
+      anchors.push(snappedPanel)
+    }
+    if (Object.keys(updates).length > 0)
+      setPanels(prev => prev.map(p => updates[p.id] ? { ...p, x: updates[p.id].x, y: updates[p.id].y } : p))
+  }, [snapToGridlines]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Per-trapezoid config ──────────────────────────────────────────────────────
 
   const getAreaKey = (panel) =>
     (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
-  const selectedTrapezoidId = trapIdOverride ?? (selectedRow ? (selectedRow[0].trapezoidId || null) : null)
+  const selectedTrapezoidId = trapIdOverride ?? (
+    selectedPanels.length > 0
+      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || null)
+      : null
+  )
 
   const areaLabel = (areaKey, i) => {
     const g = areas[areaKey]?.label
@@ -305,6 +359,7 @@ export default function Step3PanelPlacement({
   const reassignToTrapezoid = (trapId) => {
     const selIds = new Set(selectedPanels)
     setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: trapId } : p))
+    setTrapIdOverride(trapId)
   }
 
   const updateTrapezoidConfig = (field, rawValue) => {
@@ -382,6 +437,8 @@ export default function Step3PanelPlacement({
             rotationState={rotationState} setRotationState={setRotationState}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
             showBaseline={showBaseline} showDistances={showDistances}
+            showHGridlines={showHGridlines} showVGridlines={showVGridlines}
+            snapToGridlines={snapToGridlines}
             refinedArea={refinedArea} trapezoidConfigs={trapezoidConfigs}
             activeTool={activeTool} projectMode={projectMode}
             getRowPanelIds={getRowPanelIds}
@@ -429,6 +486,9 @@ export default function Step3PanelPlacement({
             projectMode={projectMode} areas={areas} getAreaKey={getAreaKey}
             updateTrapezoidConfig={updateTrapezoidConfig} resetTrapezoidConfig={resetTrapezoidConfig}
             showBaseline={showBaseline} setShowBaseline={setShowBaseline}
+            showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
+            showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
+            snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
           />
         )}
       </div>

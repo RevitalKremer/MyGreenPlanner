@@ -370,10 +370,7 @@
   color: #ccc;
   font-weight: 500;
   line-height: 1.2;
-  max-width: 88px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 96px;
   letter-spacing: 0.01em;
 }
 

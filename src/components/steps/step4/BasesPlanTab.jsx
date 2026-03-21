@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -8,17 +9,19 @@ import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
+import RulerTool from '../../shared/RulerTool'
+import DimensionAnnotation from './DimensionAnnotation'
 
-const BASE_COLOR      = '#000000'
-const RAIL_COLOR_FILL = '#642165'
 
 export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null }) {
   const [showBases,      setShowBases]      = useState(true)
+  const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
   const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
   const [showEditBar,    setShowEditBar]    = useState(true)
+  const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
 
   const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
@@ -115,7 +118,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
   if (trapIds.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#aaa', fontSize: '0.95rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
         No panel rows found — complete Step 3 first.
       </div>
     )
@@ -131,7 +134,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
       {/* Diagram canvas */}
       <div
-        style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fafafa', cursor: panActive ? 'grabbing' : 'grab' }}
+        style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden', background: BG_FAINT, cursor: panActive ? 'grabbing' : 'grab' }}
         onMouseDown={startPan} onMouseMove={handleMouseMove} onMouseUp={stopPan} onMouseLeave={stopPan}
         ref={containerRef}
       >
@@ -197,15 +200,53 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   const railProfileSvg = (crossRailEdgeMm / 10 / pixelToCmRatio) * sc
 
+                  // Block positions along the base line (plan view)
+                  const blockLengthCm   = trapS.blockLengthCm ?? 50
+                  const blockWidthCm   = trapS.blockWidthCm ?? 24
+                  const blockLengthLocal = blockLengthCm / pixelToCmRatio        // along-beam dimension (local frame)
+                  const blockLengthSvg  = blockLengthLocal * sc                  // SVG pixels along beam
+                  const blockWidthSvg  = (blockWidthCm / pixelToCmRatio) * sc // SVG pixels perpendicular to beam
+                  const numBlocks = Math.max(2, (lines || []).reduce((sum, ln) => {
+                    return sum + (ln.orientation === 'LANDSCAPE' ? 1 : 2)
+                  }, 0))
+                  const numCenterBlocks = numBlocks - 2
+                  const innerRailYs = [...railLocalYs].sort((a, b) => a - b).slice(1, -1)
+                  const centerBlockYs = numCenterBlocks === 0 ? [] : innerRailYs.slice(-numCenterBlocks)
+                  const allBlockYCenters = [
+                    baseTopY    + blockLengthLocal / 2,
+                    ...centerBlockYs,
+                    baseBottomY - blockLengthLocal / 2,
+                  ]
+
                   return (
                     <g key={`bp-${trapId}`} opacity={trapOpacity}>
+                      {/* Blocks — rendered first (below rails and diagonals) */}
+                      {showBlocks && bases.map((base, bi) => {
+                        const beamTop    = localToScreen({ x: base.localX, y: baseTopY    }, frame.center, angleRad)
+                        const beamBottom = localToScreen({ x: base.localX, y: baseBottomY }, frame.center, angleRad)
+                        const [btx, bty] = toSvg(beamTop.x, beamTop.y)
+                        const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
+                        const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                        return allBlockYCenters.map((blockCenterY, bki) => {
+                          const sp = localToScreen({ x: base.localX, y: blockCenterY }, frame.center, angleRad)
+                          const [bkx, bky] = toSvg(sp.x, sp.y)
+                          return (
+                            <rect key={`blk-${bi}-${bki}`}
+                              x={bkx - blockLengthSvg / 2} y={bky - blockWidthSvg / 2}
+                              width={blockLengthSvg} height={blockWidthSvg}
+                              fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom}
+                              transform={`rotate(${lineAngle} ${bkx} ${bky})`}
+                            />
+                          )
+                        })
+                      })}
                       {/* Running rails — read-only layer */}
                       {showRailLines && railLayouts[i]?.rails.map(rail => {
                         const [rx1, ry1] = toSvg(rail.screenStart.x, rail.screenStart.y)
                         const [rx2, ry2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
                         return (
                           <line key={rail.railId} x1={rx1} y1={ry1} x2={rx2} y2={ry2}
-                            stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="square" />
+                            stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square" />
                         )
                       })}
                       {showBases && bases.map((base, bi) => {
@@ -224,12 +265,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                         const [rfx, rfy] = toSvg(sfront.x, sfront.y)
                         return (
                           <g key={`base-${bi}`}>
-                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
                             {hlOverhang && <>
-                              <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                              <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                              <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                              <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                             </>}
-                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
+                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
                             {showBaseIDs && (() => {
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (
@@ -266,12 +307,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                             const fs = 11 / zoom, bgW = String(distMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 7 / zoom
                             return (
                               <g key={`diag-${pi}-${di}`}>
-                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="cyan" strokeWidth={PROFILE_THICK} />
-                                <circle cx={x1} cy={y1} r={dotR} fill="cyan" stroke="#006" strokeWidth={1/zoom} />
-                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke="cyan" strokeWidth={2/zoom} />
+                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={BLUE} strokeWidth={PROFILE_THICK} />
+                                <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/zoom} />
+                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke={BLUE} strokeWidth={2/zoom} />
                                 <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5/zoom} rx={1/zoom} />
-                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill="#000">{distMm}</text>
+                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" stroke={BORDER_MID} strokeWidth={0.5/zoom} rx={1/zoom} />
+                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{distMm}</text>
                                 </g>
                               </g>
                             )
@@ -360,52 +401,27 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     extremeLocalY = outSign >= 0 ? Math.max(extremeLocalY, yMax) : Math.min(extremeLocalY, yMin)
                   }
 
-                  const ANN_OFF = 16 / zoom, TICK = 4 / zoom, EXT_GAP = 2 / zoom, EXT_OVR = 3 / zoom
+                  const ANN_OFF = 16 / zoom, EXT_GAP = 2 / zoom
                   const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
                   const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
 
                   const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
                   const isSelectedArea = areaKey === selectedArea
                   const areaOpacity = (effectiveSelectedTrapId === null || isSelectedArea) ? 1 : 0.2
-
                   const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
                     ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
 
+                  const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
+                  const annPts    = projected.map(b => annSvg(b.localX))
+                  const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
+                  const segColors = projected.slice(0, -1).map((b1, si) => {
+                    const b2 = projected[si + 1]
+                    return (isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
+                  })
+
                   return (
                     <g key={`area-ann-${areaKey}`} opacity={areaOpacity} style={hlStyle}>
-                      {projected.slice(0, -1).map((b1, si) => {
-                        const b2 = projected[si + 1]
-                        const distMm = Math.round(Math.abs(b2.localX - b1.localX) * pixelToCmRatio * 10)
-                        const [ax1, ay1] = annSvg(b1.localX), [ax2, ay2] = annSvg(b2.localX)
-                        const [fe1x, fe1y] = edgeSvg(b1.localX), [fe2x, fe2y] = edgeSvg(b2.localX)
-                        const dx = ax2 - ax1, dy = ay2 - ay1, len = Math.sqrt(dx * dx + dy * dy)
-                        if (len < 2) return null
-                        const tx = (ax1 + ax2) / 2, ty = (ay1 + ay2) / 2
-                        const angle = Math.atan2(dy, dx) * 180 / Math.PI
-                        const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle
-                        const fontSize = 11 / zoom
-                        const label = `${distMm}`
-                        const bgW = label.length * fontSize * 0.6 + 6 / zoom, bgH = fontSize + 4 / zoom
-                        const px_t = -dy / len, py_t = dx / len
-                        // Highlight segment if either base belongs to the selected sub-area
-                        const segHighlight = isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)
-                        const lineColor = segHighlight ? '#0056b3' : '#555'
-                        const ex1s = [fe1x + apX * EXT_GAP, fe1y + apY * EXT_GAP], ex1e = [ax1 - apX * EXT_OVR, ay1 - apY * EXT_OVR]
-                        const ex2s = [fe2x + apX * EXT_GAP, fe2y + apY * EXT_GAP], ex2e = [ax2 - apX * EXT_OVR, ay2 - apY * EXT_OVR]
-                        return (
-                          <g key={`ann-${si}`}>
-                            <line x1={ex1s[0]} y1={ex1s[1]} x2={ex1e[0]} y2={ex1e[1]} stroke={lineColor} strokeWidth={0.8 / zoom} />
-                            <line x1={ex2s[0]} y1={ex2s[1]} x2={ex2e[0]} y2={ex2e[1]} stroke={lineColor} strokeWidth={0.8 / zoom} />
-                            <line x1={ax1} y1={ay1} x2={ax2} y2={ay2} stroke={lineColor} strokeWidth={1 / zoom} />
-                            <line x1={ax1 - px_t * TICK} y1={ay1 - py_t * TICK} x2={ax1 + px_t * TICK} y2={ay1 + py_t * TICK} stroke={lineColor} strokeWidth={1.2 / zoom} />
-                            <line x1={ax2 - px_t * TICK} y1={ay2 - py_t * TICK} x2={ax2 + px_t * TICK} y2={ay2 + py_t * TICK} stroke={lineColor} strokeWidth={1.2 / zoom} />
-                            <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
-                              <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
-                              <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={lineColor}>{label}</text>
-                            </g>
-                          </g>
-                        )
-                      })}
+                      <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={zoom} />
                     </g>
                   )
                 })}
@@ -414,29 +430,33 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           </div>
         </div>
 
+        <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc / pixelToCmRatio} containerRef={containerRef} />
+
         <LayersPanel
           layers={[
             { label: 'Bases',       checked: showBases,      setter: setShowBases },
+            { label: 'Blocks',      checked: showBlocks,     setter: setShowBlocks },
             { label: 'Base IDs',    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: 'Rail lines',  checked: showRailLines,  setter: setShowRailLines },
             { label: 'Edit bar',    checked: showEditBar,    setter: setShowEditBar },
-            { label: 'Annotations', checked: showDimensions, setter: setShowDimensions },
+            { label: 'Dimensions',  checked: showDimensions, setter: setShowDimensions },
             { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
-          actions={onResetBases ? [
-            { label: 'Reset to defaults', onClick: onResetBases, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } },
-          ] : undefined}
+          actions={[
+            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
+            { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+          ]}
         />
 
       </div>
 
       {/* Base Schedule table */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid #e8e8e8' }}>
-        <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: '#f8f9fa', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${BORDER_FAINT}` }}>
+        <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: BG_LIGHT, border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           <span style={{ fontSize: '0.6rem' }}>{tableOpen ? '▾' : '▸'}</span>
           Base Schedule
-          <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: '#888', textTransform: 'none', letterSpacing: 0 }}>
+          <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: TEXT_PLACEHOLDER, textTransform: 'none', letterSpacing: 0 }}>
             ({totalBases} bases)
           </span>
         </button>

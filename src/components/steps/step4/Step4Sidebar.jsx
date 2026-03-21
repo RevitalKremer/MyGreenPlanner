@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { ACCENT, PARAM_SCHEMA, PARAM_GROUP } from './constants'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -60,7 +61,7 @@ function InfoTooltip({ param }) {
         onMouseLeave={() => setShow(false)}
         style={{
           width: '12px', height: '12px', borderRadius: '50%',
-          background: '#e0e0e0', color: '#777',
+          background: BORDER_LIGHT, color: TEXT_LIGHT,
           fontSize: '0.5rem', fontWeight: '700',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'default', lineHeight: 1,
@@ -69,7 +70,7 @@ function InfoTooltip({ param }) {
       {show && (
         <div style={{
           position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)',
-          background: '#333', color: '#fff',
+          background: TEXT, color: WHITE,
           fontSize: '0.6rem', lineHeight: 1.6,
           padding: '4px 8px', borderRadius: '4px',
           whiteSpace: 'nowrap', zIndex: 200,
@@ -123,21 +124,21 @@ export default function Step4Sidebar({
       <div style={{
         display: 'flex', alignItems: 'center', gap: '5px',
         fontSize: '0.65rem',
-        color: isActive ? '#d97706' : '#888',
+        color: isActive ? TAB_ACTIVE_COLOR : TEXT_PLACEHOLDER,
         fontWeight: isActive ? '700' : '400',
         marginBottom: '2px', transition: 'color 0.2s',
       }}>
         {isActive && (
           <span style={{
             width: '6px', height: '6px', borderRadius: '50%',
-            background: '#FFB300', display: 'inline-block',
+            background: AMBER, display: 'inline-block',
             flexShrink: 0, animation: 'hlPulse 0.75s ease-in-out infinite',
           }} />
         )}
         {label}
         <InfoTooltip param={param} />
         {scope === 'global' && (
-          <span style={{ marginLeft: 'auto', fontSize: '0.55rem', color: '#b0b0b0', fontWeight: '600', letterSpacing: '0.04em' }}>
+          <span style={{ marginLeft: 'auto', fontSize: '0.55rem', color: TEXT_FAINTEST, fontWeight: '600', letterSpacing: '0.04em' }}>
             GLOBAL
           </span>
         )}
@@ -171,7 +172,7 @@ export default function Step4Sidebar({
             onChange={e => onRailSpacingChange(orientation, Math.min(maxVal, Math.max(min, parseFloat(e.target.value) || min)))}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
-            style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
+            style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
         </div>
       )
     }
@@ -182,12 +183,12 @@ export default function Step4Sidebar({
       const val = s[key] ?? param.default
       return (
         <div key={key} style={{ marginBottom: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.65rem', color: '#888', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{label}<InfoTooltip param={param} /></span>
+          <span style={{ fontSize: '0.65rem', color: TEXT_PLACEHOLDER, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{label}<InfoTooltip param={param} /></span>
           <label style={{ position: 'relative', display: 'inline-block', width: '32px', height: '18px', cursor: 'pointer' }}>
             <input type="checkbox" checked={val}
               onChange={e => updateSetting(selectedRowIdx, key, e.target.checked)}
               style={{ opacity: 0, width: 0, height: 0 }} />
-            <span style={{ position: 'absolute', inset: 0, borderRadius: '18px', transition: '0.2s', background: val ? ACCENT : '#ccc' }} />
+            <span style={{ position: 'absolute', inset: 0, borderRadius: '18px', transition: '0.2s', background: val ? ACCENT : BORDER_MID }} />
             <span style={{ position: 'absolute', top: '2px', left: val ? '16px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: '0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
           </label>
         </div>
@@ -207,7 +208,7 @@ export default function Step4Sidebar({
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             placeholder="e.g. 5000, 6000"
-            style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
+            style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
         </div>
       )
     }
@@ -223,7 +224,7 @@ export default function Step4Sidebar({
             onCommit={v => updateGlobalSetting(key, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
-            style={{ ...baseInputStyle, border: `1px solid ${isActive ? '#FFB300' : '#ddd'}` }} />
+            style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
         </div>
       )
     }
@@ -243,7 +244,7 @@ export default function Step4Sidebar({
             onBlur={() => setHighlightParam(null)}
             style={{
               ...baseInputStyle,
-              border: `1px solid ${isActive ? '#FFB300' : overridden ? '#FFB74D' : '#ddd'}`,
+              border: `1px solid ${isActive ? AMBER : overridden ? WARNING_LIGHT : BORDER}`,
               fontWeight: overridden ? '700' : '400',
             }} />
         </div>
@@ -263,7 +264,7 @@ export default function Step4Sidebar({
           onBlur={() => setHighlightParam(null)}
           style={{
             ...baseInputStyle,
-            border: `1px solid ${isActive ? '#FFB300' : overridden ? '#FFB74D' : '#ddd'}`,
+            border: `1px solid ${isActive ? AMBER : overridden ? WARNING_LIGHT : BORDER}`,
             fontWeight: overridden ? '700' : '400',
           }} />
       </div>
@@ -275,8 +276,8 @@ export default function Step4Sidebar({
     <button onClick={onClick}
       style={{
         width: '100%', marginTop: '0.35rem', padding: '0.2rem',
-        fontSize: '0.65rem', fontWeight: '600', color: '#888',
-        background: '#f5f5f5', border: '1px solid #e0e0e0',
+        fontSize: '0.65rem', fontWeight: '600', color: TEXT_PLACEHOLDER,
+        background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`,
         borderRadius: '4px', cursor: 'pointer',
       }}>
       Apply to all areas
@@ -285,9 +286,9 @@ export default function Step4Sidebar({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ width: '260px', flexShrink: 0, borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column', overflowY: 'auto', background: '#fafafa' }}>
-      <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e8e8e8' }}>
-        <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Areas</div>
+    <div style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${BORDER_FAINT}`, display: 'flex', flexDirection: 'column', overflowY: 'auto', background: BG_FAINT }}>
+      <div style={{ padding: '0.75rem 1rem', borderBottom: `1px solid ${BORDER_FAINT}` }}>
+        <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Areas</div>
       </div>
 
       {/* Area / trapezoid hierarchy list */}
@@ -300,27 +301,27 @@ export default function Step4Sidebar({
             <div key={i}>
               <div
                 onClick={() => { setSelectedRowIdx(i); setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null) }}
-                style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : '1px solid #f0f0f0', background: isAreaSelected ? '#f4f9e4' : 'transparent', borderLeft: `3px solid ${isAreaSelected ? ACCENT : 'transparent'}`, transition: 'all 0.12s' }}
+                style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? ACCENT : 'transparent'}`, transition: 'all 0.12s' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? '#333' : '#555' }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
                     {areaLabel(areaKey, i)}
                   </span>
-                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', background: '#555', borderRadius: '4px', padding: '1px 6px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', background: TEXT_SECONDARY, borderRadius: '4px', padding: '1px 6px' }}>
                     {rc.typeLetter}{rc.panelsPerSpan}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginTop: '2px' }}>
                   {rc.panelCount} panels · {rc.angle}° · {rc.numTrapezoids} frames
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#888' }}>
+                <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER }}>
                   Rail: {fmt(rc.rowLength / 100)} m
                 </div>
               </div>
 
               {/* Trapezoid children */}
               {trapIds.length > 1 && isAreaSelected && (
-                <div style={{ borderBottom: '1px solid #f0f0f0', background: '#f5f7f0' }}>
+                <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
                   {trapIds.map(trapId => {
                     const isTrapSelected = effectiveSelectedTrapId === trapId
                     const count = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId).length
@@ -328,14 +329,14 @@ export default function Step4Sidebar({
                       <div
                         key={trapId}
                         onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? ACCENT : 'transparent'}`, background: isTrapSelected ? '#edf5d8' : 'transparent', transition: 'all 0.1s' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? ACCENT : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
                       >
-                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? '#5a6600' : '#888', background: isTrapSelected ? '#ddeea0' : '#e8e8e8', padding: '1px 7px', borderRadius: '10px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
                           {trapId}
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: '#aaa' }}>{count} panels</span>
+                        <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count} panels</span>
                         {!!trapezoidConfigs[trapId] && (
-                          <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#FF9800', marginLeft: 'auto', flexShrink: 0 }} />
+                          <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
                         )}
                       </div>
                     )
@@ -351,10 +352,10 @@ export default function Step4Sidebar({
       {selectedRC && (
         <div
           onClick={() => setSettingsCollapsed(c => !c)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 1rem', cursor: 'pointer', borderTop: '1px solid #e8e8e8', background: '#f5f5f5' }}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 1rem', cursor: 'pointer', borderTop: `1px solid ${BORDER_FAINT}`, background: BG_SUBTLE }}
         >
-          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Settings</span>
-          <span style={{ fontSize: '0.7rem', color: '#bbb' }}>{settingsCollapsed ? '▲' : '▼'}</span>
+          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Settings</span>
+          <span style={{ fontSize: '0.7rem', color: TEXT_FAINTEST }}>{settingsCollapsed ? '▲' : '▼'}</span>
         </div>
       )}
 
@@ -366,13 +367,13 @@ export default function Step4Sidebar({
         const areaKeys   = areaParams.filter(p => p.type !== 'rail-spacing').map(p => p.key)
 
         return (
-          <div key={sec.tabKey} style={{ borderTop: '1px solid #e8e8e8' }}>
+          <div key={sec.tabKey} style={{ borderTop: `1px solid ${BORDER_FAINT}` }}>
             <div
               onClick={() => setActiveTab(isOpen ? activeTab : sec.tabKey)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', cursor: 'pointer', background: isOpen ? '#f0f4e8' : '#fafafa' }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', cursor: 'pointer', background: isOpen ? SECTION_HEADER_BG : BG_FAINT }}
             >
-              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? '#5a6600' : '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.label}</span>
-              <span style={{ fontSize: '0.8rem', color: '#aaa' }}>{isOpen ? '▲' : '▼'}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? PRIMARY_DARK : TEXT_PLACEHOLDER, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.label}</span>
+              <span style={{ fontSize: '0.8rem', color: TEXT_VERY_LIGHT }}>{isOpen ? '▲' : '▼'}</span>
             </div>
 
             {isOpen && (

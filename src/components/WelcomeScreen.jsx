@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -56,10 +57,10 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
       {/* Logo + title */}
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <img src="/mgp-logo.svg" alt="MyGreenPlanner" style={{ height: '80px', width: 'auto', marginBottom: '1.1rem' }} />
-        <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: '#222' }}>
+        <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: TEXT_DARKEST }}>
           MyGreenPlanner
         </h1>
-        <p style={{ margin: 0, fontSize: '1rem', color: '#777', fontWeight: '400' }}>
+        <p style={{ margin: 0, fontSize: '1rem', color: TEXT_FAINT, fontWeight: '400' }}>
           Solar PV Roof Planning System
         </p>
       </div>
@@ -76,7 +77,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
           flex: '1 1 320px', maxWidth: '360px',
           background: 'white', borderRadius: '16px',
           boxShadow: '0 4px 24px rgba(0,0,0,0.09)',
-          border: `2px solid ${mode === 'new' ? '#444' : '#e0e0e0'}`,
+          border: `2px solid ${mode === 'new' ? TEXT_DARK : BORDER_LIGHT}`,
           overflow: 'hidden', transition: 'border-color 0.15s'
         }}>
           <div
@@ -85,21 +86,21 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
               padding: '1.5rem 1.75rem', cursor: 'pointer',
               background: mode === 'new' ? '#f6f6f6' : 'white',
               display: 'flex', alignItems: 'center', gap: '1rem',
-              borderBottom: mode === 'new' ? '1px solid #e8e8e8' : 'none',
+              borderBottom: mode === 'new' ? `1px solid ${BORDER_FAINT}` : 'none',
               transition: 'background 0.15s'
             }}
           >
             <div style={{
               width: '46px', height: '46px', borderRadius: '12px',
-              background: '#e8e8e8', color: '#444',
+              background: BORDER_FAINT, color: TEXT_DARK,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0
             }}>
               <IconPlus />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#222' }}>New Project</div>
-              <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '2px' }}>Start a new solar planning session</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>New Project</div>
+              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>Start a new solar planning session</div>
             </div>
           </div>
 
@@ -107,7 +108,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
               {/* Project mode selector */}
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: '#555', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.5rem' }}>
                   Project Type
                 </label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -120,23 +121,23 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
                       onClick={() => setProjectMode(opt.value)}
                       style={{
                         flex: 1, padding: '0.6rem 0.5rem', border: '1.5px solid',
-                        borderColor: projectMode === opt.value ? '#444' : '#e0e0e0',
+                        borderColor: projectMode === opt.value ? TEXT_DARK : BORDER_LIGHT,
                         borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
                         background: projectMode === opt.value ? '#f6f6f6' : 'white',
                         transition: 'all 0.15s'
                       }}
                     >
-                      <div style={{ fontSize: '0.8rem', fontWeight: '700', color: projectMode === opt.value ? '#222' : '#555' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: '700', color: projectMode === opt.value ? TEXT_DARKEST : TEXT_SECONDARY }}>
                         {opt.label}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '2px' }}>{opt.desc}</div>
+                      <div style={{ fontSize: '0.7rem', color: TEXT_LIGHT, marginTop: '2px' }}>{opt.desc}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: '#555', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
                   Project Name <span style={{ color: '#e53935' }}>*</span>
                 </label>
                 <input
@@ -148,13 +149,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
                   placeholder="e.g. Smith Residence"
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${projectName.trim() ? '#444' : '#e0e0e0'}`,
+                    border: `1.5px solid ${projectName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
                     borderRadius: '8px', fontSize: '0.92rem', outline: 'none'
                   }}
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: '#555', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
                   Location
                 </label>
                 <input
@@ -165,12 +166,12 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
                   placeholder="e.g. Tel Aviv, Israel"
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: '1.5px solid #e0e0e0', borderRadius: '8px', fontSize: '0.92rem'
+                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
                   }}
                 />
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: '#555', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
                   Date
                 </label>
                 <input
@@ -179,7 +180,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
                   onChange={e => setDate(e.target.value)}
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: '1.5px solid #e0e0e0', borderRadius: '8px', fontSize: '0.92rem'
+                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
                   }}
                 />
               </div>
@@ -188,8 +189,8 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
                 disabled={!canCreate}
                 style={{
                   width: '100%', padding: '0.75rem',
-                  background: canCreate ? '#C4D600' : '#e0e0e0',
-                  color: canCreate ? '#333' : '#aaa',
+                  background: canCreate ? PRIMARY : BORDER_LIGHT,
+                  color: canCreate ? TEXT : TEXT_VERY_LIGHT,
                   border: 'none', borderRadius: '8px',
                   cursor: canCreate ? 'pointer' : 'default',
                   fontWeight: '700', fontSize: '0.95rem',
@@ -207,7 +208,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
           flex: '1 1 320px', maxWidth: '360px',
           background: 'white', borderRadius: '16px',
           boxShadow: '0 4px 24px rgba(0,0,0,0.09)',
-          border: `2px solid ${mode === 'import' ? '#444' : '#e0e0e0'}`,
+          border: `2px solid ${mode === 'import' ? TEXT_DARK : BORDER_LIGHT}`,
           overflow: 'hidden', transition: 'border-color 0.15s'
         }}>
           <div
@@ -216,34 +217,34 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
               padding: '1.5rem 1.75rem', cursor: 'pointer',
               background: mode === 'import' ? '#f6f6f6' : 'white',
               display: 'flex', alignItems: 'center', gap: '1rem',
-              borderBottom: mode === 'import' ? '1px solid #e8e8e8' : 'none',
+              borderBottom: mode === 'import' ? `1px solid ${BORDER_FAINT}` : 'none',
               transition: 'background 0.15s'
             }}
           >
             <div style={{
               width: '46px', height: '46px', borderRadius: '12px',
-              background: '#e8e8e8', color: '#444',
+              background: BORDER_FAINT, color: TEXT_DARK,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0
             }}>
               <IconFolder />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#222' }}>Import Project</div>
-              <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '2px' }}>Resume from a saved .mgp file</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>Import Project</div>
+              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>Resume from a saved .mgp file</div>
             </div>
           </div>
 
           {mode === 'import' && (
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
-              <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#666', lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: TEXT_MUTED, lineHeight: 1.5 }}>
                 Select a <strong>.mgp</strong> project file exported from a previous session.
               </p>
               <button
                 onClick={() => fileInputRef.current?.click()}
                 style={{
                   width: '100%', padding: '0.75rem',
-                  background: '#444', color: 'white',
+                  background: TEXT_DARK, color: 'white',
                   border: 'none', borderRadius: '8px',
                   cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem'
                 }}
@@ -269,13 +270,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
 
       {/* Sadot Energy branding */}
       <div style={{ marginTop: '3.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
-        <span style={{ fontSize: '0.65rem', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+        <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
           Powered by
         </span>
         <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '32px', width: 'auto' }} />
       </div>
 
-      <p style={{ marginTop: '2rem', fontSize: '0.72rem', color: '#bbb' }}>
+      <p style={{ marginTop: '2rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
         MyGreenPlanner © {new Date().getFullYear()}
       </p>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { PRIMARY, ERROR, BLACK } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -11,7 +12,7 @@ export default function PanelCanvas({
   dragState, setDragState,
   rotationState, setRotationState,
   distanceMeasurement, setDistanceMeasurement,
-  showBaseline, showDistances,
+  showBaseline, showDistances, showHGridlines, showVGridlines, snapToGridlines,
   refinedArea, trapezoidConfigs,
   activeTool, projectMode,
   getRowPanelIds,
@@ -173,10 +174,46 @@ export default function PanelCanvas({
         return { ...panel, x: newCx - panel.width / 2, y: newCy - panel.height / 2, rotation: (od.rotation + angleDelta) % 360 }
       }))
     } else if (dragState) {
-      const dx = x - dragState.startX, dy = y - dragState.startY
+      const rawDx = x - dragState.startX, rawDy = y - dragState.startY
+      let finalDx = rawDx, finalDy = rawDy
+
+      if (snapToGridlines && (showHGridlines || showVGridlines)) {
+        const refId = dragState.panelIds[0]
+        const refPanel = panels.find(p => p.id === refId)
+        if (refPanel) {
+          const areaKey = refPanel.area ?? refPanel.row
+          const stationary = panels.filter(p => !dragState.panelIds.includes(p.id) && (p.area ?? p.row) === areaKey && !p.isEmpty)
+          if (stationary.length > 0) {
+            const orig = dragState.originalPositions[refId]
+            const cx = orig.x + refPanel.width / 2 + rawDx
+            const cy = orig.y + refPanel.height / 2 + rawDy
+            const r = (refPanel.rotation || 0) * Math.PI / 180
+            const cosR = Math.cos(r), sinR = Math.sin(r)
+            const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+            const hw = refPanel.width / 2, hh = refPanel.height / 2
+            const THRESH = Math.max(refPanel.width, refPanel.height) * 0.35
+            if (showHGridlines) {
+              const centerPerp = cx * vx + cy * vy
+              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy; return [pOff - p.height/2, pOff + p.height/2] })
+              const candidates = offsets.flatMap(g => [g - hh, g + hh])
+              const nearest = candidates.reduce((b, c) => Math.abs(c - centerPerp) < Math.abs(b - centerPerp) ? c : b)
+              if (Math.abs(nearest - centerPerp) < THRESH) { finalDx += (nearest - centerPerp) * vx; finalDy += (nearest - centerPerp) * vy }
+            }
+            if (showVGridlines) {
+              const cx2 = orig.x + refPanel.width / 2 + finalDx, cy2 = orig.y + refPanel.height / 2 + finalDy
+              const centerPar = cx2 * ux + cy2 * uy
+              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy; return [pOff - p.width/2, pOff + p.width/2] })
+              const candidates = offsets.flatMap(g => [g - hw, g + hw])
+              const nearest = candidates.reduce((b, c) => Math.abs(c - centerPar) < Math.abs(b - centerPar) ? c : b)
+              if (Math.abs(nearest - centerPar) < THRESH) { finalDx += (nearest - centerPar) * ux; finalDy += (nearest - centerPar) * uy }
+            }
+          }
+        }
+      }
+
       setPanels(prev => prev.map(panel => {
         if (!dragState.panelIds.includes(panel.id)) return panel
-        return { ...panel, x: dragState.originalPositions[panel.id].x + dx, y: dragState.originalPositions[panel.id].y + dy }
+        return { ...panel, x: dragState.originalPositions[panel.id].x + finalDx, y: dragState.originalPositions[panel.id].y + finalDy }
       }))
     }
   }
@@ -258,16 +295,16 @@ export default function PanelCanvas({
               {roofPolygon && (
                 <mask id="polygonMask">
                   <rect width="100%" height="100%" fill="white" />
-                  <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="black" />
+                  <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill={BLACK} />
                 </mask>
               )}
               {showDistances && distanceMeasurement?.p2 && (
                 <>
                   <marker id="dist-arrow-start" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 1,3" fill="#C4D600" />
+                    <polygon points="3,1 3,5 1,3" fill={PRIMARY} />
                   </marker>
                   <marker id="dist-arrow-end" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 5,3" fill="#C4D600" />
+                    <polygon points="3,1 3,5 5,3" fill={PRIMARY} />
                   </marker>
                 </>
               )}
@@ -277,7 +314,7 @@ export default function PanelCanvas({
             {roofPolygon && (
               <>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
-                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.1)" stroke="#C4D600" strokeWidth="3" />
+                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.1)" stroke={PRIMARY} strokeWidth="3" />
               </>
             )}
 
@@ -297,6 +334,45 @@ export default function PanelCanvas({
                 )}
               </>
             )}
+
+            {/* Gridlines — dashed lines at panel edges, extended across canvas — selected area only */}
+            {(showHGridlines || showVGridlines) && imageRef && (() => {
+              const selAreaKey = selectedPanels.length > 0
+                ? (() => { const sp = panels.find(p => selectedPanels.includes(p.id)); return sp ? (sp.area ?? sp.row) : null })()
+                : null
+              if (selAreaKey === null) return null
+              return panels.filter(p => !p.isEmpty && (p.area ?? p.row) === selAreaKey).map(panel => {
+                const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
+                const r  = (panel.rotation || 0) * Math.PI / 180
+                const cosR = Math.cos(r), sinR = Math.sin(r)
+                const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
+                const gapPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
+                const gw  = Math.max(1, gapPx)
+                const gd  = `${gapPx * 2} ${gapPx}`
+                const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+                const hw = panel.width / 2, hh = panel.height / 2
+                // horizontal = top/bottom edges (run along panel width direction)
+                // vertical   = left/right edges  (run along panel height direction)
+                const edges = [
+                  ...(showHGridlines ? [
+                    { mx: cx - hh * vx, my: cy - hh * vy, dx: ux, dy: uy },
+                    { mx: cx + hh * vx, my: cy + hh * vy, dx: ux, dy: uy },
+                  ] : []),
+                  ...(showVGridlines ? [
+                    { mx: cx - hw * ux, my: cy - hw * uy, dx: vx, dy: vy },
+                    { mx: cx + hw * ux, my: cy + hw * uy, dx: vx, dy: vy },
+                  ] : []),
+                ]
+                return edges.map((e, ei) => (
+                  <line key={`${panel.id}-gl${ei}`}
+                    x1={e.mx - ext * e.dx} y1={e.my - ext * e.dy}
+                    x2={e.mx + ext * e.dx} y2={e.my + ext * e.dy}
+                    stroke="rgba(160,160,160,0.65)" strokeWidth={gw} strokeDasharray={gd}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ))
+              })
+            })()}
 
             {/* Ghost panels (empty lines) */}
             {panels.filter(p => p.isEmpty).map(panel => {
@@ -319,7 +395,7 @@ export default function PanelCanvas({
               const trapId = panel.trapezoidId || 'A1'
               const hasOverride = !!trapezoidConfigs?.[trapId]
               let fill, borderColor, ibw
-              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = '#f44336'; ibw = panel.width * 0.012 }
+              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = ERROR; ibw = panel.width * 0.012 }
               else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
               else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
@@ -355,7 +431,7 @@ export default function PanelCanvas({
                       </text>
                       {hasOverride && (
                         <circle cx={cx + bw / 2 - bh * 0.18} cy={cy - bh / 2 + bh * 0.18}
-                          r={bh * 0.2} fill="#FF9800" style={{ pointerEvents: 'none' }} />
+                          r={bh * 0.2} fill={PRIMARY} style={{ pointerEvents: 'none' }} />
                       )}
                     </>
                   )}
@@ -378,10 +454,10 @@ export default function PanelCanvas({
               const { p1, p2 } = distanceMeasurement
               if (!p2) return (
                 <>
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
                   {mousePos && (
                     <line x1={p1[0]} y1={p1[1]} x2={mousePos.x} y2={mousePos.y}
-                      stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray} />
+                      stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray} />
                   )}
                 </>
               )
@@ -394,10 +470,10 @@ export default function PanelCanvas({
               return (
                 <>
                   <line x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]}
-                    stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray}
+                    stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray}
                     markerStart="url(#dist-arrow-start)" markerEnd="url(#dist-arrow-end)" />
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
-                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill="#C4D600" />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
+                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill={PRIMARY} />
                   <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill="rgba(15,15,15,0.78)" rx={lh/2} />
                   <text x={midX} y={midY - fs*0.15} textAnchor="middle" fill="white" fontSize={fs} fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
                   <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
@@ -436,10 +512,12 @@ export default function PanelCanvas({
         >
           <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
           {panels.filter(p => !p.isEmpty).map(p => {
-            const mmX = p.x / imageRef.naturalWidth  * MM_W
-            const mmY = p.y / imageRef.naturalHeight * MM_H
-            const mmW = p.width  / imageRef.naturalWidth  * MM_W
-            const mmH = p.height / imageRef.naturalHeight * MM_H
+            const nw  = Math.max(imageRef.naturalWidth,  1)
+            const nh  = Math.max(imageRef.naturalHeight, 1)
+            const mmX = p.x      / nw * MM_W
+            const mmY = p.y      / nh * MM_H
+            const mmW = p.width  / nw * MM_W
+            const mmH = p.height / nh * MM_H
             const cx = mmX + mmW / 2, cy = mmY + mmH / 2
             const isSel = selectedPanels.includes(p.id)
             return (

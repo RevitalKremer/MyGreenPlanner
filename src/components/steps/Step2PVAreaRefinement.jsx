@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_SUBTLE, ERROR, WARNING, SUCCESS } from '../../styles/colors'
 import {
   computePanelBackHeight,
   toggleOrientation, toggleEmptyOrientation,
@@ -8,7 +9,7 @@ import CrossSectionPanel from './step2/CrossSectionPanel'
 import ScratchConfigPanel from './step2/ScratchConfigPanel'
 import PlanConfigPanel from './step2/PlanConfigPanel'
 
-const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', '#FF9800', '#4CAF50', '#00BCD4']
+const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', WARNING, SUCCESS, '#00BCD4']
 
 export default function Step2PVAreaRefinement({
   uploadedImageData,
@@ -205,14 +206,14 @@ export default function Step2PVAreaRefinement({
             background: 'white', padding: '1.5rem', borderRadius: '12px',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             maxHeight: rightPanelCollapsed ? 'none' : 'calc(100vh - 120px)', overflowY: rightPanelCollapsed ? 'hidden' : 'auto',
-            border: '2px solid #C4D600'
+            border: `2px solid ${PRIMARY}`
           }}>
-            <button onClick={() => setRightPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={() => setRightPanelCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: TEXT_PLACEHOLDER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {rightPanelCollapsed ? '‹' : '›'}
             </button>
             {!rightPanelCollapsed && (
               <>
-                <h3 style={{ margin: '0 0 1rem', color: '#555', fontSize: '1.05rem', fontWeight: '600' }}>
+                <h3 style={{ margin: '0 0 1rem', color: TEXT_SECONDARY, fontSize: '1.05rem', fontWeight: '600' }}>
                   Panel Configuration
                 </h3>
 
@@ -220,31 +221,31 @@ export default function Step2PVAreaRefinement({
                 <div style={{ marginBottom: '1.1rem' }}>
                   <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Panel Type</label>
                   <select value={panelType} onChange={(e) => setPanelType(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', border: '2px solid #e0e0e0', borderRadius: '6px', fontSize: '0.88rem' }}>
+                    style={{ width: '100%', padding: '0.6rem', border: `2px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.88rem' }}>
                     <option value="AIKO-G670-MCH72Mw">AIKO-G670-MCH72Mw (2382×1134×30mm)</option>
                   </select>
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: '#999', fontStyle: 'italic' }}>238.2 cm (L) × 113.4 cm (W)</p>
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: TEXT_LIGHT, fontStyle: 'italic' }}>238.2 cm (L) × 113.4 cm (W)</p>
                 </div>
 
                 {/* Reference Line (global, both modes) */}
-                <div style={{ marginBottom: '1.1rem', padding: '0.85rem', background: '#fcfdf7', borderRadius: '8px', border: '1px solid #C4D600' }}>
+                <div style={{ marginBottom: '1.1rem', padding: '0.85rem', background: '#fcfdf7', borderRadius: '8px', border: `1px solid ${PRIMARY}` }}>
                   <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Reference Line (scale)</label>
                   <button
                     onClick={() => { if (isDrawingLine) { setIsDrawingLine(false); setLineStart(null) } else { setIsDrawingLine(true); setActiveGroupId(null); setBaselineDrawStart(null); setReferenceLine(null) } }}
-                    style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? '#f44336' : '#C4D600', color: isDrawingLine ? 'white' : '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
+                    style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? ERROR : PRIMARY, color: isDrawingLine ? 'white' : TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
                   >
                     {isDrawingLine ? 'Cancel Drawing' : (referenceLine ? 'Redraw Line' : 'Draw Line on Image')}
                   </button>
                   {referenceLine && (
                     <>
-                      <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: '#555' }}>Line Length (cm)</label>
+                      <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: TEXT_SECONDARY }}>Line Length (cm)</label>
                       <input type="number" min="0" step="0.1" value={referenceLineLengthCm}
                         onChange={(e) => setReferenceLineLengthCm(e.target.value)}
                         placeholder="Enter length in cm"
-                        style={{ width: '100%', padding: '0.6rem', border: '2px solid #e0e0e0', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                        style={{ width: '100%', padding: '0.6rem', border: `2px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
                       />
                       {referenceLineLengthCm && (
-                        <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#666' }}>
+                        <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: TEXT_MUTED }}>
                           Ratio: {(referenceLineLengthCm / Math.sqrt(Math.pow(referenceLine.end.x - referenceLine.start.x, 2) + Math.pow(referenceLine.end.y - referenceLine.start.y, 2))).toFixed(4)} cm/px
                         </p>
                       )}
