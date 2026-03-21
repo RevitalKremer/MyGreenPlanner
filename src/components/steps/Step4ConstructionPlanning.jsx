@@ -117,6 +117,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     setAreaSettings(prev => {
       const copy = { ...(prev[areaIdx] || {}) }
       detailParams.forEach(p => delete copy[p.key])
+      delete copy.diagOverrides
       return { ...prev, [areaIdx]: copy }
     })
   }, [])
@@ -542,7 +543,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
           {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
           {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
           {activeTab === 'rails'  && (
             <div style={{ height: '100%', overflow: 'hidden' }}>

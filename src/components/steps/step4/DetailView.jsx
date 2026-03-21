@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -7,10 +7,16 @@ import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null }) {
-  const [showAnnotations, setShowAnnotations] = useState(true)
-  const [showPunches,     setShowPunches]     = useState(true)
-  const [rulerActive,     setRulerActive]     = useState(false)
+export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null }) {
+  const [showAnnotations,  setShowAnnotations]  = useState(true)
+  const [showPunches,      setShowPunches]      = useState(true)
+  const [showDiagHandles,  setShowDiagHandles]  = useState(true)
+  const [rulerActive,      setRulerActive]      = useState(false)
+  const [barHover,         setBarHover]         = useState(null) // { which: 'top'|'bot', svgX } | null
+  const [hoverHandle,      setHoverHandle]      = useState(null) // { which, spanIndex } | null
+
+  const svgRef      = useRef(null)
+  const diagDragRef = useRef(null) // { which, spanIndex, xA, spanW, startClientX, didDrag }
 
   const {
     zoom, setZoom, panOffset, panActive,
@@ -28,6 +34,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const panelLengthCm  = settings.panelLengthCm ?? 238.2
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
   const diagBasePct    = (settings.diagBasePct ?? 90) / 100
+  const diagOverrides  = settings.diagOverrides ?? {}
 
   // Highlight helpers
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
@@ -136,25 +143,43 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       const hB       = legHeightAtX(xB)
       const spanW    = xB - xA
       const isDouble = hA >= DOUBLE_ABOVE || hB >= DOUBLE_ABOVE
-      const skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
-      // First span (leftmost/lowest) is reversed when there are 2+ spans
-      const reversed = numSpans > 1 && i === 0
-      const topPct   = reversed
-        ? (isDouble ? 0.90 : 1 - diagTopPct)          // 75% (or 90% if double)
-        : (isDouble ? 0.10 : diagTopPct)               // 25% (or 10% if double)
-      const botPct   = reversed ? (1 - diagBasePct) : diagBasePct  // 10% or 90%
-      const topX     = xA + topPct * spanW
-      const botX     = xA + botPct * spanW
-      const topY     = beamY(topX)
-      const lenCm    = Math.sqrt((botX - topX) ** 2 + (baseY - topY) ** 2) / SC
-      return { xA, xB, hA, hB, spanW, topX, botX, topY, lenCm, isDouble, reversed, skip }
+      const ov       = diagOverrides[i] ?? {}
+      // Skip rule, then apply explicit user override
+      let   skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
+      if (ov.disabled === true)  skip = true
+      if (ov.disabled === false) skip = false
+      const reversed  = numSpans > 1 && i === 0
+      const defTopPct = reversed ? (isDouble ? 0.90 : 1 - diagTopPct) : (isDouble ? 0.10 : diagTopPct)
+      const defBotPct = reversed ? (1 - diagBasePct) : diagBasePct
+      const topPct    = ov.topPct !== undefined ? ov.topPct : defTopPct
+      const botPct    = ov.botPct !== undefined ? ov.botPct : defBotPct
+      const topX      = xA + topPct * spanW
+      const botX      = xA + botPct * spanW
+      const topY      = beamY(topX)
+      const lenCm     = Math.sqrt((botX - topX) ** 2 + (baseY - topY) ** 2) / SC
+      return { xA, xB, hA, hB, spanW, topX, botX, topY, lenCm, isDouble, reversed, skip, spanIndex: i }
     })
+    // Safety: if all skip, force-show the rightmost span not explicitly disabled by user
     const anyVisible = raw.some(s => !s.skip)
-    // Rule: if all spans below threshold, force the last span (tallest legs)
-    return raw
-      .map((s, i) => (!anyVisible && i === raw.length - 1) ? { ...s, skip: false } : s)
-      .filter(s => !s.skip)
+    if (!anyVisible) {
+      for (let i = raw.length - 1; i >= 0; i--) {
+        if ((diagOverrides[raw[i].spanIndex] ?? {}).disabled !== true) {
+          raw[i] = { ...raw[i], skip: false }
+          break
+        }
+      }
+    }
+    return raw.filter(s => !s.skip)
   })()
+
+  // Spans with no diagonal (skipped by rules or user-deleted) — used for "add" affordance
+  const activeSpanSet    = new Set(diagonals.map(d => d.spanIndex))
+  const naturallySkipped = new Set(
+    allLegXs.slice(0, -1).map((xA, i) => {
+      const xB = allLegXs[i + 1]
+      return legHeightAtX(xA) < 60 && legHeightAtX(xB) < 60 ? i : -1
+    }).filter(i => i >= 0)
+  )
 
   const lb_x = legX0,              lb_w = blockW  // left block aligns with rear leg (beam end)
   const rb_x = legX1 - blockW,     rb_w = blockW  // right block aligns with front leg (beam end)
@@ -177,6 +202,74 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       .sort((a, b) => a.cx - b.cx)        // re-sort left→right for rendering
       .map(r => legX0 + (r.globalOffsetCm - RAIL_CM + baseOverhangCm) * Math.cos(angleRad) * SC - blockW / 2)
   })()
+
+  // ── Diagonal handle helpers ───────────────────────────────────────────────
+  const toSvgX = (clientX) => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    return rect ? (clientX - rect.left) / zoom : 0
+  }
+  const findSpan = (svgX) => {
+    for (let i = 0; i < allLegXs.length - 1; i++) {
+      if (svgX >= allLegXs[i] && svgX <= allLegXs[i + 1])
+        return { spanIndex: i, xA: allLegXs[i], spanW: allLegXs[i + 1] - allLegXs[i] }
+    }
+    return null
+  }
+
+  const deleteDiagonal = (spanIndex) => {
+    const { topPct, botPct, ...rest } = diagOverrides[spanIndex] ?? {}  // eslint-disable-line no-unused-vars
+    onUpdateSetting?.('diagOverrides', { ...diagOverrides, [spanIndex]: { ...rest, disabled: true } })
+  }
+
+  // ── Handle drag (window-listener based, click-vs-drag) ────────────────────
+  const startHandleDrag = (e, which, d) => {
+    e.stopPropagation()
+    const startClientX = e.clientX
+    const initialPct   = which === 'top'
+      ? (diagOverrides[d.spanIndex]?.topPct ?? (d.spanW > 0 ? (d.topX - d.xA) / d.spanW : 0.25))
+      : (diagOverrides[d.spanIndex]?.botPct ?? (d.spanW > 0 ? (d.botX - d.xA) / d.spanW : 0.90))
+    const capturedOv   = { ...diagOverrides }
+    let didDrag        = false
+
+    const onMove = (me) => {
+      if (Math.abs(me.clientX - startClientX) > 3) didDrag = true
+      if (!didDrag) return
+      const deltaSvgX = (me.clientX - startClientX) / zoom
+      const pct = Math.max(0.05, Math.min(0.95, initialPct + deltaSvgX / d.spanW))
+      const key = which === 'top' ? 'topPct' : 'botPct'
+      const existing = capturedOv[d.spanIndex] ?? {}
+      onUpdateSetting?.('diagOverrides', { ...capturedOv, [d.spanIndex]: { ...existing, [key]: pct } })
+    }
+    const onUp = () => {
+      if (!didDrag) deleteDiagonal(d.spanIndex)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // ── Bar hover + click-to-add ──────────────────────────────────────────────
+  const handleBarMouseMove = (e, which) => {
+    if (diagDragRef.current) return
+    setBarHover({ which, svgX: toSvgX(e.clientX) })
+  }
+  const handleBarClick = (e, which) => {
+    const svgX = toSvgX(e.clientX)
+    const span = findSpan(svgX)
+    if (!span || activeSpanSet.has(span.spanIndex)) return
+    const clickedPct = Math.max(0.05, Math.min(0.95, (svgX - span.xA) / span.spanW))
+    const topPct = which === 'top' ? clickedPct : 0.5
+    const botPct = which === 'bot' ? clickedPct : 0.5
+    const entry  = naturallySkipped.has(span.spanIndex)
+      ? { disabled: false, topPct, botPct }
+      : { topPct, botPct }
+    onUpdateSetting?.('diagOverrides', { ...diagOverrides, [span.spanIndex]: entry })
+  }
+
+  const handleContainerMouseMove = (e) => handleMouseMove(e)
+  const handleContainerMouseUp   = (e) => { stopPan(e) }
+  const handleContainerMouseLeave = (e) => { stopPan(e) }
 
   const DC = TEXT_DARKEST
   const TC = TEXT_VERY_LIGHT
@@ -220,9 +313,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
         ref={containerRef}
         style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: panActive ? 'grabbing' : 'grab' }}
         onMouseDown={startPan}
-        onMouseMove={handleMouseMove}
-        onMouseUp={stopPan}
-        onMouseLeave={stopPan}
+        onMouseMove={handleContainerMouseMove}
+        onMouseUp={handleContainerMouseUp}
+        onMouseLeave={handleContainerMouseLeave}
       >
         <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
           <div ref={contentRef} style={{
@@ -238,7 +331,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               </span>
             </div>
 
-            <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
+            <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
               <defs>
                 <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
                   <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
@@ -285,17 +378,25 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               <line x1={topExtX0} y1={topExtY0} x2={topExtX1} y2={topExtY1}
                 stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               {diagonals.map((d, di) => {
-                const mx = (d.topX + d.botX) / 2, my = (d.topY + baseY) / 2
                 const ang = Math.atan2(baseY - d.topY, d.botX - d.topX) * 180 / Math.PI
                 return (
                   <g key={di}>
                     <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
                       stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
-                    {d.isDouble && (
-                      <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                        fontSize="9" fontWeight="800" fill="red"
-                        transform={`rotate(${ang}, ${mx}, ${my})`}>×2</text>
-                    )}
+                    {d.isDouble && (<>
+                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                        stroke="red" strokeWidth="1" strokeLinecap="square"
+                        strokeDasharray="4,4" opacity="0.6" />
+                      {[0.08, 0.5, 0.92].map((t, i) => {
+                        const lx = d.topX + t * (d.botX - d.topX)
+                        const ly = d.topY + t * (baseY - d.topY)
+                        return (
+                          <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
+                            fontSize="8" fontWeight="800" fill="red"
+                            transform={`rotate(${ang}, ${lx}, ${ly})`}>×2</text>
+                        )
+                      })}
+                    </>)}
                     {hl('diagonal') && (
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
                         stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
@@ -494,82 +595,133 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
               {/* ── Base beam punch sketch ── */}
               {showPunches && (() => {
-                const ry       = blockBotY + 130
-                const barH     = 12
-                const beamL    = x0 - OHx
-                const beamR    = x1 + OHx
-                const barW     = beamR - beamL
-                const barCy    = ry + barH / 2
+                const ry    = blockBotY + 130
+                const barH  = 12
+                const beamL = x0 - OHx
+                const beamR = x1 + OHx
+                const barW  = beamR - beamL
+                const barCy = ry + barH / 2
                 const punches       = [beamL + 2 * SC, ...diagonals.map(d => d.botX), beamR - 2 * SC]
-                const punchLabelsCm = [
-                  '2',
-                  ...diagonals.map(d => fmt((d.botX - legX0) / SC)),
-                  fmt(baseBeamLength - 2),
-                ]
-                const totalCm = fmt(baseBeamLength)
+                const punchLabelsCm = ['2', ...diagonals.map(d => fmt((d.botX - legX0) / SC)), fmt(baseBeamLength - 2)]
+                // Ghost position: barHover on this bar, in a missing span, not near an existing handle
+                const ghostX = (() => {
+                  if (!showDiagHandles || barHover?.which !== 'bot') return null
+                  const span = findSpan(barHover.svgX)
+                  if (!span || activeSpanSet.has(span.spanIndex)) return null
+                  if (diagonals.some(d => Math.abs(d.botX - barHover.svgX) < 8)) return null
+                  return barHover.svgX
+                })()
                 return (
                   <g>
-                    {/* label */}
-                    <text x={beamL} y={ry - 5}
-                      fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
-                    {/* profile bar */}
+                    <text x={beamL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
+                    {/* interactive bar rect */}
                     <rect x={beamL} y={ry} width={barW} height={barH}
-                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
-                    {/* punch circles */}
-                    {punches.map((px, i) => (
-                      <circle key={i} cx={px} cy={barCy} r={2}
-                        fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2"
+                      style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
+                      onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
+                      onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
+                      onClick={showDiagHandles ? (e) => handleBarClick(e, 'bot') : undefined}
+                    />
+                    {/* fixed end punches */}
+                    {[punches[0], punches[punches.length - 1]].map((px, i) => (
+                      <g key={`ep-${i}`}>
+                        <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                        <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
+                          {i === 0 ? punchLabelsCm[0] : punchLabelsCm[punchLabelsCm.length - 1]}
+                        </text>
+                      </g>
                     ))}
-                    {/* position labels */}
-                    {punches.map((px, i) => (
-                      <text key={i} x={px} y={ry + barH + 10}
-                        textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                        {punchLabelsCm[i]}
-                      </text>
-                    ))}
-                    {/* total length dim */}
-                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22}
-                      label={totalCm} off={10} />
+                    {/* diagonal handles (click=delete, drag=move) */}
+                    {showDiagHandles && diagonals.map((d, di) => {
+                      const isHov = hoverHandle?.which === 'bot' && hoverHandle?.spanIndex === d.spanIndex
+                      return (
+                        <g key={`bh-${di}`}>
+                          <circle cx={d.botX} cy={barCy} r={5.5}
+                            fill={isHov ? '#dc2626' : BLUE} stroke="white" strokeWidth="1.5"
+                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={() => setHoverHandle({ which: 'bot', spanIndex: d.spanIndex })}
+                            onMouseLeave={() => setHoverHandle(null)}
+                            onMouseDown={(e) => startHandleDrag(e, 'bot', d)}
+                          />
+                          {isHov && <text x={d.botX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
+                          <text x={d.botX} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isHov ? '#dc2626' : TEXT_SECONDARY} fontWeight="600">
+                            {fmt((d.botX - legX0) / SC)}
+                          </text>
+                        </g>
+                      )
+                    })}
+                    {/* "+" ghost follower */}
+                    {ghostX !== null && (
+                      <g opacity="0.5" style={{ pointerEvents: 'none' }}>
+                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="3,2" />
+                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill="#22c55e">+</text>
+                      </g>
+                    )}
+                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22} label={fmt(baseBeamLength)} off={10} />
                   </g>
                 )
               })()}
 
               {/* ── Slope beam punch sketch ── */}
               {showPunches && (() => {
-                const ry       = blockBotY + 52
-                const barH     = 12
-                const beamL    = x0 - OHx
-                const beamR    = x1 + OHx
-                const barW     = beamR - beamL
-                const barCy    = ry + barH / 2
-                const punches       = [
-                  beamL + (2 / topBeamLength) * barW,
-                  ...diagonals.map(d => d.topX),
-                  beamL + ((topBeamLength - 2) / topBeamLength) * barW,
-                ]
-                const punchLabelsCm = [
-                  '2',
-                  ...diagonals.map(d => fmt((d.topX - legX0) / legBW * topBeamLength)),
-                  fmt(topBeamLength - 2),
-                ]
+                const ry    = blockBotY + 52
+                const barH  = 12
+                const beamL = x0 - OHx
+                const beamR = x1 + OHx
+                const barW  = beamR - beamL
+                const barCy = ry + barH / 2
+                const punches       = [beamL + (2 / topBeamLength) * barW, ...diagonals.map(d => d.topX), beamL + ((topBeamLength - 2) / topBeamLength) * barW]
+                const punchLabelsCm = ['2', ...diagonals.map(d => fmt((d.topX - legX0) / legBW * topBeamLength)), fmt(topBeamLength - 2)]
+                const ghostX = (() => {
+                  if (!showDiagHandles || barHover?.which !== 'top') return null
+                  const span = findSpan(barHover.svgX)
+                  if (!span || activeSpanSet.has(span.spanIndex)) return null
+                  if (diagonals.some(d => Math.abs(d.topX - barHover.svgX) < 8)) return null
+                  return barHover.svgX
+                })()
                 return (
                   <g>
-                    <text x={beamL} y={ry - 5}
-                      fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
+                    <text x={beamL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
                     <rect x={beamL} y={ry} width={barW} height={barH}
-                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
-                    {punches.map((px, i) => (
-                      <circle key={i} cx={px} cy={barCy} r={2}
-                        fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2"
+                      style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
+                      onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'top') : undefined}
+                      onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
+                      onClick={showDiagHandles ? (e) => handleBarClick(e, 'top') : undefined}
+                    />
+                    {[punches[0], punches[punches.length - 1]].map((px, i) => (
+                      <g key={`ep-${i}`}>
+                        <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                        <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
+                          {i === 0 ? punchLabelsCm[0] : punchLabelsCm[punchLabelsCm.length - 1]}
+                        </text>
+                      </g>
                     ))}
-                    {punches.map((px, i) => (
-                      <text key={i} x={px} y={ry + barH + 10}
-                        textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                        {punchLabelsCm[i]}
-                      </text>
-                    ))}
-                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22}
-                      label={fmt(topBeamLength)} off={10} />
+                    {showDiagHandles && diagonals.map((d, di) => {
+                      const isHov = hoverHandle?.which === 'top' && hoverHandle?.spanIndex === d.spanIndex
+                      return (
+                        <g key={`sh-${di}`}>
+                          <circle cx={d.topX} cy={barCy} r={5.5}
+                            fill={isHov ? '#dc2626' : BLUE} stroke="white" strokeWidth="1.5"
+                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={() => setHoverHandle({ which: 'top', spanIndex: d.spanIndex })}
+                            onMouseLeave={() => setHoverHandle(null)}
+                            onMouseDown={(e) => startHandleDrag(e, 'top', d)}
+                          />
+                          {isHov && <text x={d.topX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
+                          <text x={d.topX} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isHov ? '#dc2626' : TEXT_SECONDARY} fontWeight="600">
+                            {fmt((d.topX - legX0) / legBW * topBeamLength)}
+                          </text>
+                        </g>
+                      )
+                    })}
+                    {ghostX !== null && (
+                      <g opacity="0.5" style={{ pointerEvents: 'none' }}>
+                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="3,2" />
+                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill="#22c55e">+</text>
+                      </g>
+                    )}
+                    <Dim ax1={beamL} ay1={ry + barH + 22} ax2={beamR} ay2={ry + barH + 22} label={fmt(topBeamLength)} off={10} />
                   </g>
                 )
               })()}
@@ -616,11 +768,15 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       {/* ── Layers panel ── */}
       <LayersPanel
         layers={[
-          { label: 'Annotations', checked: showAnnotations, setter: setShowAnnotations },
-          { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
+          { label: 'Annotations',   checked: showAnnotations,  setter: setShowAnnotations  },
+          { label: 'Punches',       checked: showPunches,      setter: setShowPunches      },
+          { label: 'Edit Bar',      checked: showDiagHandles,  setter: setShowDiagHandles  },
         ]}
         actions={[
           ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+          ...(Object.keys(diagOverrides).length > 0
+            ? [{ label: 'Reset handles', onClick: () => onUpdateSetting?.('diagOverrides', {}), style: { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } }]
+            : []),
           { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
       />
