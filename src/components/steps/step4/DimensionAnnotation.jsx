@@ -1,3 +1,5 @@
+import { TEXT_SECONDARY } from '../../../styles/colors'
+
 /**
  * DimensionAnnotation — reusable SVG dimension-line component.
  *
@@ -9,7 +11,7 @@
  *   color       string         — default colour for all segments
  *   colors      [string, ...]  — optional per-segment colour override
  */
-export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = '#555', colors = null }) {
+export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null }) {
   const TICK = 4 / zoom
   const fontSize = 11 / zoom
 

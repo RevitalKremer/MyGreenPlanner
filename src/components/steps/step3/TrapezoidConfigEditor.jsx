@@ -1,3 +1,4 @@
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
 import {
   computePanelBackHeight, computeTotalSlopeDepth,
   toggleOrientation, toggleEmptyOrientation,
@@ -56,26 +57,26 @@ export default function TrapezoidConfigEditor({
   return (
     <div style={{
       marginBottom: '0.85rem', padding: '0.6rem',
-      background: isOverridden ? '#F8FAE8' : '#fafafa',
+      background: isOverridden ? '#F8FAE8' : BG_FAINT,
       borderRadius: '8px',
-      border: `1px solid ${isOverridden ? '#C4D600' : '#f0f0f0'}`,
+      border: `1px solid ${isOverridden ? PRIMARY : BG_MID}`,
     }}>
 
       {/* Row 1: trapezoid selector */}
       <div style={{ marginBottom: '0.35rem' }}>
-        <div style={{ fontSize: '0.6rem', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Trapezoid</div>
+        <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Trapezoid</div>
         {selectedAreaTrapIds?.length > 1 ? (
           <select
             value={selectedTrapezoidId || ''}
             onChange={e => reassignToTrapezoid?.(e.target.value)}
-            style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: '#5a6600', background: '#e8f2b0', border: '1px solid #C4D600', borderRadius: '6px', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`, borderRadius: '6px', cursor: 'pointer' }}
           >
             {selectedAreaTrapIds.map(tid => (
               <option key={tid} value={tid}>{tid}</option>
             ))}
           </select>
         ) : (
-          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#5a6600', background: '#e8f2b0', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>
             {selectedTrapezoidId || '—'}
           </div>
         )}
@@ -86,7 +87,7 @@ export default function TrapezoidConfigEditor({
         {addTrapezoid && (
           <button
             onClick={addTrapezoid}
-            style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: '#f0f4e8', color: '#5a6600', border: '1px solid #C4D600', borderRadius: '5px', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: '#f0f4e8', color: PRIMARY_DARK, border: `1px solid ${PRIMARY}`, borderRadius: '5px', cursor: 'pointer' }}
           >
             + New Trapezoid
           </button>
@@ -94,7 +95,7 @@ export default function TrapezoidConfigEditor({
         {isOverridden && (
           <button
             onClick={resetTrapezoidConfig}
-            style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: 'white', color: '#888', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: 'white', color: TEXT_PLACEHOLDER, border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer' }}
           >
             ↺ Reset to Defaults
           </button>
@@ -103,48 +104,48 @@ export default function TrapezoidConfigEditor({
 
       {/* Cross-section preview */}
       <svg width={W} height={H} style={{ display: 'block', margin: '0 auto 0.4rem' }}>
-        <line x1="0" y1={groundY} x2={W} y2={groundY} stroke="#ddd" strokeWidth="1"/>
-        <line x1={fX} y1={groundY} x2={fX} y2={groundY - frontHeight * sc} stroke="#aaa" strokeWidth="1.5"/>
-        <line x1={finalX} y1={groundY} x2={finalX} y2={groundY - backHeight * sc} stroke="#aaa" strokeWidth="1.5"/>
+        <line x1="0" y1={groundY} x2={W} y2={groundY} stroke={BORDER} strokeWidth="1"/>
+        <line x1={fX} y1={groundY} x2={fX} y2={groundY - frontHeight * sc} stroke={TEXT_VERY_LIGHT} strokeWidth="1.5"/>
+        <line x1={finalX} y1={groundY} x2={finalX} y2={groundY - backHeight * sc} stroke={TEXT_VERY_LIGHT} strokeWidth="1.5"/>
         {segs.map((seg, i) => (
           <line key={i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-            stroke={seg.isEmp ? '#ccc' : seg.isH ? '#FF9800' : '#1565C0'}
+            stroke={seg.isEmp ? BORDER_MID : seg.isH ? WARNING : BLUE}
             strokeWidth="2.5" strokeLinecap="round"
             strokeDasharray={seg.isEmp ? '4 3' : undefined}
           />
         ))}
-        <text x={fX - 2} y={(groundY + groundY - frontHeight * sc) / 2} textAnchor="end" fill="#888" fontSize="8">{frontHeight.toFixed(0)}</text>
-        <text x={finalX + 3} y={(groundY + groundY - backHeight * sc) / 2} fill="#888" fontSize="8">{backHeight.toFixed(1)}</text>
-        <text x={(fX + finalX) / 2} y={H - 1} textAnchor="middle" fill="#555" fontSize="7.5" fontWeight="700">{angle.toFixed(1)}°</text>
+        <text x={fX - 2} y={(groundY + groundY - frontHeight * sc) / 2} textAnchor="end" fill={TEXT_PLACEHOLDER} fontSize="8">{frontHeight.toFixed(0)}</text>
+        <text x={finalX + 3} y={(groundY + groundY - backHeight * sc) / 2} fill={TEXT_PLACEHOLDER} fontSize="8">{backHeight.toFixed(1)}</text>
+        <text x={(fX + finalX) / 2} y={H - 1} textAnchor="middle" fill={TEXT_SECONDARY} fontSize="7.5" fontWeight="700">{angle.toFixed(1)}°</text>
       </svg>
 
       {/* Angle + Front Height inputs */}
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.6rem', color: '#aaa', marginBottom: '2px' }}>Angle (°)</div>
+          <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
           <input
             key={`${selectedTrapezoidId}-angle`}
             type="number" min="0" max="30" step="0.5"
             defaultValue={angle}
             onChange={e => updateTrapezoidConfig('angle', e.target.value)}
-            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? '#C4D600' : '#ddd'}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
+            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? PRIMARY : BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.6rem', color: '#aaa', marginBottom: '2px' }}>Front H (cm)</div>
+          <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
           <input
             key={`${selectedTrapezoidId}-frontH`}
             type="number" min="0" step="0.5"
             defaultValue={frontHeight}
             onChange={e => updateTrapezoidConfig('frontHeight', e.target.value)}
-            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? '#C4D600' : '#ddd'}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
+            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? PRIMARY : BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
       </div>
 
       {/* Lines per Area — inline */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.45rem' }}>
-        <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#777', whiteSpace: 'nowrap' }}>Lines:</span>
+        <span style={{ fontSize: '0.7rem', fontWeight: '600', color: TEXT_LIGHT, whiteSpace: 'nowrap' }}>Lines:</span>
         <div style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
           {[1,2,3,4,5].map(n => (
             <button key={n}
@@ -160,7 +161,7 @@ export default function TrapezoidConfigEditor({
                 const bH = parseFloat(computePanelBackHeight(fH, a || 0, slicedOrients, n).toFixed(1))
                 setTrapezoidConfigs(prev => ({ ...prev, [selectedTrapezoidId]: { ...cur, linesPerRow: n, lineOrientations: slicedOrients, backHeight: bH } }))
               }}
-              style={{ flex: 1, padding: '0.3rem 0', background: effectiveLinesPerRow === n ? '#1565C0' : 'white', color: effectiveLinesPerRow === n ? 'white' : '#555', border: `2px solid ${effectiveLinesPerRow === n ? '#1565C0' : '#e0e0e0'}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8rem' }}
+              style={{ flex: 1, padding: '0.3rem 0', background: effectiveLinesPerRow === n ? BLUE : 'white', color: effectiveLinesPerRow === n ? 'white' : TEXT_SECONDARY, border: `2px solid ${effectiveLinesPerRow === n ? BLUE : BORDER_LIGHT}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8rem' }}
             >
               {n}
             </button>
@@ -182,7 +183,7 @@ export default function TrapezoidConfigEditor({
                   updateTrapezoidConfig('lineOrientations', newOrients)
                 }}
                 title="Click to mark/unmark as empty"
-                style={{ fontSize: '0.65rem', width: '14px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? '#ccc' : '#999', fontWeight: '700', textAlign: 'center' }}
+                style={{ fontSize: '0.65rem', width: '14px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? BORDER_MID : '#999', fontWeight: '700', textAlign: 'center' }}
               >{idx + 1}</span>
               <button
                 onClick={() => {
@@ -190,7 +191,7 @@ export default function TrapezoidConfigEditor({
                   newOrients[idx] = toggleOrientation(newOrients[idx])
                   updateTrapezoidConfig('lineOrientations', newOrients)
                 }}
-                style={{ flex: 1, padding: '0.28rem 0.4rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', textDecoration: isEmpty ? 'line-through' : 'none' }}
+                style={{ flex: 1, padding: '0.28rem 0.4rem', background: isEmpty ? BG_SUBTLE : isH ? WARNING_BG : BLUE_BG, color: isEmpty ? BORDER_MID : isH ? WARNING_DARK : BLUE, border: `1.5px solid ${isEmpty ? BORDER : isH ? WARNING_LIGHT : BLUE_BORDER}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', textDecoration: isEmpty ? 'line-through' : 'none' }}
               >
                 {isH ? '▬ Landscape' : '| Portrait'}
               </button>

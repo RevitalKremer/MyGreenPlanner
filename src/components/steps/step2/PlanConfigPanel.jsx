@@ -1,3 +1,4 @@
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_FAINT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BG_SUBTLE, BORDER, BLUE, BLUE_BG, BLUE_BORDER, BORDER_MID, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG, SUCCESS, SUCCESS_BG } from '../../../styles/colors'
 import { isHorizontalOrientation, isEmptyOrientation } from '../../../utils/trapezoidGeometry'
 
 export default function PlanConfigPanel({
@@ -15,13 +16,13 @@ export default function PlanConfigPanel({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
         <label style={{ fontWeight: '600', fontSize: '0.88rem' }}>Areas</label>
         <button onClick={addGroup}
-          style={{ padding: '0.35rem 0.75rem', background: '#C4D600', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}>
+          style={{ padding: '0.35rem 0.75rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}>
           + Add Area
         </button>
       </div>
 
       {areas.length === 0 && (
-        <p style={{ fontSize: '0.82rem', color: '#aaa', textAlign: 'center', padding: '1rem 0' }}>
+        <p style={{ fontSize: '0.82rem', color: TEXT_VERY_LIGHT, textAlign: 'center', padding: '1rem 0' }}>
           Click "+ Add Area" to define an area.
         </p>
       )}
@@ -39,13 +40,13 @@ export default function PlanConfigPanel({
                 value={group.label}
                 onChange={e => updateGroup(group.id, 'label', e.target.value)}
                 onClick={e => e.stopPropagation()}
-                style={{ fontWeight: '700', fontSize: '0.85rem', flex: 1, color: '#333', border: 'none', background: 'transparent', outline: 'none', cursor: 'text', minWidth: 0, padding: 0 }}
+                style={{ fontWeight: '700', fontSize: '0.85rem', flex: 1, color: TEXT, border: 'none', background: 'transparent', outline: 'none', cursor: 'text', minWidth: 0, padding: 0 }}
               />
-              <span style={{ fontSize: '0.72rem', color: group.baseline ? '#4caf50' : '#ff9800', fontWeight: '600' }}>
+              <span style={{ fontSize: '0.72rem', color: group.baseline ? SUCCESS : WARNING, fontWeight: '600' }}>
                 {group.baseline ? '✓ baseline' : '⚠ no baseline'}
               </span>
               <button onClick={(e) => { e.stopPropagation(); removeGroup(group.id) }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>✕</button>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_FAINTEST, fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>✕</button>
             </div>
 
             {/* Group body */}
@@ -56,7 +57,7 @@ export default function PlanConfigPanel({
                   if (isActive) { setActiveGroupId(null); setBaselineDrawStart(null) }
                   else { setActiveGroupId(group.id); setBaselineDrawStart(null); setIsDrawingLine(false); setLineStart(null) }
                 }}
-                style={{ padding: '0.45rem', background: isActive ? group.color : 'white', color: isActive ? '#333' : group.color, border: `1.5px solid ${group.color}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
+                style={{ padding: '0.45rem', background: isActive ? group.color : 'white', color: isActive ? TEXT : group.color, border: `1.5px solid ${group.color}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
               >
                 {isActive
                   ? (baselineDrawStart ? 'Click 2nd point…' : 'Click 1st point…')
@@ -65,31 +66,31 @@ export default function PlanConfigPanel({
 
               {/* Angle */}
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Angle (°)</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: TEXT_SECONDARY, display: 'block', marginBottom: '0.25rem' }}>Angle (°)</label>
                 <input type="number" min="0" max="30" step="0.1" value={group.angle}
                   onChange={e => { const v = e.target.value; const n = parseFloat(v); if (v === '' || (n >= 0 && n <= 30)) updateGroup(group.id, 'angle', v) }}
                   placeholder="0–30°"
-                  style={{ width: '100%', padding: '0.45rem', border: '1.5px solid #e0e0e0', borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '0.45rem', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Panel Front Height */}
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Panel Front Height (cm from floor)</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: TEXT_SECONDARY, display: 'block', marginBottom: '0.25rem' }}>Panel Front Height (cm from floor)</label>
                 <input type="number" min="0" step="0.1" value={group.frontHeight}
                   onChange={e => updateGroup(group.id, 'frontHeight', e.target.value)}
                   placeholder="cm from floor"
-                  style={{ width: '100%', padding: '0.45rem', border: '1.5px solid #e0e0e0', borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '0.45rem', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Lines per area */}
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: '#555', display: 'block', marginBottom: '0.25rem' }}>Lines per Area</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: '600', color: TEXT_SECONDARY, display: 'block', marginBottom: '0.25rem' }}>Lines per Area</label>
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
                   {[1,2,3,4,5].map(n => (
                     <button key={n} onClick={() => updateGroupLinesPerRow(group.id, n)}
-                      style={{ flex: 1, padding: '0.35rem', background: group.linesPerRow === n ? '#1565C0' : 'white', color: group.linesPerRow === n ? 'white' : '#555', border: `1.5px solid ${group.linesPerRow === n ? '#1565C0' : '#e0e0e0'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}>
+                      style={{ flex: 1, padding: '0.35rem', background: group.linesPerRow === n ? BLUE : 'white', color: group.linesPerRow === n ? 'white' : TEXT_SECONDARY, border: `1.5px solid ${group.linesPerRow === n ? BLUE : BORDER_LIGHT}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}>
                       {n}
                     </button>
                   ))}
@@ -106,10 +107,10 @@ export default function PlanConfigPanel({
                       <span
                         onClick={() => toggleGroupEmptyOrientation(group.id, idx)}
                         title="Click to mark/unmark line as empty (no panels)"
-                        style={{ fontSize: '0.72rem', width: '42px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? '#bbb' : '#777', textDecoration: isEmpty ? 'line-through' : 'none' }}
+                        style={{ fontSize: '0.72rem', width: '42px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? TEXT_FAINTEST : TEXT_FAINT, textDecoration: isEmpty ? 'line-through' : 'none' }}
                       >Line {idx+1}</span>
                       <button onClick={() => toggleGroupOrientation(group.id, idx)}
-                        style={{ flex: 1, padding: '0.3rem', background: isEmpty ? '#f5f5f5' : isH ? '#FFF3E0' : '#E3F2FD', color: isEmpty ? '#ccc' : isH ? '#E65100' : '#1565C0', border: `1.5px solid ${isEmpty ? '#ddd' : isH ? '#FFB74D' : '#90CAF9'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
+                        style={{ flex: 1, padding: '0.3rem', background: isEmpty ? BG_SUBTLE : isH ? WARNING_BG : BLUE_BG, color: isEmpty ? BORDER_MID : isH ? WARNING_DARK : BLUE, border: `1.5px solid ${isEmpty ? BORDER : isH ? WARNING_LIGHT : BLUE_BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', textDecoration: isEmpty ? 'line-through' : 'none' }}>
                         {isH ? '▬ Landscape' : '▮ Portrait'}
                       </button>
                     </div>
@@ -123,13 +124,13 @@ export default function PlanConfigPanel({
       })}
 
       {/* Validation summary */}
-      <div style={{ padding: '0.75rem', background: (referenceLine && referenceLineLengthCm && areas.length > 0 && areas.every(g => g.baseline && g.angle && g.frontHeight)) ? '#e8f5e9' : '#fff3cd', borderRadius: '8px', fontSize: '0.82rem', marginTop: '0.5rem' }}>
+      <div style={{ padding: '0.75rem', background: (referenceLine && referenceLineLengthCm && areas.length > 0 && areas.every(g => g.baseline && g.angle && g.frontHeight)) ? SUCCESS_BG : '#fff3cd', borderRadius: '8px', fontSize: '0.82rem', marginTop: '0.5rem' }}>
         <strong>Required:</strong>
         <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
-          <li style={{ color: (referenceLine && referenceLineLengthCm) ? '#4caf50' : '#ff9800' }}>Reference line with length</li>
-          <li style={{ color: areas.length > 0 ? '#4caf50' : '#ff9800' }}>At least one area</li>
-          <li style={{ color: areas.length > 0 && areas.every(g => g.baseline) ? '#4caf50' : '#ff9800' }}>All groups have a baseline</li>
-          <li style={{ color: areas.length > 0 && areas.every(g => g.angle && g.frontHeight) ? '#4caf50' : '#ff9800' }}>All groups have angle + front height</li>
+          <li style={{ color: (referenceLine && referenceLineLengthCm) ? SUCCESS : WARNING }}>Reference line with length</li>
+          <li style={{ color: areas.length > 0 ? SUCCESS : WARNING }}>At least one area</li>
+          <li style={{ color: areas.length > 0 && areas.every(g => g.baseline) ? SUCCESS : WARNING }}>All groups have a baseline</li>
+          <li style={{ color: areas.length > 0 && areas.every(g => g.angle && g.frontHeight) ? SUCCESS : WARNING }}>All groups have angle + front height</li>
         </ul>
       </div>
     </div>

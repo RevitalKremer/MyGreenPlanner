@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PRIMARY, PRIMARY_BG, PRIMARY_MID, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BG_MID } from '../styles/colors'
 
 const HELP = {
   1: {
@@ -137,15 +138,15 @@ export default function HelpPanel({ currentStep, onClose }) {
         {/* Header */}
         <div style={{
           padding: '1.25rem 1.5rem 1rem',
-          borderBottom: '2px solid #f0f0f0',
+          borderBottom: `2px solid ${BG_MID}`,
           background: 'linear-gradient(135deg, #f8f9fa 0%, #f0f4e8 100%)'
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
             <div>
-              <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#C4D600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: '700', color: PRIMARY, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>
                 Step {currentStep} Guide
               </div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#333' }}>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: TEXT }}>
                 {help.title}
               </h2>
             </div>
@@ -153,7 +154,7 @@ export default function HelpPanel({ currentStep, onClose }) {
               onClick={onClose}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: '1.2rem', color: '#aaa', padding: '0 4px', lineHeight: 1,
+                fontSize: '1.2rem', color: TEXT_VERY_LIGHT, padding: '0 4px', lineHeight: 1,
                 flexShrink: 0, marginTop: '2px'
               }}
             >✕</button>
@@ -165,22 +166,22 @@ export default function HelpPanel({ currentStep, onClose }) {
 
           {/* Purpose */}
           <div style={{
-            background: '#f8fce8',
+            background: PRIMARY_BG,
             border: '1.5px solid #e0ec99',
             borderRadius: '10px',
             padding: '1rem 1.1rem',
             marginBottom: '1.5rem'
           }}>
-            <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#8a9a00', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: '700', color: PRIMARY_MID, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
               Purpose
             </div>
-            <p style={{ margin: 0, fontSize: '0.88rem', color: '#444', lineHeight: 1.65 }}>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: TEXT_DARK, lineHeight: 1.65 }}>
               {help.purpose}
             </p>
           </div>
 
           {/* Q&A */}
-          <div style={{ fontSize: '0.65rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
+          <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
             Frequently Asked Questions
           </div>
 
@@ -189,7 +190,7 @@ export default function HelpPanel({ currentStep, onClose }) {
               <div
                 key={i}
                 style={{
-                  border: `1.5px solid ${openQA === i ? '#C4D600' : '#eee'}`,
+                  border: `1.5px solid ${openQA === i ? PRIMARY : '#eee'}`,
                   borderRadius: '8px',
                   overflow: 'hidden',
                   transition: 'border-color 0.15s'
@@ -200,17 +201,17 @@ export default function HelpPanel({ currentStep, onClose }) {
                   style={{
                     width: '100%', textAlign: 'left',
                     padding: '0.75rem 1rem',
-                    background: openQA === i ? '#f8fce8' : 'white',
+                    background: openQA === i ? PRIMARY_BG : 'white',
                     border: 'none', cursor: 'pointer',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                     gap: '0.5rem'
                   }}
                 >
-                  <span style={{ fontSize: '0.84rem', fontWeight: '600', color: '#333', lineHeight: 1.4 }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: '600', color: TEXT, lineHeight: 1.4 }}>
                     {item.q}
                   </span>
                   <span style={{
-                    fontSize: '0.75rem', color: '#C4D600', fontWeight: '700',
+                    fontSize: '0.75rem', color: PRIMARY, fontWeight: '700',
                     flexShrink: 0, marginTop: '1px', transition: 'transform 0.15s',
                     transform: openQA === i ? 'rotate(180deg)' : 'none'
                   }}>▾</span>
@@ -218,8 +219,8 @@ export default function HelpPanel({ currentStep, onClose }) {
                 {openQA === i && (
                   <div style={{
                     padding: '0 1rem 0.85rem',
-                    fontSize: '0.83rem', color: '#555', lineHeight: 1.65,
-                    background: '#f8fce8',
+                    fontSize: '0.83rem', color: TEXT_SECONDARY, lineHeight: 1.65,
+                    background: PRIMARY_BG,
                     borderTop: '1px solid #e8f0cc'
                   }}>
                     {item.a}
@@ -238,8 +239,8 @@ export default function HelpPanel({ currentStep, onClose }) {
             display: 'flex', gap: '0.6rem', alignItems: 'flex-start'
           }}>
             <span style={{ fontSize: '1rem', flexShrink: 0 }}>🤖</span>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: '#888', lineHeight: 1.55 }}>
-              <strong style={{ color: '#666' }}>Coming soon:</strong> This panel will be upgraded to an AI assistant that can answer questions about your specific project and guide you through each step interactively.
+            <p style={{ margin: 0, fontSize: '0.75rem', color: TEXT_PLACEHOLDER, lineHeight: 1.55 }}>
+              <strong style={{ color: TEXT_MUTED }}>Coming soon:</strong> This panel will be upgraded to an AI assistant that can answer questions about your specific project and guide you through each step interactively.
             </p>
           </div>
         </div>

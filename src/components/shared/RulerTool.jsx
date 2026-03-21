@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ERROR_DARK } from '../../styles/colors'
 
 /**
  * Reusable ruler/distance measurement tool overlay.
@@ -58,7 +59,7 @@ export default function RulerTool({ active, zoom, pxPerCm, containerRef }) {
           style={{
             position: 'absolute', top: 12, left: 12,
             padding: '0.22rem 0.55rem', fontSize: '0.65rem', fontWeight: '600',
-            background: '#fff3f3', color: '#c0392b', border: '1px solid #f5b7b1',
+            background: '#fff3f3', color: ERROR_DARK, border: '1px solid #f5b7b1',
             borderRadius: '5px', cursor: 'pointer', zIndex: 9,
           }}
         >

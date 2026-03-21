@@ -1,7 +1,8 @@
 import { DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../../utils/railLayoutService'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM, DEFAULT_RAIL_EDGE_DIST_MM } from '../../../utils/basePlanService'
 
-export const ACCENT = '#C4D600'
+import { PRIMARY } from '../../../styles/colors'
+export const ACCENT = PRIMARY
 
 // Single source of truth for every user-facing setting in Step 4.
 // The sidebar, reset logic, and apply-to-all are all driven from this schema.

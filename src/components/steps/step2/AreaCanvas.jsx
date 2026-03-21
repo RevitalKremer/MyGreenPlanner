@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PRIMARY, WARNING } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -106,7 +107,7 @@ export default function AreaCanvas({
                   </mask>
                 </defs>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)"/>
-                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.2)" stroke="#C4D600" strokeWidth="3"/>
+                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.2)" stroke={PRIMARY} strokeWidth="3"/>
               </>
             )}
 
@@ -174,7 +175,7 @@ export default function AreaCanvas({
 
         {/* Drawing hint banner */}
         {isDrawingAnything && (
-          <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,152,0,0.92)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: `${WARNING}eb`, color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             {isDrawingLine
               ? (lineStart ? 'Click second point to finish reference line' : 'Click first point of reference line')
               : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${activeGroup?.label}`)}

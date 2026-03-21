@@ -1,3 +1,4 @@
+import { TEXT_PLACEHOLDER, AMBER } from '../../../styles/colors'
 import { PANEL_LENGTH_CM } from '../../../utils/constructionCalculator'
 import { PARAM_GROUP } from './constants'
 
@@ -27,11 +28,11 @@ export default function RowsView({ rowConstructions, rowLabels = [], highlightPa
         const railLabel = `${2}×${(rc.rowLength / 100).toFixed(1)}m`
         const totalH = depthSc + 48
         const svgW = W + 70
-        const widthArrowColor = hlEnds ? '#FFB300' : '#17a9cf'
+        const widthArrowColor = hlEnds ? AMBER : '#17a9cf'
 
         return (
           <div key={i} style={{ marginBottom: '2rem' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#888', marginBottom: '4px' }}>{rowLabels[i] ?? `Area ${i + 1}`}</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_PLACEHOLDER, marginBottom: '4px' }}>{rowLabels[i] ?? `Area ${i + 1}`}</div>
             <svg width={svgW} height={totalH} style={{ display: 'block', overflow: 'visible' }}>
               <ArrowDefs />
               {/* Rectangle */}

@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, ERROR } from '../../styles/colors'
 import RoofMapper from '../RoofMapper'
 import ImageUploader from '../ImageUploader'
 
-const ACCENT = '#C4D600'
-const POLY_COLOR = '#C4D600'
+const ACCENT = PRIMARY
+const POLY_COLOR = PRIMARY
 
 const IconMap = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -140,7 +141,7 @@ export default function Step1RoofAllocation({
 
         {/* Source: Map vs Image */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source</span>
+          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source</span>
           <div className="seg-control">
             <button className={`seg-btn${!uploadedImageMode ? ' seg-active' : ''}`} onClick={() => setUploadedImageMode(false)}>
               <IconMap /> Map
@@ -154,7 +155,7 @@ export default function Step1RoofAllocation({
         {/* Detection method — only when image is loaded */}
         {uploadedImageMode && uploadedImageData && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Detection</span>
+            <span style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Detection</span>
             <div className="seg-control">
               <button
                 className={`seg-btn${drawMode === 'auto' ? ' seg-active' : ''}`}
@@ -173,7 +174,7 @@ export default function Step1RoofAllocation({
         )}
 
         {/* Hint text */}
-        <div style={{ flex: 1, padding: '0 0.75rem', fontSize: '0.8rem', color: '#999', fontStyle: 'italic', alignSelf: 'flex-end', paddingBottom: '2px' }}>
+        <div style={{ flex: 1, padding: '0 0.75rem', fontSize: '0.8rem', color: TEXT_LIGHT, fontStyle: 'italic', alignSelf: 'flex-end', paddingBottom: '2px' }}>
           {hint}
         </div>
 
@@ -288,19 +289,19 @@ export default function Step1RoofAllocation({
                   <div style={{ position: 'absolute', bottom: '1rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.5rem' }}>
                     {!isDrawing && (
                       <button onClick={startDrawing}
-                        style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: '#333', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
+                        style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: TEXT, border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
                         {roofPolygon ? 'Re-draw' : 'Start Drawing'}
                       </button>
                     )}
                     {isDrawing && drawingPoints.length >= 3 && (
                       <button onClick={() => commitPolygon(drawingPoints)}
-                        style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: '#333', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
+                        style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: TEXT, border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
                         Close ({drawingPoints.length} pts)
                       </button>
                     )}
                     {isDrawing && (
                       <button onClick={() => { setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}
-                        style={{ padding: '0.5rem 1.2rem', background: 'white', color: '#f44336', border: '1.5px solid #f44336', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
+                        style={{ padding: '0.5rem 1.2rem', background: 'white', color: ERROR, border: `1.5px solid ${ERROR}`, borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
                         Cancel
                       </button>
                     )}
@@ -337,7 +338,7 @@ export default function Step1RoofAllocation({
                 <div style={{ marginTop: '1rem' }}>
                   <button
                     onClick={() => { setSelectedPoint(null); setRoofPolygon(null) }}
-                    style={{ background: '#f44336', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
+                    style={{ background: ERROR, color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
                   >
                     Clear & Try Again
                   </button>

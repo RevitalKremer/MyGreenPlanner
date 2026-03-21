@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { BORDER_MID } from '../../styles/colors'
 
 /**
  * Floating navigator panel — always visible in the bottom-right of the canvas.
@@ -49,7 +50,7 @@ export default function CanvasNavigator({
           style={{
             background: 'rgba(20,20,20,0.78)',
             backdropFilter: 'blur(6px)',
-            color: '#ccc',
+            color: BORDER_MID,
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: '8px',
             padding: '0.45rem 0.7rem',

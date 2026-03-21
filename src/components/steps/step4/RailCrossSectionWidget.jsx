@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER } from '../../../styles/colors'
 
 const RAIL_COLOR  = '#642165'
 const BAR_W       = 18
@@ -164,8 +165,8 @@ export default function RailCrossSectionWidget({
         })}
 
         {/* Edge labels: totalDepthCm at top, 0 at bottom */}
-        <text x={barX - 4} y={PAD_V + 4}              textAnchor="end" fontSize={8} fill="#aaa">{totalDepthCm}</text>
-        <text x={barX - 4} y={PAD_V + barHeightPx + 1} textAnchor="end" fontSize={8} fill="#aaa">0</text>
+        <text x={barX - 4} y={PAD_V + 4}              textAnchor="end" fontSize={8} fill={TEXT_VERY_LIGHT}>{totalDepthCm}</text>
+        <text x={barX - 4} y={PAD_V + barHeightPx + 1} textAnchor="end" fontSize={8} fill={TEXT_VERY_LIGHT}>0</text>
 
         {/* Add ghost */}
         {hoverY != null && (
@@ -191,7 +192,7 @@ export default function RailCrossSectionWidget({
                   stroke={RAIL_COLOR} strokeWidth={2}
                   style={{ pointerEvents: 'none' }}
                 />
-                <text x={barX - 4} y={y + 4} textAnchor="end" fontSize={8} fill="#555">
+                <text x={barX - 4} y={y + 4} textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}>
                   {localOffsetCm.toFixed(1)}
                 </text>
                 <g
@@ -238,8 +239,8 @@ export default function RailCrossSectionWidget({
               <line x1={annX + 4} y1={y1} x2={annX + 4} y2={y2} stroke="#ccc" strokeWidth={1} />
               <line x1={annX} y1={y1} x2={annX + 8} y2={y1} stroke="#ccc" strokeWidth={1} />
               <line x1={annX} y1={y2} x2={annX + 8} y2={y2} stroke="#ccc" strokeWidth={1} />
-              <rect x={annX - 16} y={midY - 8} width={22} height={16} rx={2} fill="white" stroke="#ddd" strokeWidth={0.5} />
-              <text x={annX - 5} y={midY + 4} textAnchor="middle" fontSize={8} fill="#555" fontWeight="700">
+              <rect x={annX - 16} y={midY - 8} width={22} height={16} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
+              <text x={annX - 5} y={midY + 4} textAnchor="middle" fontSize={8} fill={TEXT_SECONDARY} fontWeight="700">
                 {spacing}
               </text>
             </g>

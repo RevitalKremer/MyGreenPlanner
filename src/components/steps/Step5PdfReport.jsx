@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, TEXT_SECONDARY, ERROR_DARK, BORDER_FAINT, BORDER_LIGHT, BG_LIGHT } from '../../styles/colors'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -9,10 +10,10 @@ const FRAME_MM   = 8    // inner frame inset from page edge
 const FOOTER_H_MM = 26  // title block height
 
 // ─── Shared cell styles ───────────────────────────────────────────────────────
-const B  = '0.5px solid #000'
+const B  = `0.5px solid ${BLACK}`
 const cellBase = { borderLeft: B, padding: '1px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
-const LBL = { fontSize: '5px', color: '#666', lineHeight: 1, direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px' }
-const VAL = { fontSize: '7.5px', fontWeight: '600', color: '#000', direction: 'rtl', lineHeight: 1.2 }
+const LBL = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px' }
+const VAL = { fontSize: '7.5px', fontWeight: '600', color: BLACK, direction: 'rtl', lineHeight: 1.2 }
 
 function Cell({ style, children }) {
   return <td style={{ ...cellBase, ...style }}>{children}</td>
@@ -66,10 +67,10 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) 
 
           {/* col3: approval — rowspan=2 */}
           <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{ fontSize: '5.5px', color: '#333', direction: 'rtl', lineHeight: 1.5, marginBottom: '3px' }}>
+            <div style={{ fontSize: '5.5px', color: TEXT, direction: 'rtl', lineHeight: 1.5, marginBottom: '3px' }}>
               דרישה אישור<br />קונסטרוקטור
             </div>
-            <span style={{ background: '#c0392b', color: '#fff', fontWeight: '900', fontSize: '9px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
+            <span style={{ background: ERROR_DARK, color: WHITE, fontWeight: '900', fontSize: '9px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
           </td>
 
           {/* col4 row1: הספק כולל */}
@@ -155,7 +156,7 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
       style={{
         width:  pageW,
         height: pageH,
-        background: '#fff',
+        background: WHITE,
         position: 'relative',
         boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
         flexShrink: 0,
@@ -165,7 +166,7 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
       <div style={{
         position: 'absolute',
         inset: `${frame}px`,
-        border: '0.75px solid #000',
+        border: `0.75px solid ${BLACK}`,
         boxSizing: 'border-box',
         pointerEvents: 'none',
         zIndex: 2,
@@ -241,15 +242,15 @@ export default function Step5PdfReport({ panels = [], refinedArea, rowConfigs = 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#e8e8e8' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BORDER_FAINT }}>
 
       {/* Toolbar */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.75rem',
         padding: '0.6rem 1.25rem',
-        background: '#f8f9fa', borderBottom: '1px solid #e0e0e0',
+        background: BG_LIGHT, borderBottom: `1px solid ${BORDER_LIGHT}`,
       }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#555' }}>PDF Report</span>
+        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: TEXT_SECONDARY }}>PDF Report</span>
         <div style={{ flex: 1 }} />
         <button
           onClick={handleExportPdf}

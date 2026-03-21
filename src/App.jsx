@@ -1,3 +1,4 @@
+import { PRIMARY, TEXT, TEXT_VERY_LIGHT } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
@@ -34,10 +35,10 @@ function App() {
               <h1>MyGreenPlanner</h1>
               {s.currentProject?.name ? (
                 <>
-                  <p className="header-subtitle" style={{ fontWeight: '600', color: '#C4D600' }}>
+                  <p className="header-subtitle" style={{ fontWeight: '600', color: PRIMARY }}>
                     {s.currentProject.name}
                     {s.currentProject.location && (
-                      <span style={{ fontWeight: '400', color: '#aaa', marginLeft: '0.5rem' }}>
+                      <span style={{ fontWeight: '400', color: TEXT_VERY_LIGHT, marginLeft: '0.5rem' }}>
                         · {s.currentProject.location}
                       </span>
                     )}
@@ -58,7 +59,7 @@ function App() {
             </div>
             <button
               onClick={s.handleExportProject}
-              style={{ padding: '0.5rem 1rem', background: '#C4D600', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
+              style={{ padding: '0.5rem 1rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
             >
               ↓ Export
             </button>

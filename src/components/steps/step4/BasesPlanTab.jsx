@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -119,7 +120,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
   if (trapIds.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#aaa', fontSize: '0.95rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
         No panel rows found — complete Step 3 first.
       </div>
     )
@@ -135,7 +136,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
       {/* Diagram canvas */}
       <div
-        style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fafafa', cursor: panActive ? 'grabbing' : 'grab' }}
+        style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden', background: BG_FAINT, cursor: panActive ? 'grabbing' : 'grab' }}
         onMouseDown={startPan} onMouseMove={handleMouseMove} onMouseUp={stopPan} onMouseLeave={stopPan}
         ref={containerRef}
       >
@@ -417,7 +418,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
                   const segColors = projected.slice(0, -1).map((b1, si) => {
                     const b2 = projected[si + 1]
-                    return (isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)) ? '#0056b3' : '#555'
+                    return (isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
                   })
 
                   return (
@@ -445,19 +446,19 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           ]}
           summary={null}
           actions={[
-            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
-            { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
+            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+            { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
           ]}
         />
 
       </div>
 
       {/* Base Schedule table */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid #e8e8e8' }}>
-        <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: '#f8f9fa', border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${BORDER_FAINT}` }}>
+        <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: BG_LIGHT, border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           <span style={{ fontSize: '0.6rem' }}>{tableOpen ? '▾' : '▸'}</span>
           Base Schedule
-          <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: '#888', textTransform: 'none', letterSpacing: 0 }}>
+          <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: TEXT_PLACEHOLDER, textTransform: 'none', letterSpacing: 0 }}>
             ({totalBases} bases)
           </span>
         </button>

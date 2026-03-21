@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
+import { TEXT_SECONDARY, BORDER } from '../../../styles/colors'
 import { localToScreen } from '../../../utils/railLayoutService'
 
 const BASE_COLOR = '#000000'
@@ -236,9 +237,9 @@ export default function BasePlanOverlay({
         return (
           <g key={bi} style={{ pointerEvents: 'none' }}>
             <rect x={ax - bgW / 2} y={ay - bgH / 2} width={bgW} height={bgH}
-              rx={1 / zoom} fill="white" stroke="#ddd" strokeWidth={0.5 / zoom} />
+              rx={1 / zoom} fill="white" stroke={BORDER} strokeWidth={0.5 / zoom} />
             <text x={ax} y={ay} textAnchor="middle" dominantBaseline="middle"
-              fontSize={fs} fontWeight="700" fill="#555">{lbl}</text>
+              fontSize={fs} fontWeight="700" fill={TEXT_SECONDARY}>{lbl}</text>
           </g>
         )
       })}

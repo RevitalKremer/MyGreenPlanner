@@ -1,3 +1,4 @@
+import { PRIMARY, TEXT_SECONDARY, TEXT_PLACEHOLDER, TEXT_FAINTEST, BG_LIGHT, BLUE, WARNING, BORDER_MID } from '../../../styles/colors'
 import {
   computeTotalSlopeDepth,
   isHorizontalOrientation,
@@ -40,7 +41,7 @@ export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHe
 
   if (!hasValues) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f9fa', borderRadius: '6px', padding: '2rem', textAlign: 'center', color: '#bbb', fontSize: '0.85rem' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG_LIGHT, borderRadius: '6px', padding: '2rem', textAlign: 'center', color: TEXT_FAINTEST, fontSize: '0.85rem' }}>
         {projectMode === 'plan' ? 'Add a group and enter measurements' : 'Enter measurements to see diagram'}
       </div>
     )
@@ -48,9 +49,9 @@ export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHe
 
   return (
     <>
-      <svg viewBox="0 0 300 180" style={{ width: '100%', height: 'auto', background: '#f8f9fa', borderRadius: '6px' }}>
-        <line x1="10" y1={groundY} x2="290" y2={groundY} stroke="#bbb" strokeWidth="1.5"/>
-        <text x="150" y="175" textAnchor="middle" fontSize="9" fill="#bbb">Roof surface</text>
+      <svg viewBox="0 0 300 180" style={{ width: '100%', height: 'auto', background: BG_LIGHT, borderRadius: '6px' }}>
+        <line x1="10" y1={groundY} x2="290" y2={groundY} stroke={TEXT_FAINTEST} strokeWidth="1.5"/>
+        <text x="150" y="175" textAnchor="middle" fontSize="9" fill={TEXT_FAINTEST}>Roof surface</text>
         {frontHeight > 0 && (
           <>
             <line x1={startX} y1={groundY} x2={startX} y2={groundY - frontHeight * sc} stroke="#FF5722" strokeWidth="1.5" strokeDasharray="3,3"/>
@@ -59,8 +60,8 @@ export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHe
         )}
         {backHeight > 0 && (
           <>
-            <line x1={endX} y1={groundY} x2={endX} y2={groundY - backHeight * sc} stroke="#C4D600" strokeWidth="1.5" strokeDasharray="3,3"/>
-            <text x={endX + 3} y={groundY - backHeight * sc / 2} textAnchor="start" fontSize="8" fill="#888" fontWeight="600">{backHeight.toFixed(1)}cm</text>
+            <line x1={endX} y1={groundY} x2={endX} y2={groundY - backHeight * sc} stroke={PRIMARY} strokeWidth="1.5" strokeDasharray="3,3"/>
+            <text x={endX + 3} y={groundY - backHeight * sc / 2} textAnchor="start" fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{backHeight.toFixed(1)}cm</text>
           </>
         )}
         {segments.map((seg, i) => {
@@ -68,24 +69,24 @@ export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHe
           const midY = (seg.y1 + seg.y2) / 2
           return (
             <g key={i}>
-              <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={seg.isEmpty ? '4 3' : undefined}/>
-              <circle cx={midX} cy={midY - 8} r="7" fill={seg.isEmpty ? '#ccc' : seg.label === 'H' ? '#FF9800' : '#1565C0'}/>
+              <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.isEmpty ? BORDER_MID : seg.label === 'H' ? WARNING : BLUE} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={seg.isEmpty ? '4 3' : undefined}/>
+              <circle cx={midX} cy={midY - 8} r="7" fill={seg.isEmpty ? BORDER_MID : seg.label === 'H' ? WARNING : BLUE}/>
               <text x={midX} y={midY - 8} textAnchor="middle" dominantBaseline="middle" fontSize="7.5" fill="white" fontWeight="700">{seg.label}</text>
             </g>
           )
         })}
         {angle > 0 && segments.length > 0 && (
           <>
-            <path d={`M ${startX + 25} ${groundY} A 25 25 0 0 1 ${startX + 25 * Math.cos(angleRad)} ${groundY - 25 * Math.sin(angleRad)}`} stroke="#555" strokeWidth="1.2" fill="none"/>
-            <text x={startX + 32} y={groundY - 8} fontSize="8.5" fill="#555" fontWeight="600">{angle.toFixed(1)}°</text>
+            <path d={`M ${startX + 25} ${groundY} A 25 25 0 0 1 ${startX + 25 * Math.cos(angleRad)} ${groundY - 25 * Math.sin(angleRad)}`} stroke={TEXT_SECONDARY} strokeWidth="1.2" fill="none"/>
+            <text x={startX + 32} y={groundY - 8} fontSize="8.5" fill={TEXT_SECONDARY} fontWeight="600">{angle.toFixed(1)}°</text>
           </>
         )}
         {frontHeight === 0 && <circle cx={startX} cy={groundY} r="3" fill="#FF5722"/>}
       </svg>
       {linesPerRow > 1 && (
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', justifyContent: 'center' }}>
-          <span style={{ fontSize: '0.72rem', color: '#1565C0', fontWeight: '600' }}>■ Vertical</span>
-          <span style={{ fontSize: '0.72rem', color: '#FF9800', fontWeight: '600' }}>■ Horizontal</span>
+          <span style={{ fontSize: '0.72rem', color: BLUE, fontWeight: '600' }}>■ Vertical</span>
+          <span style={{ fontSize: '0.72rem', color: WARNING, fontWeight: '600' }}>■ Horizontal</span>
         </div>
       )}
     </>

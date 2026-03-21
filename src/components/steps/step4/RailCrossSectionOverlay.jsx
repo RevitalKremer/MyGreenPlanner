@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState } from 'react'
+import { TEXT_SECONDARY, BORDER } from '../../../styles/colors'
 
 const RAIL_COLOR = '#642165'
 const BAR_W      = 14
@@ -182,7 +183,7 @@ export default function RailCrossSectionOverlay({
                   {/* Offset label */}
                   <text
                     x={barX - 3} y={y + 3}
-                    textAnchor="end" fontSize={8} fill="#555"
+                    textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}
                     style={{ pointerEvents: 'none' }}
                   >
                     {offsetCm?.toFixed(1)}
@@ -214,8 +215,8 @@ export default function RailCrossSectionOverlay({
                   <line x1={annX + 3} y1={y1} x2={annX + 3} y2={y2} stroke="#ccc" strokeWidth={0.8} />
                   <line x1={annX}     y1={y1} x2={annX + 6} y2={y1} stroke="#ccc" strokeWidth={0.8} />
                   <line x1={annX}     y1={y2} x2={annX + 6} y2={y2} stroke="#ccc" strokeWidth={0.8} />
-                  <rect x={annX - 14} y={midY - 7} width={18} height={14} rx={2} fill="white" stroke="#ddd" strokeWidth={0.5} />
-                  <text x={annX - 5} y={midY + 3} textAnchor="middle" fontSize={7} fill="#555" fontWeight="700">
+                  <rect x={annX - 14} y={midY - 7} width={18} height={14} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
+                  <text x={annX - 5} y={midY + 3} textAnchor="middle" fontSize={7} fill={TEXT_SECONDARY} fontWeight="700">
                     {spacing}
                   </text>
                 </g>

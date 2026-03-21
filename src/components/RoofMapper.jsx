@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { PRIMARY, WARNING } from '../styles/colors'
 import { MapContainer, TileLayer, Marker, Polygon, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -151,8 +152,8 @@ function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
           <Polygon
             positions={roofPolygon.coordinates}
             pathOptions={{
-              color: '#C4D600',
-              fillColor: '#C4D600',
+              color: PRIMARY,
+              fillColor: PRIMARY,
               fillOpacity: 0.3,
               weight: 2
             }}
@@ -174,7 +175,7 @@ function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
       </div>
       
       {tileSource === 'govmap' && !govmapKey && (
-        <div className="tile-warning" style={{ backgroundColor: '#ff9800', color: 'white' }}>
+        <div className="tile-warning" style={{ backgroundColor: WARNING, color: 'white' }}>
           ⚠️ GovMap requires API key. Add VITE_GOVMAP_API_KEY to .env file
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { PRIMARY, ERROR } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -300,10 +301,10 @@ export default function PanelCanvas({
               {showDistances && distanceMeasurement?.p2 && (
                 <>
                   <marker id="dist-arrow-start" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 1,3" fill="#C4D600" />
+                    <polygon points="3,1 3,5 1,3" fill={PRIMARY} />
                   </marker>
                   <marker id="dist-arrow-end" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 5,3" fill="#C4D600" />
+                    <polygon points="3,1 3,5 5,3" fill={PRIMARY} />
                   </marker>
                 </>
               )}
@@ -313,7 +314,7 @@ export default function PanelCanvas({
             {roofPolygon && (
               <>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
-                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.1)" stroke="#C4D600" strokeWidth="3" />
+                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.1)" stroke={PRIMARY} strokeWidth="3" />
               </>
             )}
 
@@ -394,7 +395,7 @@ export default function PanelCanvas({
               const trapId = panel.trapezoidId || 'A1'
               const hasOverride = !!trapezoidConfigs?.[trapId]
               let fill, borderColor, ibw
-              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = '#f44336'; ibw = panel.width * 0.012 }
+              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = ERROR; ibw = panel.width * 0.012 }
               else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
               else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
@@ -430,7 +431,7 @@ export default function PanelCanvas({
                       </text>
                       {hasOverride && (
                         <circle cx={cx + bw / 2 - bh * 0.18} cy={cy - bh / 2 + bh * 0.18}
-                          r={bh * 0.2} fill="#C4D600" style={{ pointerEvents: 'none' }} />
+                          r={bh * 0.2} fill={PRIMARY} style={{ pointerEvents: 'none' }} />
                       )}
                     </>
                   )}
@@ -453,10 +454,10 @@ export default function PanelCanvas({
               const { p1, p2 } = distanceMeasurement
               if (!p2) return (
                 <>
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
                   {mousePos && (
                     <line x1={p1[0]} y1={p1[1]} x2={mousePos.x} y2={mousePos.y}
-                      stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray} />
+                      stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray} />
                   )}
                 </>
               )
@@ -469,10 +470,10 @@ export default function PanelCanvas({
               return (
                 <>
                   <line x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]}
-                    stroke="#C4D600" strokeWidth={lineW} strokeDasharray={dashArray}
+                    stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray}
                     markerStart="url(#dist-arrow-start)" markerEnd="url(#dist-arrow-end)" />
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill="#C4D600" />
-                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill="#C4D600" />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
+                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill={PRIMARY} />
                   <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill="rgba(15,15,15,0.78)" rx={lh/2} />
                   <text x={midX} y={midY - fs*0.15} textAnchor="middle" fill="white" fontSize={fs} fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
                   <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>

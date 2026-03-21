@@ -1,3 +1,4 @@
+import { TEXT_PLACEHOLDER, BORDER_LIGHT, AMBER, PRIMARY_BG } from '../../../styles/colors'
 import { ACCENT, PARAM_GROUP } from './constants'
 import TrapProfile from './TrapProfile'
 
@@ -21,20 +22,20 @@ export default function LayoutView({ rowConstructions, rowLabels = [], selectedI
         const profileW = rc.baseLength * sc + 16
         const spacing_mm = Math.round(rc.spacing * 10)
         const totalW = rc.numTrapezoids * profileW + (rc.numTrapezoids - 1) * 20 + 60
-        const arrowColor = hlSpacing ? '#FFB300' : '#17a9cf'
+        const arrowColor = hlSpacing ? AMBER : '#17a9cf'
 
         return (
           <div key={i}
             onClick={() => onSelectRow(i)}
             style={{
               marginBottom: '1.5rem', cursor: 'pointer',
-              border: `2px solid ${selectedIdx === i ? ACCENT : '#eee'}`,
+              border: `2px solid ${selectedIdx === i ? ACCENT : BORDER_LIGHT}`,
               borderRadius: '10px', padding: '0.75rem 1rem',
-              background: selectedIdx === i ? '#f8fce8' : 'white',
+              background: selectedIdx === i ? PRIMARY_BG : 'white',
               transition: 'all 0.15s'
             }}
           >
-            <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#888', marginBottom: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: '700', color: TEXT_PLACEHOLDER, marginBottom: '0.5rem' }}>
               {rowLabels[i] ?? `Area ${i + 1}`} · {rc.panelCount} panels · {rc.angle}° · {rc.typeLetter}{rc.panelsPerSpan} type
             </div>
             <div style={{ overflowX: 'auto' }}>

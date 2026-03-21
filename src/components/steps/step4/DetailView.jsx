@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -32,7 +33,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
   const hl = (group) => hlGroup === group
 
-  if (!rc) return <div style={{ padding: '2rem', color: '#aaa' }}>Select a row to see its trapezoid detail</div>
+  if (!rc) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>Select a row to see its trapezoid detail</div>
 
   const baseOverhangCm = settings.baseOverhangCm ?? 0
   const { heightRear, heightFront, baseLength, baseBeamLength: rcBaseBeamLength, angle, topBeamLength } = rc
@@ -146,8 +147,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       .map(r => legX0 + (r.globalOffsetCm - RAIL_CM + baseOverhangCm) * Math.cos(angleRad) * SC - blockW / 2)
   })()
 
-  const DC = '#222'
-  const TC = '#aaa'
+  const DC = TEXT_DARKEST
+  const TC = TEXT_VERY_LIGHT
 
   // Format to 1 decimal, stripping trailing ".0"
   const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -201,9 +202,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
             padding: '1rem 1.5rem',
             display: 'inline-block',
           }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#555', marginBottom: '0.75rem' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
               {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
-              <span style={{ fontWeight: '400', color: '#999', marginLeft: '0.5rem' }}>
+              <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
               </span>
             </div>
@@ -363,7 +364,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* ── Punches on base beam ── */}
               {showPunches && [legX0 + 2 * SC, diagBaseX, legX1 - 2 * SC].map((px, i) => (
                 <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
-                  fill="white" stroke="#555" strokeWidth="1" />
+                  fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
               ))}
 
               {/* ── Punches on top (slope) beam ── */}
@@ -378,7 +379,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 ]
                 return pts.map((p, i) => (
                   <circle key={i} cx={p.x} cy={p.y} r={2}
-                    fill="white" stroke="#555" strokeWidth="1" />
+                    fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                 ))
               })()}
 
@@ -400,7 +401,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
 
               {/* ── Angle label inside trapezoid ── */}
-              <text x={legX1 - 32} y={topExtY1 + 22} fontSize="9" fill="#444" fontWeight="700">{angle}°</text>
+              <text x={legX1 - 32} y={topExtY1 + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
 
               {/* ── Dimension annotations ── */}
               {showAnnotations && <>
@@ -468,19 +469,19 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g>
                     {/* label */}
                     <text x={beamL} y={ry - 5}
-                      fontSize="8" fill="#888" fontWeight="600">Base beam — punch positions</text>
+                      fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
                     {/* profile bar */}
                     <rect x={beamL} y={ry} width={barW} height={barH}
                       fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
                     {/* punch circles */}
                     {punches.map((px, i) => (
                       <circle key={i} cx={px} cy={barCy} r={2}
-                        fill="white" stroke="#555" strokeWidth="1" />
+                        fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                     ))}
                     {/* position labels */}
                     {punches.map((px, i) => (
                       <text key={i} x={px} y={ry + barH + 10}
-                        textAnchor="middle" fontSize="8" fill="#555" fontWeight="600">
+                        textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
                         {punchLabelsCm[i]}
                       </text>
                     ))}
@@ -508,16 +509,16 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 return (
                   <g>
                     <text x={beamL} y={ry - 5}
-                      fontSize="8" fill="#888" fontWeight="600">Slope beam — punch positions</text>
+                      fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
                     <rect x={beamL} y={ry} width={barW} height={barH}
                       fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2" />
                     {punches.map((px, i) => (
                       <circle key={i} cx={px} cy={barCy} r={2}
-                        fill="white" stroke="#555" strokeWidth="1" />
+                        fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                     ))}
                     {punches.map((px, i) => (
                       <text key={i} x={px} y={ry + barH + 10}
-                        textAnchor="middle" fontSize="8" fill="#555" fontWeight="600">
+                        textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
                         {punchLabelsCm[i]}
                       </text>
                     ))}
@@ -531,12 +532,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
             {/* Members table */}
             <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
+              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
-                  <tr style={{ background: '#f5f5f5' }}>
-                    <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Element</th>
-                    <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: '#555' }}>Length (cm)</th>
+                  <tr style={{ background: BG_SUBTLE }}>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>Element</th>
+                    <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>Length (cm)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -547,9 +548,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     ['Front leg',  rc.heightFront],
                     ['Diagonal',   diagLenCm],
                   ].map(([name, val]) => (
-                    <tr key={name} style={{ borderTop: '1px solid #f0f0f0' }}>
-                      <td style={{ padding: '0.3rem 0.5rem', color: '#444' }}>{name}</td>
-                      <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: '#222' }}>{fmt(val)}</td>
+                    <tr key={name} style={{ borderTop: `1px solid ${BG_MID}` }}>
+                      <td style={{ padding: '0.3rem 0.5rem', color: TEXT_SECONDARY }}>{name}</td>
+                      <td style={{ padding: '0.3rem 0.5rem', textAlign: 'right', fontWeight: '600', color: TEXT_DARKEST }}>{fmt(val)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -568,8 +569,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
           { label: 'Punches',     checked: showPunches,     setter: setShowPunches     },
         ]}
         actions={[
-          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
-          { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: '#1565c0', background: '#e3f2fd', border: '1px solid #90caf9' } : {} },
+          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+          { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
       />
 

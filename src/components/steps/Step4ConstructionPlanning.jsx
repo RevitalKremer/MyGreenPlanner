@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT } from '../../styles/colors'
 import {
   computeRowConstruction,
   assignTypes,
@@ -478,7 +479,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
   if (rowKeys.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#aaa', fontSize: '0.95rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
         No panel areas found — complete Step 3 first.
       </div>
     )
@@ -518,8 +519,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
         {/* Tab bar */}
         <div style={{
-          display: 'flex', borderBottom: '2px solid #e8e8e8',
-          background: '#f8f9fa', padding: '0 1rem', gap: '0.25rem'
+          display: 'flex', borderBottom: `2px solid ${BORDER_FAINT}`,
+          background: BG_LIGHT, padding: '0 1rem', gap: '0.25rem'
         }}>
           {tabs.map(tab => (
             <button
@@ -529,7 +530,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 padding: '0.55rem 1rem', border: 'none', cursor: 'pointer',
                 fontSize: '0.8rem', fontWeight: '600',
                 background: activeTab === tab.key ? 'white' : 'transparent',
-                color: activeTab === tab.key ? '#333' : '#888',
+                color: activeTab === tab.key ? TEXT : TEXT_PLACEHOLDER,
                 borderBottom: activeTab === tab.key ? `2px solid ${ACCENT}` : '2px solid transparent',
                 marginBottom: '-2px', transition: 'all 0.15s'
               }}
