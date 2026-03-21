@@ -214,6 +214,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const lastActiveLegIdx  = _laliRev < 0 ? legIsGhostFull.length - 1 : (legIsGhostFull.length - 1 - _laliRev)
   const activeBeamL = allLegXs[firstActiveLegIdx]   // left active boundary x
   const activeBeamR = allLegXs[lastActiveLegIdx]    // right active boundary x
+  // Outer edges of active beam ends: outer legs already at edge; inner legs are center-based so offset by half thickness
+  const activeBoundL = firstActiveLegIdx === 0                    ? activeBeamL : activeBeamL - BEAM_THICK_PX / 2
+  const activeBoundR = lastActiveLegIdx  === allLegXs.length - 1 ? activeBeamR : activeBeamR + BEAM_THICK_PX / 2
 
   // Ghost style: all rendered as rects using centralized ghost colors
   const ghostRect = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
@@ -238,8 +241,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
   // Diagonals with both legs in the active zone (used for punch sketches + annotations)
   const activeDiags          = diagonals.filter(d => !legIsGhostFull[d.spanIndex] && !legIsGhostFull[d.spanIndex + 1])
-  const activeSlopeBeamLenCm = (activeBeamR - activeBeamL) / legBW * topBeamLength
-  const activeBaseBeamLenCm  = (activeBeamR - activeBeamL) / SC
+  const activeSlopeBeamLenCm = (activeBoundR - activeBoundL) / legBW * topBeamLength
+  const activeBaseBeamLenCm  = (activeBoundR - activeBoundL) / SC
 
   // Slope positions at the edges of the active panel area
   const activePanelStart = (() => {
@@ -265,8 +268,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
     }).filter(i => i >= 0)
   )
 
-  const lb_x = activeBeamL,           lb_w = blockW  // left end block aligns with first active leg
-  const rb_x = activeBeamR - blockW,  rb_w = blockW  // right end block aligns with last active leg
+  const lb_x = activeBoundL,           lb_w = blockW  // left end block aligns with first active leg outer edge
+  const rb_x = activeBoundR - blockW,  rb_w = blockW  // right end block aligns with last active leg outer edge
 
   // Center blocks: 2 per vertical line, 1 per horizontal, min 2 total → numCenterBlocks = numBlocks - 2
   // Prefer rails with larger globalOffsetCm (closer to high/rear leg)
@@ -457,9 +460,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
 
               {/* ── Structure: 4 main beams — always fully rendered ── */}
               {/* ── Base beam: ghost left / active / ghost right ── */}
-              {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBeamL - legX0, height: BEAM_THICK_PX })}
-              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-              {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: baseY, width: legX1 - activeBeamR, height: BEAM_THICK_PX })}
+              {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBoundL - legX0, height: BEAM_THICK_PX })}
+              <rect x={activeBoundL} y={baseY} width={activeBoundR - activeBoundL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+              {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: baseY, width: legX1 - activeBoundR, height: BEAM_THICK_PX })}
 
               {/* ── Rear leg: ghost or active ── */}
               {(() => {
@@ -481,9 +484,9 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })()}
 
               {/* ── Slope beam: ghost left / active / ghost right ── */}
-              {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBeamL, y2: beamY(activeBeamL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
-              {lProfileLine({ x1: activeBeamL, y1: beamY(activeBeamL), x2: activeBeamR, y2: beamY(activeBeamR), strokeWidth: BEAM_THICK_PX })}
-              {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBeamR, y1: beamY(activeBeamR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
+              {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBoundL, y2: beamY(activeBoundL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
+              {lProfileLine({ x1: activeBoundL, y1: beamY(activeBoundL), x2: activeBoundR, y2: beamY(activeBoundR), strokeWidth: BEAM_THICK_PX })}
+              {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBoundR, y1: beamY(activeBoundR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               {diagonals.map((d, di) => {
                 const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
                 const isDiagGhost = legIsGhostFull[d.spanIndex] || legIsGhostFull[d.spanIndex + 1]
@@ -666,7 +669,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* ── Dimension annotations ── */}
               {showAnnotations && <>
                 {/* Slope beam: active portion only */}
-                <Dim ax1={activeBeamL} ay1={beamY(activeBeamL)} ax2={activeBeamR} ay2={beamY(activeBeamR)}
+                <Dim ax1={activeBoundL} ay1={beamY(activeBoundL)} ax2={activeBoundR} ay2={beamY(activeBoundR)}
                   label={fmt(activeSlopeBeamLenCm)} off={-(PANEL_OFFSET_PX + 14)} />
 
                 {(() => {
@@ -714,7 +717,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   off={28} />
 
                 {/* Base beam: active portion only */}
-                <Dim ax1={activeBeamL} ay1={blockBotY + 18} ax2={activeBeamR} ay2={blockBotY + 18}
+                <Dim ax1={activeBoundL} ay1={blockBotY + 18} ax2={activeBoundR} ay2={blockBotY + 18}
                   label={fmt(activeBaseBeamLenCm)} off={14} />
               </>}
 
@@ -723,14 +726,13 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const ry    = blockBotY + 130
                 const barH  = 12
                 const barCy = ry + barH / 2
-                const activeBarW        = activeBeamR - activeBeamL
-                const activeBeamLenCm   = activeBarW / SC
+                const activeBeamLenCm   = (activeBoundR - activeBoundL) / SC
                 const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
                 const baseMiddle = [
-                  ...activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - activeBeamL) / SC) })),
-                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBeamL) / SC) })),
+                  ...activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - activeBoundL) / SC) })),
+                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / SC) })),
                 ].sort((a, b) => a.x - b.x)
-                const punches       = [activeBeamL + 2 * SC, ...baseMiddle.map(e => e.x), activeBeamR - 2 * SC]
+                const punches       = [activeBoundL + 2 * SC, ...baseMiddle.map(e => e.x), activeBoundR - 2 * SC]
                 const punchLabelsCm = ['2', ...baseMiddle.map(e => e.label), fmt(activeBeamLenCm - 2)]
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'bot') return null
@@ -741,11 +743,11 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 })()
                 return (
                   <g>
-                    <text x={activeBeamL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
+                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
                     {/* ghost left extension */}
-                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBeamL - legX0, height: barH })}
+                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBoundL - legX0, height: barH })}
                     {/* interactive active bar */}
-                    <rect x={activeBeamL} y={ry} width={activeBarW} height={barH}
+                    <rect x={activeBoundL} y={ry} width={activeBoundR - activeBoundL} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
@@ -753,7 +755,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'bot') : undefined}
                     />
                     {/* ghost right extension */}
-                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: ry, width: legX1 - activeBeamR, height: barH })}
+                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: ry, width: legX1 - activeBoundR, height: barH })}
                     {/* all punch circles + labels — Punches layer */}
                     {punches.map((px, i) => (
                       <g key={`wp-${i}`}>
@@ -786,7 +788,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                         <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
                       </g>
                     )}
-                    <Dim ax1={activeBeamL} ay1={ry + barH + 22} ax2={activeBeamR} ay2={ry + barH + 22} label={fmt(activeBeamLenCm)} off={10} />
+                    <Dim ax1={activeBoundL} ay1={ry + barH + 22} ax2={activeBoundR} ay2={ry + barH + 22} label={fmt(activeBeamLenCm)} off={10} />
                   </g>
                 )
               })()}
@@ -796,15 +798,14 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const ry    = blockBotY + 52
                 const barH  = 12
                 const barCy = ry + barH / 2
-                const activeBarW          = activeBeamR - activeBeamL
-                const activeSlopeBeamLenCm = activeBarW / legBW * topBeamLength
+                const activeSlopeBeamLenCm = (activeBoundR - activeBoundL) / legBW * topBeamLength
                 // End punches: 2cm from active beam ends, using same x-scale as full slope beam
-                const leftEndX  = activeBeamL + (2 / topBeamLength) * legBW
-                const rightEndX = activeBeamR - (2 / topBeamLength) * legBW
+                const leftEndX  = activeBoundL + (2 / topBeamLength) * legBW
+                const rightEndX = activeBoundR - (2 / topBeamLength) * legBW
                 const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
                 const slopeMiddle = [
-                  ...activeDiags.map(d => ({ x: d.topX, label: fmt((d.topX - activeBeamL) / legBW * topBeamLength) })),
-                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBeamL) / legBW * topBeamLength) })),
+                  ...activeDiags.map(d => ({ x: d.topX, label: fmt((d.topX - activeBoundL) / legBW * topBeamLength) })),
+                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / legBW * topBeamLength) })),
                 ].sort((a, b) => a.x - b.x)
                 const punches       = [leftEndX, ...slopeMiddle.map(e => e.x), rightEndX]
                 const punchLabelsCm = ['2', ...slopeMiddle.map(e => e.label), fmt(activeSlopeBeamLenCm - 2)]
@@ -817,11 +818,11 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 })()
                 return (
                   <g>
-                    <text x={activeBeamL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
+                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
                     {/* ghost left extension */}
-                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBeamL - legX0, height: barH })}
+                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBoundL - legX0, height: barH })}
                     {/* interactive active bar */}
-                    <rect x={activeBeamL} y={ry} width={activeBarW} height={barH}
+                    <rect x={activeBoundL} y={ry} width={activeBoundR - activeBoundL} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'top') : undefined}
@@ -829,7 +830,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'top') : undefined}
                     />
                     {/* ghost right extension */}
-                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: ry, width: legX1 - activeBeamR, height: barH })}
+                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: ry, width: legX1 - activeBoundR, height: barH })}
                     {/* all punch circles + labels — Punches layer */}
                     {punches.map((px, i) => (
                       <g key={`wp-${i}`}>
@@ -861,7 +862,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                         <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
                       </g>
                     )}
-                    <Dim ax1={activeBeamL} ay1={ry + barH + 22} ax2={activeBeamR} ay2={ry + barH + 22} label={fmt(activeSlopeBeamLenCm)} off={10} />
+                    <Dim ax1={activeBoundL} ay1={ry + barH + 22} ax2={activeBoundR} ay2={ry + barH + 22} label={fmt(activeSlopeBeamLenCm)} off={10} />
                   </g>
                 )
               })()}
