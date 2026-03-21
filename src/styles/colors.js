@@ -61,12 +61,10 @@ export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
 export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
 
 // ── Structural beams / blocks (DetailView) ────────────────────────────────
-export const BEAM_FILL    = '#404040'  // main beam fill
-export const DIAG_FILL    = '#606060'  // diagonal brace fill
 export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
 export const BLOCK_STROKE = '#777'     // concrete block stroke
 export const L_PROFILE_FILL    = '#40404080'  // main beam fill
-export const L_PROFILE_STROKE  = '#404040'  // main beam stroke
+export const L_PROFILE_STROKE  = '#606060'  // main beam stroke
 
 // ── Panel bars ────────────────────────────────────────────────────────────
 export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
@@ -104,7 +102,7 @@ export const AMBER_BG     = '#fffbeb'  // amber button background
 export const AMBER_BORDER = '#fcd34d'  // amber button border
 
 // ── Structural / SVG ─────────────────────────────────────────────────────
-export const GROUND_LINE  = '#3a9e3a'  // floor/ground line green
+export const GROUND_LINE  = '#123812'  // floor/ground line green
 
 // ── Chart / widget backgrounds ────────────────────────────────────────────
 export const CHART_BG     = '#e8f0f8'  // chart/ruler background

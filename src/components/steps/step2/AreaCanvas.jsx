@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIMARY, WARNING } from '../../../styles/colors'
+import { BLACK, PRIMARY, WARNING } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -103,7 +103,7 @@ export default function AreaCanvas({
                 <defs>
                   <mask id="polygonMask">
                     <rect width="100%" height="100%" fill="white"/>
-                    <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="black"/>
+                    <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill={BLACK}/>
                   </mask>
                 </defs>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)"/>

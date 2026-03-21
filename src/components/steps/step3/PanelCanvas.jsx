@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { PRIMARY, ERROR } from '../../../styles/colors'
+import { PRIMARY, ERROR, BLACK } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -295,7 +295,7 @@ export default function PanelCanvas({
               {roofPolygon && (
                 <mask id="polygonMask">
                   <rect width="100%" height="100%" fill="white" />
-                  <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="black" />
+                  <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill={BLACK} />
                 </mask>
               )}
               {showDistances && distanceMeasurement?.p2 && (
