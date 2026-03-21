@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -224,6 +224,17 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
     const ang = Math.atan2(dy, dx) * 180 / Math.PI
     return ghostRect({ x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
   }
+  // Renders a thick line as a rotated rect so fill + stroke border work correctly with semi-transparent fill
+  const lProfileLine = ({ x1, y1, x2, y2, strokeWidth: sw, capExtend: cap = 0 }) => {
+    const dx = x2 - x1, dy = y2 - y1
+    const len = Math.sqrt(dx * dx + dy * dy)
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI
+    const h = sw || 1
+    return <rect x={-(len / 2 + cap)} y={-h / 2} width={len + 2 * cap} height={h}
+      fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1"
+      transform={`translate(${mx},${my}) rotate(${ang})`} />
+  }
 
   // Diagonals with both legs in the active zone (used for punch sketches + annotations)
   const activeDiags          = diagonals.filter(d => !legIsGhostFull[d.spanIndex] && !legIsGhostFull[d.spanIndex + 1])
@@ -447,25 +458,24 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* ── Structure: 4 main beams — always fully rendered ── */}
               {/* ── Base beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBeamL - legX0, height: BEAM_THICK_PX })}
-              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} />
+              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
               {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: baseY, width: legX1 - activeBeamR, height: BEAM_THICK_PX })}
 
               {/* ── Rear leg: ghost or active ── */}
               {(hR - OHy) > 0 && (legIsGhostFull[0]
                 ? ghostLine({ x1: legX0 + BEAM_THICK_PX/2, y1: topExtY0, x2: legX0 + BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={L_PROFILE_FILL} />
+                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
               )}
 
               {/* ── Front leg: ghost or active ── */}
               {legIsGhostFull[allLegXs.length - 1]
                 ? ghostLine({ x1: legX1 - BEAM_THICK_PX/2, y1: topExtY1, x2: legX1 - BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={L_PROFILE_FILL} />
+                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
               }
 
               {/* ── Slope beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBeamL, y2: beamY(activeBeamL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
-              <line x1={activeBeamL} y1={beamY(activeBeamL)} x2={activeBeamR} y2={beamY(activeBeamR)}
-                stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+              {lProfileLine({ x1: activeBeamL, y1: beamY(activeBeamL), x2: activeBeamR, y2: beamY(activeBeamR), strokeWidth: BEAM_THICK_PX })}
               {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBeamR, y1: beamY(activeBeamR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               {diagonals.map((d, di) => {
                 const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
@@ -474,8 +484,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={di}>
                     {isDiagGhost
                       ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
-                      : <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
-                          stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+                      : lProfileLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, capExtend: d.halfCap })
                     }
                     {!isDiagGhost && d.isDouble && (<>
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
@@ -597,7 +606,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={ci}>
                     {isGhost
                       ? ghostLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })
-                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+                      : lProfileLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX })
                     }
                     {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>

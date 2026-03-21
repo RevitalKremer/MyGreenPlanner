@@ -66,7 +66,7 @@ export const DIAG_FILL    = '#606060'  // diagonal brace fill
 export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
 export const BLOCK_STROKE = '#777'     // concrete block stroke
 export const L_PROFILE_FILL    = '#40404080'  // main beam fill
-export const L_PROFILE_STROKE  = '#ff0000'  // main beam stroke
+export const L_PROFILE_STROKE  = '#404040'  // main beam stroke
 
 // ── Panel bars ────────────────────────────────────────────────────────────
 export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
