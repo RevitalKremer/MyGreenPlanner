@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_FAINT, BG_MID } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_FAINT, BG_MID, LAYER_ACCENT } from '../../../styles/colors'
 
 /**
  * Floating collapsible layers/visibility toggle panel (top-right of canvas).
@@ -27,7 +27,7 @@ export default function LayersPanel({ layers, summary, actions }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: summary ? '0.6rem' : 0 }}>
             {layers.map(({ label, checked, setter }) => (
               <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '500' }}>
-                <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: '#2b6a99', cursor: 'pointer', width: '13px', height: '13px' }} />
+                <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
                 {label}
               </label>
             ))}

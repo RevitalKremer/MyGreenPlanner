@@ -60,3 +60,60 @@ export const ERROR_DARK = '#c0392b'  // dark error red
 export const GHOST_FILL   = 'white'   // fill for ghosted structural elements
 export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
 export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
+
+// ── Structural beams / blocks (DetailView) ────────────────────────────────
+export const BEAM_FILL    = '#404040'  // main beam fill
+export const DIAG_FILL    = '#606060'  // diagonal brace fill
+export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
+export const BLOCK_STROKE = '#777'     // concrete block stroke
+
+// ── Panel bars ────────────────────────────────────────────────────────────
+export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
+export const PANEL_BAR_STROKE = '#293189'  // panel bar stroke
+
+// ── Cross-rails ───────────────────────────────────────────────────────────
+export const RAIL_FILL = '#7c3aed'  // cross-rail fill
+
+// ── Punch bar ─────────────────────────────────────────────────────────────
+export const PUNCH_BAR_FILL   = '#d8d8d8'  // punch sketch bar fill
+export const PUNCH_BAR_STROKE = '#999'     // punch sketch bar stroke
+
+// ── Interaction states ────────────────────────────────────────────────────
+export const DANGER    = '#dc2626'  // delete / danger action
+export const ADD_GREEN = '#22c55e'  // add / success indicator
+
+// ── Panel layout colors ───────────────────────────────────────────────────
+export const PANEL_LIGHT_BG      = '#cfe3f5'  // unselected panel fill
+export const PANEL_LIGHT_BG_ALT  = '#d1e3f3'  // selected panel fill
+export const PANEL_DARK          = '#003e7e'  // panel dark border (selected)
+export const PANEL_MID           = '#4682B4'  // panel mid border (unselected)
+export const PANEL_STROKE_MID    = '#3a6ea5'  // panel stroke mid (RowsView rect)
+export const PANEL_STROKE_FAINT  = '#9bbcd4'  // panel hatch stroke
+
+// ── Drawing / arrows ──────────────────────────────────────────────────────
+export const DRAW_COLOR  = '#FF00FF'  // freehand draw color
+export const ARROW_COLOR = '#17a9cf'  // dimension arrow color
+
+// ── Layers panel ──────────────────────────────────────────────────────────
+export const LAYER_ACCENT = '#2b6a99'  // checkbox accent in LayersPanel
+
+// ── Amber UI (buttons / resets) ───────────────────────────────────────────
+export const AMBER_BG     = '#fffbeb'  // amber button background
+export const AMBER_BORDER = '#fcd34d'  // amber button border
+
+// ── Structural / SVG ─────────────────────────────────────────────────────
+export const GROUND_LINE  = '#3a9e3a'  // floor/ground line green
+
+// ── Chart / widget backgrounds ────────────────────────────────────────────
+export const CHART_BG     = '#e8f0f8'  // chart/ruler background
+export const CHART_GRID   = '#b0c4d8'  // chart grid lines
+export const CHART_BG_ALT = '#f0f4f8'  // chart alternate background
+
+// ── Purple hover ──────────────────────────────────────────────────────────
+export const PURPLE_HOVER = '#8b3a8c'  // purple hover state
+
+// ── Sidebar / navigation ──────────────────────────────────────────────────
+export const TAB_ACTIVE_COLOR  = '#d97706'  // active tab text
+export const ROW_SELECTED_BG   = '#edf5d8'  // selected row background
+export const TRAP_BADGE_BG     = '#ddeea0'  // trapezoid badge background
+export const SECTION_HEADER_BG = '#f0f4e8'  // section header background

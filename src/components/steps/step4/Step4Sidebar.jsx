@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { ACCENT, PARAM_SCHEMA, PARAM_GROUP } from './constants'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -70,7 +70,7 @@ function InfoTooltip({ param }) {
       {show && (
         <div style={{
           position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)',
-          background: '#333', color: '#fff',
+          background: TEXT, color: WHITE,
           fontSize: '0.6rem', lineHeight: 1.6,
           padding: '4px 8px', borderRadius: '4px',
           whiteSpace: 'nowrap', zIndex: 200,
@@ -124,7 +124,7 @@ export default function Step4Sidebar({
       <div style={{
         display: 'flex', alignItems: 'center', gap: '5px',
         fontSize: '0.65rem',
-        color: isActive ? '#d97706' : TEXT_PLACEHOLDER,
+        color: isActive ? TAB_ACTIVE_COLOR : TEXT_PLACEHOLDER,
         fontWeight: isActive ? '700' : '400',
         marginBottom: '2px', transition: 'color 0.2s',
       }}>
@@ -321,7 +321,7 @@ export default function Step4Sidebar({
 
               {/* Trapezoid children */}
               {trapIds.length > 1 && isAreaSelected && (
-                <div style={{ borderBottom: `1px solid ${BG_MID}`, background: '#f5f7f0' }}>
+                <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
                   {trapIds.map(trapId => {
                     const isTrapSelected = effectiveSelectedTrapId === trapId
                     const count = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId).length
@@ -329,9 +329,9 @@ export default function Step4Sidebar({
                       <div
                         key={trapId}
                         onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? ACCENT : 'transparent'}`, background: isTrapSelected ? '#edf5d8' : 'transparent', transition: 'all 0.1s' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? ACCENT : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
                       >
-                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? '#ddeea0' : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
                           {trapId}
                         </span>
                         <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count} panels</span>
@@ -370,7 +370,7 @@ export default function Step4Sidebar({
           <div key={sec.tabKey} style={{ borderTop: `1px solid ${BORDER_FAINT}` }}>
             <div
               onClick={() => setActiveTab(isOpen ? activeTab : sec.tabKey)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', cursor: 'pointer', background: isOpen ? '#f0f4e8' : BG_FAINT }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', cursor: 'pointer', background: isOpen ? SECTION_HEADER_BG : BG_FAINT }}
             >
               <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? PRIMARY_DARK : TEXT_PLACEHOLDER, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.label}</span>
               <span style={{ fontSize: '0.8rem', color: TEXT_VERY_LIGHT }}>{isOpen ? '▲' : '▼'}</span>

@@ -1,5 +1,4 @@
-const PANEL_FILL = '#cfe3f5'
-const SELECTED_FILL = '#d1e3f3'
+import { PANEL_LIGHT_BG, PANEL_LIGHT_BG_ALT, PANEL_DARK, PANEL_MID } from '../../../styles/colors'
 
 /**
  * Renders all panels as hatched rectangles into an SVG.
@@ -12,8 +11,8 @@ export default function HatchedPanels({ panels, selectedTrapId, toSvg, sc, pixel
     const scx = sx + sw / 2, scy = sy + sh / 2
     const isSelected = selectedTrapId === null || panel.trapezoidId === selectedTrapId
     const opacity = isSelected ? 1 : 0.25
-    const fill = isSelected ? SELECTED_FILL : PANEL_FILL
-    const borderColor = isSelected ? '#003e7e' : '#4682B4'
+    const fill = isSelected ? PANEL_LIGHT_BG_ALT : PANEL_LIGHT_BG
+    const borderColor = isSelected ? PANEL_DARK : PANEL_MID
     const ibw = Math.max(1, sw * 0.015)
 
     const hatchLines = []

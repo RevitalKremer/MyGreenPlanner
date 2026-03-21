@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, PURPLE, BEAM_FILL, DIAG_FILL, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -422,45 +422,45 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const rbPunchX = rb_x + rb_w - punchOff    // 9 cm from base end
                 return (<>
                   {/* End blocks always shown — rear and front legs are always active */}
-                  <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                  {showPunches && <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(lbPunchX)}</text>}
+                  <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                  {showPunches && <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(lbPunchX)}</text>}
                   {centerBlocks.map(({ bx, innerIdx }, i) => {
                     if (innerLegIsGhost[innerIdx]) return null
                     const px = bx + punchOff
                     return (
                       <g key={i}>
-                        <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                        {showPunches && <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(px)}</text>}
+                        <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                        {showPunches && <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(px)}</text>}
                       </g>
                     )
                   })}
-                  <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill="#c0c0c0" stroke="#777" strokeWidth="1" />
-                  {showPunches && <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="#111">{baseCm(rbPunchX)}</text>}
+                  <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                  {showPunches && <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(rbPunchX)}</text>}
                 </>)
               })()}
 
               {/* ── Structure: 4 main beams — always fully rendered ── */}
               {/* ── Base beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBeamL - legX0, height: BEAM_THICK_PX })}
-              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill="#404040" />
+              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={BEAM_FILL} />
               {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: baseY, width: legX1 - activeBeamR, height: BEAM_THICK_PX })}
 
               {/* ── Rear leg: ghost or active ── */}
               {(hR - OHy) > 0 && (legIsGhostFull[0]
                 ? ghostLine({ x1: legX0 + BEAM_THICK_PX/2, y1: topExtY0, x2: legX0 + BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill="#404040" />
+                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={BEAM_FILL} />
               )}
 
               {/* ── Front leg: ghost or active ── */}
               {legIsGhostFull[allLegXs.length - 1]
                 ? ghostLine({ x1: legX1 - BEAM_THICK_PX/2, y1: topExtY1, x2: legX1 - BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill="#404040" />
+                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={BEAM_FILL} />
               }
 
               {/* ── Slope beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBeamL, y2: beamY(activeBeamL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               <line x1={activeBeamL} y1={beamY(activeBeamL)} x2={activeBeamR} y2={beamY(activeBeamR)}
-                stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+                stroke={BEAM_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBeamR, y1: beamY(activeBeamR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               {diagonals.map((d, di) => {
                 const ang = Math.atan2(baseY - d.topY, d.botX - d.topX) * 180 / Math.PI
@@ -470,25 +470,25 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     {isDiagGhost
                       ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: baseY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
                       : <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
-                          stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+                          stroke={DIAG_FILL} strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
                     }
                     {!isDiagGhost && d.isDouble && (<>
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
-                        stroke="red" strokeWidth="1" strokeLinecap="square"
+                        stroke={DANGER} strokeWidth="1" strokeLinecap="square"
                         strokeDasharray="4,4" opacity="0.6" />
                       {[0.08, 0.5, 0.92].map((t, i) => {
                         const lx = d.topX + t * (d.botX - d.topX)
                         const ly = d.topY + t * (baseY - d.topY)
                         return (
                           <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
-                            fontSize="8" fontWeight="800" fill="red"
+                            fontSize="8" fontWeight="800" fill={DANGER}
                             transform={`rotate(${ang}, ${lx}, ${ly})`}>×2</text>
                         )
                       })}
                     </>)}
                     {hl('diagonal') && (
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
-                        stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
+                        stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
                     {!isDiagGhost && showAnnotations && <Dim ax1={d.topX} ay1={d.topY} ax2={d.botX} ay2={baseY}
@@ -500,8 +500,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {hl('rail-clamp') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
                   <line x1={panelX1} y1={panelY1} x2={x0} y2={topY0}
-                    stroke="#FFB300" strokeWidth="8" strokeLinecap="round" opacity="0.6" />
-                  <circle cx={x0} cy={topY0} r={10} fill="none" stroke="#FFB300" strokeWidth="2.5" />
+                    stroke={AMBER} strokeWidth="8" strokeLinecap="round" opacity="0.6" />
+                  <circle cx={x0} cy={topY0} r={10} fill="none" stroke={AMBER} strokeWidth="2.5" />
                 </g>
               )}
 
@@ -522,8 +522,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       <rect
                         x={cx - len/2} y={cy - PANEL_THICK_PX/2}
                         width={len} height={PANEL_THICK_PX}
-                        fill={isGhosted ? GHOST_FILL : seg.isEmpty ? 'white' : '#6a70ac'}
-                        stroke={isGhosted ? GHOST_STROKE : seg.isEmpty ? '#ddd' : '#293189'}
+                        fill={isGhosted ? GHOST_FILL : seg.isEmpty ? 'white' : PANEL_BAR_FILL}
+                        stroke={isGhosted ? GHOST_STROKE : seg.isEmpty ? BORDER : PANEL_BAR_STROKE}
                         strokeWidth="1"
                         strokeDasharray={isGhosted || seg.isEmpty ? GHOST_DASH : undefined}
                         transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
@@ -532,7 +532,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                         <rect
                           x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
                           width={len + 10} height={PANEL_THICK_PX + 10}
-                          fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                          fill="none" stroke={AMBER} strokeWidth="2.5" rx="3"
                           transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
                           style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
                         />
@@ -546,8 +546,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {railItems.map(({ cx, segIdx, globalOffsetCm }, ci) => {
                 const isEmptySeg = segments[segIdx]?.isEmpty
                 const isGhosted  = segIdx < firstActiveSegIdx || segIdx > lastActiveSegIdx
-                const railFill   = '#7c3aed'
-                const railStroke = isEmptySeg ? '#ddd' : '#642165'
+                const railFill   = RAIL_FILL
+                const railStroke = isEmptySeg ? BORDER : PURPLE
                 const cy = beamY(cx)
                 const beamTop  = -BEAM_THICK_PX / 2
                 const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
@@ -562,12 +562,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                       <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
                         fill={isGhosted ? GHOST_FILL : isEmptySeg ? 'white' : railFill}
-                        stroke={isGhosted ? GHOST_STROKE : isEmptySeg ? '#ddd' : railStroke}
+                        stroke={isGhosted ? GHOST_STROKE : isEmptySeg ? BORDER : railStroke}
                         strokeWidth="1"
                         strokeDasharray={isGhosted || isEmptySeg ? GHOST_DASH : undefined} />
                       {hl('cross-rails') && (
                         <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
-                          fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
+                          fill="none" stroke={AMBER} strokeWidth="2.5" rx="3"
                           style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                       )}
                     </g>
@@ -590,7 +590,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={ci}>
                     {isGhost
                       ? ghostLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })
-                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke={BEAM_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
                     }
                     {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>
@@ -622,19 +622,19 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
                   <rect x={lb_x - 5} y={blockTopY - 5} width={lb_w + 10} height={blockH + 10}
-                    fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                    fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   {centerBlocks.filter(b => !innerLegIsGhost[b.innerIdx]).map(({ bx }, i) => (
                     <rect key={i} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
-                      fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                      fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   ))}
                   <rect x={rb_x - 5} y={blockTopY - 5} width={rb_w + 10} height={blockH + 10}
-                    fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3" />
+                    fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                 </g>
               )}
 
               {/* ── Green floor line ── */}
               <line x1={panelX1 - 35} y1={blockBotY} x2={panelX2 + 45} y2={blockBotY}
-                stroke="#3a9e3a" strokeWidth="2.5" strokeLinecap="round" />
+                stroke={GROUND_LINE} strokeWidth="2.5" strokeLinecap="round" />
 
               {/* ── Angle label inside trapezoid ── */}
               <text x={activeBeamR - 32} y={beamY(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
@@ -717,7 +717,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBeamL - legX0, height: barH })}
                     {/* interactive active bar */}
                     <rect x={activeBeamL} y={ry} width={activeBarW} height={barH}
-                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2"
+                      fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
                       onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
@@ -740,7 +740,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       return (
                         <g key={`bh-${di}`}>
                           <circle cx={d.botX} cy={barCy} r={5.5}
-                            fill={isHov ? '#dc2626' : BLUE} stroke="white" strokeWidth="1.5"
+                            fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
                             style={{ cursor: 'pointer' }}
                             onMouseEnter={() => setHoverHandle({ which: 'bot', spanIndex: d.spanIndex })}
                             onMouseLeave={() => setHoverHandle(null)}
@@ -753,8 +753,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     {/* "+" ghost follower */}
                     {ghostX !== null && (
                       <g opacity="0.5" style={{ pointerEvents: 'none' }}>
-                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="3,2" />
-                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill="#22c55e">+</text>
+                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke={ADD_GREEN} strokeWidth="1.5" strokeDasharray="3,2" />
+                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
                       </g>
                     )}
                     <Dim ax1={activeBeamL} ay1={ry + barH + 22} ax2={activeBeamR} ay2={ry + barH + 22} label={fmt(activeBeamLenCm)} off={10} />
@@ -788,7 +788,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBeamL - legX0, height: barH })}
                     {/* interactive active bar */}
                     <rect x={activeBeamL} y={ry} width={activeBarW} height={barH}
-                      fill="#d8d8d8" stroke="#999" strokeWidth="1" rx="2"
+                      fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'top') : undefined}
                       onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
@@ -811,7 +811,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       return (
                         <g key={`sh-${di}`}>
                           <circle cx={d.topX} cy={barCy} r={5.5}
-                            fill={isHov ? '#dc2626' : BLUE} stroke="white" strokeWidth="1.5"
+                            fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
                             style={{ cursor: 'pointer' }}
                             onMouseEnter={() => setHoverHandle({ which: 'top', spanIndex: d.spanIndex })}
                             onMouseLeave={() => setHoverHandle(null)}
@@ -823,8 +823,8 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     })}
                     {ghostX !== null && (
                       <g opacity="0.5" style={{ pointerEvents: 'none' }}>
-                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="3,2" />
-                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill="#22c55e">+</text>
+                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke={ADD_GREEN} strokeWidth="1.5" strokeDasharray="3,2" />
+                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
                       </g>
                     )}
                     <Dim ax1={activeBeamL} ay1={ry + barH + 22} ax2={activeBeamR} ay2={ry + barH + 22} label={fmt(activeSlopeBeamLenCm)} off={10} />
@@ -879,7 +879,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
           { label: 'Edit Bar',      checked: showDiagHandles,  setter: setShowDiagHandles  },
         ]}
         actions={[
-          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
           ...(Object.keys(diagOverrides).length > 0
             ? [{ label: 'Reset handles', onClick: () => onUpdateSetting?.('diagOverrides', {}), style: { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } }]
             : []),

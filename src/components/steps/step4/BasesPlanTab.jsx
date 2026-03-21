@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, PURPLE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -12,8 +12,6 @@ import BasePlanOverlay from './BasePlanOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
-const BASE_COLOR      = '#000000'
-const RAIL_COLOR_FILL = '#642165'
 
 export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null }) {
   const [showBases,      setShowBases]      = useState(true)
@@ -236,7 +234,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                             <rect key={`blk-${bi}-${bki}`}
                               x={bkx - blockLengthSvg / 2} y={bky - blockWidthSvg / 2}
                               width={blockLengthSvg} height={blockWidthSvg}
-                              fill="#c0c0c0" stroke="#777" strokeWidth={0.5 / zoom}
+                              fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom}
                               transform={`rotate(${lineAngle} ${bkx} ${bky})`}
                             />
                           )
@@ -248,7 +246,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                         const [rx2, ry2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
                         return (
                           <line key={rail.railId} x1={rx1} y1={ry1} x2={rx2} y2={ry2}
-                            stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="square" />
+                            stroke={PURPLE} strokeWidth={railProfileSvg} strokeLinecap="square" />
                         )
                       })}
                       {showBases && bases.map((base, bi) => {
@@ -267,12 +265,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                         const [rfx, rfy] = toSvg(sfront.x, sfront.y)
                         return (
                           <g key={`base-${bi}`}>
-                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                            {hlThisBase && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
                             {hlOverhang && <>
-                              <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                              <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke="#FFB300" strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                              <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                              <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                             </>}
-                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BASE_COLOR} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
+                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BLACK} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
                             {showBaseIDs && (() => {
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (
@@ -309,12 +307,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                             const fs = 11 / zoom, bgW = String(distMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 7 / zoom
                             return (
                               <g key={`diag-${pi}-${di}`}>
-                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="cyan" strokeWidth={PROFILE_THICK} />
-                                <circle cx={x1} cy={y1} r={dotR} fill="cyan" stroke="#006" strokeWidth={1/zoom} />
-                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke="cyan" strokeWidth={2/zoom} />
+                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={BLUE} strokeWidth={PROFILE_THICK} />
+                                <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/zoom} />
+                                <circle cx={x2} cy={y2} r={dotR} fill="white" stroke={BLUE} strokeWidth={2/zoom} />
                                 <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5/zoom} rx={1/zoom} />
-                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill="#000">{distMm}</text>
+                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" stroke={BORDER_MID} strokeWidth={0.5/zoom} rx={1/zoom} />
+                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{distMm}</text>
                                 </g>
                               </g>
                             )
@@ -446,7 +444,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           ]}
           summary={null}
           actions={[
-            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } }] : []),
+            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
             { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
           ]}
         />

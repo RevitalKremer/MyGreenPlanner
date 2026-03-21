@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, PURPLE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -11,7 +11,6 @@ import RailCrossSectionOverlay from './RailCrossSectionOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
-const RAIL_COLOR_FILL = '#642165'
 
 export default function RailLayoutTab({
   panels = [], refinedArea, selectedRowIdx = null,
@@ -215,7 +214,7 @@ export default function RailLayoutTab({
                         return (
                           <polygon key={`gap-${ri}`}
                             points={`${r.x1},${r.y1} ${r.x2},${r.y2} ${n.x2},${n.y2} ${n.x1},${n.y1}`}
-                            fill="#FFB300" fillOpacity={0.35} stroke="none"
+                            fill={AMBER} fillOpacity={0.35} stroke="none"
                             style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
                           />
                         )
@@ -248,7 +247,7 @@ export default function RailLayoutTab({
                         const [cx, cy] = toSvg(sx, sy)
                         return (
                           <text key={li} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={fontSize} fontWeight="600" fill="#642165"
+                            fontSize={fontSize} fontWeight="600" fill={PURPLE}
                             style={{ pointerEvents: 'none' }}>
                             {text}
                           </text>
@@ -268,13 +267,13 @@ export default function RailLayoutTab({
                           const ux = dx / len, uy = dy / len
                           return (
                             <g key={`${i}-${rail.railId}`}>
-                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_COLOR_FILL} strokeWidth={railProfileSvg} strokeLinecap="square" />}
+                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={PURPLE} strokeWidth={railProfileSvg} strokeLinecap="square" />}
                               {hlRail && showRails && <>
-                                <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                                <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                                <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                                <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                               </>}
-                              {hlCuts    && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                              {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFB300" strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                              {hlCuts    && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
+                              {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
                             </g>
                           )
                         })}
@@ -299,7 +298,7 @@ export default function RailLayoutTab({
             summary={null}
             actions={[
               { label: 'Apply to all areas', onClick: onApplyRailsToAll, style: { color: TEXT_SECONDARY, background: BG_MID, border: `1px solid ${BORDER}` } },
-              { label: 'Reset to defaults',  onClick: onResetRails,      style: { color: AMBER_DARK, background: '#fffbeb', border: '1px solid #fcd34d' } },
+              { label: 'Reset to defaults',  onClick: onResetRails,      style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } },
               { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
             ]}
           />

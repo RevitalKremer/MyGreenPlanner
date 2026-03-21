@@ -1,7 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER } from '../../../styles/colors'
-
-const RAIL_COLOR  = '#642165'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, PURPLE, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT, PURPLE_HOVER } from '../../../styles/colors'
 const BAR_W       = 18
 const HANDLE_SIZE = 12
 const PANEL_GAP_CM = 2.5
@@ -145,7 +143,7 @@ export default function RailCrossSectionWidget({
           return (
             <rect key={`line-${li}`}
               x={barX} y={y0} width={BAR_W} height={y1 - y0}
-              fill="#e8f0f8" stroke="#b0c4d8" strokeWidth={1}
+              fill={CHART_BG} stroke={CHART_GRID} strokeWidth={1}
               style={{ pointerEvents: 'all' }}
             />
           )
@@ -158,7 +156,7 @@ export default function RailCrossSectionWidget({
           return (
             <rect key={`gap-${li}`}
               x={barX} y={gapStart} width={BAR_W} height={gapEnd - gapStart}
-              fill="#f0f4f8" stroke="#b0c4d8" strokeWidth={0.5} strokeDasharray="2 2"
+              fill={CHART_BG_ALT} stroke={CHART_GRID} strokeWidth={0.5} strokeDasharray="2 2"
               style={{ pointerEvents: 'none' }}
             />
           )
@@ -172,8 +170,8 @@ export default function RailCrossSectionWidget({
         {hoverY != null && (
           <g style={{ pointerEvents: 'none', opacity: 0.4 }}>
             <line x1={barX - 2} y1={hoverY.svgY} x2={barX + BAR_W + 2} y2={hoverY.svgY}
-              stroke={RAIL_COLOR} strokeWidth={1.5} strokeDasharray="3 2" />
-            <text x={barX + BAR_W + 5} y={hoverY.svgY + 4} fontSize={10} fill={RAIL_COLOR} fontWeight="700">+</text>
+              stroke={PURPLE} strokeWidth={1.5} strokeDasharray="3 2" />
+            <text x={barX + BAR_W + 5} y={hoverY.svgY + 4} fontSize={10} fill={PURPLE} fontWeight="700">+</text>
           </g>
         )}
 
@@ -189,7 +187,7 @@ export default function RailCrossSectionWidget({
               <g key={`${li}-${ri}`}>
                 <line
                   x1={barX} y1={y} x2={barX + BAR_W} y2={y}
-                  stroke={RAIL_COLOR} strokeWidth={2}
+                  stroke={PURPLE} strokeWidth={2}
                   style={{ pointerEvents: 'none' }}
                 />
                 <text x={barX - 4} y={y + 4} textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}>
@@ -204,7 +202,7 @@ export default function RailCrossSectionWidget({
                     y={y - HANDLE_SIZE / 2}
                     width={HANDLE_SIZE} height={HANDLE_SIZE}
                     rx={2}
-                    fill={isHover ? '#8b3a8c' : RAIL_COLOR}
+                    fill={isHover ? PURPLE_HOVER : PURPLE}
                     stroke="white" strokeWidth={1.5}
                     style={{ cursor: 'ns-resize' }}
                     onMouseDown={(e) => onMouseDownHandle(e, li, ri)}
@@ -216,7 +214,7 @@ export default function RailCrossSectionWidget({
                       onClick={(e) => removeRail(li, ri, e)}
                     >
                       <rect x={0} y={0} width={HANDLE_SIZE} height={HANDLE_SIZE} rx={2}
-                        fill="#dc2626" stroke="white" strokeWidth={1.5} />
+                        fill={DANGER} stroke="white" strokeWidth={1.5} />
                       <text x={HANDLE_SIZE / 2} y={HANDLE_SIZE - 3} textAnchor="middle" fontSize={9} fill="white" fontWeight="700">✕</text>
                     </g>
                   )}
@@ -236,9 +234,9 @@ export default function RailCrossSectionWidget({
           const annX    = barX - 20
           return (
             <g key={`ann-${li}`} style={{ pointerEvents: 'none' }}>
-              <line x1={annX + 4} y1={y1} x2={annX + 4} y2={y2} stroke="#ccc" strokeWidth={1} />
-              <line x1={annX} y1={y1} x2={annX + 8} y2={y1} stroke="#ccc" strokeWidth={1} />
-              <line x1={annX} y1={y2} x2={annX + 8} y2={y2} stroke="#ccc" strokeWidth={1} />
+              <line x1={annX + 4} y1={y1} x2={annX + 4} y2={y2} stroke={BORDER_MID} strokeWidth={1} />
+              <line x1={annX} y1={y1} x2={annX + 8} y2={y1} stroke={BORDER_MID} strokeWidth={1} />
+              <line x1={annX} y1={y2} x2={annX + 8} y2={y2} stroke={BORDER_MID} strokeWidth={1} />
               <rect x={annX - 16} y={midY - 8} width={22} height={16} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
               <text x={annX - 5} y={midY + 4} textAnchor="middle" fontSize={8} fill={TEXT_SECONDARY} fontWeight="700">
                 {spacing}

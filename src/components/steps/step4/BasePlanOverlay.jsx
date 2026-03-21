@@ -1,8 +1,7 @@
 import { useRef, useState, useCallback } from 'react'
-import { TEXT_SECONDARY, BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, BORDER, BLACK, DANGER, CHART_BG, CHART_GRID } from '../../../styles/colors'
 import { localToScreen } from '../../../utils/railLayoutService'
 
-const BASE_COLOR = '#000000'
 const BAR_H      = 14   // unzoomed SVG px
 const HANDLE_SZ  = 12   // unzoomed SVG px
 
@@ -148,7 +147,7 @@ export default function BasePlanOverlay({
       {/* Bar fill — clickable area */}
       <line
         x1={barX0} y1={barY0} x2={barX1} y2={barY1}
-        stroke="#e8f0f8" strokeWidth={barH} strokeLinecap="square"
+        stroke={CHART_BG} strokeWidth={barH} strokeLinecap="square"
         style={{ pointerEvents: isSelected ? 'all' : 'none', cursor: isSelected ? 'crosshair' : 'default' }}
         onClick={onBarClick}
         onMouseMove={onBarMove}
@@ -157,7 +156,7 @@ export default function BasePlanOverlay({
       {/* Bar border */}
       <line
         x1={barX0} y1={barY0} x2={barX1} y2={barY1}
-        stroke="#b0c4d8" strokeWidth={0.8 / zoom} strokeLinecap="square"
+        stroke={CHART_GRID} strokeWidth={0.8 / zoom} strokeLinecap="square"
         style={{ pointerEvents: 'none' }}
       />
 
@@ -169,12 +168,12 @@ export default function BasePlanOverlay({
             <line
               x1={gx + sinA * barH / 2} y1={gy - cosA * barH / 2}
               x2={gx - sinA * barH / 2} y2={gy + cosA * barH / 2}
-              stroke={BASE_COLOR} strokeWidth={1.5 / zoom}
+              stroke={BLACK} strokeWidth={1.5 / zoom}
               strokeDasharray={`${3 / zoom} ${2 / zoom}`}
             />
             <text x={gx - sinA * (barH / 2 + 8 / zoom)} y={gy + cosA * (barH / 2 + 8 / zoom)}
               textAnchor="middle" dominantBaseline="middle"
-              fontSize={8 / zoom} fill={BASE_COLOR} fontWeight="700"
+              fontSize={8 / zoom} fill={BLACK} fontWeight="700"
               style={{ pointerEvents: 'none' }}>+</text>
           </g>
         )
@@ -201,14 +200,14 @@ export default function BasePlanOverlay({
             <line
               x1={hx + sinA * barH / 2} y1={hy - cosA * barH / 2}
               x2={hx - sinA * barH / 2} y2={hy + cosA * barH / 2}
-              stroke={BASE_COLOR} strokeWidth={1.5 / zoom}
+              stroke={BLACK} strokeWidth={1.5 / zoom}
               style={{ pointerEvents: 'none' }}
             />
             {/* Handle square */}
             <rect
               x={hx - handleSz / 2} y={hy - handleSz / 2}
               width={handleSz} height={handleSz} rx={2 / zoom}
-              fill={isHover && canRemove ? '#dc2626' : BASE_COLOR}
+              fill={isHover && canRemove ? DANGER : BLACK}
               stroke="white" strokeWidth={1.5 / zoom}
             />
             {isHover && canRemove && (
