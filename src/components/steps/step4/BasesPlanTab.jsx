@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, PURPLE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -246,7 +246,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                         const [rx2, ry2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
                         return (
                           <line key={rail.railId} x1={rx1} y1={ry1} x2={rx2} y2={ry2}
-                            stroke={PURPLE} strokeWidth={railProfileSvg} strokeLinecap="square" />
+                            stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square" />
                         )
                       })}
                       {showBases && bases.map((base, bi) => {
@@ -270,7 +270,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                               <line x1={btx} y1={bty} x2={rtx} y2={rty} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                               <line x1={rfx} y1={rfy} x2={bbx} y2={bby} stroke={AMBER} strokeWidth={PROFILE_THICK + 8} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                             </>}
-                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={BLACK} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
+                            <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={PROFILE_THICK} strokeLinecap="square" />
                             {showBaseIDs && (() => {
                               const bx = (btx + bbx) / 2, by = (bty + bby) / 2
                               return (

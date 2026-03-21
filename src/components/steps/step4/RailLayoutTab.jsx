@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, PURPLE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, RAIL_STROKE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -247,7 +247,7 @@ export default function RailLayoutTab({
                         const [cx, cy] = toSvg(sx, sy)
                         return (
                           <text key={li} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={fontSize} fontWeight="600" fill={PURPLE}
+                            fontSize={fontSize} fontWeight="600" fill={RAIL_STROKE}
                             style={{ pointerEvents: 'none' }}>
                             {text}
                           </text>
@@ -267,7 +267,7 @@ export default function RailLayoutTab({
                           const ux = dx / len, uy = dy / len
                           return (
                             <g key={`${i}-${rail.railId}`}>
-                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={PURPLE} strokeWidth={railProfileSvg} strokeLinecap="square" />}
+                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square" />}
                               {hlRail && showRails && <>
                                 <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                                 <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />

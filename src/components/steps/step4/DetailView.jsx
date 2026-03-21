@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, PURPLE, BEAM_FILL, DIAG_FILL, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -447,25 +447,25 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* ── Structure: 4 main beams — always fully rendered ── */}
               {/* ── Base beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBeamL - legX0, height: BEAM_THICK_PX })}
-              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={BEAM_FILL} />
+              <rect x={activeBeamL} y={baseY} width={activeBeamR - activeBeamL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} />
               {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: baseY, width: legX1 - activeBeamR, height: BEAM_THICK_PX })}
 
               {/* ── Rear leg: ghost or active ── */}
               {(hR - OHy) > 0 && (legIsGhostFull[0]
                 ? ghostLine({ x1: legX0 + BEAM_THICK_PX/2, y1: topExtY0, x2: legX0 + BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={BEAM_FILL} />
+                : <rect x={legX0} y={topExtY0} width={BEAM_THICK_PX} height={hR - OHy} fill={L_PROFILE_FILL} />
               )}
 
               {/* ── Front leg: ghost or active ── */}
               {legIsGhostFull[allLegXs.length - 1]
                 ? ghostLine({ x1: legX1 - BEAM_THICK_PX/2, y1: topExtY1, x2: legX1 - BEAM_THICK_PX/2, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={BEAM_FILL} />
+                : <rect x={legX1 - BEAM_THICK_PX} y={topExtY1} width={BEAM_THICK_PX} height={hF + OHy} fill={L_PROFILE_FILL} />
               }
 
               {/* ── Slope beam: ghost left / active / ghost right ── */}
               {legIsGhostFull[0] && ghostLine({ x1: topExtX0, y1: topExtY0, x2: activeBeamL, y2: beamY(activeBeamL), strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               <line x1={activeBeamL} y1={beamY(activeBeamL)} x2={activeBeamR} y2={beamY(activeBeamR)}
-                stroke={BEAM_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+                stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBeamR, y1: beamY(activeBeamR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               {diagonals.map((d, di) => {
                 const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
@@ -475,7 +475,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     {isDiagGhost
                       ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
                       : <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
-                          stroke={DIAG_FILL} strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+                          stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
                     }
                     {!isDiagGhost && d.isDouble && (<>
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
@@ -554,7 +554,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const isEmptySeg = segments[segIdx]?.isEmpty
                 const isGhosted  = segIdx < firstActiveSegIdx || segIdx > lastActiveSegIdx
                 const railFill   = RAIL_FILL
-                const railStroke = isEmptySeg ? BORDER : PURPLE
+                const railStroke = isEmptySeg ? BORDER : RAIL_STROKE
                 const cy = beamY(cx)
                 const beamTop  = -BEAM_THICK_PX / 2
                 const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
@@ -597,7 +597,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={ci}>
                     {isGhost
                       ? ghostLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })
-                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke={BEAM_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
+                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke={L_PROFILE_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
                     }
                     {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>

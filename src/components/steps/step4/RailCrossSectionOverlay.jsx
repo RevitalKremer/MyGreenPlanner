@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from 'react'
-import { TEXT_SECONDARY, BORDER, BORDER_MID, PURPLE, DANGER, CHART_BG, CHART_GRID } from '../../../styles/colors'
+import { TEXT_SECONDARY, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID } from '../../../styles/colors'
 const BAR_W      = 14
 const HANDLE_W   = 10
 const HANDLE_H   = 10
@@ -174,7 +174,7 @@ export default function RailCrossSectionOverlay({
                   {/* Rail line across bar */}
                   <line
                     x1={barX} y1={y} x2={barX + BAR_W} y2={y}
-                    stroke={PURPLE} strokeWidth={1.5}
+                    stroke={RAIL_STROKE} strokeWidth={1.5}
                     style={{ pointerEvents: 'none' }}
                   />
 
@@ -260,7 +260,7 @@ function DeleteHandle({ x, y, w, h, canRemove, onMouseDown, onDelete }) {
     >
       <rect
         x={x} y={y} width={w} height={h} rx={2}
-        fill={hover && canRemove ? DANGER : PURPLE}
+        fill={hover && canRemove ? DANGER : RAIL_STROKE}
         stroke="white" strokeWidth={1}
       />
       {hover && canRemove && (

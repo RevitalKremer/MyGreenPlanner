@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, PURPLE, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT, PURPLE_HOVER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT, RAIL_STROKE_HOVER } from '../../../styles/colors'
 const BAR_W       = 18
 const HANDLE_SIZE = 12
 const PANEL_GAP_CM = 2.5
@@ -170,8 +170,8 @@ export default function RailCrossSectionWidget({
         {hoverY != null && (
           <g style={{ pointerEvents: 'none', opacity: 0.4 }}>
             <line x1={barX - 2} y1={hoverY.svgY} x2={barX + BAR_W + 2} y2={hoverY.svgY}
-              stroke={PURPLE} strokeWidth={1.5} strokeDasharray="3 2" />
-            <text x={barX + BAR_W + 5} y={hoverY.svgY + 4} fontSize={10} fill={PURPLE} fontWeight="700">+</text>
+              stroke={RAIL_STROKE} strokeWidth={1.5} strokeDasharray="3 2" />
+            <text x={barX + BAR_W + 5} y={hoverY.svgY + 4} fontSize={10} fill={RAIL_STROKE} fontWeight="700">+</text>
           </g>
         )}
 
@@ -187,7 +187,7 @@ export default function RailCrossSectionWidget({
               <g key={`${li}-${ri}`}>
                 <line
                   x1={barX} y1={y} x2={barX + BAR_W} y2={y}
-                  stroke={PURPLE} strokeWidth={2}
+                  stroke={RAIL_STROKE} strokeWidth={2}
                   style={{ pointerEvents: 'none' }}
                 />
                 <text x={barX - 4} y={y + 4} textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}>
@@ -202,7 +202,7 @@ export default function RailCrossSectionWidget({
                     y={y - HANDLE_SIZE / 2}
                     width={HANDLE_SIZE} height={HANDLE_SIZE}
                     rx={2}
-                    fill={isHover ? PURPLE_HOVER : PURPLE}
+                    fill={isHover ? RAIL_STROKE_HOVER : RAIL_STROKE}
                     stroke="white" strokeWidth={1.5}
                     style={{ cursor: 'ns-resize' }}
                     onMouseDown={(e) => onMouseDownHandle(e, li, ri)}

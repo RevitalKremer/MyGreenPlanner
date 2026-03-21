@@ -5,7 +5,6 @@ export const PRIMARY_MID  = '#8a9a00'  // mid brand
 export const PRIMARY_BG   = '#f8fce8'  // very light brand bg
 export const PRIMARY_BG_ALT   = '#e8f2b0' // light brand bg
 export const PRIMARY_BG_LIGHT = '#f4f9e4' // lightest brand tint
-export const PURPLE       = '#642165'  // secondary brand purple
 
 // ── Blue / Active ─────────────────────────────────────────────────────────
 export const BLUE          = '#1565C0' // info / active blue
@@ -66,6 +65,8 @@ export const BEAM_FILL    = '#404040'  // main beam fill
 export const DIAG_FILL    = '#606060'  // diagonal brace fill
 export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
 export const BLOCK_STROKE = '#777'     // concrete block stroke
+export const L_PROFILE_FILL    = '#40404080'  // main beam fill
+export const L_PROFILE_STROKE  = '#ff0000'  // main beam stroke
 
 // ── Panel bars ────────────────────────────────────────────────────────────
 export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
@@ -73,6 +74,7 @@ export const PANEL_BAR_STROKE = '#293189'  // panel bar stroke
 
 // ── Cross-rails ───────────────────────────────────────────────────────────
 export const RAIL_FILL = '#7c3aed'  // cross-rail fill
+export const RAIL_STROKE       = '#642165'  // secondary brand RAIL_FILL
 
 // ── Punch bar ─────────────────────────────────────────────────────────────
 export const PUNCH_BAR_FILL   = '#d8d8d8'  // punch sketch bar fill
@@ -108,9 +110,6 @@ export const GROUND_LINE  = '#3a9e3a'  // floor/ground line green
 export const CHART_BG     = '#e8f0f8'  // chart/ruler background
 export const CHART_GRID   = '#b0c4d8'  // chart grid lines
 export const CHART_BG_ALT = '#f0f4f8'  // chart alternate background
-
-// ── Purple hover ──────────────────────────────────────────────────────────
-export const PURPLE_HOVER = '#8b3a8c'  // purple hover state
 
 // ── Sidebar / navigation ──────────────────────────────────────────────────
 export const TAB_ACTIVE_COLOR  = '#d97706'  // active tab text
