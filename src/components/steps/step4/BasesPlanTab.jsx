@@ -9,6 +9,7 @@ import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
 import RulerTool from '../../shared/RulerTool'
+import DimensionAnnotation from './DimensionAnnotation'
 
 const BASE_COLOR      = '#000000'
 const RAIL_COLOR_FILL = '#642165'
@@ -401,52 +402,27 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     extremeLocalY = outSign >= 0 ? Math.max(extremeLocalY, yMax) : Math.min(extremeLocalY, yMin)
                   }
 
-                  const ANN_OFF = 16 / zoom, TICK = 4 / zoom, EXT_GAP = 2 / zoom, EXT_OVR = 3 / zoom
+                  const ANN_OFF = 16 / zoom, EXT_GAP = 2 / zoom
                   const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
                   const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
 
                   const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
                   const isSelectedArea = areaKey === selectedArea
                   const areaOpacity = (effectiveSelectedTrapId === null || isSelectedArea) ? 1 : 0.2
-
                   const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
                     ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
 
+                  const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
+                  const annPts    = projected.map(b => annSvg(b.localX))
+                  const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
+                  const segColors = projected.slice(0, -1).map((b1, si) => {
+                    const b2 = projected[si + 1]
+                    return (isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)) ? '#0056b3' : '#555'
+                  })
+
                   return (
                     <g key={`area-ann-${areaKey}`} opacity={areaOpacity} style={hlStyle}>
-                      {projected.slice(0, -1).map((b1, si) => {
-                        const b2 = projected[si + 1]
-                        const distMm = Math.round(Math.abs(b2.localX - b1.localX) * pixelToCmRatio * 10)
-                        const [ax1, ay1] = annSvg(b1.localX), [ax2, ay2] = annSvg(b2.localX)
-                        const [fe1x, fe1y] = edgeSvg(b1.localX), [fe2x, fe2y] = edgeSvg(b2.localX)
-                        const dx = ax2 - ax1, dy = ay2 - ay1, len = Math.sqrt(dx * dx + dy * dy)
-                        if (len < 2) return null
-                        const tx = (ax1 + ax2) / 2, ty = (ay1 + ay2) / 2
-                        const angle = Math.atan2(dy, dx) * 180 / Math.PI
-                        const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle
-                        const fontSize = 11 / zoom
-                        const label = `${distMm}`
-                        const bgW = label.length * fontSize * 0.6 + 6 / zoom, bgH = fontSize + 4 / zoom
-                        const px_t = -dy / len, py_t = dx / len
-                        // Highlight segment if either base belongs to the selected sub-area
-                        const segHighlight = isSelectedArea && (b1.trapId === effectiveSelectedTrapId || b2.trapId === effectiveSelectedTrapId)
-                        const lineColor = segHighlight ? '#0056b3' : '#555'
-                        const ex1s = [fe1x + apX * EXT_GAP, fe1y + apY * EXT_GAP], ex1e = [ax1 - apX * EXT_OVR, ay1 - apY * EXT_OVR]
-                        const ex2s = [fe2x + apX * EXT_GAP, fe2y + apY * EXT_GAP], ex2e = [ax2 - apX * EXT_OVR, ay2 - apY * EXT_OVR]
-                        return (
-                          <g key={`ann-${si}`}>
-                            <line x1={ex1s[0]} y1={ex1s[1]} x2={ex1e[0]} y2={ex1e[1]} stroke={lineColor} strokeWidth={0.8 / zoom} />
-                            <line x1={ex2s[0]} y1={ex2s[1]} x2={ex2e[0]} y2={ex2e[1]} stroke={lineColor} strokeWidth={0.8 / zoom} />
-                            <line x1={ax1} y1={ay1} x2={ax2} y2={ay2} stroke={lineColor} strokeWidth={1 / zoom} />
-                            <line x1={ax1 - px_t * TICK} y1={ay1 - py_t * TICK} x2={ax1 + px_t * TICK} y2={ay1 + py_t * TICK} stroke={lineColor} strokeWidth={1.2 / zoom} />
-                            <line x1={ax2 - px_t * TICK} y1={ay2 - py_t * TICK} x2={ax2 + px_t * TICK} y2={ay2 + py_t * TICK} stroke={lineColor} strokeWidth={1.2 / zoom} />
-                            <g transform={`rotate(${labelAngle} ${tx} ${ty})`}>
-                              <rect x={tx - bgW / 2} y={ty - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
-                              <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={lineColor}>{label}</text>
-                            </g>
-                          </g>
-                        )
-                      })}
+                      <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={zoom} />
                     </g>
                   )
                 })}
@@ -464,7 +440,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
             { label: 'Base IDs',    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: 'Rail lines',  checked: showRailLines,  setter: setShowRailLines },
             { label: 'Edit bar',    checked: showEditBar,    setter: setShowEditBar },
-            { label: 'Annotations', checked: showDimensions, setter: setShowDimensions },
+            { label: 'Dimensions',  checked: showDimensions, setter: setShowDimensions },
             { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
