@@ -33,7 +33,7 @@ export default function RailLayoutTab({
   const [showRails,           setShowRails]           = useState(true)
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
-  const [showCrossSection,    setShowCrossSection]    = useState(true)
+  const [showEditBar,    setShowEditBar]    = useState(true)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
 
@@ -132,7 +132,7 @@ export default function RailLayoutTab({
                   <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
                   {/* Cross-section overlay */}
-                  {showCrossSection && (
+                  {showEditBar && (
                     <RailCrossSectionOverlay
                       rl={activeCrossSectionRl}
                       lineRails={lineRails}
@@ -294,7 +294,7 @@ export default function RailLayoutTab({
               { label: 'Rails',            checked: showRails,           setter: setShowRails },
               { label: 'Dimensions',       checked: showDimensions,      setter: setShowDimensions },
               { label: 'Material summary', checked: showMaterialSummary, setter: setShowMaterialSummary },
-              { label: 'Cross section',    checked: showCrossSection,    setter: setShowCrossSection },
+              { label: 'Edit Bar',         checked: showEditBar,    setter: setShowEditBar },
             ]}
             summary={null}
             actions={[

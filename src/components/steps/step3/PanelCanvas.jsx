@@ -512,10 +512,12 @@ export default function PanelCanvas({
         >
           <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
           {panels.filter(p => !p.isEmpty).map(p => {
-            const mmX = p.x / imageRef.naturalWidth  * MM_W
-            const mmY = p.y / imageRef.naturalHeight * MM_H
-            const mmW = p.width  / imageRef.naturalWidth  * MM_W
-            const mmH = p.height / imageRef.naturalHeight * MM_H
+            const nw  = Math.max(imageRef.naturalWidth,  1)
+            const nh  = Math.max(imageRef.naturalHeight, 1)
+            const mmX = p.x      / nw * MM_W
+            const mmY = p.y      / nh * MM_H
+            const mmW = p.width  / nw * MM_W
+            const mmH = p.height / nh * MM_H
             const cx = mmX + mmW / 2, cy = mmY + mmH / 2
             const isSel = selectedPanels.includes(p.id)
             return (
