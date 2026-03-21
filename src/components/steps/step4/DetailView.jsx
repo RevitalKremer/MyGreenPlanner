@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -123,8 +123,39 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const panOffY = -Math.cos(angleRad) * PANEL_OFFSET_PX
 
   const blockW  = blockLengthCm * SC
-  const diagTopX  = legX0 + diagTopPct  * legBW
-  const diagBaseX = legX0 + diagBasePct * legBW
+  // ── Multi-diagonal logic ──────────────────────────────────────────────────
+  const legHeightAtX = (x) => (baseY - beamY(x)) / SC
+  const innerLegXs   = railXs.slice(1, -1).map(cx => cx - crossRailEdgeDistCm * Math.cos(angleRad) * SC)
+  const allLegXs     = [legX0, ...innerLegXs, legX1]
+  const diagonals = (() => {
+    const SKIP_BELOW = 60, DOUBLE_ABOVE = 200
+    const numSpans = allLegXs.length - 1
+    const raw = allLegXs.slice(0, -1).map((xA, i) => {
+      const xB       = allLegXs[i + 1]
+      const hA       = legHeightAtX(xA)
+      const hB       = legHeightAtX(xB)
+      const spanW    = xB - xA
+      const isDouble = hA >= DOUBLE_ABOVE || hB >= DOUBLE_ABOVE
+      const skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
+      // First span (leftmost/lowest) is reversed when there are 2+ spans
+      const reversed = numSpans > 1 && i === 0
+      const topPct   = reversed
+        ? (isDouble ? 0.90 : 1 - diagTopPct)          // 75% (or 90% if double)
+        : (isDouble ? 0.10 : diagTopPct)               // 25% (or 10% if double)
+      const botPct   = reversed ? (1 - diagBasePct) : diagBasePct  // 10% or 90%
+      const topX     = xA + topPct * spanW
+      const botX     = xA + botPct * spanW
+      const topY     = beamY(topX)
+      const lenCm    = Math.sqrt((botX - topX) ** 2 + (baseY - topY) ** 2) / SC
+      return { xA, xB, hA, hB, spanW, topX, botX, topY, lenCm, isDouble, reversed, skip }
+    })
+    const anyVisible = raw.some(s => !s.skip)
+    // Rule: if all spans below threshold, force the last span (tallest legs)
+    return raw
+      .map((s, i) => (!anyVisible && i === raw.length - 1) ? { ...s, skip: false } : s)
+      .filter(s => !s.skip)
+  })()
+
   const lb_x = legX0,              lb_w = blockW  // left block aligns with rear leg (beam end)
   const rb_x = legX1 - blockW,     rb_w = blockW  // right block aligns with front leg (beam end)
 
@@ -154,8 +185,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 
   const beamAngleDeg = Math.atan2(topY1 - topY0, x1 - x0) * 180 / Math.PI
-
-  const diagLenCm = Math.sqrt((diagBaseX - diagTopX) ** 2 + (baseY - beamY(diagTopX)) ** 2) / SC
 
   const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
     const col = tbd ? TC : DC
@@ -255,15 +284,28 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* Top beam: extended by overhang on each side */}
               <line x1={topExtX0} y1={topExtY0} x2={topExtX1} y2={topExtY1}
                 stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
-              <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
-                stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
-              {hl('diagonal') && (
-                <line x1={diagTopX} y1={beamY(diagTopX)} x2={diagBaseX} y2={baseY}
-                  stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
-                  style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-              )}
-              {showAnnotations && <Dim ax1={diagTopX} ay1={beamY(diagTopX)} ax2={diagBaseX} ay2={baseY}
-                label={fmt(diagLenCm)} off={-16} />}
+              {diagonals.map((d, di) => {
+                const mx = (d.topX + d.botX) / 2, my = (d.topY + baseY) / 2
+                const ang = Math.atan2(baseY - d.topY, d.botX - d.topX) * 180 / Math.PI
+                return (
+                  <g key={di}>
+                    <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                      stroke="#606060" strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
+                    {d.isDouble && (
+                      <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
+                        fontSize="9" fontWeight="800" fill="red"
+                        transform={`rotate(${ang}, ${mx}, ${my})`}>×2</text>
+                    )}
+                    {hl('diagonal') && (
+                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                        stroke="#FFB300" strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
+                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                    )}
+                    {showAnnotations && <Dim ax1={d.topX} ay1={d.topY} ax2={d.botX} ay2={baseY}
+                      label={fmt(d.lenCm)} off={-16} />}
+                  </g>
+                )
+              })}
               {/* Rail-clamp offset highlight */}
               {hl('rail-clamp') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
@@ -362,7 +404,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               })}
 
               {/* ── Punches on base beam ── */}
-              {showPunches && [legX0 + 2 * SC, diagBaseX, legX1 - 2 * SC].map((px, i) => (
+              {showPunches && [legX0 + 2 * SC, ...diagonals.map(d => d.botX), legX1 - 2 * SC].map((px, i) => (
                 <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                   fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
               ))}
@@ -374,7 +416,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const ux = dx / beamLenPx, uy = dy / beamLenPx
                 const pts = [
                   { x: topExtX0 + 2 * SC * ux, y: topExtY0 + 2 * SC * uy },
-                  { x: diagTopX, y: beamY(diagTopX) },
+                  ...diagonals.map(d => ({ x: d.topX, y: d.topY })),
                   { x: topExtX1 - 2 * SC * ux, y: topExtY1 - 2 * SC * uy },
                 ]
                 return pts.map((p, i) => (
@@ -458,10 +500,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const beamR    = x1 + OHx
                 const barW     = beamR - beamL
                 const barCy    = ry + barH / 2
-                const punches  = [beamL + 2 * SC, x0 + diagBasePct * bW, beamR - 2 * SC]
+                const punches       = [beamL + 2 * SC, ...diagonals.map(d => d.botX), beamR - 2 * SC]
                 const punchLabelsCm = [
-                  2,
-                  fmt(baseOverhangCm * Math.cos(angleRad) + diagBasePct * baseLength),
+                  '2',
+                  ...diagonals.map(d => fmt((d.botX - legX0) / SC)),
                   fmt(baseBeamLength - 2),
                 ]
                 const totalCm = fmt(baseBeamLength)
@@ -500,12 +542,16 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 const beamR    = x1 + OHx
                 const barW     = beamR - beamL
                 const barCy    = ry + barH / 2
-                const punches  = [
+                const punches       = [
                   beamL + (2 / topBeamLength) * barW,
-                  beamL + diagTopPct * barW,
+                  ...diagonals.map(d => d.topX),
                   beamL + ((topBeamLength - 2) / topBeamLength) * barW,
                 ]
-                const punchLabelsCm = [2, fmt(diagTopPct * topBeamLength), fmt(topBeamLength - 2)]
+                const punchLabelsCm = [
+                  '2',
+                  ...diagonals.map(d => fmt((d.topX - legX0) / legBW * topBeamLength)),
+                  fmt(topBeamLength - 2),
+                ]
                 return (
                   <g>
                     <text x={beamL} y={ry - 5}
@@ -546,7 +592,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     ['Top beam',   rc.topBeamLength],
                     ['Rear leg',   rc.heightRear],
                     ['Front leg',  rc.heightFront],
-                    ['Diagonal',   diagLenCm],
+                    ...diagonals.map((d, i) => [
+                      diagonals.length > 1
+                        ? `Diagonal ${i + 1}${d.isDouble ? ' ×2' : ''}`
+                        : `Diagonal${d.isDouble ? ' ×2' : ''}`,
+                      d.lenCm,
+                    ]),
                   ].map(([name, val]) => (
                     <tr key={name} style={{ borderTop: `1px solid ${BG_MID}` }}>
                       <td style={{ padding: '0.3rem 0.5rem', color: TEXT_SECONDARY }}>{name}</td>
