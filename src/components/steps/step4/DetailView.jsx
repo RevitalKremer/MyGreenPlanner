@@ -170,9 +170,14 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
       const botPct    = ov.botPct !== undefined ? ov.botPct : defBotPct
       const topX      = xA + topPct * spanW
       const botX      = xA + botPct * spanW
-      const topY      = beamY(topX)
-      const lenCm     = Math.sqrt((botX - topX) ** 2 + (baseY - topY) ** 2) / SC
-      return { xA, xB, hA, hB, spanW, topX, botX, topY, lenCm, isDouble, reversed, skip, spanIndex: i }
+      const topY      = beamY(topX)   // punch through center of slope beam
+      const botY      = baseY + BEAM_THICK_PX / 2   // punch through center of base beam
+      const _dx = botX - topX, _dy = botY - topY
+      const _len = Math.sqrt(_dx * _dx + _dy * _dy)
+      const ux = _len > 0 ? _dx / _len : 0, uy = _len > 0 ? _dy / _len : 0
+      const halfCap = BEAM_THICK_PX * 0.75 / 2   // strokeLinecap="square" extends profile by this
+      const lenCm   = (_len + BEAM_THICK_PX * 0.75) / SC  // full profile length: punch-to-punch + both caps
+      return { xA, xB, hA, hB, spanW, topX, botX, topY, botY, ux, uy, halfCap, lenCm, isDouble, reversed, skip, spanIndex: i }
     })
     // Safety: if all skip, force-show the rightmost span not explicitly disabled by user
     const anyVisible = raw.some(s => !s.skip)
@@ -463,22 +468,22 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 stroke={BEAM_FILL} strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
               {legIsGhostFull[allLegXs.length - 1] && ghostLine({ x1: activeBeamR, y1: beamY(activeBeamR), x2: topExtX1, y2: topExtY1, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })}
               {diagonals.map((d, di) => {
-                const ang = Math.atan2(baseY - d.topY, d.botX - d.topX) * 180 / Math.PI
+                const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
                 const isDiagGhost = legIsGhostFull[d.spanIndex] || legIsGhostFull[d.spanIndex + 1]
                 return (
                   <g key={di}>
                     {isDiagGhost
-                      ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: baseY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
-                      : <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                      ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
+                      : <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
                           stroke={DIAG_FILL} strokeWidth={BEAM_THICK_PX * 0.75} strokeLinecap="square" />
                     }
                     {!isDiagGhost && d.isDouble && (<>
-                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
                         stroke={DANGER} strokeWidth="1" strokeLinecap="square"
                         strokeDasharray="4,4" opacity="0.6" />
                       {[0.08, 0.5, 0.92].map((t, i) => {
                         const lx = d.topX + t * (d.botX - d.topX)
-                        const ly = d.topY + t * (baseY - d.topY)
+                        const ly = d.topY + t * (d.botY - d.topY)
                         return (
                           <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
                             fontSize="8" fontWeight="800" fill={DANGER}
@@ -487,11 +492,13 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                       })}
                     </>)}
                     {hl('diagonal') && (
-                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={baseY}
+                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
                         stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
-                    {!isDiagGhost && showAnnotations && <Dim ax1={d.topX} ay1={d.topY} ax2={d.botX} ay2={baseY}
+                    {!isDiagGhost && showAnnotations && <Dim
+                      ax1={d.topX - d.ux * d.halfCap} ay1={d.topY - d.uy * d.halfCap}
+                      ax2={d.botX + d.ux * d.halfCap} ay2={d.botY + d.uy * d.halfCap}
                       label={fmt(d.lenCm)} off={-16} />}
                   </g>
                 )
