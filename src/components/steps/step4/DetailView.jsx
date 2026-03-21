@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BORDER_LIGHT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -116,8 +116,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
     }
     return items
   })()
-  const railXs = railItems.map(r => r.cx)
-
   const BEAM_THICK_PX = 4 * SC
   const blockTopY = baseY + BEAM_THICK_PX   // blocks sit below the outer bottom face of the base beam
   const blockBotY = blockTopY + blockH
@@ -129,8 +127,28 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const blockW  = blockLengthCm * SC
   // ── Multi-diagonal logic ──────────────────────────────────────────────────
   const legHeightAtX = (x) => (baseY - beamY(x)) / SC
-  const innerLegXs   = railXs.slice(1, -1).map(cx => cx - crossRailEdgeDistCm * Math.cos(angleRad) * SC)
-  const allLegXs     = [legX0, ...innerLegXs, legX1]
+
+  // Per-segment rail ordering: sort each segment's rails by offsetCm and record position
+  const segSortedIndices = {}   // segIdx -> globalRailIdx[] sorted by offsetCm
+  railItems.forEach((r, i) => {
+    if (!segSortedIndices[r.segIdx]) segSortedIndices[r.segIdx] = []
+    segSortedIndices[r.segIdx].push(i)
+  })
+  Object.values(segSortedIndices).forEach(arr =>
+    arr.sort((a, b) => railItems[a].offsetCm - railItems[b].offsetCm)
+  )
+  // globalRailIdx -> { pos (0-indexed within segment), N (total in segment) }
+  const railPosInSeg = new Map()
+  Object.values(segSortedIndices).forEach(arr =>
+    arr.forEach((globalIdx, pos) => railPosInSeg.set(globalIdx, { pos, N: arr.length }))
+  )
+  // Inner legs: left half of segment → shift left; right half → shift right; single rail → left
+  const innerLegXs = railItems.slice(1, -1).map((r, ci) => {
+    const offset = crossRailEdgeDistCm * Math.cos(angleRad) * SC
+    const { pos, N } = railPosInSeg.get(ci + 1) ?? { pos: 0, N: 1 }
+    return (N > 1 && pos > Math.floor((N - 1) / 2)) ? r.cx + offset : r.cx - offset
+  })
+  const allLegXs = [legX0, ...innerLegXs, legX1]
   const diagonals = (() => {
     const SKIP_BELOW = 60, DOUBLE_ABOVE = 200
     const numSpans = allLegXs.length - 1
@@ -192,10 +210,15 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
   const activeBeamL = allLegXs[firstActiveLegIdx]   // left active boundary x
   const activeBeamR = allLegXs[lastActiveLegIdx]    // right active boundary x
 
-  // Ghost style — same as empty panels/rails: white fill, BORDER_LIGHT stroke, minimal dash
-  const GHOST_DASH = '4,3'
-  const ghostRect  = (props) => <rect {...props} fill={BG_SUBTLE} stroke={BORDER_LIGHT} strokeWidth="1" strokeDasharray={GHOST_DASH} />
-  const ghostLine  = (props) => <line {...props} stroke={BORDER_LIGHT} strokeDasharray={GHOST_DASH} />
+  // Ghost style: all rendered as rects using centralized ghost colors
+  const ghostRect = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
+  const ghostLine = ({ x1, y1, x2, y2, strokeWidth: sw }) => {
+    const dx = x2 - x1, dy = y2 - y1
+    const len = Math.sqrt(dx * dx + dy * dy)
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI
+    return ghostRect({ x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
+  }
 
   // Diagonals with both legs in the active zone (used for punch sketches + annotations)
   const activeDiags          = diagonals.filter(d => !legIsGhostFull[d.spanIndex] && !legIsGhostFull[d.spanIndex + 1])
@@ -493,15 +516,16 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   const cx  = (start.x + end.x) / 2 + panOffX
                   const cy  = (start.y + end.y) / 2 + panOffY
                   const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
+                  const isGhosted = idx < firstActiveSegIdx || idx > lastActiveSegIdx
                   return (
                     <g key={idx}>
                       <rect
                         x={cx - len/2} y={cy - PANEL_THICK_PX/2}
                         width={len} height={PANEL_THICK_PX}
-                        fill={seg.isEmpty ? 'white' : '#6a70ac'}
-                        stroke={seg.isEmpty ? '#ddd' : '#293189'}
+                        fill={isGhosted ? GHOST_FILL : seg.isEmpty ? 'white' : '#6a70ac'}
+                        stroke={isGhosted ? GHOST_STROKE : seg.isEmpty ? '#ddd' : '#293189'}
                         strokeWidth="1"
-                        strokeDasharray={seg.isEmpty ? '4,3' : undefined}
+                        strokeDasharray={isGhosted || seg.isEmpty ? GHOST_DASH : undefined}
                         transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
                       />
                       {hl('panel') && (
@@ -521,6 +545,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
               {/* ── Cross-rails profile (size from crossRailEdgeDistMm) ── */}
               {railItems.map(({ cx, segIdx, globalOffsetCm }, ci) => {
                 const isEmptySeg = segments[segIdx]?.isEmpty
+                const isGhosted  = segIdx < firstActiveSegIdx || segIdx > lastActiveSegIdx
                 const railFill   = '#7c3aed'
                 const railStroke = isEmptySeg ? '#ddd' : '#642165'
                 const cy = beamY(cx)
@@ -536,10 +561,10 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   <g key={ci}>
                     <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                       <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                        fill={isEmptySeg ? 'white' : railFill}
-                        stroke={isEmptySeg ? '#ddd' : railStroke}
+                        fill={isGhosted ? GHOST_FILL : isEmptySeg ? 'white' : railFill}
+                        stroke={isGhosted ? GHOST_STROKE : isEmptySeg ? '#ddd' : railStroke}
                         strokeWidth="1"
-                        strokeDasharray={isEmptySeg ? '3,2' : undefined} />
+                        strokeDasharray={isGhosted || isEmptySeg ? GHOST_DASH : undefined} />
                       {hl('cross-rails') && (
                         <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                           fill="none" stroke="#FFB300" strokeWidth="2.5" rx="3"
@@ -555,19 +580,19 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 )
               })}
 
-              {/* ── Rail support profiles (vertical, beam → base) ── */}
-              {railXs.slice(1, -1).map((cx, ci) => {
-                const sx     = cx - crossRailEdgeDistCm * Math.cos(angleRad) * SC
-                const topY   = beamY(sx)
-                const lenCm  = (baseY - topY) / SC
-                const isGhost = innerLegIsGhost[ci] ?? false
+              {/* ── Rail support profiles (L-bracket: slope-top → base-bottom, overlaps both beams) ── */}
+              {innerLegXs.map((sx, ci) => {
+                const beamCY    = beamY(sx)
+                const slopeTopY = beamCY - Math.cos(angleRad) * BEAM_THICK_PX / 2   // top face of slope beam
+                const lenCm     = (blockTopY - slopeTopY) / SC                       // full L-bracket height
+                const isGhost   = innerLegIsGhost[ci] ?? false
                 return (
                   <g key={ci}>
                     {isGhost
-                      ? ghostLine({ x1: sx, y1: topY, x2: sx, y2: baseY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'square' })
-                      : <line x1={sx} y1={topY} x2={sx} y2={baseY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="square" />
+                      ? ghostLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })
+                      : <line x1={sx} y1={slopeTopY} x2={sx} y2={blockTopY} stroke="#404040" strokeWidth={BEAM_THICK_PX} strokeLinecap="butt" />
                     }
-                    {!isGhost && showAnnotations && <Dim ax1={sx} ay1={topY} ax2={sx} ay2={baseY} label={fmt(lenCm)} off={14} />}
+                    {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>
                 )
               })}
@@ -637,9 +662,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                   </>)
                 })()}
 
-                {/* Left leg height: at first active leg */}
-                {beamY(activeBeamL) < baseY && <Dim ax1={activeBeamL} ay1={beamY(activeBeamL)} ax2={activeBeamL} ay2={blockTopY}
-                  label={fmt((baseY - beamY(activeBeamL)) / SC)} off={-55} />}
+                {/* Left leg height: only when main rear leg is active (not ghosted to an inner leg) */}
+                {!legIsGhostFull[0] && beamY(activeBeamL) < baseY && (() => {
+                  const slopeTopY = beamY(activeBeamL) - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                  return <Dim ax1={activeBeamL} ay1={slopeTopY} ax2={activeBeamL} ay2={blockTopY}
+                    label={fmt((blockTopY - slopeTopY) / SC)} off={-55} />
+                })()}
 
                 <Dim ax1={activePanelStart.x} ay1={blockBotY}
                      ax2={activePanelStart.x} ay2={activePanelStart.y + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
@@ -649,9 +677,12 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                 <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
                   label={fmt(BLOCK_H_CM)} off={-14} />
 
-                {/* Right leg height: at last active leg */}
-                <Dim ax1={activeBeamR} ay1={blockTopY} ax2={activeBeamR} ay2={beamY(activeBeamR) + Math.cos(angleRad) * BEAM_THICK_PX / 2}
-                  label={fmt((baseY - beamY(activeBeamR)) / SC)} off={38} />
+                {/* Right leg height: only when main front leg is active (not ghosted to an inner leg) */}
+                {!legIsGhostFull[allLegXs.length - 1] && (() => {
+                  const slopeTopY = beamY(activeBeamR) - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                  return <Dim ax1={activeBeamR} ay1={slopeTopY} ax2={activeBeamR} ay2={blockTopY}
+                    label={fmt((blockTopY - slopeTopY) / SC)} off={38} />
+                })()}
 
                 <Dim ax1={activePanelEnd.x} ay1={blockBotY}
                      ax2={activePanelEnd.x} ay2={activePanelEnd.y + panOffY + Math.cos(angleRad) * PANEL_THICK_PX / 2}
@@ -694,16 +725,16 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     />
                     {/* ghost right extension */}
                     {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: ry, width: legX1 - activeBeamR, height: barH })}
-                    {/* fixed end punches */}
-                    {[punches[0], punches[punches.length - 1]].map((px, i) => (
-                      <g key={`ep-${i}`}>
+                    {/* all punch circles + labels — Punches layer */}
+                    {punches.map((px, i) => (
+                      <g key={`wp-${i}`}>
                         <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                         <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                          {i === 0 ? punchLabelsCm[0] : punchLabelsCm[punchLabelsCm.length - 1]}
+                          {punchLabelsCm[i]}
                         </text>
                       </g>
                     ))}
-                    {/* diagonal handles (active only) */}
+                    {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
                     {showDiagHandles && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'bot' && hoverHandle?.spanIndex === d.spanIndex
                       return (
@@ -716,9 +747,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                             onMouseDown={(e) => startHandleDrag(e, 'bot', d)}
                           />
                           {isHov && <text x={d.botX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
-                          <text x={d.botX} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isHov ? '#dc2626' : TEXT_SECONDARY} fontWeight="600">
-                            {fmt((d.botX - activeBeamL) / SC)}
-                          </text>
                         </g>
                       )
                     })}
@@ -768,14 +796,16 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                     />
                     {/* ghost right extension */}
                     {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBeamR, y: ry, width: legX1 - activeBeamR, height: barH })}
-                    {[punches[0], punches[punches.length - 1]].map((px, i) => (
-                      <g key={`ep-${i}`}>
+                    {/* all punch circles + labels — Punches layer */}
+                    {punches.map((px, i) => (
+                      <g key={`wp-${i}`}>
                         <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                         <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                          {i === 0 ? punchLabelsCm[0] : punchLabelsCm[punchLabelsCm.length - 1]}
+                          {punchLabelsCm[i]}
                         </text>
                       </g>
                     ))}
+                    {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
                     {showDiagHandles && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'top' && hoverHandle?.spanIndex === d.spanIndex
                       return (
@@ -788,9 +818,6 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
                             onMouseDown={(e) => startHandleDrag(e, 'top', d)}
                           />
                           {isHov && <text x={d.topX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
-                          <text x={d.topX} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isHov ? '#dc2626' : TEXT_SECONDARY} fontWeight="600">
-                            {fmt((d.topX - activeBeamL) / legBW * topBeamLength)}
-                          </text>
                         </g>
                       )
                     })}

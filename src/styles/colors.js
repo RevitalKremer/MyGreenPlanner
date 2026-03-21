@@ -55,3 +55,8 @@ export const SUCCESS_BG   = '#E8F5E9'  // light green background
 // ── Error / Red ───────────────────────────────────────────────────────────
 export const ERROR      = '#f44336'  // error red
 export const ERROR_DARK = '#c0392b'  // dark error red
+
+// ── Ghost / inactive zone ─────────────────────────────────────────────────
+export const GHOST_FILL   = 'white'   // fill for ghosted structural elements
+export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
+export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
