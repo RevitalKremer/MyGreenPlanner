@@ -37,6 +37,8 @@ export const BG_SUBTLE = '#f5f5f5'  // subtle background
 export const BG_MID    = '#f0f0f0'  // mid background
 export const WHITE     = '#fff'
 export const BLACK     = '#000'
+export const WHITE_10  = 'rgba(255,255,255,0.1)'  // white divider on dark bg
+export const WHITE_50  = 'rgba(255,255,255,0.5)'  // muted white text on dark bg
 
 // ── Warning / Orange ─────────────────────────────────────────────────────
 export const WARNING       = '#FF9800'  // warning orange
@@ -79,8 +81,9 @@ export const PUNCH_BAR_FILL   = '#d8d8d8'  // punch sketch bar fill
 export const PUNCH_BAR_STROKE = '#999'     // punch sketch bar stroke
 
 // ── Interaction states ────────────────────────────────────────────────────
-export const DANGER    = '#dc2626'  // delete / danger action
-export const ADD_GREEN = '#22c55e'  // add / success indicator
+export const DANGER        = '#dc2626'    // delete / danger action
+export const ADD_GREEN     = '#22c55e'    // add / success indicator
+export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
 
 // ── Panel layout colors ───────────────────────────────────────────────────
 export const PANEL_LIGHT_BG      = '#cfe3f5'  // unselected panel fill
@@ -108,6 +111,10 @@ export const GROUND_LINE  = '#123812'  // floor/ground line green
 export const CHART_BG     = '#e8f0f8'  // chart/ruler background
 export const CHART_GRID   = '#b0c4d8'  // chart grid lines
 export const CHART_BG_ALT = '#f0f4f8'  // chart alternate background
+
+// ── PDF preview canvas ────────────────────────────────────────────────────
+export const PDF_CANVAS_BG     = '#c8d4e0'  // PDF preview area background
+export const PDF_CANVAS_BG_ALT = '#bfcbd8'  // PDF canvas dot pattern color
 
 // ── Sidebar / navigation ──────────────────────────────────────────────────
 export const TAB_ACTIVE_COLOR  = '#d97706'  // active tab text

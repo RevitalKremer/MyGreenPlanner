@@ -186,3 +186,35 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
 
   return { frame: { center, angleRad, localBounds }, panelLocalRects, rails }
 }
+
+/**
+ * Count panel boundaries where the gap exceeds the default, using pre-transformed local rects.
+ * Accepts panelLocalRects from computeRowRailLayout (each has .localX, .width, .line).
+ * Returns total count across all lines.
+ * @param {object[]} panelLocalRects  - from rl.panelLocalRects
+ * @param {number}   pixelToCmRatio
+ * @param {number}   defaultGapCm     - expected gap (e.g. PANEL_GAP_CM = 2.5)
+ */
+export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm = 2.5) {
+  if (!panelLocalRects || panelLocalRects.length < 2 || !pixelToCmRatio) return 0
+
+  const threshold = defaultGapCm + 0.5   // 0.5 cm tolerance for float noise
+
+  // Group by line
+  const lineGroups = {}
+  for (const pr of panelLocalRects) {
+    const li = pr.line ?? 0
+    if (!lineGroups[li]) lineGroups[li] = []
+    lineGroups[li].push(pr)
+  }
+
+  let count = 0
+  for (const linePanels of Object.values(lineGroups)) {
+    const sorted = [...linePanels].sort((a, b) => a.localX - b.localX)
+    for (let j = 1; j < sorted.length; j++) {
+      const gapCm = (sorted[j].localX - (sorted[j - 1].localX + sorted[j - 1].width)) * pixelToCmRatio
+      if (gapCm > threshold) count++
+    }
+  }
+  return count
+}

@@ -90,26 +90,93 @@ export function assignTypes(rowConstructions) {
 }
 
 /**
- * Aggregate bill-of-quantities across all rows.
- * Returns array of { type, lengthCm, quantity }
+ * Build per-area bill of materials using the active product dictionary.
+ * Returns array of { areaLabel, element, totalLengthM, qty }
  */
-export function buildBOM(rowConstructions) {
-  const agg = {}
-  const add = (type, len, qty) => {
-    const key = `${type}_${Math.round(len)}`
-    if (!agg[key]) agg[key] = { type, lengthCm: len, quantity: 0 }
-    agg[key].quantity += qty
-  }
+export function buildBOM(rowConstructions, rowLabels = []) {
+  const rows = []
 
-  rowConstructions.forEach(rc => {
-    const T = rc.numTrapezoids
-    add('Base beam',    rc.baseBeamLength ?? rc.baseLength, T)
-    add('Top beam',     rc.topBeamLength,  T)
-    add('Rear leg',     rc.heightRear,     T)
-    add('Front leg',    rc.heightFront,    T)
-    add('Diagonal',     rc.diagonalLength, T)
-    add('Rail (40×40)', rc.rowLength,      2)  // 2 rails per row
+  rowConstructions.forEach((rc, i) => {
+    const areaLabel = rowLabels[i] ?? `Area ${i + 1}`
+    const T  = rc.numTrapezoids           // number of frames in this row
+    const nS = T - 1                      // number of spans = diagonals per row
+    const numRails = rc.numRails ?? 2
+    const linesPerRow       = rc.linesPerRow       ?? 1
+    const numLargeGaps      = rc.numLargeGaps      ?? 0
+    const numRailConnectors = rc.numRailConnectors ?? 0
+    const numInnerLegsPerFrame = Math.max(0, numRails - 2)
+    const angleRad = rc.angle * Math.PI / 180
+    // Average inner leg length: beam-thickness + leg height at midpoint of frame
+    const BEAM_THICK_CM = 4
+    const avgInnerLegCm = BEAM_THICK_CM * (1 + Math.cos(angleRad) / 2)
+      + (rc.heightRear + rc.heightFront) / 2
+
+    // ── angle_profile_40x40 — frame pieces (beams + legs) ───────────────
+    const framePieces = [
+      { qty: T,                        lenCm: rc.baseBeamLength ?? rc.baseLength },  // base beams
+      { qty: T,                        lenCm: rc.topBeamLength },                    // slope beams
+      { qty: T,                        lenCm: rc.heightRear },                       // rear legs
+      { qty: T,                        lenCm: rc.heightFront },                      // front legs
+      { qty: numInnerLegsPerFrame * T, lenCm: avgInnerLegCm },                       // inner support legs
+    ].filter(p => p.qty > 0 && p.lenCm > 0)
+
+    const frameQty     = framePieces.reduce((s, p) => s + p.qty, 0)
+    const frameLengthM = framePieces.reduce((s, p) => s + p.qty * p.lenCm, 0) / 100
+    rows.push({ areaLabel, element: 'angle_profile_40x40', totalLengthM: frameLengthM, qty: frameQty })
+
+    // ── angle_profile_40x40_diag — diagonal braces ───────────────────────
+    if (nS > 0 && rc.diagonalLength > 0) {
+      rows.push({ areaLabel, element: 'angle_profile_40x40_diag', totalLengthM: nS * rc.diagonalLength / 100, qty: nS })
+    }
+
+    // ── rail_40x40 ───────────────────────────────────────────────────────
+    rows.push({ areaLabel, element: 'rail_40x40', totalLengthM: rc.rowLength != null ? numRails * rc.rowLength / 100 : null, qty: numRails })
+
+    // ── block_50x24x15 / bitumen_sheets / jumbo_5x16 ─────────────────────
+    const blockQty = T * (2 + numInnerLegsPerFrame)
+    rows.push({ areaLabel, element: 'block_50x24x15',  totalLengthM: null, qty: blockQty })
+    rows.push({ areaLabel, element: 'bitumen_sheets',   totalLengthM: null, qty: blockQty })
+    rows.push({ areaLabel, element: 'jumbo_5x16',       totalLengthM: null, qty: blockQty })
+
+    // ── end_panel_clamp — 2 per rail (one at each end) + 2 per large gap per rail
+    const railsPerLine   = numRails / linesPerRow
+    const endClampQty    = 2 * numRails + 2 * numLargeGaps * railsPerLine
+    rows.push({ areaLabel, element: 'end_panel_clamp', totalLengthM: null, qty: Math.round(endClampQty) })
+
+    // ── rail_end_cap — 2 per rail (one at each end) ──────────────────────
+    rows.push({ areaLabel, element: 'rail_end_cap', totalLengthM: null, qty: 2 * numRails })
+
+    // ── grounding_panel_clamp — ceil(panelCount / 2) ─────────────────────
+    const groundingQty = Math.ceil(rc.panelCount / 2)
+    rows.push({ areaLabel, element: 'grounding_panel_clamp', totalLengthM: null, qty: groundingQty })
+
+    // ── mid_panel_clamp — 1 per normal boundary per rail, minus grounding replacements
+    // panels per line = panelCount / linesPerRow; normal boundaries = total - large gaps
+    const panelsPerLine      = rc.panelCount / linesPerRow
+    const totalBoundaries    = Math.max(0, panelsPerLine - 1) * linesPerRow  // across all lines
+    const normalBoundaries   = Math.max(0, totalBoundaries - numLargeGaps)
+    const midClampQty        = Math.max(0, Math.round(normalBoundaries * railsPerLine) - groundingQty)
+    if (midClampQty > 0) {
+      rows.push({ areaLabel, element: 'mid_panel_clamp', totalLengthM: null, qty: midClampQty })
+    }
+
+    // ── rail_connector — (segments - 1) per rail, summed across all rails ─
+    if (numRailConnectors > 0) {
+      rows.push({ areaLabel, element: 'rail_connector', totalLengthM: null, qty: numRailConnectors })
+    }
+
+    // ── hex_head_bolt_m8x20 ───────────────────────────────────────────────
+    // Each leg (outer + inner) bolts to base beam AND slope beam = 2 bolts per leg per trapezoid
+    // Each diagonal end = 1 bolt → 2 × nS total
+    // Each rail connects to each trapezoid = 1 bolt per rail per trapezoid
+    const legsPerTrapezoid = 2 + numInnerLegsPerFrame
+    // Each frame has 2 punches per leg (base + slope beam) + 2 diagonal punch holes per frame
+    // Diagonal punches = 2 × T (1 on slope beam + 1 on base beam per frame, pre-drilled on every frame)
+    const hexBoltQty = T * (2 * legsPerTrapezoid + 2)  // leg punches + diagonal punches per frame
+                     + numRails * T                      // rail-to-trapezoid attachments
+    rows.push({ areaLabel, element: 'hex_head_bolt_m8x20',          totalLengthM: null, qty: hexBoltQty })
+    rows.push({ areaLabel, element: 'flange_nut_m8_stainless_steel', totalLengthM: null, qty: hexBoltQty })
   })
 
-  return Object.values(agg).sort((a, b) => a.type.localeCompare(b.type) || b.lengthCm - a.lengthCm)
+  return rows
 }

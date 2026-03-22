@@ -6,7 +6,7 @@ import {
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './step4/RailLayoutTab'
 import BasesPlanTab  from './step4/BasesPlanTab'
-import { computeRowRailLayout, initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
+import { computeRowRailLayout, countLargeGaps, initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step4/constants'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
@@ -14,7 +14,7 @@ import Step4Sidebar from './step4/Step4Sidebar'
 import LayoutView from './step4/LayoutView'
 import RowsView from './step4/RowsView'
 import DetailView from './step4/DetailView'
-import BOMView from './step4/BOMView'
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step4 component ────────────────────────────────────────────────────
 
-export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange }) {
+export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('rails')
@@ -241,7 +241,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
       const railOffsetCm = lineRails[0]?.[0] ?? 0
       const frontLegH    = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad0) - crossRailH0 * Math.cos(angleRad0))
 
-      let measuredRowLength, measuredLineDepth
+      let measuredRowLength, measuredLineDepth, numLargeGaps = 0, numRailConnectors = 0
       if (pixelToCmRatio) {
         const rowPanels = panels.filter(p => (p.area ?? p.row ?? 'unassigned') === areaKey)
         const rl = rowPanels.length > 0 ? computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: railOverhang, stockLengths: s.stockLengths }) : null
@@ -250,13 +250,21 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
           measuredRowLength = (maxX - minX) * pixelToCmRatio + 2 * railOverhang
           measuredLineDepth = (maxY - minY) * pixelToCmRatio
         }
+        if (rl?.panelLocalRects) {
+          numLargeGaps = countLargeGaps(rl.panelLocalRects, pixelToCmRatio)
+        }
+        if (rl?.rails) {
+          numRailConnectors = rl.rails.reduce((sum, r) => sum + Math.max(0, (r.stockSegments?.length ?? 1) - 1), 0)
+        }
       }
 
       const computedBaseLength = computeBaseLengthFromRails(
         lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li])
       )
 
-      return computeRowConstruction(panelCount, angle, frontLegH, {
+      const numRails    = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
+      const linesPerRow = Object.keys(lineRails).length
+      const rc = computeRowConstruction(panelCount, angle, frontLegH, {
         railOverhang,
         maxSpan,
         railOffsetCm,
@@ -266,9 +274,14 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
+      return { ...rc, numRails, linesPerRow, numLargeGaps, numRailConnectors }
     })
     return assignTypes(rcs)
   }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels, areaTrapezoidMap, getTrapBasesSettings])
+
+  useEffect(() => {
+    onBOMDataChange?.({ rowConstructions, rowLabels })
+  }, [rowConstructions, rowLabels])
 
 const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
@@ -393,6 +406,34 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     return map
   }, [rowKeys, areaTrapezoidMap, rowConstructions])
 
+  // Panel lines (segment descriptors) per trapezoid — mirrors selectedRowLineDepths logic
+  const trapPanelLinesMap = useMemo(() => {
+    const map = {}
+    const globalCfg = refinedArea?.panelConfig || {}
+    rowKeys.forEach((areaKey, rowIdx) => {
+      const trapIdsList = areaTrapezoidMap[areaKey] || []
+      const areaGroup   = areas[areaKey] || {}
+      const s           = getSettings(rowIdx)
+      const portraitDepthCm = s.panelLengthCm ?? 238.2
+      trapIdsList.forEach(trapId => {
+        const override = trapezoidConfigs[trapId] || {}
+        const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
+        const lineOrientations = (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+        map[trapId] = lineOrientations.map((o, i) => ({
+          depthCm:     isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
+          gapBeforeCm: i === 0 ? 0 : PANEL_GAP_CM,
+          isEmpty:     isEmptyOrientation(o),
+          isHorizontal: isHorizontalOrientation(o),
+        }))
+      })
+    })
+    return map
+  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    onPdfDataChange?.({ trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap, trapPanelLinesMap })
+  }, [trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap, trapPanelLinesMap])
+
   // ─── Rail spacing derived from lineRails (source of truth) ───────────────
 
   // Derive per-orientation spacing from current lineRails (first 2 rails of each line type)
@@ -475,7 +516,6 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     { key: 'detail', label: 'Trapezoids Details' },
     { key: 'layout', label: 'Trapezoid Layout' },
     { key: 'rows',   label: 'Row Dimensions' },
-    { key: 'bom',    label: 'Bill of Materials' },
   ]
 
   if (rowKeys.length === 0) {
@@ -543,8 +583,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
           {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
-          {activeTab === 'bom'    && <div style={{ height: '100%', overflowY: 'auto' }}><BOMView rowConstructions={rowConstructions} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
+
           {activeTab === 'rails'  && (
             <div style={{ height: '100%', overflow: 'hidden' }}>
               <RailLayoutTab
