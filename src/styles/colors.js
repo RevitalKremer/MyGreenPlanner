@@ -92,6 +92,7 @@ export const PANEL_DARK          = '#003e7e'  // panel dark border (selected)
 export const PANEL_MID           = '#4682B4'  // panel mid border (unselected)
 export const PANEL_STROKE_MID    = '#3a6ea5'  // panel stroke mid (RowsView rect)
 export const PANEL_STROKE_FAINT  = '#9bbcd4'  // panel hatch stroke
+export const GRIDLINE_AREA       = '#a0a0a04d'  // area gridline color (canvas step 3)
 
 // ── Drawing / arrows ──────────────────────────────────────────────────────
 export const DRAW_COLOR  = '#FF00FF'  // freehand draw color

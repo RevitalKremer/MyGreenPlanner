@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { PRIMARY, ERROR, BLACK } from '../../../styles/colors'
+import { PRIMARY, ERROR, BLACK, PANEL_STROKE_MID, GRIDLINE_AREA } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
@@ -177,12 +177,16 @@ export default function PanelCanvas({
       const rawDx = x - dragState.startX, rawDy = y - dragState.startY
       let finalDx = rawDx, finalDy = rawDy
 
-      if (snapToGridlines && (showHGridlines || showVGridlines)) {
+      const isDragging = Math.abs(rawDx) > 4 || Math.abs(rawDy) > 4
+      if (isDragging && snapToGridlines && (showHGridlines || showVGridlines)) {
         const refId = dragState.panelIds[0]
         const refPanel = panels.find(p => p.id === refId)
         if (refPanel) {
           const areaKey = refPanel.area ?? refPanel.row
-          const stationary = panels.filter(p => !dragState.panelIds.includes(p.id) && (p.area ?? p.row) === areaKey && !p.isEmpty)
+          // Sub-area detection: if all dragged panels share one trapezoidId, snap only to that sub-area
+          const draggedTrapIds = [...new Set(dragState.panelIds.map(id => panels.find(p => p.id === id)?.trapezoidId).filter(Boolean))]
+          const trapKey    = draggedTrapIds.length === 1 ? draggedTrapIds[0] : null
+          const stationary = panels.filter(p => !dragState.panelIds.includes(p.id) && (p.area ?? p.row) === areaKey && !p.isEmpty && (trapKey ? p.trapezoidId === trapKey : true))
           if (stationary.length > 0) {
             const orig = dragState.originalPositions[refId]
             const cx = orig.x + refPanel.width / 2 + rawDx
@@ -335,13 +339,16 @@ export default function PanelCanvas({
               </>
             )}
 
-            {/* Gridlines — dashed lines at panel edges, extended across canvas — selected area only */}
+            {/* Gridlines — dashed lines at panel edges, extended across canvas — selected area or sub-area */}
             {(showHGridlines || showVGridlines) && imageRef && (() => {
               const selAreaKey = selectedPanels.length > 0
                 ? (() => { const sp = panels.find(p => selectedPanels.includes(p.id)); return sp ? (sp.area ?? sp.row) : null })()
                 : null
               if (selAreaKey === null) return null
-              return panels.filter(p => !p.isEmpty && (p.area ?? p.row) === selAreaKey).map(panel => {
+              // Sub-area detection: all selected panels share one trapezoidId → filter to that sub-area only
+              const selTrapIds = [...new Set(panels.filter(p => selectedPanels.includes(p.id)).map(p => p.trapezoidId).filter(Boolean))]
+              const selTrapId  = selTrapIds.length === 1 ? selTrapIds[0] : null
+              return panels.filter(p => !p.isEmpty && (p.area ?? p.row) === selAreaKey && (selTrapId ? p.trapezoidId === selTrapId : true)).map(panel => {
                 const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
                 const r  = (panel.rotation || 0) * Math.PI / 180
                 const cosR = Math.cos(r), sinR = Math.sin(r)
@@ -367,7 +374,40 @@ export default function PanelCanvas({
                   <line key={`${panel.id}-gl${ei}`}
                     x1={e.mx - ext * e.dx} y1={e.my - ext * e.dy}
                     x2={e.mx + ext * e.dx} y2={e.my + ext * e.dy}
-                    stroke="rgba(160,160,160,0.65)" strokeWidth={gw} strokeDasharray={gd}
+                    stroke={GRIDLINE_AREA} strokeWidth={gw} strokeDasharray={gd}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ))
+              })
+            })()}
+
+            {/* Gridlines — selected panels only, blue overlay */}
+            {(showHGridlines || showVGridlines) && imageRef && selectedPanels.length > 0 && (() => {
+              return panels.filter(p => !p.isEmpty && selectedPanels.includes(p.id)).map(panel => {
+                const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
+                const r  = (panel.rotation || 0) * Math.PI / 180
+                const cosR = Math.cos(r), sinR = Math.sin(r)
+                const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
+                const gapPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
+                const gw  = Math.max(1, gapPx) * 1.5
+                const gd  = `${gapPx * 3} ${gapPx * 1.5}`
+                const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
+                const hw = panel.width / 2, hh = panel.height / 2
+                const edges = [
+                  ...(showHGridlines ? [
+                    { mx: cx - hh * vx, my: cy - hh * vy, dx: ux, dy: uy },
+                    { mx: cx + hh * vx, my: cy + hh * vy, dx: ux, dy: uy },
+                  ] : []),
+                  ...(showVGridlines ? [
+                    { mx: cx - hw * ux, my: cy - hw * uy, dx: vx, dy: vy },
+                    { mx: cx + hw * ux, my: cy + hw * uy, dx: vx, dy: vy },
+                  ] : []),
+                ]
+                return edges.map((e, ei) => (
+                  <line key={`${panel.id}-sel-gl${ei}`}
+                    x1={e.mx - ext * e.dx} y1={e.my - ext * e.dy}
+                    x2={e.mx + ext * e.dx} y2={e.my + ext * e.dy}
+                    stroke={PANEL_STROKE_MID} strokeOpacity={0.4} strokeWidth={gw} strokeDasharray={gd}
                     style={{ pointerEvents: 'none' }}
                   />
                 ))
