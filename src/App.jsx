@@ -162,8 +162,7 @@ function App() {
           />
         )}
 
-        {s.currentStep >= 4 && (
-          <div style={s.currentStep !== 4 ? { display: 'none' } : undefined}>
+        {s.currentStep === 4 && (
             <Step4ConstructionPlanning
               panels={s.panels}
               refinedArea={s.refinedArea}
@@ -176,13 +175,13 @@ function App() {
               onBOMDataChange={s.setStep4BOMData}
               onPdfDataChange={setStep4PdfData}
             />
-          </div>
         )}
 
         {s.currentStep === 5 && (
           <Step5PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
+            areas={s.areas}
             project={s.currentProject}
             rowConstructions={s.step4BOMData.rowConstructions}
             rowLabels={s.step4BOMData.rowLabels}

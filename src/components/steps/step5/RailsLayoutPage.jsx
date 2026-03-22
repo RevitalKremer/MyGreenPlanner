@@ -28,6 +28,7 @@ export default function RailsLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
+      pageName="Rails"
       project={project}
       panelType={panelType}
       panelWp={panelWp}
@@ -37,7 +38,9 @@ export default function RailsLayoutPage({
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{
-          position: 'absolute', top: 0, left: 0,
+          position: 'absolute',
+          top: (CONTENT_H - naturalH * fitZoom) / 2,
+          left: (CONTENT_W - naturalW * fitZoom) / 2,
           width: naturalW, height: naturalH,
           transform: `scale(${fitZoom})`,
           transformOrigin: 'top left',

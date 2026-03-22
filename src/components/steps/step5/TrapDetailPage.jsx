@@ -69,7 +69,8 @@ export default function TrapDetailPage({
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', pointerEvents: 'none' }}>
         <div style={{
           position: 'absolute',
-          top: 0, left: 0,
+          top: (CONTENT_H - naturalH * fitZoom) / 2,
+          left: (CONTENT_W - naturalW * fitZoom) / 2,
           width: naturalW,
           height: naturalH,
           transform: `scale(${fitZoom})`,

@@ -11,6 +11,7 @@ import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, PANEL_DEPT
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step4/constants'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step4Sidebar from './step4/Step4Sidebar'
+import AreasTab from './step4/AreasTab'
 import LayoutView from './step4/LayoutView'
 import RowsView from './step4/RowsView'
 import DetailView from './step4/DetailView'
@@ -43,7 +44,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
-  const [activeTab, setActiveTab] = useState('rails')
+  const [activeTab, setActiveTab] = useState('areas')
   const [globalSettings, setGlobalSettings] = useState(() =>
     initialGlobalSettings ? { ...SETTINGS_DEFAULTS, ...initialGlobalSettings } : SETTINGS_DEFAULTS
   )
@@ -57,10 +58,10 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
 
   const getSettings = (areaIdx) => ({ ...globalSettings, ...(areaSettings[areaIdx] || {}) })
 
-  const areaLabel = (areaKey, i) => {
+  const areaLabel = useCallback((areaKey, i) => {
     const g = areas[areaKey]?.label
     return g ? `${g}` : `Area ${i + 1}`
-  }
+  }, [areas])
 
   const updateSetting = (areaIdx, key, value) => {
     setAreaSettings(prev => ({
@@ -184,7 +185,7 @@ export default function Step4ConstructionPlanning({ panels = [], refinedArea, tr
     Object.keys(rowPanelCounts).filter(k => k !== 'unassigned').map(Number).sort((a, b) => a - b),
     [rowPanelCounts]
   )
-  const rowLabels = rowKeys.map((rk, i) => areaLabel(rk, i))
+  const rowLabels = useMemo(() => rowKeys.map((rk, i) => areaLabel(rk, i)), [rowKeys, areaLabel])
 
   const areaTrapezoidMap = useMemo(() => {
     const map = {}
@@ -511,6 +512,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   // ─── Tabs ─────────────────────────────────────────────────────────────────
 
   const tabs = [
+    { key: 'areas',  label: 'Areas' },
     { key: 'rails',  label: 'Rails Layout' },
     { key: 'bases',  label: 'Bases Layout' },
     { key: 'detail', label: 'Trapezoids Details' },
@@ -581,6 +583,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {activeTab === 'areas'  && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={areaLabel} />}
           {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
           {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
           {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
