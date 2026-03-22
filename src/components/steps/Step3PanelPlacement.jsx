@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
+import { panelInsideRoof } from '../../utils/panelUtils'
 import RowSidebar from './step3/RowSidebar'
 import ToolPanel from './step3/ToolPanel'
 import PanelCanvas from './step3/PanelCanvas'
@@ -35,6 +36,7 @@ export default function Step3PanelPlacement({
   regeneratePlanPanelsHandler,
   regenerateSingleRowHandler,
   areas = [],
+  setAreas,
   addManualPanel,
   trapezoidConfigs,
   setTrapezoidConfigs
@@ -124,6 +126,8 @@ export default function Step3PanelPlacement({
   const handleToolChange = (tool) => {
     setActiveTool(tool)
     setSelectedPanels([])
+    setPendingAddNextTo(false)
+    setAddError(null)
     if (tool === 'measure') setShowDistances(true)
   }
 
@@ -155,80 +159,44 @@ export default function Step3PanelPlacement({
     ))
   }
 
-  const addPanelToRow = () => {
-    if (!selectedRow || selectedRow.length === 0) { addManualPanel(); return }
-    const angle = (selectedRow[0].rotation || 0) * Math.PI / 180
+  const [pendingAddNextTo, setPendingAddNextTo] = useState(false)
+  const [addError, setAddError] = useState(null)
+
+  const addNextToPanel = (anchor) => {
+    const angle = (anchor.rotation || 0) * Math.PI / 180
     const dirX = Math.cos(angle), dirY = Math.sin(angle)
-    const sortedRow = [...selectedRow].sort((a, b) => {
-      const aCx = a.x + a.width / 2, aCy = a.y + a.height / 2
-      const bCx = b.x + b.width / 2, bCy = b.y + b.height / 2
-      return (aCx * dirX + aCy * dirY) - (bCx * dirX + bCy * dirY)
-    })
-    const last = sortedRow[sortedRow.length - 1]
-    const gap = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
-    const lastCx = last.x + last.width / 2, lastCy = last.y + last.height / 2
-    const newCx = lastCx + (last.width + gap) * dirX
-    const newCy = lastCy + (last.width + gap) * dirY
-    const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
-    const areaKey = (sortedRow[0].area ?? sortedRow[0].row) !== undefined
-      ? (sortedRow[0].area ?? sortedRow[0].row)
-      : `m_${sortedRow[0].id}`
-    const trapId = sortedRow[0].trapezoidId || 'A1'
-    const selectedIds = selectedRow.map(p => p.id)
-    const newPanel = { ...last, id: newId, area: areaKey, trapezoidId: trapId, x: newCx - last.width / 2, y: newCy - last.height / 2 }
-    setPanels(prev => [
-      ...prev.map(p => selectedIds.includes(p.id) ? { ...p, area: areaKey, trapezoidId: trapId } : p),
-      newPanel
-    ])
-    setSelectedPanels(prev => [...prev, newId])
-  }
+    const stepPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
+    const anchorCx = anchor.x + anchor.width / 2, anchorCy = anchor.y + anchor.height / 2
+    const hw = anchor.width / 2, hh = anchor.height / 2
+    const polyCoords = roofPolygon?.coordinates || []
 
-  // ── Auto-snap when snapToGridlines is turned on ───────────────────────────────
-
-  useEffect(() => {
-    if (!snapToGridlines || selectedPanels.length === 0) return
-    const selP = panels.find(p => selectedPanels.includes(p.id))
-    if (!selP) return
-    const areaKey = selP.area ?? selP.row
-    const areaPanels = panels.filter(p => !p.isEmpty && (p.area ?? p.row) === areaKey)
-    if (areaPanels.length < 2) return
-    const r = (areaPanels[0].rotation || 0) * Math.PI / 180
-    const cosR = Math.cos(r), sinR = Math.sin(r)
-    const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
-    const sorted = [...areaPanels].sort((a, b) => {
-      const aCx = a.x + a.width / 2, aCy = a.y + a.height / 2
-      const bCx = b.x + b.width / 2, bCy = b.y + b.height / 2
-      return (aCx * ux + aCy * uy) - (bCx * ux + bCy * uy)
+    const noOverlap = (cx, cy) => panels.every(p => {
+      if (p.isEmpty || p.id === anchor.id) return true
+      const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2
+      const dRow = Math.abs((cx - pcx) * dirX + (cy - pcy) * dirY)
+      const dPerp = Math.abs(-(cx - pcx) * dirY + (cy - pcy) * dirX)
+      return dRow >= (hw + p.width / 2) || dPerp >= (hh + p.height / 2)
     })
-    const anchors = [sorted[0]]
-    const updates = {}
-    for (let i = 1; i < sorted.length; i++) {
-      const panel = sorted[i]
-      const hw = panel.width / 2, hh = panel.height / 2
-      const THRESH = Math.max(panel.width, panel.height) * 0.4
-      let corrX = 0, corrY = 0
-      if (showHGridlines) {
-        const centerPerp = (panel.x + hw) * vx + (panel.y + hh) * vy
-        const offsets = anchors.flatMap(p => { const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy; return [pOff - p.height/2, pOff + p.height/2] })
-        const candidates = offsets.flatMap(g => [g - hh, g + hh])
-        const nearest = candidates.reduce((b, c) => Math.abs(c - centerPerp) < Math.abs(b - centerPerp) ? c : b)
-        if (Math.abs(nearest - centerPerp) < THRESH) { corrX += (nearest - centerPerp) * vx; corrY += (nearest - centerPerp) * vy }
+
+    // Try right first, then left — exactly 2.5 cm gap each time
+    let finalCx = null, finalCy = null
+    for (const dir of [1, -1]) {
+      const cx = anchorCx + dir * (anchor.width + stepPx) * dirX
+      const cy = anchorCy + dir * (anchor.width + stepPx) * dirY
+      if (panelInsideRoof(cx, cy, hw, hh, anchor.rotation || 0, polyCoords) && noOverlap(cx, cy)) {
+        finalCx = cx; finalCy = cy; break
       }
-      if (showVGridlines) {
-        const cx2 = panel.x + hw + corrX, cy2 = panel.y + hh + corrY
-        const centerPar = cx2 * ux + cy2 * uy
-        const offsets = anchors.flatMap(p => { const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy; return [pOff - p.width/2, pOff + p.width/2] })
-        const candidates = offsets.flatMap(g => [g - hw, g + hw])
-        const nearest = candidates.reduce((b, c) => Math.abs(c - centerPar) < Math.abs(b - centerPar) ? c : b)
-        if (Math.abs(nearest - centerPar) < THRESH) { corrX += (nearest - centerPar) * ux; corrY += (nearest - centerPar) * uy }
-      }
-      const snappedPanel = { ...panel, x: panel.x + corrX, y: panel.y + corrY }
-      if (Math.abs(corrX) > 0.5 || Math.abs(corrY) > 0.5) updates[panel.id] = { x: snappedPanel.x, y: snappedPanel.y }
-      anchors.push(snappedPanel)
     }
-    if (Object.keys(updates).length > 0)
-      setPanels(prev => prev.map(p => updates[p.id] ? { ...p, x: updates[p.id].x, y: updates[p.id].y } : p))
-  }, [snapToGridlines]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (finalCx === null) { setAddError('No free space found on either side'); setPendingAddNextTo(false); return }
+
+    const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
+    const areaKey = (anchor.area ?? anchor.row) !== undefined ? (anchor.area ?? anchor.row) : `m_${anchor.id}`
+    const newPanel = { ...anchor, id: newId, area: areaKey, isEmpty: false, x: finalCx - hw, y: finalCy - hh }
+    setPanels(prev => [...prev, newPanel])
+    setSelectedPanels([newId])
+    setAddError(null)
+    setPendingAddNextTo(false)
+  }
 
   // ── Per-trapezoid config ──────────────────────────────────────────────────────
 
@@ -275,6 +243,10 @@ export default function Step3PanelPlacement({
     const ak = getAreaKey(selectedRow[0])
     return areaTrapezoidMap[ak] || []
   }, [allSelectedSameArea, selectedRow, areaTrapezoidMap])
+
+  const allAreaTrapIds = useMemo(() =>
+    [...new Set(Object.values(areaTrapezoidMap).flat())]
+  , [areaTrapezoidMap])
 
   const addTrapezoid = () => {
     if (!allSelectedSameArea || !selectedRow) return
@@ -441,6 +413,7 @@ export default function Step3PanelPlacement({
             snapToGridlines={snapToGridlines}
             refinedArea={refinedArea} trapezoidConfigs={trapezoidConfigs}
             activeTool={activeTool} projectMode={projectMode}
+            pendingAddNextTo={pendingAddNextTo} onAddNextToPanel={addNextToPanel} setPendingAddNextTo={setPendingAddNextTo}
             getRowPanelIds={getRowPanelIds}
           />
         ) : (
@@ -460,7 +433,7 @@ export default function Step3PanelPlacement({
             panels={panels} setPanels={setPanels}
             selectedPanels={selectedPanels} setSelectedPanels={setSelectedPanels}
             setTrapIdOverride={setTrapIdOverride}
-            rows={rows} areas={areas}
+            rows={rows} areas={areas} setAreas={setAreas}
             areaLabel={areaLabel} getAreaKey={getAreaKey}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
@@ -476,9 +449,11 @@ export default function Step3PanelPlacement({
             activeTool={activeTool} handleToolChange={handleToolChange}
             selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel} selectedRowAngle={selectedRowAngle}
             nudgeRow={nudgeRow} rotateSelectedRow={rotateSelectedRow}
-            addPanelToRow={addPanelToRow} addManualPanel={addManualPanel}
+            addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
+            pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
+            addError={addError} setAddError={setAddError}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
-            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds}
+            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds} allAreaTrapIds={allAreaTrapIds}
             selectedTrapezoidId={selectedTrapezoidId}
             reassignToTrapezoid={reassignToTrapezoid} addTrapezoid={addTrapezoid}
             selectedRow={selectedRow} refinedArea={refinedArea}

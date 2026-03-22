@@ -15,7 +15,6 @@ const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'C
 
 function App() {
   const s = useProjectState()
-  const [step4BOMData, setStep4BOMData] = useState({ rowConstructions: [], rowLabels: [] })
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
 
   if (s.appScreen === 'welcome') {
@@ -156,25 +155,28 @@ function App() {
             regeneratePlanPanelsHandler={s.regeneratePlanPanelsHandler}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             areas={s.areas}
+            setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
           />
         )}
 
-        {s.currentStep === 4 && (
-          <Step4ConstructionPlanning
-            panels={s.panels}
-            refinedArea={s.refinedArea}
-            trapezoidConfigs={s.trapezoidConfigs}
-            setTrapezoidConfigs={s.setTrapezoidConfigs}
-            areas={s.areas}
-            initialGlobalSettings={s.step4GlobalSettings}
-            initialAreaSettings={s.step4AreaSettings}
-            onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
-            onBOMDataChange={setStep4BOMData}
-            onPdfDataChange={setStep4PdfData}
-          />
+        {s.currentStep >= 4 && (
+          <div style={s.currentStep !== 4 ? { display: 'none' } : undefined}>
+            <Step4ConstructionPlanning
+              panels={s.panels}
+              refinedArea={s.refinedArea}
+              trapezoidConfigs={s.trapezoidConfigs}
+              setTrapezoidConfigs={s.setTrapezoidConfigs}
+              areas={s.areas}
+              initialGlobalSettings={s.step4GlobalSettings}
+              initialAreaSettings={s.step4AreaSettings}
+              onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
+              onBOMDataChange={s.setStep4BOMData}
+              onPdfDataChange={setStep4PdfData}
+            />
+          </div>
         )}
 
         {s.currentStep === 5 && (
@@ -182,8 +184,8 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             project={s.currentProject}
-            rowConstructions={step4BOMData.rowConstructions}
-            rowLabels={step4BOMData.rowLabels}
+            rowConstructions={s.step4BOMData.rowConstructions}
+            rowLabels={s.step4BOMData.rowLabels}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}

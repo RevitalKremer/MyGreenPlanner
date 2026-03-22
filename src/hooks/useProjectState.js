@@ -48,6 +48,7 @@ export function useProjectState() {
   // Step 4: Construction planning settings (persisted for export)
   const [step4GlobalSettings, setStep4GlobalSettings] = useState(null)
   const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
+  const [step4BOMData,        setStep4BOMData]        = useState({ rowConstructions: [], rowLabels: [] })
 
   // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
   const [step5BomDeltas, setStep5BomDeltas] = useState(null)
@@ -159,6 +160,7 @@ export function useProjectState() {
     if (data.step4GlobalSettings) setStep4GlobalSettings(data.step4GlobalSettings)
     if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
     else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
+    if (data.step4BOMData)   setStep4BOMData(data.step4BOMData)
     if (data.step5BomDeltas) setStep5BomDeltas(data.step5BomDeltas)
     if (data.currentStep) setCurrentStep(data.currentStep)
     // Treat imported panels as already generated so back→forward doesn't wipe them.
@@ -193,6 +195,7 @@ export function useProjectState() {
       trapezoidConfigs,
       step4GlobalSettings,
       step4AreaSettings,
+      step4BOMData,
       step5BomDeltas,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -300,11 +303,15 @@ export function useProjectState() {
   }
 
   const addManualPanel = () => {
-    const newPanel = createManualPanel(refinedArea, baseline, panels)
-    if (!newPanel) return
-    setPanels([...panels, newPanel])
+    const newPanel = createManualPanel(refinedArea, baseline, panels, roofPolygon)
+    if (!newPanel) return false
+    const newAreaIdx  = areas.length
+    const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
+    const newArea = { angle: 0, frontHeight: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
+    setAreas([...areas, newArea])
+    setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
-    console.log('Manual panel added below baseline:', newPanel)
+    return true
   }
 
   // ── Map / image click handlers ────────────────────────────────────────────
@@ -583,6 +590,7 @@ export function useProjectState() {
     // Step 4
     step4GlobalSettings, setStep4GlobalSettings,
     step4AreaSettings, setStep4AreaSettings,
+    step4BOMData, setStep4BOMData,
     // Step 5
     step5BomDeltas, setStep5BomDeltas,
     // Derived
