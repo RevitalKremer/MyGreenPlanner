@@ -16,7 +16,7 @@ const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'C
 function App() {
   const s = useProjectState()
   const [step4BOMData, setStep4BOMData] = useState({ rowConstructions: [], rowLabels: [] })
-  const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {} })
+  const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
 
   if (s.appScreen === 'welcome') {
     return (
@@ -189,6 +189,7 @@ function App() {
               trapLineRailsMap={step4PdfData.trapLineRailsMap}
               trapRCMap={step4PdfData.trapRCMap}
               customBasesMap={step4PdfData.customBasesMap}
+              trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
             />
           </div>
         )}

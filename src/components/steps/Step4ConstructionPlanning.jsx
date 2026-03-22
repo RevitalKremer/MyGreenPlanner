@@ -406,9 +406,33 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     return map
   }, [rowKeys, areaTrapezoidMap, rowConstructions])
 
+  // Panel lines (segment descriptors) per trapezoid — mirrors selectedRowLineDepths logic
+  const trapPanelLinesMap = useMemo(() => {
+    const map = {}
+    const globalCfg = refinedArea?.panelConfig || {}
+    rowKeys.forEach((areaKey, rowIdx) => {
+      const trapIdsList = areaTrapezoidMap[areaKey] || []
+      const areaGroup   = areas[areaKey] || {}
+      const s           = getSettings(rowIdx)
+      const portraitDepthCm = s.panelLengthCm ?? 238.2
+      trapIdsList.forEach(trapId => {
+        const override = trapezoidConfigs[trapId] || {}
+        const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
+        const lineOrientations = (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+        map[trapId] = lineOrientations.map((o, i) => ({
+          depthCm:     isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
+          gapBeforeCm: i === 0 ? 0 : PANEL_GAP_CM,
+          isEmpty:     isEmptyOrientation(o),
+          isHorizontal: isHorizontalOrientation(o),
+        }))
+      })
+    })
+    return map
+  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    onPdfDataChange?.({ trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap })
-  }, [trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap])
+    onPdfDataChange?.({ trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap, trapPanelLinesMap })
+  }, [trapSettingsMap, trapLineRailsMap, trapRCMap, customBasesMap, trapPanelLinesMap])
 
   // ─── Rail spacing derived from lineRails (source of truth) ───────────────
 

@@ -7,7 +7,7 @@ import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null, printMode = false }) {
   const [showAnnotations,  setShowAnnotations]  = useState(true)
   const [showPunches,      setShowPunches]      = useState(true)
   const [showDiagHandles,  setShowDiagHandles]  = useState(true)
@@ -68,7 +68,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const padL = Math.max(120, railOffH + OHx + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
   const padR = Math.max(100, Math.max(panelExtCm * SC, OHx) + 70)
-  const padT = 55
+  const _panelOffsetApprox = 2 * SC + 10 + 3
+  const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
+  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
+  const padT = printMode ? Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40) : 55
   const padB = blockH + 290
 
   const svgW = bW + padL + padR
@@ -400,11 +403,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       {/* ── Zoom / pan area ── */}
       <div
         ref={containerRef}
-        style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: panActive ? 'grabbing' : 'grab' }}
-        onMouseDown={startPan}
-        onMouseMove={handleContainerMouseMove}
-        onMouseUp={handleContainerMouseUp}
-        onMouseLeave={handleContainerMouseLeave}
+        style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: printMode ? 'default' : (panActive ? 'grabbing' : 'grab'), pointerEvents: printMode ? 'none' : 'auto' }}
+        onMouseDown={printMode ? undefined : startPan}
+        onMouseMove={printMode ? undefined : handleContainerMouseMove}
+        onMouseUp={printMode ? undefined : handleContainerMouseUp}
+        onMouseLeave={printMode ? undefined : handleContainerMouseLeave}
       >
         <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
           <div ref={contentRef} style={{
@@ -766,7 +769,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       </g>
                     ))}
                     {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
-                    {showDiagHandles && activeDiags.map((d, di) => {
+                    {showDiagHandles && !printMode && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'bot' && hoverHandle?.spanIndex === d.spanIndex
                       return (
                         <g key={`bh-${di}`}>
@@ -841,7 +844,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       </g>
                     ))}
                     {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
-                    {showDiagHandles && activeDiags.map((d, di) => {
+                    {showDiagHandles && !printMode && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'top' && hoverHandle?.spanIndex === d.spanIndex
                       return (
                         <g key={`sh-${di}`}>
@@ -904,10 +907,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
         </div>
       </div>
 
-      <RulerTool active={rulerActive} zoom={zoom} pxPerCm={2.2} containerRef={containerRef} />
+      {!printMode && <RulerTool active={rulerActive} zoom={zoom} pxPerCm={2.2} containerRef={containerRef} />}
 
       {/* ── Layers panel ── */}
-      <LayersPanel
+      {!printMode && <LayersPanel
         layers={[
           { label: 'Annotations',   checked: showAnnotations,  setter: setShowAnnotations  },
           { label: 'Punches',       checked: showPunches,      setter: setShowPunches      },
@@ -920,10 +923,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             : []),
           { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
-      />
+      />}
 
       {/* ── Floating navigator ── */}
-      <CanvasNavigator
+      {!printMode && <CanvasNavigator
         viewZoom={zoom}
         onZoomOut={() => setZoom(z => Math.max(0.25, z * 0.833))}
         onZoomReset={resetView}
@@ -932,7 +935,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
         mmHeight={MM_H}
         onPanToPoint={panToMinimapPoint}
         viewportRect={getMinimapViewportRect()}
-      />
+      />}
 
     </div>
   )

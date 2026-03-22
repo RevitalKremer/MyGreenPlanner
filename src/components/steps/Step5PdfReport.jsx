@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, TEXT_SECONDARY, ERROR_DARK, BORDER_FAINT, BORDER_LIGHT, BG_LIGHT, BORDER, TEXT_PLACEHOLDER } from '../../styles/colors'
 import BOMView from './step4/BOMView'
+import TrapDetailPage from './step5/TrapDetailPage'
+import { buildTrapezoidGroups } from './step4/tabUtils'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
 import BasesLayoutPage from './step5/BasesLayoutPage'
@@ -218,15 +220,28 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
 export default function Step5PdfReport({
   panels = [], refinedArea, rowConstructions = [], rowLabels = [], project,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
+  trapPanelLinesMap = {},
 }) {
   const page1Ref = useRef(null)
   const page2Ref = useRef(null)
   const page3Ref = useRef(null)
   const page4Ref = useRef(null)
+  const trapPageRefs = useRef({})
+  const pdfScrollRef = useRef(null)
   const [activeTab, setActiveTab] = useState('bom')
+
+  useEffect(() => {
+    const el = pdfScrollRef.current
+    if (!el) return
+    const handler = (e) => { if (e.ctrlKey) e.preventDefault() }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [activeTab])
 
   const panelCount = panels.length
   const panelType  = refinedArea?.panelType ?? null
+
+  const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
   // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
   const panelWp = (() => {
@@ -268,7 +283,7 @@ export default function Step5PdfReport({
   }
 
   const handleExportPdf = async () => {
-    const refs = [page1Ref, page2Ref, page3Ref, page4Ref]
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
 
@@ -345,7 +360,7 @@ export default function Step5PdfReport({
       )}
 
       {activeTab === 'pdf' && (
-        <div style={{
+        <div ref={pdfScrollRef} style={{
           flex: 1, overflow: 'auto',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '2rem', gap: '2rem',
@@ -406,6 +421,24 @@ export default function Step5PdfReport({
             totalKw={totalKw}
             date={new Date().toLocaleDateString('he-IL')}
           />
+
+          {/* Pages 5+: One detail page per trapezoid type */}
+          {trapIds.map(trapId => (
+            <TrapDetailPage
+              key={trapId}
+              pageRef={el => { trapPageRefs.current[trapId] = el }}
+              trapId={trapId}
+              rc={trapRCMap[trapId] ?? null}
+              settings={trapSettingsMap[trapId] ?? {}}
+              lineRails={trapLineRailsMap[trapId] ?? null}
+              panelLines={trapPanelLinesMap[trapId] ?? null}
+              project={project}
+              panelType={panelType}
+              panelWp={panelWp}
+              totalKw={totalKw}
+              date={new Date().toLocaleDateString('he-IL')}
+            />
+          ))}
 
         </div>
       )}
