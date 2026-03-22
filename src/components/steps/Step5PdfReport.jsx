@@ -1,10 +1,13 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import * as XLSX from 'xlsx'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import BOMView from './step4/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups } from './step4/tabUtils'
+import { buildBOM } from '../../utils/constructionCalculator'
+import { productByType } from '../../data/productDict'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
 import AreasLayoutPage from './step5/AreasLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
@@ -247,6 +250,7 @@ export default function Step5PdfReport({
   const pdfScrollRef = useRef(null)
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -283,9 +287,21 @@ export default function Step5PdfReport({
     const svgs = Array.from(pageEl.querySelectorAll('svg'))
     const swaps = []
     for (const svg of svgs) {
-      const rect = svg.getBoundingClientRect()
-      const w = Math.round(rect.width)
-      const h = Math.round(rect.height)
+      // Use the SVG's natural (pre-transform) dimensions from its attributes.
+      // getBoundingClientRect() returns the visually-scaled size which is wrong
+      // when the SVG is inside a CSS scale() transform — it would be double-scaled.
+      const attrW = parseFloat(svg.getAttribute('width'))
+      const attrH = parseFloat(svg.getAttribute('height'))
+      const hasNaturalDims = attrW > 0 && attrH > 0 && !String(svg.getAttribute('width')).includes('%')
+      let w, h
+      if (hasNaturalDims) {
+        w = Math.round(attrW)
+        h = Math.round(attrH)
+      } else {
+        const rect = svg.getBoundingClientRect()
+        w = Math.round(rect.width)
+        h = Math.round(rect.height)
+      }
       if (!w || !h) continue
       const clone = svg.cloneNode(true)
       clone.setAttribute('width', w)
@@ -309,6 +325,7 @@ export default function Step5PdfReport({
   }
 
   const handleExportPdf = async () => {
+    setIsExporting(true)
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
@@ -316,6 +333,13 @@ export default function Step5PdfReport({
     for (const ref of refs) {
       const el = ref?.current ?? ref   // handle both useRef objects and direct DOM elements
       if (!el) continue
+
+      // Temporarily neutralise the ScaledPage transform so html2canvas captures
+      // the page at its natural PAGE_W_PX × PAGE_H_PX size, not the screen-scaled size.
+      const parent = el.parentElement
+      const savedTransform = parent?.style.transform ?? ''
+      if (parent) parent.style.transform = 'none'
+
       const swaps = await rasterizeSvgs(el)
       const canvas = await html2canvas(el, {
         scale: 2,
@@ -323,8 +347,11 @@ export default function Step5PdfReport({
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
+        width: PAGE_W_PX,
+        height: PAGE_H_PX,
       })
       restoreSvgs(swaps)
+      if (parent) parent.style.transform = savedTransform
       const imgData = canvas.toDataURL('image/png')
       if (!firstPage) pdf.addPage()
       pdf.addImage(imgData, 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM)
@@ -334,6 +361,73 @@ export default function Step5PdfReport({
     const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
     const dateStr  = new Date().toISOString().split('T')[0]
     pdf.save(`${safeName}_${dateStr}.pdf`)
+    setIsExporting(false)
+  }
+
+  const handleExportExcel = () => {
+    // Build final BOM rows (base + deltas applied)
+    const baseRows  = buildBOM(rowConstructions, rowLabels)
+    const overrides = bomDeltas.overrides ?? {}
+    const additions = bomDeltas.additions ?? []
+
+    const finalRows = [
+      ...baseRows.map(row => {
+        const key    = `${row.areaLabel}||${row.element}`
+        const ov     = overrides[key]
+        if (ov?.removed) return null
+        const qty    = ov?.qty    != null ? ov.qty    : row.qty
+        const extras = ov?.extras != null ? ov.extras : row.extras ?? 0
+        return { ...row, qty, extras, total: qty + extras }
+      }).filter(Boolean),
+      ...additions.map(add => ({
+        areaLabel: add.areaLabel, element: add.element,
+        qty: add.qty, extras: add.extras ?? 0, total: add.qty + (add.extras ?? 0),
+        totalLengthM: null,
+      })),
+    ]
+
+    const dateExport = new Date().toLocaleDateString()
+    const projectName = project?.name || ''
+    const location    = project?.location || ''
+
+    // Sheet data: header block + table
+    const sheetData = [
+      ['MyGreenPlanner — Solar PV Planning System'],
+      ['by Sadot Energy'],
+      [],
+      ['Project', projectName, '', 'Location', location],
+      ['Date',    dateExport,  '', 'Total kW', totalKw ? `${totalKw.toFixed(2)} kW` : ''],
+      [],
+      ['#', 'Area', 'Element', 'Part Number', 'Length (m)', 'Qty', 'Extras', 'Total'],
+      ...finalRows.map((row, i) => {
+        const product = productByType[row.element]
+        return [
+          i + 1,
+          row.areaLabel,
+          product?.name ?? row.element,
+          product?.pn   ?? '',
+          row.totalLengthM != null ? +row.totalLengthM.toFixed(2) : '',
+          row.qty,
+          row.extras,
+          row.total,
+        ]
+      }),
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 4 }, { wch: 14 }, { wch: 28 }, { wch: 18 },
+      { wch: 11 }, { wch: 7 }, { wch: 8 }, { wch: 8 },
+    ]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Bill of Materials')
+
+    const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
+    const dateStr  = new Date().toISOString().split('T')[0]
+    XLSX.writeFile(wb, `${safeName}_BOM_${dateStr}.xlsx`)
   }
 
   const dateStr = new Date().toLocaleDateString('he-IL')
@@ -344,7 +438,13 @@ export default function Step5PdfReport({
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG, position: 'relative' }}>
+      {isExporting && (
+        <div className="processing-overlay">
+          <div className="spinner"></div>
+          <p>Generating PDF...</p>
+        </div>
+      )}
 
       {/* Tab bar — same style as Step 4 */}
       <div style={{
@@ -368,6 +468,16 @@ export default function Step5PdfReport({
           >{tab.label}</button>
         ))}
         <div style={{ flex: 1 }} />
+        <button
+          onClick={handleExportExcel}
+          style={{
+            padding: '0.35rem 1rem',
+            background: SUCCESS_DARK, color: WHITE,
+            border: 'none', borderRadius: '6px',
+            fontSize: '0.78rem', fontWeight: '700',
+            cursor: 'pointer',
+          }}
+        >↓ Export Excel</button>
         {activeTab === 'pdf' && (
           <button
             onClick={handleExportPdf}

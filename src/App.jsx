@@ -162,20 +162,22 @@ function App() {
           />
         )}
 
-        {s.currentStep === 4 && (
-            <Step4ConstructionPlanning
-              panels={s.panels}
-              refinedArea={s.refinedArea}
-              trapezoidConfigs={s.trapezoidConfigs}
-              setTrapezoidConfigs={s.setTrapezoidConfigs}
-              areas={s.areas}
-              initialGlobalSettings={s.step4GlobalSettings}
-              initialAreaSettings={s.step4AreaSettings}
-              onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
-              onBOMDataChange={s.setStep4BOMData}
-              onPdfDataChange={setStep4PdfData}
-            />
-        )}
+        {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
+            No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
+        <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
+          <Step4ConstructionPlanning
+            panels={s.panels}
+            refinedArea={s.refinedArea}
+            trapezoidConfigs={s.trapezoidConfigs}
+            setTrapezoidConfigs={s.setTrapezoidConfigs}
+            areas={s.areas}
+            initialGlobalSettings={s.step4GlobalSettings}
+            initialAreaSettings={s.step4AreaSettings}
+            onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
+            onBOMDataChange={s.setStep4BOMData}
+            onPdfDataChange={setStep4PdfData}
+          />
+        </div>
 
         {s.currentStep === 5 && (
           <Step5PdfReport
