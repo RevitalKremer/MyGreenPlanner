@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
+import { panelInsideRoof } from '../../utils/panelUtils'
 import RowSidebar from './step3/RowSidebar'
 import ToolPanel from './step3/ToolPanel'
 import PanelCanvas from './step3/PanelCanvas'
@@ -165,17 +166,35 @@ export default function Step3PanelPlacement({
       return (aCx * dirX + aCy * dirY) - (bCx * dirX + bCy * dirY)
     })
     const last = sortedRow[sortedRow.length - 1]
-    const gap = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
+    const stepPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
     const lastCx = last.x + last.width / 2, lastCy = last.y + last.height / 2
-    const newCx = lastCx + (last.width + gap) * dirX
-    const newCy = lastCy + (last.width + gap) * dirY
+    const naturalCx = lastCx + (last.width + stepPx) * dirX
+    const naturalCy = lastCy + (last.width + stepPx) * dirY
+    const hw = last.width / 2, hh = last.height / 2
+    const polyCoords = roofPolygon?.coordinates || []
+
+    // Find valid position: try natural spot, then shift ±2.5 cm along row direction
+    let finalCx = null, finalCy = null
+    const MAX_STEPS = 80
+    for (let s = 0; s <= MAX_STEPS; s++) {
+      for (const sign of (s === 0 ? [1] : [1, -1])) {
+        const cx = naturalCx + sign * s * stepPx * dirX
+        const cy = naturalCy + sign * s * stepPx * dirY
+        if (panelInsideRoof(cx, cy, hw, hh, last.rotation || 0, polyCoords)) {
+          finalCx = cx; finalCy = cy; break
+        }
+      }
+      if (finalCx !== null) break
+    }
+    if (finalCx === null) return  // no valid position inside roof
+
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
     const areaKey = (sortedRow[0].area ?? sortedRow[0].row) !== undefined
       ? (sortedRow[0].area ?? sortedRow[0].row)
       : `m_${sortedRow[0].id}`
     const trapId = sortedRow[0].trapezoidId || 'A1'
     const selectedIds = selectedRow.map(p => p.id)
-    const newPanel = { ...last, id: newId, area: areaKey, trapezoidId: trapId, x: newCx - last.width / 2, y: newCy - last.height / 2 }
+    const newPanel = { ...last, id: newId, area: areaKey, trapezoidId: trapId, x: finalCx - hw, y: finalCy - hh }
     setPanels(prev => [
       ...prev.map(p => selectedIds.includes(p.id) ? { ...p, area: areaKey, trapezoidId: trapId } : p),
       newPanel

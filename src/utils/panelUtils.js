@@ -286,52 +286,97 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
  * @param {Array} existingPanels - Current panels array
  * @returns {Object} New panel object
  */
-export const createManualPanel = (refinedArea, baseline, existingPanels) => {
-  if (!refinedArea || !refinedArea.pixelToCmRatio || !baseline || !baseline.p2) {
-    return null
+// ── Roof containment helpers ──────────────────────────────────────────────────
+
+function pointInPolygon(px, py, coords) {
+  let inside = false
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const xi = coords[i][0], yi = coords[i][1]
+    const xj = coords[j][0], yj = coords[j][1]
+    if (((yi > py) !== (yj > py)) && px < ((xj - xi) * (py - yi) / (yj - yi) + xi))
+      inside = !inside
   }
+  return inside
+}
+
+/**
+ * Returns true if all four corners of the (possibly rotated) panel are inside the roof polygon.
+ * cx/cy are the panel centre in image pixel coords.
+ */
+export function panelInsideRoof(cx, cy, hw, hh, rotation, polygonCoords) {
+  if (!polygonCoords || polygonCoords.length === 0) return true
+  const r = (rotation || 0) * Math.PI / 180
+  const cosR = Math.cos(r), sinR = Math.sin(r)
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].every(([lx, ly]) =>
+    pointInPolygon(cx + lx * cosR - ly * sinR, cy + lx * sinR + ly * cosR, polygonCoords)
+  )
+}
+
+/**
+ * Find the topmost available position inside the roof for a standalone panel.
+ * Scans row-by-row (top→bottom, left→right) in half-panel steps.
+ * Returns { cx, cy } or null if no position found.
+ */
+function findTopmostInRoof(hw, hh, rotation, polygonCoords, existingPanels) {
+  const xs = polygonCoords.map(c => c[0])
+  const ys = polygonCoords.map(c => c[1])
+  const minX = Math.min(...xs), maxX = Math.max(...xs)
+  const minY = Math.min(...ys), maxY = Math.max(...ys)
+  const stepX = hw        // half-panel steps for good coverage
+  const stepY = hh
+
+  for (let cy = minY + hh; cy <= maxY - hh; cy += stepY) {
+    for (let cx = minX + hw; cx <= maxX - hw; cx += stepX) {
+      if (!panelInsideRoof(cx, cy, hw, hh, rotation, polygonCoords)) continue
+      const overlaps = existingPanels.some(p => {
+        if (p.isEmpty) return false
+        return Math.abs(cx - (p.x + p.width / 2)) < hw + p.width / 2 &&
+               Math.abs(cy - (p.y + p.height / 2)) < hh + p.height / 2
+      })
+      if (!overlaps) return { cx, cy }
+    }
+  }
+  return null
+}
+
+export const createManualPanel = (refinedArea, baseline, existingPanels, roofPolygon) => {
+  if (!refinedArea || !refinedArea.pixelToCmRatio) return null
 
   const { pixelToCmRatio, panelConfig } = refinedArea
-
-  // Panel physical dimensions
   const panelLengthCm = 238.2
-  const panelWidthCm = 113.4
+  const panelWidthCm  = 113.4
+  const angle         = panelConfig?.angle || 0
+  const angleRad      = angle * (Math.PI / 180)
+  const panelHeightPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
+  const panelWidthPx  = panelWidthCm / pixelToCmRatio
 
-  // Use projection for the depth dimension, same as generatePanelLayout
-  const angle = panelConfig?.angle || 0
-  const angleRad = angle * (Math.PI / 180)
-  const roofProjectionPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
-  const panelWidthPx = panelWidthCm / pixelToCmRatio
-
-  // Calculate baseline center and angle
-  const baselineCenterX = (baseline.p1[0] + baseline.p2[0]) / 2
-  const baselineCenterY = (baseline.p1[1] + baseline.p2[1]) / 2
-  const baselineAngle = Math.atan2(
-    baseline.p2[1] - baseline.p1[1],
-    baseline.p2[0] - baseline.p1[0]
-  )
-
-  // Place panel just below baseline center
-  const margin = roofProjectionPx
-  const newPanelCenterX = baselineCenterX + margin * Math.sin(baselineAngle)
-  const newPanelCenterY = baselineCenterY - margin * Math.cos(baselineAngle)
-
-  const newPanelX = newPanelCenterX - panelWidthPx / 2
-  const newPanelY = newPanelCenterY - roofProjectionPx / 2
-
-  // Generate new panel ID
-  const newId = existingPanels.length > 0 ? Math.max(...existingPanels.map(p => p.id)) + 1 : 1
-
-  return {
-    id: newId,
-    x: newPanelX,
-    y: newPanelY,
-    width: panelWidthPx,
-    height: roofProjectionPx,
-    widthCm: panelWidthCm,
-    heightCm: panelLengthCm,
-    rotation: baselineAngle * (180 / Math.PI)
+  // Rotation: inherit from existing panels, then baseline, then 0
+  let rotation = 0
+  const realPanel = existingPanels.find(p => !p.isEmpty)
+  if (realPanel) {
+    rotation = realPanel.rotation || 0
+  } else if (baseline?.p1 && baseline?.p2) {
+    rotation = Math.atan2(baseline.p2[1] - baseline.p1[1], baseline.p2[0] - baseline.p1[0]) * (180 / Math.PI)
   }
+
+  const hw = panelWidthPx / 2, hh = panelHeightPx / 2
+  const newId = existingPanels.length > 0 ? Math.max(...existingPanels.map(p => p.id)) + 1 : 1
+  const polyCoords = roofPolygon?.coordinates || []
+
+  if (polyCoords.length > 0) {
+    const pos = findTopmostInRoof(hw, hh, rotation, polyCoords, existingPanels)
+    if (!pos) return null
+    return { id: newId, x: pos.cx - hw, y: pos.cy - hh, width: panelWidthPx, height: panelHeightPx, widthCm: panelWidthCm, heightCm: panelLengthCm, rotation }
+  }
+
+  // Fallback (no roof polygon): place near baseline center
+  if (!baseline?.p2) return null
+  const bAngle = Math.atan2(baseline.p2[1] - baseline.p1[1], baseline.p2[0] - baseline.p1[0])
+  const bcx = (baseline.p1[0] + baseline.p2[0]) / 2
+  const bcy = (baseline.p1[1] + baseline.p2[1]) / 2
+  const cx = bcx + panelHeightPx * Math.sin(bAngle)
+  const cy = bcy - panelHeightPx * Math.cos(bAngle)
+  return { id: newId, x: cx - hw, y: cy - hh, width: panelWidthPx, height: panelHeightPx, widthCm: panelWidthCm, heightCm: panelLengthCm, rotation: bAngle * (180 / Math.PI) }
 }
 
 /**
