@@ -1,7 +1,11 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { BLACK, WHITE, TEXT, TEXT_MUTED, TEXT_SECONDARY, ERROR_DARK, BORDER_FAINT, BORDER_LIGHT, BG_LIGHT } from '../../styles/colors'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, TEXT_SECONDARY, ERROR_DARK, BORDER_FAINT, BORDER_LIGHT, BG_LIGHT, BORDER, TEXT_PLACEHOLDER } from '../../styles/colors'
+import BOMView from './step4/BOMView'
+import PanelsLayoutPage from './step5/PanelsLayoutPage'
+import RailsLayoutPage from './step5/RailsLayoutPage'
+import BasesLayoutPage from './step5/BasesLayoutPage'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -29,7 +33,7 @@ function LV({ label, value, vStyle }) {
 // Layout (9 cols, 2 rows):
 // Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
 // Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
-function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) {
+function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pageName }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
@@ -55,9 +59,12 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) 
         {/* ── Row 1 ─────────────────────────────────────────────────────── */}
         <tr style={{ height: '50%', borderBottom: B }}>
 
-          {/* col1 row1: תבנית */}
+          {/* col1 row1: תבנית / page name */}
           <Cell style={{ borderLeft: 'none' }}>
-            <LV label="תבנית" value="D3" />
+            {pageName
+              ? <LV label="תבנית" value={pageName} vStyle={{ fontSize: '10px', fontWeight: '900' }} />
+              : <LV label="תבנית" value="D3" />
+            }
           </Cell>
 
           {/* col2 row1: מספר פרויקט */}
@@ -141,7 +148,7 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp }) 
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date, children, pageRef }) {
+export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date, children, pageRef, pageName }) {
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
 
@@ -200,6 +207,7 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
           totalKw={totalKw}
           panelCount={panelCount}
           date={date}
+          pageName={pageName}
         />
       </div>
     </div>
@@ -207,8 +215,15 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
 }
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
-export default function Step5PdfReport({ panels = [], refinedArea, rowConfigs = {}, rowConstructions = [], project }) {
-  const pageRef = useRef(null)
+export default function Step5PdfReport({
+  panels = [], refinedArea, rowConstructions = [], rowLabels = [], project,
+  trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
+}) {
+  const page1Ref = useRef(null)
+  const page2Ref = useRef(null)
+  const page3Ref = useRef(null)
+  const page4Ref = useRef(null)
+  const [activeTab, setActiveTab] = useState('bom')
 
   const panelCount = panels.length
   const panelType  = refinedArea?.panelType ?? null
@@ -221,67 +236,179 @@ export default function Step5PdfReport({ panels = [], refinedArea, rowConfigs = 
   })()
   const totalKw = panelWp ? (panelCount * panelWp) / 1000 : null
 
+  // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas
+  // doesn't need to parse SVG (which it handles poorly for complex/transformed content).
+  const rasterizeSvgs = async (pageEl) => {
+    const svgs = Array.from(pageEl.querySelectorAll('svg'))
+    const swaps = []
+    for (const svg of svgs) {
+      const rect = svg.getBoundingClientRect()
+      const w = Math.round(rect.width)
+      const h = Math.round(rect.height)
+      if (!w || !h) continue
+      const clone = svg.cloneNode(true)
+      clone.setAttribute('width', w)
+      clone.setAttribute('height', h)
+      const xml = new XMLSerializer().serializeToString(clone)
+      const blob = new Blob([xml], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      const img = new Image(w, h)
+      img.style.cssText = `display:block;width:${w}px;height:${h}px`
+      await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; img.src = url })
+      svg.parentNode.replaceChild(img, svg)
+      swaps.push({ img, svg, url })
+    }
+    return swaps
+  }
+  const restoreSvgs = (swaps) => {
+    for (const { img, svg, url } of swaps) {
+      img.parentNode?.replaceChild(svg, img)
+      URL.revokeObjectURL(url)
+    }
+  }
+
   const handleExportPdf = async () => {
-    const el = pageRef.current
-    if (!el) return
-
-    const canvas = await html2canvas(el, {
-      scale: 3,          // 3× for high-res output
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    })
-
-    const imgData = canvas.toDataURL('image/png')
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    pdf.addImage(imgData, 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM)
+    let firstPage = true
+
+    for (const ref of refs) {
+      const el = ref?.current ?? ref   // handle both useRef objects and direct DOM elements
+      if (!el) continue
+      const swaps = await rasterizeSvgs(el)
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      })
+      restoreSvgs(swaps)
+      const imgData = canvas.toDataURL('image/png')
+      if (!firstPage) pdf.addPage()
+      pdf.addImage(imgData, 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM)
+      firstPage = false
+    }
 
     const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
     const dateStr  = new Date().toISOString().split('T')[0]
     pdf.save(`${safeName}_${dateStr}.pdf`)
   }
 
+  const tabBtn = (key, label) => (
+    <button
+      key={key}
+      onClick={() => setActiveTab(key)}
+      style={{
+        padding: '0.35rem 1rem', fontSize: '0.78rem', fontWeight: '600',
+        background: activeTab === key ? TEXT_SECONDARY : 'transparent',
+        color: activeTab === key ? 'white' : TEXT_PLACEHOLDER,
+        border: `1px solid ${activeTab === key ? TEXT_SECONDARY : BORDER}`,
+        borderRadius: '6px', cursor: 'pointer',
+      }}
+    >{label}</button>
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BORDER_FAINT }}>
 
       {/* Toolbar */}
       <div style={{
-        flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.75rem',
+        flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem',
         padding: '0.6rem 1.25rem',
         background: BG_LIGHT, borderBottom: `1px solid ${BORDER_LIGHT}`,
       }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: TEXT_SECONDARY }}>PDF Report</span>
+        {tabBtn('bom', 'Bill of Materials')}
+        {tabBtn('pdf', 'PDF Report')}
         <div style={{ flex: 1 }} />
-        <button
-          onClick={handleExportPdf}
-          style={{
-            padding: '0.4rem 1.1rem',
-            background: '#1a6e2e', color: 'white',
-            border: 'none', borderRadius: '6px',
-            fontSize: '0.8rem', fontWeight: '700',
-            cursor: 'pointer',
-          }}
-        >
-          Export PDF
-        </button>
+        {activeTab === 'pdf' && (
+          <button
+            onClick={handleExportPdf}
+            style={{
+              padding: '0.4rem 1.1rem',
+              background: '#1a6e2e', color: 'white',
+              border: 'none', borderRadius: '6px',
+              fontSize: '0.8rem', fontWeight: '700',
+              cursor: 'pointer',
+            }}
+          >
+            Export PDF
+          </button>
+        )}
       </div>
 
-      {/* Page preview */}
-      <div style={{
-        flex: 1, overflow: 'auto',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: '2rem',
-      }}>
-        <CadPage
-          pageRef={pageRef}
-          project={project}
-          panelType={panelType}
-          panelWp={panelWp}
-          totalKw={totalKw}
-          panelCount={panelCount}
-          date={new Date().toLocaleDateString('he-IL')}
-        />
-      </div>
+      {/* Content */}
+      {activeTab === 'bom' && (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} />
+        </div>
+      )}
+
+      {activeTab === 'pdf' && (
+        <div style={{
+          flex: 1, overflow: 'auto',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '2rem', gap: '2rem',
+        }}>
+          {/* Page 1: Panels layout top view */}
+          <PanelsLayoutPage
+            pageRef={page1Ref}
+            panels={panels}
+            refinedArea={refinedArea}
+            project={project}
+            panelType={panelType}
+            panelWp={panelWp}
+            totalKw={totalKw}
+            date={new Date().toLocaleDateString('he-IL')}
+          />
+
+          {/* Page 2: Areas (placeholder) */}
+          <CadPage
+            pageRef={page2Ref}
+            project={project}
+            panelType={panelType}
+            panelWp={panelWp}
+            totalKw={totalKw}
+            panelCount={panelCount}
+            date={new Date().toLocaleDateString('he-IL')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_MUTED, fontSize: '1rem', fontStyle: 'italic' }}>
+              Areas — coming soon
+            </div>
+          </CadPage>
+
+          {/* Page 3: Bases Layout (BasesPlanTab — all layers except edit bar) */}
+          <BasesLayoutPage
+            pageRef={page3Ref}
+            panels={panels}
+            refinedArea={refinedArea}
+            trapSettingsMap={trapSettingsMap}
+            trapLineRailsMap={trapLineRailsMap}
+            trapRCMap={trapRCMap}
+            customBasesMap={customBasesMap}
+            project={project}
+            panelType={panelType}
+            panelWp={panelWp}
+            totalKw={totalKw}
+            date={new Date().toLocaleDateString('he-IL')}
+          />
+
+          {/* Page 4: Rails Layout (RailLayoutTab — edit bar hidden, rail lines shown) */}
+          <RailsLayoutPage
+            pageRef={page4Ref}
+            panels={panels}
+            refinedArea={refinedArea}
+            trapSettingsMap={trapSettingsMap}
+            trapLineRailsMap={trapLineRailsMap}
+            project={project}
+            panelType={panelType}
+            panelWp={panelWp}
+            totalKw={totalKw}
+            date={new Date().toLocaleDateString('he-IL')}
+          />
+
+        </div>
+      )}
 
     </div>
   )

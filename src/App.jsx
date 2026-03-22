@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_VERY_LIGHT } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
@@ -14,6 +15,8 @@ const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'C
 
 function App() {
   const s = useProjectState()
+  const [step4BOMData, setStep4BOMData] = useState({ rowConstructions: [], rowLabels: [] })
+  const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {} })
 
   if (s.appScreen === 'welcome') {
     return (
@@ -169,6 +172,8 @@ function App() {
             initialGlobalSettings={s.step4GlobalSettings}
             initialAreaSettings={s.step4AreaSettings}
             onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
+            onBOMDataChange={setStep4BOMData}
+            onPdfDataChange={setStep4PdfData}
           />
         )}
 
@@ -178,6 +183,12 @@ function App() {
               panels={s.panels}
               refinedArea={s.refinedArea}
               project={s.currentProject}
+              rowConstructions={step4BOMData.rowConstructions}
+              rowLabels={step4BOMData.rowLabels}
+              trapSettingsMap={step4PdfData.trapSettingsMap}
+              trapLineRailsMap={step4PdfData.trapLineRailsMap}
+              trapRCMap={step4PdfData.trapRCMap}
+              customBasesMap={step4PdfData.customBasesMap}
             />
           </div>
         )}

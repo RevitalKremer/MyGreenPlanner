@@ -7,7 +7,7 @@ import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null }) {
   const [showAnnotations,  setShowAnnotations]  = useState(true)
   const [showPunches,      setShowPunches]      = useState(true)
   const [showDiagHandles,  setShowDiagHandles]  = useState(true)
@@ -414,7 +414,7 @@ export default function DetailView({ rc, panelLines = null, settings = {}, lineR
             display: 'inline-block',
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
-              {rc.typeLetter}{rc.panelsPerSpan} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
+              {trapId ?? `${rc.typeLetter}${rc.panelsPerSpan}`} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
               <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
               </span>
