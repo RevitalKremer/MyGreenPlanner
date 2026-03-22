@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { BLACK, WHITE, TEXT, TEXT_MUTED, TEXT_SECONDARY, ERROR_DARK, BORDER_FAINT, BORDER_LIGHT, BG_LIGHT, BORDER, TEXT_PLACEHOLDER } from '../../styles/colors'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import BOMView from './step4/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups } from './step4/tabUtils'
@@ -216,11 +216,27 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
   )
 }
 
+const PAGE_W_PX = PAGE_W_MM * 3.2
+const PAGE_H_PX = PAGE_H_MM * 3.2
+
+// Wrapper that visually scales a CadPage to fit available width,
+// while keeping the inner element at its natural size for html2canvas.
+function ScaledPage({ scale, children }) {
+  return (
+    <div style={{ width: PAGE_W_PX * scale, height: PAGE_H_PX * scale, flexShrink: 0, position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: PAGE_W_PX, height: PAGE_H_PX, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step5PdfReport({
   panels = [], refinedArea, rowConstructions = [], rowLabels = [], project,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
+  bomDeltas = {}, onBomDeltasChange,
 }) {
   const page1Ref = useRef(null)
   const page2Ref = useRef(null)
@@ -229,13 +245,22 @@ export default function Step5PdfReport({
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
   const [activeTab, setActiveTab] = useState('bom')
+  const [pageScale, setPageScale] = useState(1)
 
+  // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
     const el = pdfScrollRef.current
     if (!el) return
-    const handler = (e) => { if (e.ctrlKey) e.preventDefault() }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
+    const blockCtrl = (e) => { if (e.ctrlKey) e.preventDefault() }
+    el.addEventListener('wheel', blockCtrl, { passive: false })
+    const computeScale = () => {
+      const available = el.clientWidth - 64  // 2 × 2rem padding
+      setPageScale(Math.min(1, available / PAGE_W_PX))
+    }
+    computeScale()
+    const ro = new ResizeObserver(computeScale)
+    ro.observe(el)
+    return () => { el.removeEventListener('wheel', blockCtrl); ro.disconnect() }
   }, [activeTab])
 
   const panelCount = panels.length
@@ -310,134 +335,117 @@ export default function Step5PdfReport({
     pdf.save(`${safeName}_${dateStr}.pdf`)
   }
 
-  const tabBtn = (key, label) => (
-    <button
-      key={key}
-      onClick={() => setActiveTab(key)}
-      style={{
-        padding: '0.35rem 1rem', fontSize: '0.78rem', fontWeight: '600',
-        background: activeTab === key ? TEXT_SECONDARY : 'transparent',
-        color: activeTab === key ? 'white' : TEXT_PLACEHOLDER,
-        border: `1px solid ${activeTab === key ? TEXT_SECONDARY : BORDER}`,
-        borderRadius: '6px', cursor: 'pointer',
-      }}
-    >{label}</button>
-  )
+  const dateStr = new Date().toLocaleDateString('he-IL')
+
+  const tabs = [
+    { key: 'bom', label: 'Bill of Materials' },
+    { key: 'pdf', label: 'PDF Report' },
+  ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BORDER_FAINT }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG }}>
 
-      {/* Toolbar */}
+      {/* Tab bar — same style as Step 4 */}
       <div style={{
-        flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.6rem 1.25rem',
-        background: BG_LIGHT, borderBottom: `1px solid ${BORDER_LIGHT}`,
+        display: 'flex', alignItems: 'center',
+        borderBottom: `2px solid ${BORDER_FAINT}`,
+        background: BG_LIGHT, padding: '0 1rem', gap: '0.25rem',
+        flexShrink: 0,
       }}>
-        {tabBtn('bom', 'Bill of Materials')}
-        {tabBtn('pdf', 'PDF Report')}
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.55rem 1rem', border: 'none', cursor: 'pointer',
+              fontSize: '0.8rem', fontWeight: '600',
+              background: activeTab === tab.key ? WHITE : 'transparent',
+              color: activeTab === tab.key ? TEXT : TEXT_PLACEHOLDER,
+              borderBottom: activeTab === tab.key ? `2px solid ${PRIMARY}` : '2px solid transparent',
+              marginBottom: '-2px', transition: 'all 0.15s',
+            }}
+          >{tab.label}</button>
+        ))}
         <div style={{ flex: 1 }} />
         {activeTab === 'pdf' && (
           <button
             onClick={handleExportPdf}
             style={{
-              padding: '0.4rem 1.1rem',
-              background: '#1a6e2e', color: 'white',
+              padding: '0.35rem 1rem',
+              background: SUCCESS_DARK, color: WHITE,
               border: 'none', borderRadius: '6px',
-              fontSize: '0.8rem', fontWeight: '700',
+              fontSize: '0.78rem', fontWeight: '700',
               cursor: 'pointer',
             }}
-          >
-            Export PDF
-          </button>
+          >↓ Export PDF</button>
         )}
       </div>
 
-      {/* Content */}
+      {/* BOM tab */}
       {activeTab === 'bom' && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} />
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', background: PDF_CANVAS_BG }}>
+          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} bomDeltas={bomDeltas} onBomDeltasChange={onBomDeltasChange} />
+          </div>
         </div>
       )}
 
+      {/* PDF tab */}
       {activeTab === 'pdf' && (
         <div ref={pdfScrollRef} style={{
           flex: 1, overflow: 'auto',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '2rem', gap: '2rem',
+          padding: '2rem', gap: '2.5rem',
+          backgroundImage: `radial-gradient(circle, ${PDF_CANVAS_BG_ALT} 1px, transparent 1px)`,
+          backgroundSize: '24px 24px',
         }}>
-          {/* Page 1: Panels layout top view */}
-          <PanelsLayoutPage
-            pageRef={page1Ref}
-            panels={panels}
-            refinedArea={refinedArea}
-            project={project}
-            panelType={panelType}
-            panelWp={panelWp}
-            totalKw={totalKw}
-            date={new Date().toLocaleDateString('he-IL')}
-          />
-
-          {/* Page 2: Areas (placeholder) */}
-          <CadPage
-            pageRef={page2Ref}
-            project={project}
-            panelType={panelType}
-            panelWp={panelWp}
-            totalKw={totalKw}
-            panelCount={panelCount}
-            date={new Date().toLocaleDateString('he-IL')}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_MUTED, fontSize: '1rem', fontStyle: 'italic' }}>
-              Areas — coming soon
-            </div>
-          </CadPage>
-
-          {/* Page 3: Bases Layout (BasesPlanTab — all layers except edit bar) */}
-          <BasesLayoutPage
-            pageRef={page3Ref}
-            panels={panels}
-            refinedArea={refinedArea}
-            trapSettingsMap={trapSettingsMap}
-            trapLineRailsMap={trapLineRailsMap}
-            trapRCMap={trapRCMap}
-            customBasesMap={customBasesMap}
-            project={project}
-            panelType={panelType}
-            panelWp={panelWp}
-            totalKw={totalKw}
-            date={new Date().toLocaleDateString('he-IL')}
-          />
-
-          {/* Page 4: Rails Layout (RailLayoutTab — edit bar hidden, rail lines shown) */}
-          <RailsLayoutPage
-            pageRef={page4Ref}
-            panels={panels}
-            refinedArea={refinedArea}
-            trapSettingsMap={trapSettingsMap}
-            trapLineRailsMap={trapLineRailsMap}
-            project={project}
-            panelType={panelType}
-            panelWp={panelWp}
-            totalKw={totalKw}
-            date={new Date().toLocaleDateString('he-IL')}
-          />
-
-          {/* Pages 5+: One detail page per trapezoid type */}
-          {trapIds.map(trapId => (
-            <TrapDetailPage
-              key={trapId}
-              pageRef={el => { trapPageRefs.current[trapId] = el }}
-              trapId={trapId}
-              rc={trapRCMap[trapId] ?? null}
-              settings={trapSettingsMap[trapId] ?? {}}
-              lineRails={trapLineRailsMap[trapId] ?? null}
-              panelLines={trapPanelLinesMap[trapId] ?? null}
-              project={project}
-              panelType={panelType}
-              panelWp={panelWp}
-              totalKw={totalKw}
-              date={new Date().toLocaleDateString('he-IL')}
+          <ScaledPage scale={pageScale}>
+            <PanelsLayoutPage
+              pageRef={page1Ref}
+              panels={panels} refinedArea={refinedArea}
+              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
+          </ScaledPage>
+
+          <ScaledPage scale={pageScale}>
+            <CadPage pageRef={page2Ref} project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} panelCount={panelCount} date={dateStr}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_MUTED, fontSize: '1rem', fontStyle: 'italic' }}>
+                Areas — coming soon
+              </div>
+            </CadPage>
+          </ScaledPage>
+
+          <ScaledPage scale={pageScale}>
+            <BasesLayoutPage
+              pageRef={page3Ref}
+              panels={panels} refinedArea={refinedArea}
+              trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
+              trapRCMap={trapRCMap} customBasesMap={customBasesMap}
+              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+            />
+          </ScaledPage>
+
+          <ScaledPage scale={pageScale}>
+            <RailsLayoutPage
+              pageRef={page4Ref}
+              panels={panels} refinedArea={refinedArea}
+              trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
+              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+            />
+          </ScaledPage>
+
+          {trapIds.map(trapId => (
+            <ScaledPage key={trapId} scale={pageScale}>
+              <TrapDetailPage
+                pageRef={el => { trapPageRefs.current[trapId] = el }}
+                trapId={trapId}
+                rc={trapRCMap[trapId] ?? null}
+                settings={trapSettingsMap[trapId] ?? {}}
+                lineRails={trapLineRailsMap[trapId] ?? null}
+                panelLines={trapPanelLinesMap[trapId] ?? null}
+                project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+              />
+            </ScaledPage>
           ))}
 
         </div>

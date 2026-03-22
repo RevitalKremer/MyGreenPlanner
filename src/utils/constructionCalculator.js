@@ -111,7 +111,7 @@ export function buildBOM(rowConstructions, rowLabels = []) {
     const avgInnerLegCm = BEAM_THICK_CM * (1 + Math.cos(angleRad) / 2)
       + (rc.heightRear + rc.heightFront) / 2
 
-    // ── angle_profile_40X40 — frame pieces (beams + legs) ───────────────
+    // ── angle_profile_40x40 — frame pieces (beams + legs) ───────────────
     const framePieces = [
       { qty: T,                        lenCm: rc.baseBeamLength ?? rc.baseLength },  // base beams
       { qty: T,                        lenCm: rc.topBeamLength },                    // slope beams
@@ -122,19 +122,19 @@ export function buildBOM(rowConstructions, rowLabels = []) {
 
     const frameQty     = framePieces.reduce((s, p) => s + p.qty, 0)
     const frameLengthM = framePieces.reduce((s, p) => s + p.qty * p.lenCm, 0) / 100
-    rows.push({ areaLabel, element: 'angle_profile_40X40', totalLengthM: frameLengthM, qty: frameQty })
+    rows.push({ areaLabel, element: 'angle_profile_40x40', totalLengthM: frameLengthM, qty: frameQty })
 
-    // ── angle_profile_40X40_diag — diagonal braces ───────────────────────
+    // ── angle_profile_40x40_diag — diagonal braces ───────────────────────
     if (nS > 0 && rc.diagonalLength > 0) {
-      rows.push({ areaLabel, element: 'angle_profile_40X40_diag', totalLengthM: nS * rc.diagonalLength / 100, qty: nS })
+      rows.push({ areaLabel, element: 'angle_profile_40x40_diag', totalLengthM: nS * rc.diagonalLength / 100, qty: nS })
     }
 
-    // ── rail_40X40 ───────────────────────────────────────────────────────
-    rows.push({ areaLabel, element: 'rail_40X40', totalLengthM: rc.rowLength != null ? numRails * rc.rowLength / 100 : null, qty: numRails })
+    // ── rail_40x40 ───────────────────────────────────────────────────────
+    rows.push({ areaLabel, element: 'rail_40x40', totalLengthM: rc.rowLength != null ? numRails * rc.rowLength / 100 : null, qty: numRails })
 
-    // ── block_50*24*15 / bitumen_sheets / jumbo_5x16 ─────────────────────
+    // ── block_50x24x15 / bitumen_sheets / jumbo_5x16 ─────────────────────
     const blockQty = T * (2 + numInnerLegsPerFrame)
-    rows.push({ areaLabel, element: 'block_50*24*15',  totalLengthM: null, qty: blockQty })
+    rows.push({ areaLabel, element: 'block_50x24x15',  totalLengthM: null, qty: blockQty })
     rows.push({ areaLabel, element: 'bitumen_sheets',   totalLengthM: null, qty: blockQty })
     rows.push({ areaLabel, element: 'jumbo_5x16',       totalLengthM: null, qty: blockQty })
 

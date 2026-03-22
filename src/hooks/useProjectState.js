@@ -49,6 +49,9 @@ export function useProjectState() {
   const [step4GlobalSettings, setStep4GlobalSettings] = useState(null)
   const [step4AreaSettings,   setStep4AreaSettings]   = useState(null)
 
+  // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
+  const [step5BomDeltas, setStep5BomDeltas] = useState(null)
+
   // Fingerprint of the areas config used to last generate panels.
   // Only regenerate in plan mode when this changes (prevents wiping subgroups on back→forward).
   const panelGenFingerprint = useRef(null)
@@ -95,6 +98,7 @@ export function useProjectState() {
     setTrapezoidConfigs({})
     setStep4GlobalSettings(null)
     setStep4AreaSettings(null)
+    setStep5BomDeltas(null)
     panelGenFingerprint.current = null
   }
 
@@ -155,6 +159,7 @@ export function useProjectState() {
     if (data.step4GlobalSettings) setStep4GlobalSettings(data.step4GlobalSettings)
     if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
     else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
+    if (data.step5BomDeltas) setStep5BomDeltas(data.step5BomDeltas)
     if (data.currentStep) setCurrentStep(data.currentStep)
     // Treat imported panels as already generated so back→forward doesn't wipe them.
     if (data.panels && data.areas) {
@@ -188,6 +193,7 @@ export function useProjectState() {
       trapezoidConfigs,
       step4GlobalSettings,
       step4AreaSettings,
+      step5BomDeltas,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -577,6 +583,8 @@ export function useProjectState() {
     // Step 4
     step4GlobalSettings, setStep4GlobalSettings,
     step4AreaSettings, setStep4AreaSettings,
+    // Step 5
+    step5BomDeltas, setStep5BomDeltas,
     // Derived
     projectMode,
     getComputedBackHeight,

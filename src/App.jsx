@@ -178,20 +178,20 @@ function App() {
         )}
 
         {s.currentStep === 5 && (
-          <div className="step-content">
-            <Step5PdfReport
-              panels={s.panels}
-              refinedArea={s.refinedArea}
-              project={s.currentProject}
-              rowConstructions={step4BOMData.rowConstructions}
-              rowLabels={step4BOMData.rowLabels}
-              trapSettingsMap={step4PdfData.trapSettingsMap}
-              trapLineRailsMap={step4PdfData.trapLineRailsMap}
-              trapRCMap={step4PdfData.trapRCMap}
-              customBasesMap={step4PdfData.customBasesMap}
-              trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
-            />
-          </div>
+          <Step5PdfReport
+            panels={s.panels}
+            refinedArea={s.refinedArea}
+            project={s.currentProject}
+            rowConstructions={step4BOMData.rowConstructions}
+            rowLabels={step4BOMData.rowLabels}
+            trapSettingsMap={step4PdfData.trapSettingsMap}
+            trapLineRailsMap={step4PdfData.trapLineRailsMap}
+            trapRCMap={step4PdfData.trapRCMap}
+            customBasesMap={step4PdfData.customBasesMap}
+            trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            bomDeltas={s.step5BomDeltas ?? {}}
+            onBomDeltasChange={s.setStep5BomDeltas}
+          />
         )}
 
         {s.isProcessing && (
