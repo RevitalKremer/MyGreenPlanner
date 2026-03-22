@@ -15,6 +15,7 @@ export default function PanelCanvas({
   showBaseline, showDistances, showHGridlines, showVGridlines, snapToGridlines,
   refinedArea, trapezoidConfigs,
   activeTool, projectMode,
+  pendingAddNextTo, onAddNextToPanel, setPendingAddNextTo,
   getRowPanelIds,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
@@ -137,8 +138,12 @@ export default function PanelCanvas({
     }
 
     if (activeTool === 'add') {
-      if (clickedPanel) setSelectedPanels(getRowPanelIds(clickedPanel.id))
-      else startPan(e)
+      if (pendingAddNextTo) {
+        if (clickedPanel && !clickedPanel.isEmpty) onAddNextToPanel(clickedPanel)
+        else setPendingAddNextTo(false)
+      } else {
+        if (!clickedPanel) startPan(e)
+      }
       return
     }
   }

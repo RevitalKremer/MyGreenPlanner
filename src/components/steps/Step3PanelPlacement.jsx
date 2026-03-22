@@ -126,6 +126,8 @@ export default function Step3PanelPlacement({
   const handleToolChange = (tool) => {
     setActiveTool(tool)
     setSelectedPanels([])
+    setPendingAddNextTo(false)
+    setAddError(null)
     if (tool === 'measure') setShowDistances(true)
   }
 
@@ -157,50 +159,43 @@ export default function Step3PanelPlacement({
     ))
   }
 
-  const addPanelToRow = () => {
-    if (!selectedRow || selectedRow.length === 0) { addManualPanel(); return }
-    const angle = (selectedRow[0].rotation || 0) * Math.PI / 180
+  const [pendingAddNextTo, setPendingAddNextTo] = useState(false)
+  const [addError, setAddError] = useState(null)
+
+  const addNextToPanel = (anchor) => {
+    const angle = (anchor.rotation || 0) * Math.PI / 180
     const dirX = Math.cos(angle), dirY = Math.sin(angle)
-    const sortedRow = [...selectedRow].sort((a, b) => {
-      const aCx = a.x + a.width / 2, aCy = a.y + a.height / 2
-      const bCx = b.x + b.width / 2, bCy = b.y + b.height / 2
-      return (aCx * dirX + aCy * dirY) - (bCx * dirX + bCy * dirY)
-    })
-    const last = sortedRow[sortedRow.length - 1]
     const stepPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
-    const lastCx = last.x + last.width / 2, lastCy = last.y + last.height / 2
-    const naturalCx = lastCx + (last.width + stepPx) * dirX
-    const naturalCy = lastCy + (last.width + stepPx) * dirY
-    const hw = last.width / 2, hh = last.height / 2
+    const anchorCx = anchor.x + anchor.width / 2, anchorCy = anchor.y + anchor.height / 2
+    const hw = anchor.width / 2, hh = anchor.height / 2
     const polyCoords = roofPolygon?.coordinates || []
 
-    // Find valid position: try natural spot, then shift ±2.5 cm along row direction
+    const noOverlap = (cx, cy) => panels.every(p => {
+      if (p.isEmpty || p.id === anchor.id) return true
+      const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2
+      const dRow = Math.abs((cx - pcx) * dirX + (cy - pcy) * dirY)
+      const dPerp = Math.abs(-(cx - pcx) * dirY + (cy - pcy) * dirX)
+      return dRow >= (hw + p.width / 2) || dPerp >= (hh + p.height / 2)
+    })
+
+    // Try right first, then left — exactly 2.5 cm gap each time
     let finalCx = null, finalCy = null
-    const MAX_STEPS = 80
-    for (let s = 0; s <= MAX_STEPS; s++) {
-      for (const sign of (s === 0 ? [1] : [1, -1])) {
-        const cx = naturalCx + sign * s * stepPx * dirX
-        const cy = naturalCy + sign * s * stepPx * dirY
-        if (panelInsideRoof(cx, cy, hw, hh, last.rotation || 0, polyCoords)) {
-          finalCx = cx; finalCy = cy; break
-        }
+    for (const dir of [1, -1]) {
+      const cx = anchorCx + dir * (anchor.width + stepPx) * dirX
+      const cy = anchorCy + dir * (anchor.width + stepPx) * dirY
+      if (panelInsideRoof(cx, cy, hw, hh, anchor.rotation || 0, polyCoords) && noOverlap(cx, cy)) {
+        finalCx = cx; finalCy = cy; break
       }
-      if (finalCx !== null) break
     }
-    if (finalCx === null) return  // no valid position inside roof
+    if (finalCx === null) { setAddError('No free space found on either side'); setPendingAddNextTo(false); return }
 
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 1
-    const areaKey = (sortedRow[0].area ?? sortedRow[0].row) !== undefined
-      ? (sortedRow[0].area ?? sortedRow[0].row)
-      : `m_${sortedRow[0].id}`
-    const trapId = sortedRow[0].trapezoidId || 'A1'
-    const selectedIds = selectedRow.map(p => p.id)
-    const newPanel = { ...last, id: newId, area: areaKey, trapezoidId: trapId, x: finalCx - hw, y: finalCy - hh }
-    setPanels(prev => [
-      ...prev.map(p => selectedIds.includes(p.id) ? { ...p, area: areaKey, trapezoidId: trapId } : p),
-      newPanel
-    ])
-    setSelectedPanels(prev => [...prev, newId])
+    const areaKey = (anchor.area ?? anchor.row) !== undefined ? (anchor.area ?? anchor.row) : `m_${anchor.id}`
+    const newPanel = { ...anchor, id: newId, area: areaKey, isEmpty: false, x: finalCx - hw, y: finalCy - hh }
+    setPanels(prev => [...prev, newPanel])
+    setSelectedPanels([newId])
+    setAddError(null)
+    setPendingAddNextTo(false)
   }
 
   // ── Per-trapezoid config ──────────────────────────────────────────────────────
@@ -418,6 +413,7 @@ export default function Step3PanelPlacement({
             snapToGridlines={snapToGridlines}
             refinedArea={refinedArea} trapezoidConfigs={trapezoidConfigs}
             activeTool={activeTool} projectMode={projectMode}
+            pendingAddNextTo={pendingAddNextTo} onAddNextToPanel={addNextToPanel} setPendingAddNextTo={setPendingAddNextTo}
             getRowPanelIds={getRowPanelIds}
           />
         ) : (
@@ -453,7 +449,9 @@ export default function Step3PanelPlacement({
             activeTool={activeTool} handleToolChange={handleToolChange}
             selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel} selectedRowAngle={selectedRowAngle}
             nudgeRow={nudgeRow} rotateSelectedRow={rotateSelectedRow}
-            addPanelToRow={addPanelToRow} addManualPanel={addManualPanel}
+            addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
+            pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
+            addError={addError} setAddError={setAddError}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
             allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds} allAreaTrapIds={allAreaTrapIds}
             selectedTrapezoidId={selectedTrapezoidId}

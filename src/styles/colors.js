@@ -56,6 +56,7 @@ export const SUCCESS_BG   = '#E8F5E9'  // light green background
 // ── Error / Red ───────────────────────────────────────────────────────────
 export const ERROR      = '#f44336'  // error red
 export const ERROR_DARK = '#c0392b'  // dark error red
+export const ERROR_BG   = '#fdecea'  // error background
 
 // ── Ghost / inactive zone ─────────────────────────────────────────────────
 export const GHOST_FILL   = 'white'   // fill for ghosted structural elements

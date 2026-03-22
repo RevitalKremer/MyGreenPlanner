@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_DARK } from '../../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_DARK, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 
 const NUDGE_PX = 5
@@ -7,9 +7,10 @@ const NUDGE_PX = 5
 export default function ToolPanel({
   activeTool, handleToolChange,
   selectedPanels, selectedAreaLabel, selectedRowAngle,
-  nudgeRow, rotateSelectedRow, addPanelToRow, addManualPanel,
+  nudgeRow, rotateSelectedRow, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
   allAreaTrapIds, selectedTrapezoidId,
+  pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
   reassignToTrapezoid, addTrapezoid,
   selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   projectMode, areas, getAreaKey,
@@ -191,36 +192,30 @@ export default function ToolPanel({
 
         {/* Add tool */}
         {activeTool === 'add' && (
-          selectedPanels.length > 0 ? (
-            <div>
-              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
-                {selectedAreaLabel}
-                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER }}> · {selectedPanels.length} panels</span>
+          <div>
+            <button
+              onClick={() => { setAddError(null); setPendingAddNextTo(p => !p) }}
+              style={{ width: '100%', padding: '0.5rem', marginBottom: '0.4rem', background: pendingAddNextTo ? PRIMARY : 'white', color: pendingAddNextTo ? TEXT : TEXT_SECONDARY, border: `2px solid ${pendingAddNextTo ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
+            >
+              ＋ Add Next to Panel
+            </button>
+            {pendingAddNextTo && (
+              <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center', marginBottom: '0.4rem' }}>
+                Click any panel on the canvas
               </div>
-              <button
-                onClick={addPanelToRow}
-                style={{ width: '100%', padding: '0.5rem', marginBottom: '0.4rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
-              >
-                ＋ Add to {selectedAreaLabel || '?'}
-              </button>
-              <button
-                onClick={addManualPanel}
-                style={{ width: '100%', padding: '0.4rem', background: 'white', color: TEXT_PLACEHOLDER, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem' }}
-              >
-                ＋ Add Standalone
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div style={{ fontSize: '0.78rem', color: TEXT_VERY_LIGHT, marginBottom: '0.6rem' }}>Select a row first, or:</div>
-              <button
-                onClick={addManualPanel}
-                style={{ width: '100%', padding: '0.55rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
-              >
-                ＋ Add Standalone Panel
-              </button>
-            </div>
-          )
+            )}
+            {addError && (
+              <div style={{ fontSize: '0.72rem', color: ERROR_DARK, background: ERROR_BG, border: `1px solid ${ERROR}`, borderRadius: '5px', padding: '0.3rem 0.5rem', marginBottom: '0.4rem', textAlign: 'center' }}>
+                {addError}
+              </div>
+            )}
+            <button
+              onClick={() => { setAddError(null); addManualPanel() }}
+              style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}
+            >
+              ＋ Add Standalone
+            </button>
+          </div>
         )}
 
         {/* Measure tool */}

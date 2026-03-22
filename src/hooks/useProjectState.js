@@ -304,13 +304,14 @@ export function useProjectState() {
 
   const addManualPanel = () => {
     const newPanel = createManualPanel(refinedArea, baseline, panels, roofPolygon)
-    if (!newPanel) return
+    if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
     const newArea = { angle: 0, frontHeight: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
+    return true
   }
 
   // ── Map / image click handlers ────────────────────────────────────────────
