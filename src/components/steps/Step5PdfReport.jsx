@@ -250,6 +250,7 @@ export default function Step5PdfReport({
   const pdfScrollRef = useRef(null)
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -324,6 +325,7 @@ export default function Step5PdfReport({
   }
 
   const handleExportPdf = async () => {
+    setIsExporting(true)
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
@@ -359,6 +361,7 @@ export default function Step5PdfReport({
     const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
     const dateStr  = new Date().toISOString().split('T')[0]
     pdf.save(`${safeName}_${dateStr}.pdf`)
+    setIsExporting(false)
   }
 
   const handleExportExcel = () => {
@@ -435,7 +438,13 @@ export default function Step5PdfReport({
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG, position: 'relative' }}>
+      {isExporting && (
+        <div className="processing-overlay">
+          <div className="spinner"></div>
+          <p>Generating PDF...</p>
+        </div>
+      )}
 
       {/* Tab bar — same style as Step 4 */}
       <div style={{
