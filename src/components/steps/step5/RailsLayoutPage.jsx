@@ -28,6 +28,7 @@ export default function RailsLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
+      pageName="Rails"
       project={project}
       panelType={panelType}
       panelWp={panelWp}

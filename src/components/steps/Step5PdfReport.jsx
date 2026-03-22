@@ -403,7 +403,7 @@ export default function Step5PdfReport({
           <ScaledPage scale={pageScale}>
             <PanelsLayoutPage
               pageRef={page1Ref}
-              panels={panels} refinedArea={refinedArea}
+              panels={panels}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
           </ScaledPage>

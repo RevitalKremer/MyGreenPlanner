@@ -1,51 +1,53 @@
 import { useMemo } from 'react'
 import { CadPage } from '../Step5PdfReport'
-import HatchedPanels from '../step4/HatchedPanels'
+import AreasTab from '../step4/AreasTab'
 import { getPanelsBoundingBox } from '../step4/tabUtils'
 
-export default function PanelsLayoutPage({ panels = [], refinedArea, project, panelType, panelWp, totalKw, date, pageRef }) {
-  const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
+const PAD = 40, MAX_W = 900
+const CONTENT_W = (297 - 2 * 8) * 3.2
+const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
-  const { sc, svgW, svgH, toSvg } = useMemo(() => {
-    if (!panels.length) return { sc: 1, svgW: 100, svgH: 100, toSvg: () => [0, 0] }
-    const bbox = getPanelsBoundingBox(panels)
-    const PAD  = 40
+export default function PanelsLayoutPage({ panels = [], project, panelType, panelWp, totalKw, date, pageRef }) {
+  const { naturalW, naturalH } = useMemo(() => {
+    const nonEmpty = panels.filter(p => !p.isEmpty)
+    if (!nonEmpty.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
+    const bbox = getPanelsBoundingBox(nonEmpty)
     const bboxW = bbox.maxX - bbox.minX
     const bboxH = bbox.maxY - bbox.minY
-    const sc    = bboxW > 0 ? 850 / bboxW : 1
-    return {
-      sc,
-      svgW: bboxW * sc + PAD * 2,
-      svgH: bboxH * sc + PAD * 2,
-      toSvg: (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc],
-    }
+    const sc    = bboxW > 0 ? MAX_W / bboxW : 1
+    return { naturalW: MAX_W + PAD * 2, naturalH: bboxH * sc + PAD * 2 }
   }, [panels])
+
+  const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
   return (
     <CadPage
       pageRef={pageRef}
+      pageName="Panels"
       project={project}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={panels.length}
+      panelCount={panels.filter(p => !p.isEmpty).length}
       date={date}
     >
-      <svg
-        viewBox={`0 0 ${svgW} ${svgH}`}
-        width="100%" height="100%"
-        preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block' }}
-      >
-        <HatchedPanels
-          panels={panels}
-          selectedTrapId={null}
-          toSvg={toSvg}
-          sc={sc}
-          pixelToCmRatio={pixelToCmRatio}
-          clipIdPrefix="pdf-panels"
-        />
-      </svg>
+      <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+        <div style={{
+          position: 'absolute',
+          top: (CONTENT_H - naturalH * fitZoom) / 2,
+          left: (CONTENT_W - naturalW * fitZoom) / 2,
+          width: naturalW, height: naturalH,
+          transform: `scale(${fitZoom})`,
+          transformOrigin: 'top left',
+        }}>
+          <AreasTab
+            panels={panels}
+            printMode
+            printShowAreas={false}
+            printShowCounts
+          />
+        </div>
+      </div>
     </CadPage>
   )
 }

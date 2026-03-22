@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE } from '../../../styles/colors'
+import { useMemo, useState, useCallback } from 'react'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, TEXT_DARKEST } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
+import LayersPanel from './LayersPanel'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
@@ -64,7 +65,15 @@ function areaPolygonPoints(areaPanels, bbox, sc) {
   })
 }
 
-export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode = false }) {
+export default function AreasTab({
+  panels, areas,
+  rowKeys = [], areaLabel = () => '',
+  printMode = false,
+  printShowAreas = true, printShowCounts = true,
+}) {
+  const [showAreas, setShowAreas] = useState(true)
+  const [showCounts, setShowCounts] = useState(true)
+
   const {
     zoom, setZoom, panOffset, panActive,
     containerRef, contentRef,
@@ -85,7 +94,35 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
   const svgW  = MAX_W + PAD * 2
   const svgH  = bboxH * sc + PAD * 2
 
+  const toSvg = useCallback(
+    (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc],
+    [bbox, sc]
+  )
+
   const { map: rowGroups } = useMemo(() => buildRowGroups(nonEmptyPanels), [nonEmptyPanels])
+
+  // Panel count labels: one per (area/row, line), placed on the left-most panel
+  const lineCounts = useMemo(() => {
+    const groups = {}
+    for (const p of nonEmptyPanels) {
+      const key = `${p.area ?? p.row ?? 0}__${p.line ?? 0}`
+      if (!groups[key]) groups[key] = []
+      groups[key].push(p)
+    }
+    return Object.values(groups).map(group => {
+      let leftmost = group[0]
+      let minSvgX = Infinity
+      for (const p of group) {
+        const [sx] = toSvg(p.x + p.width / 2, p.y + p.height / 2)
+        if (sx < minSvgX) { minSvgX = sx; leftmost = p }
+      }
+      const [cx, cy] = toSvg(leftmost.x + leftmost.width / 2, leftmost.y + leftmost.height / 2)
+      const panelW = leftmost.width * sc
+      const panelH = leftmost.height * sc
+      const fontSize = Math.max(6, Math.min(panelW, panelH) * 0.38)
+      return { count: group.length, cx, cy, fontSize }
+    })
+  }, [nonEmptyPanels, toSvg, sc])
 
   const areaData = useMemo(() => {
     const items = rowKeys.map((areaKey, i) => {
@@ -121,10 +158,23 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
     )
   }
 
+  // Shared count labels SVG fragment (used in both modes)
+  const countLabels = lineCounts.map(({ count, cx, cy, fontSize }, i) => (
+    <text
+      key={`cnt-${i}`}
+      x={cx} y={cy}
+      textAnchor="middle" dominantBaseline="middle"
+      fontSize={fontSize} fontWeight="700"
+      fill={TEXT_DARKEST}
+      stroke="white" strokeWidth={fontSize * 0.25} paintOrder="stroke"
+      style={{ pointerEvents: 'none', userSelect: 'none' }}
+    >{count}</text>
+  ))
+
   if (printMode) {
     return (
       <svg width={svgW} height={svgH} style={{ display: 'block' }}>
-        {areaData.map(({ areaKey, pts }) => (
+        {printShowAreas && areaData.map(({ areaKey, pts }) => (
           <polygon key={`poly-${areaKey}`}
             points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
             fill={BLUE} fillOpacity={0.13}
@@ -134,12 +184,12 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
         <HatchedPanels
           panels={nonEmptyPanels}
           selectedTrapId={null}
-          toSvg={(sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]}
+          toSvg={toSvg}
           sc={sc}
           pixelToCmRatio={1}
           clipIdPrefix="atpm"
         />
-        {areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
+        {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
           <text key={`lbl-${areaKey}`}
             x={svgCx} y={svgCy}
             textAnchor="middle" dominantBaseline="middle"
@@ -147,6 +197,7 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
             stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
           >{label}</text>
         ))}
+        {printShowCounts && countLabels}
       </svg>
     )
   }
@@ -166,7 +217,7 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
             <svg width={svgW} height={svgH} style={{ display: 'block' }}>
 
               {/* Area polygons — drawn behind panels */}
-              {areaData.map(({ areaKey, pts }) => (
+              {showAreas && areaData.map(({ areaKey, pts }) => (
                 <polygon key={`poly-${areaKey}`}
                   points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
                   fill={BLUE} fillOpacity={0.13}
@@ -179,14 +230,14 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
               <HatchedPanels
                 panels={nonEmptyPanels}
                 selectedTrapId={null}
-                toSvg={(sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]}
+                toSvg={toSvg}
                 sc={sc}
                 pixelToCmRatio={1}
                 clipIdPrefix="at"
               />
 
               {/* Area labels — on top of panels */}
-              {areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
+              {showAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
                 <text key={`lbl-${areaKey}`}
                   x={svgCx} y={svgCy}
                   textAnchor="middle" dominantBaseline="middle"
@@ -195,10 +246,20 @@ export default function AreasTab({ panels, areas, rowKeys, areaLabel, printMode 
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >{label}</text>
               ))}
+
+              {/* Panel count labels per line */}
+              {showCounts && countLabels}
             </svg>
           </div>
         </div>
       </div>
+
+      <LayersPanel
+        layers={[
+          { label: 'Areas', checked: showAreas, setter: setShowAreas },
+          { label: 'Panel counts', checked: showCounts, setter: setShowCounts },
+        ]}
+      />
 
       <CanvasNavigator
         viewZoom={zoom}

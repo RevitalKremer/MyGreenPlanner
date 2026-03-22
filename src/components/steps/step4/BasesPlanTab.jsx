@@ -639,7 +639,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           mmWidth={MM_W} mmHeight={MM_H}
           onPanToPoint={panToMinimapPoint}
           viewportRect={getMinimapViewportRect()}
-          left={0}
+          left={276}
         />
 
       </div>

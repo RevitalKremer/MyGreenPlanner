@@ -27,6 +27,7 @@ export default function BasesLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
+      pageName="Bases"
       project={project}
       panelType={panelType}
       panelWp={panelWp}

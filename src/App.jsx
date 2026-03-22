@@ -162,8 +162,7 @@ function App() {
           />
         )}
 
-        {s.currentStep >= 4 && (
-          <div style={s.currentStep !== 4 ? { display: 'none' } : { height: '100%', overflow: 'hidden' }}>
+        {s.currentStep === 4 && (
             <Step4ConstructionPlanning
               panels={s.panels}
               refinedArea={s.refinedArea}
@@ -176,7 +175,6 @@ function App() {
               onBOMDataChange={s.setStep4BOMData}
               onPdfDataChange={setStep4PdfData}
             />
-          </div>
         )}
 
         {s.currentStep === 5 && (

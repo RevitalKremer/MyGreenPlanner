@@ -36,6 +36,7 @@ export default function AreasLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
+      pageName="Areas"
       project={project}
       panelType={panelType}
       panelWp={panelWp}
@@ -58,6 +59,7 @@ export default function AreasLayoutPage({
             rowKeys={rowKeys}
             areaLabel={areaLabel}
             printMode
+            printShowCounts={false}
           />
         </div>
       </div>
