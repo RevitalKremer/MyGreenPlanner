@@ -36,6 +36,7 @@ export default function Step3PanelPlacement({
   regeneratePlanPanelsHandler,
   regenerateSingleRowHandler,
   areas = [],
+  setAreas,
   addManualPanel,
   trapezoidConfigs,
   setTrapezoidConfigs
@@ -248,6 +249,10 @@ export default function Step3PanelPlacement({
     return areaTrapezoidMap[ak] || []
   }, [allSelectedSameArea, selectedRow, areaTrapezoidMap])
 
+  const allAreaTrapIds = useMemo(() =>
+    [...new Set(Object.values(areaTrapezoidMap).flat())]
+  , [areaTrapezoidMap])
+
   const addTrapezoid = () => {
     if (!allSelectedSameArea || !selectedRow) return
     const areaKey = getAreaKey(selectedRow[0])
@@ -432,7 +437,7 @@ export default function Step3PanelPlacement({
             panels={panels} setPanels={setPanels}
             selectedPanels={selectedPanels} setSelectedPanels={setSelectedPanels}
             setTrapIdOverride={setTrapIdOverride}
-            rows={rows} areas={areas}
+            rows={rows} areas={areas} setAreas={setAreas}
             areaLabel={areaLabel} getAreaKey={getAreaKey}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
@@ -450,7 +455,7 @@ export default function Step3PanelPlacement({
             nudgeRow={nudgeRow} rotateSelectedRow={rotateSelectedRow}
             addPanelToRow={addPanelToRow} addManualPanel={addManualPanel}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
-            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds}
+            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds} allAreaTrapIds={allAreaTrapIds}
             selectedTrapezoidId={selectedTrapezoidId}
             reassignToTrapezoid={reassignToTrapezoid} addTrapezoid={addTrapezoid}
             selectedRow={selectedRow} refinedArea={refinedArea}

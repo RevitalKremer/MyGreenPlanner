@@ -65,21 +65,15 @@ export default function TrapezoidConfigEditor({
       {/* Row 1: trapezoid selector */}
       <div style={{ marginBottom: '0.35rem' }}>
         <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Trapezoid</div>
-        {selectedAreaTrapIds?.length > 1 ? (
-          <select
-            value={selectedTrapezoidId || ''}
-            onChange={e => reassignToTrapezoid?.(e.target.value)}
-            style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`, borderRadius: '6px', cursor: 'pointer' }}
-          >
-            {selectedAreaTrapIds.map(tid => (
-              <option key={tid} value={tid}>{tid}</option>
-            ))}
-          </select>
-        ) : (
-          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>
-            {selectedTrapezoidId || '—'}
-          </div>
-        )}
+        <select
+          value={selectedTrapezoidId || ''}
+          onChange={e => reassignToTrapezoid?.(e.target.value)}
+          style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`, borderRadius: '6px', cursor: 'pointer' }}
+        >
+          {(selectedAreaTrapIds?.length > 0 ? selectedAreaTrapIds : [selectedTrapezoidId]).filter(Boolean).map(tid => (
+            <option key={tid} value={tid}>{tid}</option>
+          ))}
+        </select>
       </div>
 
       {/* Row 2: actions */}

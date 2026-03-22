@@ -9,7 +9,7 @@ export default function ToolPanel({
   selectedPanels, selectedAreaLabel, selectedRowAngle,
   nudgeRow, rotateSelectedRow, addPanelToRow, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
-  selectedAreaTrapIds, selectedTrapezoidId,
+  allAreaTrapIds, selectedTrapezoidId,
   reassignToTrapezoid, addTrapezoid,
   selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   projectMode, areas, getAreaKey,
@@ -256,7 +256,7 @@ export default function ToolPanel({
           getAreaKey={getAreaKey}
           updateTrapezoidConfig={updateTrapezoidConfig}
           resetTrapezoidConfig={resetTrapezoidConfig}
-          selectedAreaTrapIds={selectedAreaTrapIds}
+          selectedAreaTrapIds={allAreaTrapIds}
           reassignToTrapezoid={reassignToTrapezoid}
           addTrapezoid={addTrapezoid}
         />

@@ -155,6 +155,7 @@ function App() {
             regeneratePlanPanelsHandler={s.regeneratePlanPanelsHandler}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             areas={s.areas}
+            setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}

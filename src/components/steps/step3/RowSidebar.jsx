@@ -4,7 +4,7 @@ import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT, TEXT_DAR
 export default function RowSidebar({
   projectMode, baseline, setBaseline, panels, setPanels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
-  rows, areas, areaLabel, getAreaKey,
+  rows, areas, setAreas, areaLabel, getAreaKey,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
   regenerateSingleRowHandler, generatePanelLayoutHandler, regeneratePlanPanelsHandler,
 }) {
@@ -132,9 +132,12 @@ export default function RowSidebar({
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}
                       >
                         <span style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isRowSelected ? PRIMARY : BORDER_MID }} />
-                        <span style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK }}>
-                          {areaLabel(areaKey, i)}
-                        </span>
+                        <input
+                          value={areas[areaKey]?.label ?? areaLabel(areaKey, i)}
+                          onChange={e => setAreas?.(prev => prev.map((a, idx) => idx === areaKey ? { ...a, label: e.target.value } : a))}
+                          onClick={ev => { ev.stopPropagation(); setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
+                          style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isRowSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', width: '80px', cursor: 'text' }}
+                        />
                         {!hasMultiTrap && trapIds.length === 1 && (
                           <span
                             title={sharedTrapIds.has(trapIds[0]) ? 'Shared config — changes affect all areas using this trapezoid' : trapIds[0]}
