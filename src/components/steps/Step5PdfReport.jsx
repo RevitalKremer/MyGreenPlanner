@@ -6,6 +6,7 @@ import BOMView from './step4/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups } from './step4/tabUtils'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
+import AreasLayoutPage from './step5/AreasLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
 import BasesLayoutPage from './step5/BasesLayoutPage'
 
@@ -233,7 +234,7 @@ function ScaledPage({ scale, children }) {
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step5PdfReport({
-  panels = [], refinedArea, rowConstructions = [], rowLabels = [], project,
+  panels = [], refinedArea, areas = {}, rowConstructions = [], rowLabels = [], project,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
   bomDeltas = {}, onBomDeltasChange,
@@ -408,11 +409,11 @@ export default function Step5PdfReport({
           </ScaledPage>
 
           <ScaledPage scale={pageScale}>
-            <CadPage pageRef={page2Ref} project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} panelCount={panelCount} date={dateStr}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_MUTED, fontSize: '1rem', fontStyle: 'italic' }}>
-                Areas — coming soon
-              </div>
-            </CadPage>
+            <AreasLayoutPage
+              pageRef={page2Ref}
+              panels={panels} areas={areas}
+              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+            />
           </ScaledPage>
 
           <ScaledPage scale={pageScale}>

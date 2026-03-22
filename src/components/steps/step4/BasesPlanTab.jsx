@@ -631,6 +631,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           ]}
         />
 
+        <CanvasNavigator
+          viewZoom={zoom}
+          onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+          onZoomReset={resetView}
+          onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+          mmWidth={MM_W} mmHeight={MM_H}
+          onPanToPoint={panToMinimapPoint}
+          viewportRect={getMinimapViewportRect()}
+          left={0}
+        />
+
       </div>
 
       {/* Base Schedule table */}
@@ -649,15 +660,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
         )}
       </div>
 
-      <CanvasNavigator
-        viewZoom={zoom}
-        onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
-        onZoomReset={resetView}
-        onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
-        mmWidth={MM_W} mmHeight={MM_H}
-        onPanToPoint={panToMinimapPoint}
-        viewportRect={getMinimapViewportRect()}
-      />
     </div>
   )
 }

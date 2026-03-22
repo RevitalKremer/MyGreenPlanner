@@ -29,6 +29,7 @@ export default function CanvasNavigator({
   onPanToPoint,
   viewportRect,
   children,
+  left = 16,
 }) {
   const [hidden, setHidden] = useState(false)
   const dragRef = useRef(false)
@@ -36,7 +37,7 @@ export default function CanvasNavigator({
   const zoomPct = (viewZoom * 100).toFixed(0) + '%'
 
   const panelStyle = {
-    position: 'fixed', bottom: 88, left: 16,  // 72px toolbar + 16px gap
+    position: 'fixed', bottom: 88, left,  // 72px wizard toolbar + 16px gap
     zIndex: 1000,
     userSelect: 'none',
   }

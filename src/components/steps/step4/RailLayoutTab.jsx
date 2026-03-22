@@ -411,6 +411,17 @@ export default function RailLayoutTab({
               { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
             ]}
           />
+
+          <CanvasNavigator
+            viewZoom={zoom}
+            onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+            onZoomReset={resetView}
+            onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+            mmWidth={MM_W} mmHeight={MM_H}
+            onPanToPoint={panToMinimapPoint}
+            viewportRect={getMinimapViewportRect()}
+            left={276}
+          />
         </div>
       </div>
 
@@ -434,15 +445,6 @@ export default function RailLayoutTab({
         )}
       </div>
 
-      <CanvasNavigator
-        viewZoom={zoom}
-        onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
-        onZoomReset={resetView}
-        onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
-        mmWidth={MM_W} mmHeight={MM_H}
-        onPanToPoint={panToMinimapPoint}
-        viewportRect={getMinimapViewportRect()}
-      />
     </div>
   )
 }

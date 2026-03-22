@@ -163,7 +163,7 @@ function App() {
         )}
 
         {s.currentStep >= 4 && (
-          <div style={s.currentStep !== 4 ? { display: 'none' } : undefined}>
+          <div style={s.currentStep !== 4 ? { display: 'none' } : { height: '100%', overflow: 'hidden' }}>
             <Step4ConstructionPlanning
               panels={s.panels}
               refinedArea={s.refinedArea}
@@ -183,6 +183,7 @@ function App() {
           <Step5PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
+            areas={s.areas}
             project={s.currentProject}
             rowConstructions={s.step4BOMData.rowConstructions}
             rowLabels={s.step4BOMData.rowLabels}

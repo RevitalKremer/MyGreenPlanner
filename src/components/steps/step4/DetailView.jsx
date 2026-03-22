@@ -935,6 +935,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
         mmHeight={MM_H}
         onPanToPoint={panToMinimapPoint}
         viewportRect={getMinimapViewportRect()}
+        left={276}
       />}
 
     </div>

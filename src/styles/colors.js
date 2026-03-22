@@ -86,6 +86,9 @@ export const DANGER        = '#dc2626'    // delete / danger action
 export const ADD_GREEN     = '#22c55e'    // add / success indicator
 export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
 
+// ── Area overlay palette (AreasTab polygons) ─────────────────────────────
+export const AREA_PALETTE = ['#5fa8e0', '#5ec89a', '#e09455', '#a855d4', '#d4c832', '#32c8c8', '#e05f8a', '#8ae05f']
+
 // ── Panel layout colors ───────────────────────────────────────────────────
 export const PANEL_LIGHT_BG      = '#cfe3f5'  // unselected panel fill
 export const PANEL_LIGHT_BG_ALT  = '#d1e3f3'  // selected panel fill

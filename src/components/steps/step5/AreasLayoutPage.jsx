@@ -1,27 +1,35 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { CadPage } from '../Step5PdfReport'
-import RailLayoutTab from '../step4/RailLayoutTab'
-import { getPanelsBoundingBox } from '../step4/tabUtils'
+import AreasTab from '../step4/AreasTab'
+import { getPanelsBoundingBox, buildRowGroups } from '../step4/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 
-// Must match PM_PAD and MAX_W inside RailLayoutTab's printMode path
-const PM_PAD = 24, MAX_W = 900
+// Must match PAD and MAX_W inside AreasTab
+const PAD = 40, MAX_W = 900
 
-export default function RailsLayoutPage({
-  panels = [], refinedArea,
-  trapSettingsMap = {}, trapLineRailsMap = {},
+export default function AreasLayoutPage({
+  panels = [], areas = {},
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
+
+  const rowKeys = useMemo(() => buildRowGroups(nonEmptyPanels).keys, [nonEmptyPanels])
+
+  const areaLabel = useCallback((areaKey, i) => {
+    const g = areas[areaKey]?.label
+    return g ? `${g}` : `Area ${i + 1}`
+  }, [areas])
+
   const { naturalW, naturalH } = useMemo(() => {
-    if (!panels.length) return { naturalW: MAX_W + PM_PAD * 2, naturalH: 200 }
-    const bbox = getPanelsBoundingBox(panels)
+    if (!nonEmptyPanels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
+    const bbox = getPanelsBoundingBox(nonEmptyPanels)
     const bboxW = bbox.maxX - bbox.minX
     const bboxH = bbox.maxY - bbox.minY
     const sc    = bboxW > 0 ? MAX_W / bboxW : 1
-    return { naturalW: MAX_W + PM_PAD * 2, naturalH: bboxH * sc + PM_PAD * 2 }
-  }, [panels])
+    return { naturalW: MAX_W + PAD * 2, naturalH: bboxH * sc + PAD * 2 }
+  }, [nonEmptyPanels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -44,11 +52,11 @@ export default function RailsLayoutPage({
           transform: `scale(${fitZoom})`,
           transformOrigin: 'top left',
         }}>
-          <RailLayoutTab
+          <AreasTab
             panels={panels}
-            refinedArea={refinedArea}
-            trapSettingsMap={trapSettingsMap}
-            trapLineRailsMap={trapLineRailsMap}
+            areas={areas}
+            rowKeys={rowKeys}
+            areaLabel={areaLabel}
             printMode
           />
         </div>
