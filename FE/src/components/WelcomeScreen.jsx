@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
+import UserChip from './auth/UserChip'
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -14,7 +15,7 @@ const IconFolder = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, authLoading }) {
+export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading }) {
   const [mode, setMode] = useState(null) // 'new' | 'import'
   const [showAuth, setShowAuth] = useState(false)
   const [projectMode, setProjectMode] = useState('scratch') // 'scratch' | 'plan'
@@ -64,28 +65,14 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
 
       {/* Auth area — top right */}
       {!authLoading && (
-        <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem' }}>
-          {user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: TEXT_DARK }}>
-                {user.full_name}
-              </span>
-              <button onClick={onLogout} style={{
-                padding: '0.35rem 0.8rem', background: 'white', border: `1.5px solid ${BORDER_LIGHT}`,
-                borderRadius: '7px', cursor: 'pointer', fontSize: '0.8rem', color: TEXT_MUTED, fontWeight: '600',
-              }}>
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowAuth(true)} style={{
-              padding: '0.45rem 1.1rem', background: TEXT_DARK, color: 'white',
-              border: 'none', borderRadius: '8px', cursor: 'pointer',
-              fontSize: '0.85rem', fontWeight: '700',
-            }}>
-              Sign In
-            </button>
-          )}
+        <div style={{ position: 'absolute', top: '1.25rem', right: '1.5rem' }}>
+          <UserChip
+            user={user}
+            onSignIn={() => setShowAuth(true)}
+            onSignOut={onLogout}
+            onUpdateProfile={onUpdateProfile}
+            dark={false}
+          />
         </div>
       )}
 

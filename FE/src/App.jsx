@@ -10,7 +10,7 @@ import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
-import UserProfileModal from './components/auth/UserProfileModal'
+import UserChip from './components/auth/UserChip'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -24,7 +24,6 @@ function App() {
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [showAuthGate, setShowAuthGate] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export'
-  const [showProfile, setShowProfile] = useState(false)
 
   const requireLogin = (action) => {
     if (auth.user) return true
@@ -51,6 +50,7 @@ function App() {
         onLogin={auth.login}
         onRegister={auth.register}
         onLogout={auth.logout}
+        onUpdateProfile={auth.updateProfile}
         authLoading={auth.authLoading}
       />
     )
@@ -96,44 +96,14 @@ function App() {
               <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '22px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.7 }} />
             </div>
 
-            {/* Account icon button */}
-            {auth.user ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.3rem 0.65rem' }}>
-                <button
-                  onClick={() => setShowProfile(true)}
-                  title="My Account"
-                  style={{
-                    width: '28px', height: '28px', borderRadius: '50%',
-                    background: PRIMARY, color: TEXT, border: 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: '800', fontSize: '0.8rem', cursor: 'pointer',
-                  }}
-                >
-                  {auth.user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
-                </button>
-                <span style={{ fontSize: '0.6rem', fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em', whiteSpace: 'nowrap', maxWidth: '72px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {auth.user.full_name?.split(' ')[0]}
-                </span>
-                <button onClick={auth.logout} style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)',
-                  padding: 0, lineHeight: 1, textDecoration: 'underline',
-                }}>
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => { setPendingAction(null); setShowAuthGate(true) }}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Sign In</span>
-              </button>
-            )}
+            {/* User chip — avatar / sign-in / admin gear */}
+            <UserChip
+              user={auth.user}
+              onSignIn={() => { setPendingAction(null); setShowAuthGate(true) }}
+              onSignOut={auth.logout}
+              onUpdateProfile={auth.updateProfile}
+              dark
+            />
 
             {/* Divider */}
             <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.13)', margin: '0 0.2rem' }} />
@@ -304,13 +274,6 @@ function App() {
           <AuthModal
             onClose={() => { setShowAuthGate(false); setPendingAction(null) }}
             onSuccess={handleAuthGateSuccess}
-          />
-        )}
-        {showProfile && auth.user && (
-          <UserProfileModal
-            user={auth.user}
-            onClose={() => setShowProfile(false)}
-            onSave={auth.updateProfile}
           />
         )}
       </main>
