@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+FE/node_modules
+FE/dist
+FE/dist-ssr
 dist
 dist-ssr
 *.local
@@ -41,4 +44,6 @@ __pycache__/
 .Python
 venv/
 ENV/
-backend/checkpoints/
+BE/sam-service/checkpoints/
+BE/sam-service/venv/
+BE/mgp-service/venv/

@@ -1,241 +1,205 @@
-# MyGreenPlanner 🌱
+# MyGreenPlanner
 
-Solar PV Roof Planning Application - A Progressive Web App for identifying roofs and planning solar panel installations.
+Solar PV roof planning application — from satellite imagery to construction BOM and PDF reports.
 
-## Overview
-MyGreenPlanner helps plan solar panel installations on rooftops. Users can identify roofs on high-resolution satellite maps, and the app uses SAM2 (Segment Anything Model 2) to automatically generate roof polygons for optimal solar panel placement planning.
+---
 
-## Features
+## What it does
 
-### Phase 1 - Roof Identification ✅ (Current)
-- ✅ Interactive satellite map with multiple tile sources
-- ✅ High-resolution imagery (Google, Esri, OSM)
-- ✅ Click to identify roof location  
-- ✅ Geolocation support
-- ✅ SAM2 backend API ready for integration
-- ✅ GeoJSON output format
+MyGreenPlanner guides a solar installer through a full 5-step planning workflow:
 
-### Phase 2 - Solar Panel Planning (Upcoming)
-- Automatic solar panel placement optimization
-- Custom placement logic
-- Area calculations
-- Export capabilities
+| Step | Name | What happens |
+| --- | --- | --- |
+| 1 | Roof Allocation | Mark roof areas on satellite map using SAM2 AI segmentation |
+| 2 | PV Area Refinement | Trim and fine-tune each roof polygon |
+| 3 | Panel Placement | Auto-place solar panels, adjust rows and trapezoids |
+| 4 | Construction Planning | Configure rails, bases, and hardware; preview structural layout |
+| 5 | PDF / Excel Export | Generate technical drawing package + BOM spreadsheet |
+
+---
+
+## Repository Structure
+
+```text
+MyGreenPlanner/
+├── FE/                    # React frontend (Vite + PWA)
+│   ├── src/
+│   ├── public/
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+│
+├── BE/
+│   ├── sam-service/       # SAM2 image segmentation API (Python / FastAPI)
+│   └── mgp-service/       # MyGreenPlanner API — auth, projects, admin (Python / FastAPI + PostgreSQL)
+│
+└── DevOps/                # Docker build files and compose
+    ├── docker-compose.yml
+    ├── Dockerfile.frontend
+    ├── Dockerfile.mgp-service
+    └── nginx.conf
+```
+
+---
 
 ## Technology Stack
 
 ### Frontend
-- **Framework**: React 18
-- **Build Tool**: Vite
-- **Mapping**: Leaflet + React-Leaflet
-- **PWA**: vite-plugin-pwa
-- **Tile Sources**: Google Satellite, Esri World Imagery, OpenStreetMap
 
-### Backend
-- **Framework**: FastAPI (Python)
-- **AI Model**: SAM2 (Segment Anything Model 2)
-- **Image Processing**: OpenCV, Pillow, NumPy
-- **ML Framework**: PyTorch
+- React 18, Vite, PWA (vite-plugin-pwa)
+- Leaflet + React-Leaflet for satellite map
+- jsPDF + html2canvas for PDF export
+- SheetJS (xlsx) for Excel export
+
+### SAM Service (`BE/sam-service`)
+
+- FastAPI, PyTorch, SAM2 (Meta), OpenCV, Pillow
+
+### MGP Service (`BE/mgp-service`)
+
+- FastAPI (async), SQLAlchemy 2 (async), PostgreSQL, Alembic
+- JWT authentication (access + refresh tokens), role-based access (admin / user)
+- JSONB project storage
+
+---
 
 ## Getting Started
 
-### Prerequisites
-- Node.js 18+ and npm
-- Python 3.9+ and pip
-- (Optional) Google Maps API key for highest resolution tiles
+### Frontend
 
-### Frontend Setup
-
-1. **Install dependencies**
 ```bash
+cd FE
 npm install
+cp .env.example .env      # add VITE_GOOGLE_MAPS_API_KEY if needed
+npm run dev               # http://localhost:5173
 ```
 
-2. **Configure environment variables**
+### SAM Service
+
 ```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your API keys (optional):
-```env
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-VITE_BACKEND_URL=http://localhost:8000
-```
-
-3. **Start development server**
-```bash
-npm run dev
-```
-
-Access at: http://localhost:5173
-
-### Backend Setup
-
-1. **Navigate to backend directory**
-```bash
-cd backend
-```
-
-2. **Create virtual environment**
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**
-```bash
+cd BE/sam-service
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+# Download SAM2 checkpoint → BE/sam-service/checkpoints/sam2_hiera_large.pt
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-4. **Download SAM2 model**
+Checkpoint download: <https://github.com/facebookresearch/segment-anything-2>
 
-Download the SAM2 checkpoint from:
-https://github.com/facebookresearch/segment-anything-2
+### MGP Service
 
-Place it in:
-```
-backend/checkpoints/sam2_hiera_large.pt
-```
-
-5. **Run the backend server**
 ```bash
-python app.py
+cd BE/mgp-service
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env      # fill in DATABASE_URL and SECRET_KEY
+alembic upgrade head      # run DB migrations
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Backend will run at: http://localhost:8000
+### Full Stack (Docker)
+
+```bash
+cd DevOps
+cp .env.example .env      # fill in POSTGRES_PASSWORD, SECRET_KEY, FRONTEND_URL
+docker-compose up --build
+```
+
+Frontend will be served at port 80. MGP service at `/api/mgp/`.
+
+---
+
+## API Reference
+
+### SAM Service (port 8000)
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/` | Health check + model status |
+| POST | `/segment-roof-coordinates` | Segment a roof from map tile image + lat/lng |
+
+### MGP Service (port 8001)
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/health` | Health check |
+| POST | `/auth/register` | Create account |
+| POST | `/auth/login` | Login → access + refresh tokens |
+| POST | `/auth/refresh` | Refresh access token |
+| GET | `/auth/me` | Current user profile |
+| GET | `/projects` | List user's projects |
+| POST | `/projects` | Create project |
+| GET | `/projects/{id}` | Get project (with full data) |
+| PUT | `/projects/{id}` | Save / update project |
+| DELETE | `/projects/{id}` | Delete project |
+| GET | `/admin/users` | List all users (admin only) |
+| PUT | `/admin/users/{id}` | Update user role / active state (admin only) |
+
+---
 
 ## Map Tile Sources
 
-The app supports multiple high-resolution satellite imagery sources, **optimized for the Israeli market**:
+Optimised for the Israeli market:
 
-### Israeli Sources (Recommended) 🇮🇱
-1. **GovMap** (Default) - No API key required ⭐ BEST
-   - Max zoom: 22
-   - Resolution: 10-15cm per pixel
-   - FREE Israeli government orthophoto
-   - Highest quality for Israel
+| Source | API Key | Max Zoom | Notes |
+| --- | --- | --- | --- |
+| GovMap | None | 22 | Israeli government orthophoto — best quality |
+| Mapi (Survey of Israel) | None | 20 | Official Israeli mapping authority |
+| Google Satellite | Optional | 22 | Good fallback |
+| Mapbox Satellite | Demo token | 22 | |
+| Esri World Imagery | None | 19 | Lower resolution fallback |
 
-2. **Mapi (Survey of Israel)** - No API key required
-   - Max zoom: 20
-   - Resolution: 20-50cm per pixel  
-   - Official Israeli mapping authority
+See [ISRAELI_GIS_GUIDE.md](ISRAELI_GIS_GUIDE.md) for details.
 
-### Global Sources
-3. **Google Satellite** - Works without API key (rate limited)
-   - Max zoom: 22
-   - Resolution: 30-50cm in Israel
-   - Good fallback option
+---
 
-4. **Mapbox Satellite** - Works with demo token
-   - Max zoom: 22
-   - Similar to Google in Israel
+## Environment Variables
 
-5. **Esri World Imagery** - No API key required
-   - Max zoom: 19
-   - Lower resolution fallback
+### Frontend (FE/.env)
 
-Click the tile source button to cycle: **GovMap → Mapi → Google → Mapbox → Esri**
-
-See [ISRAELI_GIS_GUIDE.md](ISRAELI_GIS_GUIDE.md) for detailed Israeli GIS information.
-
-## Usage
-
-1. **Open the app** and allow location access (optional)
-2. **Navigate** to your target location using the map
-3. **Zoom in** to roof level (zoom 20+ recommended)
-4. **Click** on a roof to identify it
-5. **Wait** for SAM2 to process and generate the roof polygon
-6. **Review** the generated polygon and proceed to solar panel planning
-
-## Project Structure
-```
-MyGreenPlanner/
-├── src/
-│   ├── components/
-│   │   ├── RoofMapper.jsx      # Main map component
-│   │   └── RoofMapper.css
-│   ├── services/
-│   │   └── sam2Service.js      # SAM2 backend integration
-│   ├── App.jsx                 # Main app component
-│   ├── App.css
-│   ├── main.jsx
-│   └── index.css
-├── backend/
-│   ├── app.py                  # FastAPI server
-│   ├── requirements.txt
-│   ├── checkpoints/            # SAM2 model files
-│   └── README.md
-├── index.html
-├── vite.config.js
-└── package.json
+```env
+VITE_GOOGLE_MAPS_API_KEY=   # optional
+VITE_BACKEND_URL=http://localhost:8000
+VITE_MGP_API_URL=http://localhost:8001
 ```
 
-## API Endpoints
+### MGP Service (BE/mgp-service/.env)
 
-### Backend API
-
-**Health Check**
-```
-GET http://localhost:8000/
-```
-
-**Segment Roof (Geographic Coordinates)**
-```
-POST http://localhost:8000/segment-roof-coordinates
-Content-Type: multipart/form-data
-
-Parameters:
-- image: Image file (map tile)
-- lat: Latitude of clicked point
-- lng: Longitude of clicked point  
-- bounds: JSON string of map bounds
-
-Returns: GeoJSON Feature with Polygon
+```env
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/mgp
+SECRET_KEY=<long random string>
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=30
+ALLOWED_ORIGINS=["http://localhost:5173"]
 ```
 
-## Development
-
-### Build for Production
-```bash
-npm run build
-```
-
-### Preview Production Build
-```bash
-npm run preview
-```
-
-### Test Backend
-```bash
-curl http://localhost:8000/
-```
+---
 
 ## Troubleshooting
 
-**Low resolution tiles?**
-- Switch to Google Satellite tiles (requires API key)
-- Zoom in closer (level 20+)
-- Check your internet connection
+**Frontend doesn't start after repo restructure**
 
-**Backend not connecting?**
-- Ensure Python backend is running on port 8000
-- Check VITE_BACKEND_URL in .env
-- Verify CORS settings in backend/app.py
+```bash
+cd FE && npm install
+```
 
-**SAM2 model not loading?**
-- Download the correct SAM2 checkpoint file
-- Place in backend/checkpoints/ directory
-- Check Python dependencies are installed
+The `node_modules` at the old repo root can be deleted.
 
-## Next Steps
-1. ✅ High-resolution satellite imagery
-2. ✅ SAM2 backend API
-3. 🔄 Complete frontend-backend integration
-4. ⏳ Implement map tile capture
-5. ⏳ Add solar panel placement logic
-6. ⏳ Export functionality
+**SAM2 model not loading**
+
+- Download `sam2_hiera_large.pt` and place in `BE/sam-service/checkpoints/`
+- Verify PyTorch installed: `python3 -c "import torch; print(torch.__version__)"`
+
+**mgp-service DB connection error**
+
+- Ensure PostgreSQL is running and `DATABASE_URL` in `.env` is correct
+- Run `alembic upgrade head` from `BE/mgp-service/`
+
+---
 
 ## License
-MIT
 
-## Contributing
-Contributions welcome! Please open an issue or PR.
+MIT
