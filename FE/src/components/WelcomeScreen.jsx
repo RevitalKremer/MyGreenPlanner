@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
+import AuthModal from './auth/AuthModal'
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -13,8 +14,9 @@ const IconFolder = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, onImportProject }) {
+export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, authLoading }) {
   const [mode, setMode] = useState(null) // 'new' | 'import'
+  const [showAuth, setShowAuth] = useState(false)
   const [projectMode, setProjectMode] = useState('scratch') // 'scratch' | 'plan'
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
@@ -46,13 +48,46 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
     reader.readAsText(file)
   }
 
+  const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
+    if (tab === 'login') await onLogin(email, password)
+    else await onRegister(email, password, fullName, phone)
+    setShowAuth(false)
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
       background: 'linear-gradient(160deg, #ebebeb 0%, #d8d8d8 100%)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: '2rem', fontFamily: 'inherit'
+      padding: '2rem', fontFamily: 'inherit', position: 'relative'
     }}>
+
+      {/* Auth area — top right */}
+      {!authLoading && (
+        <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem' }}>
+          {user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: TEXT_DARK }}>
+                {user.full_name}
+              </span>
+              <button onClick={onLogout} style={{
+                padding: '0.35rem 0.8rem', background: 'white', border: `1.5px solid ${BORDER_LIGHT}`,
+                borderRadius: '7px', cursor: 'pointer', fontSize: '0.8rem', color: TEXT_MUTED, fontWeight: '600',
+              }}>
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowAuth(true)} style={{
+              padding: '0.45rem 1.1rem', background: TEXT_DARK, color: 'white',
+              border: 'none', borderRadius: '8px', cursor: 'pointer',
+              fontSize: '0.85rem', fontWeight: '700',
+            }}>
+              Sign In
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Logo + title */}
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
@@ -279,6 +314,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject }) {
       <p style={{ marginTop: '2rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
         MyGreenPlanner © {new Date().getFullYear()}
       </p>
+
+      {showAuth && (
+        <AuthModal
+          onClose={() => setShowAuth(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      )}
     </div>
   )
 }

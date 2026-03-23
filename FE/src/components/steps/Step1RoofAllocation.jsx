@@ -42,7 +42,7 @@ export default function Step1RoofAllocation({
   selectedPoint,
   setSelectedPoint,
   setRoofPolygon,
-  handlePointSelect
+  handlePointSelect,
 }) {
   const [drawMode, setDrawMode]           = useState('auto')   // 'auto' | 'draw'
   const [isDrawing, setIsDrawing]         = useState(false)

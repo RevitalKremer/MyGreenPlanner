@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_VERY_LIGHT } from './styles/colors'
+import { PRIMARY, TEXT } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
@@ -8,20 +8,50 @@ import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
+import { useAuth } from './hooks/useAuth'
+import AuthModal from './components/auth/AuthModal'
+import UserProfileModal from './components/auth/UserProfileModal'
 import './App.css'
 
 const TOTAL_STEPS = 5
 const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
+const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
+
 function App() {
   const s = useProjectState()
+  const auth = useAuth()
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
+  const [showAuthGate, setShowAuthGate] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export'
+  const [showProfile, setShowProfile] = useState(false)
+
+  const requireLogin = (action) => {
+    if (auth.user) return true
+    setPendingAction(action)
+    setShowAuthGate(true)
+    return false
+  }
+
+  const handleAuthGateSuccess = async (tab, email, password, fullName, phone) => {
+    if (tab === 'login') await auth.login(email, password)
+    else await auth.register(email, password, fullName, phone)
+    setShowAuthGate(false)
+    if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
+    else if (pendingAction === 'export') s.handleExportProject()
+    setPendingAction(null)
+  }
 
   if (s.appScreen === 'welcome') {
     return (
       <WelcomeScreen
         onCreateProject={s.handleCreateProject}
         onImportProject={s.handleImportProject}
+        user={auth.user}
+        onLogin={auth.login}
+        onRegister={auth.register}
+        onLogout={auth.logout}
+        authLoading={auth.authLoading}
       />
     )
   }
@@ -31,45 +61,111 @@ function App() {
       {/* Header Area */}
       <header className="app-header">
         <div className="header-content">
-          <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '68px', width: 'auto' }} />
-            <div>
-              <h1>MyGreenPlanner</h1>
+
+          {/* LEFT: Brand + project */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+            <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '52px', width: 'auto', flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>MyGreenPlanner</h1>
               {s.currentProject?.name ? (
-                <>
-                  <p className="header-subtitle" style={{ fontWeight: '600', color: PRIMARY }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '2px', minWidth: 0 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: '600', color: PRIMARY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '260px' }}>
                     {s.currentProject.name}
-                    {s.currentProject.location && (
-                      <span style={{ fontWeight: '400', color: TEXT_VERY_LIGHT, marginLeft: '0.5rem' }}>
-                        · {s.currentProject.location}
-                      </span>
-                    )}
-                  </p>
-                  <p className="header-subtitle" style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: '1px' }}>
-                    Created {s.currentProject.date ? new Date(s.currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
-                  </p>
-                </>
+                  </span>
+                  {s.currentProject.location && (
+                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                      · {s.currentProject.location}
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap' }}>
+                    {s.currentProject.date ? new Date(s.currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                  </span>
+                </div>
               ) : (
-                <p className="header-subtitle">Solar PV Roof Planning System</p>
+                <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Solar PV Roof Planning System</div>
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderRight: '1px solid rgba(255,255,255,0.2)', paddingRight: '1rem' }}>
-              <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>by</span>
-              <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '28px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.85 }} />
+
+          {/* RIGHT: Icon actions (e-commerce style) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', flexShrink: 0 }}>
+
+            {/* Sadot Energy branding */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingRight: '0.75rem', borderRight: '1px solid rgba(255,255,255,0.13)', marginRight: '0.25rem' }}>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>by</span>
+              <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '22px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.7 }} />
             </div>
+
+            {/* Account icon button */}
+            {auth.user ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.3rem 0.65rem' }}>
+                <button
+                  onClick={() => setShowProfile(true)}
+                  title="My Account"
+                  style={{
+                    width: '28px', height: '28px', borderRadius: '50%',
+                    background: PRIMARY, color: TEXT, border: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: '800', fontSize: '0.8rem', cursor: 'pointer',
+                  }}
+                >
+                  {auth.user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+                </button>
+                <span style={{ fontSize: '0.6rem', fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em', whiteSpace: 'nowrap', maxWidth: '72px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {auth.user.full_name?.split(' ')[0]}
+                </span>
+                <button onClick={auth.logout} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)',
+                  padding: 0, lineHeight: 1, textDecoration: 'underline',
+                }}>
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setPendingAction(null); setShowAuthGate(true) }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Sign In</span>
+              </button>
+            )}
+
+            {/* Divider */}
+            <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.13)', margin: '0 0.2rem' }} />
+
+            {/* Export icon button */}
             <button
-              onClick={s.handleExportProject}
-              style={{ padding: '0.5rem 1rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
+              onClick={() => requireLogin('export') && s.handleExportProject()}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
             >
-              ↓ Export
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>Export</span>
             </button>
-            <button className="btn-start-over" onClick={s.handleStartOver}>
-              Start Over
+
+            {/* Start Over icon button */}
+            <button
+              onClick={s.handleStartOver}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.55)' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 .49-3.21"/>
+              </svg>
+              <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Start Over</span>
             </button>
+
             <HelpButton currentStep={s.currentStep} />
           </div>
+
         </div>
       </header>
 
@@ -203,6 +299,20 @@ function App() {
             <p>Analyzing roof...</p>
           </div>
         )}
+
+        {showAuthGate && (
+          <AuthModal
+            onClose={() => { setShowAuthGate(false); setPendingAction(null) }}
+            onSuccess={handleAuthGateSuccess}
+          />
+        )}
+        {showProfile && auth.user && (
+          <UserProfileModal
+            user={auth.user}
+            onClose={() => setShowProfile(false)}
+            onSave={auth.updateProfile}
+          />
+        )}
       </main>
 
       {/* Wizard Toolbar */}
@@ -215,17 +325,27 @@ function App() {
           {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(step => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
-              <div className="step-name">{STEP_TITLES[step - 1]}</div>
+              <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                {STEP_TITLES[step - 1]}
+                {step >= LOGIN_REQUIRED_STEP && !auth.user && (
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ opacity: 0.55, flexShrink: 0 }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         <button
           className="btn-nav btn-next"
-          onClick={() => s.handleNext(TOTAL_STEPS)}
+          onClick={() => {
+            if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
+            s.handleNext(TOTAL_STEPS)
+          }}
           disabled={!s.canProceedToNextStep()}
         >
-          {s.currentStep === TOTAL_STEPS ? 'Finish' : 'Next →'}
+          {s.currentStep === TOTAL_STEPS ? 'Finish' : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? 'Sign In to Continue →' : 'Next →'}
         </button>
       </footer>
     </div>
