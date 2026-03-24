@@ -1,3 +1,7 @@
+:root {
+  --header-height: 71px;
+}
+
 /* App Layout */
 .app {
   width: 100%;
@@ -13,7 +17,8 @@
   color: white;
   padding: 0.6rem 2rem;
   box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-  z-index: 1000;
+  z-index: 1100;
+  position: relative;
 }
 
 .header-content {
