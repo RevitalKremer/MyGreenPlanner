@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
+import { createProject, updateProject } from '../services/projectsApi'
 
 export function useProjectState() {
   // App-level screen
@@ -53,6 +54,9 @@ export function useProjectState() {
   // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
   const [step5BomDeltas, setStep5BomDeltas] = useState(null)
 
+  // Cloud project ID — set after first cloud save, used for subsequent saves
+  const [cloudProjectId, setCloudProjectId] = useState(null)
+
   // Fingerprint of the areas config used to last generate panels.
   // Only regenerate in plan mode when this changes (prevents wiping subgroups on back→forward).
   const panelGenFingerprint = useRef(null)
@@ -100,6 +104,7 @@ export function useProjectState() {
     setStep4GlobalSettings(null)
     setStep4AreaSettings(null)
     setStep5BomDeltas(null)
+    setCloudProjectId(null)
     panelGenFingerprint.current = null
   }
 
@@ -116,7 +121,7 @@ export function useProjectState() {
     setAppScreen('wizard')
   }
 
-  const handleImportProject = (data) => {
+  const handleImportProject = (data, existingCloudId = null) => {
     resetWizardState()
     setCurrentProject(data.project)
     if (data.uploadedImageData) setUploadedImageData(data.uploadedImageData)
@@ -163,6 +168,7 @@ export function useProjectState() {
     if (data.step4BOMData)   setStep4BOMData(data.step4BOMData)
     if (data.step5BomDeltas) setStep5BomDeltas(data.step5BomDeltas)
     if (data.currentStep) setCurrentStep(data.currentStep)
+    if (existingCloudId) setCloudProjectId(existingCloudId)
     // Treat imported panels as already generated so back→forward doesn't wipe them.
     if (data.panels && data.areas) {
       const importedAreas = data.areas ?? data.rowGroups ?? []
@@ -174,30 +180,32 @@ export function useProjectState() {
     setAppScreen('wizard')
   }
 
+  const getExportData = () => ({
+    version: '1.0',
+    project: currentProject,
+    currentStep,
+    uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
+    roofPolygon,
+    referenceLine,
+    referenceLineLengthCm,
+    panelType,
+    panelFrontHeight,
+    panelAngle,
+    linesPerRow,
+    lineOrientations,
+    refinedArea,
+    baseline,
+    panels,
+    areas,
+    trapezoidConfigs,
+    step4GlobalSettings,
+    step4AreaSettings,
+    step4BOMData,
+    step5BomDeltas,
+  })
+
   const handleExportProject = () => {
-    const data = {
-      version: '1.0',
-      project: currentProject,
-      currentStep,
-      uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
-      roofPolygon,
-      referenceLine,
-      referenceLineLengthCm,
-      panelType,
-      panelFrontHeight,
-      panelAngle,
-      linesPerRow,
-      lineOrientations,
-      refinedArea,
-      baseline,
-      panels,
-      areas,
-      trapezoidConfigs,
-      step4GlobalSettings,
-      step4AreaSettings,
-      step4BOMData,
-      step5BomDeltas,
-    }
+    const data = getExportData()
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -207,6 +215,18 @@ export function useProjectState() {
     a.download = `${safeName}_${dateStr}.mgp`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleSaveProject = async () => {
+    const data = getExportData()
+    const name = currentProject?.name || 'Untitled'
+    const location = currentProject?.location || null
+    if (cloudProjectId) {
+      await updateProject(cloudProjectId, { name, location, data })
+    } else {
+      const saved = await createProject(name, location, data)
+      setCloudProjectId(saved.id)
+    }
   }
 
   // ── Panel layout handlers ─────────────────────────────────────────────────
@@ -596,6 +616,9 @@ export function useProjectState() {
     // Derived
     projectMode,
     getComputedBackHeight,
+    // Cloud
+    cloudProjectId, setCloudProjectId,
+    handleSaveProject,
     // Handlers
     handleStartOver,
     handleCreateProject,

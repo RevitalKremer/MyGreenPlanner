@@ -6,13 +6,13 @@ These instructions apply to all work in this repository. Follow them exactly.
 
 ## 1. Colors — All in `colors.js`
 
-**Rule:** Every color value used in JSX or JS must be a named constant from `src/styles/colors.js`. No hardcoded hex values, `rgb()`, or CSS named colors (except `transparent`) anywhere else.
+**Rule:** Every color value used in JSX or JS must be a named constant from `FE/src/styles/colors.js`. No hardcoded hex values, `rgb()`, or CSS named colors (except `transparent`) anywhere else.
 
 - When adding a new color, first check if a similar constant already exists in `colors.js`. Reuse it or generalize it.
 - If a new constant is needed, add it in the appropriate section with a clear semantic name and a comment.
 - After any color-related change, grep for hardcoded hex values to verify compliance:
   ```
-  grep -rn "#[0-9a-fA-F]\{3,6\}" src/ --include="*.jsx" --include="*.js" --exclude="colors.js"
+  grep -rn "#[0-9a-fA-F]\{3,6\}" FE/src/ --include="*.jsx" --include="*.js" --exclude="colors.js"
   ```
 - Ghost style constants: `GHOST_FILL`, `GHOST_STROKE`, `GHOST_DASH` — use these for all inactive/ghosted SVG elements.
 
@@ -20,7 +20,7 @@ These instructions apply to all work in this repository. Follow them exactly.
 
 ## 2. Step 4 Parameters — Defaults, Min/Max, Highlights
 
-**Single source of truth:** `src/components/steps/step4/constants.js` — `PARAM_SCHEMA`
+**Single source of truth:** `FE/src/components/steps/step4/constants.js` — `PARAM_SCHEMA`
 
 Every user-facing parameter is defined there with:
 - `default` — the default value (used in `SETTINGS_DEFAULTS`)
@@ -56,20 +56,20 @@ Every user-facing parameter is defined there with:
 
 | File | What it provides |
 |---|---|
-| `src/utils/railLayoutService.js` | Rail layout calc, stock splitting, coordinate transforms |
-| `src/utils/basePlanService.js` | Base/block placement calculations |
-| `src/utils/panelUtils.js` | Panel grouping, bounding box, `fmt()` formatter |
-| `src/utils/trapezoidGeometry.js` | Geometry helpers, panel depth constants |
-| `src/utils/constructionCalculator.js` | BOM and material sizing |
+| `FE/src/utils/railLayoutService.js` | Rail layout calc, stock splitting, coordinate transforms |
+| `FE/src/utils/basePlanService.js` | Base/block placement calculations |
+| `FE/src/utils/panelUtils.js` | Panel grouping, bounding box, `fmt()` formatter |
+| `FE/src/utils/trapezoidGeometry.js` | Geometry helpers, panel depth constants |
+| `FE/src/utils/constructionCalculator.js` | BOM and material sizing |
 
 **Shared components** — reuse, do not recreate:
 
 | Component | Purpose |
 |---|---|
-| `src/components/shared/CanvasNavigator.jsx` | Pan/zoom UI controls |
-| `src/components/shared/MinimapView.jsx` | Minimap preview widget |
-| `src/components/shared/RulerTool.jsx` | Distance measurement tool |
-| `src/components/steps/step4/DimensionAnnotation.jsx` | SVG dimension-line annotation |
+| `FE/src/components/shared/CanvasNavigator.jsx` | Pan/zoom UI controls |
+| `FE/src/components/shared/MinimapView.jsx` | Minimap preview widget |
+| `FE/src/components/shared/RulerTool.jsx` | Distance measurement tool |
+| `FE/src/components/steps/step4/DimensionAnnotation.jsx` | SVG dimension-line annotation |
 
 **Export style:**
 - React components → `export default function ComponentName`
@@ -95,14 +95,14 @@ After any change that adds, renames, or removes an exported symbol:
 
 Run a quick check after changes:
 ```
-grep -rn "from '.*colors'" src/ --include="*.jsx" --include="*.js"
+grep -rn "from '.*colors'" FE/src/ --include="*.jsx" --include="*.js"
 ```
 
 ---
 
 ## 5. Help Text — Keep It Up to Date
 
-**Location:** `src/components/HelpPanel.jsx` — the `HELP` object, keyed by step number.
+**Location:** `FE/src/components/HelpPanel.jsx` — the `HELP` object, keyed by step number.
 
 Each step entry has:
 - `title` — step name
@@ -118,28 +118,43 @@ Each step entry has:
 ## Project Structure Reference
 
 ```
-src/
-├── App.jsx                                  # Step router
-├── styles/colors.js                         # ALL color constants (source of truth)
-├── hooks/
-│   └── useProjectState.js                   # Global project state & localStorage
-├── utils/                                   # Pure calculation services
-├── components/
-│   ├── shared/                              # Cross-step reusable components
-│   └── steps/
-│       ├── Step4ConstructionPlanning.jsx    # Step 4 main container & settings state
-│       └── step4/
-│           ├── constants.js                 # PARAM_SCHEMA, SETTINGS_DEFAULTS
-│           ├── DetailView.jsx               # Structural SVG detail drawing
-│           ├── Step4Sidebar.jsx             # Settings panel UI
-│           ├── BasePlanOverlay.jsx          # Base/block SVG overlay
-│           ├── BasesPlanTab.jsx             # Bases tab layout
-│           ├── RailLayoutTab.jsx            # Rail tab layout
-│           ├── HatchedPanels.jsx            # Panel fill rendering
-│           ├── LayoutView.jsx               # Top-level layout canvas
-│           ├── RowsView.jsx                 # Row-level view
-│           ├── LayersPanel.jsx              # Layer visibility controls
-│           ├── RailCrossSectionWidget.jsx   # Rail cross-section diagram
-│           ├── RailCrossSectionOverlay.jsx  # Rail overlay
-│           └── DimensionAnnotation.jsx      # Reusable SVG dimension lines
+FE/                                          # React frontend
+├── src/
+│   ├── App.jsx                              # Step router
+│   ├── styles/colors.js                     # ALL color constants (source of truth)
+│   ├── hooks/
+│   │   └── useProjectState.js               # Global project state & localStorage
+│   ├── utils/                               # Pure calculation services
+│   └── components/
+│       ├── shared/                          # Cross-step reusable components
+│       └── steps/
+│           ├── Step4ConstructionPlanning.jsx
+│           └── step4/
+│               ├── constants.js             # PARAM_SCHEMA, SETTINGS_DEFAULTS
+│               ├── DetailView.jsx
+│               ├── Step4Sidebar.jsx
+│               ├── BasePlanOverlay.jsx
+│               ├── BasesPlanTab.jsx
+│               ├── RailLayoutTab.jsx
+│               ├── HatchedPanels.jsx
+│               ├── LayoutView.jsx
+│               ├── RowsView.jsx
+│               ├── LayersPanel.jsx
+│               ├── RailCrossSectionWidget.jsx
+│               ├── RailCrossSectionOverlay.jsx
+│               └── DimensionAnnotation.jsx
+├── public/
+├── index.html
+├── package.json
+└── vite.config.js
+
+BE/
+├── mgp-service/                             # MyGreenPlanner API (FastAPI + PostgreSQL)
+└── sam-service/                             # SAM2 image segmentation service
+
+DevOps/                                      # All deployment files
+├── docker-compose.yml
+├── Dockerfile.frontend
+├── Dockerfile.mgp-service
+└── nginx.conf
 ```
