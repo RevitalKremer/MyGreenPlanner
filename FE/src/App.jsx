@@ -263,6 +263,17 @@ function App() {
             setSelectedPoint={s.setSelectedPoint}
             setRoofPolygon={s.setRoofPolygon}
             handlePointSelect={s.handlePointSelect}
+            onWhiteboardStart={s.handleWhiteboardStart}
+            projectMode={s.projectMode}
+            setUploadedImageData={s.setUploadedImageData}
+            isDrawingLine={s.isDrawingLine}
+            setIsDrawingLine={s.setIsDrawingLine}
+            lineStart={s.lineStart}
+            setLineStart={s.setLineStart}
+            referenceLine={s.referenceLine}
+            setReferenceLine={s.setReferenceLine}
+            referenceLineLengthCm={s.referenceLineLengthCm}
+            setReferenceLineLengthCm={s.setReferenceLineLengthCm}
           />
         )}
 

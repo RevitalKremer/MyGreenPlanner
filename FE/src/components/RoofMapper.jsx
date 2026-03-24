@@ -153,8 +153,6 @@ function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
             positions={roofPolygon.coordinates}
             pathOptions={{
               color: PRIMARY,
-              fillColor: PRIMARY,
-              fillOpacity: 0.3,
               weight: 2
             }}
           />

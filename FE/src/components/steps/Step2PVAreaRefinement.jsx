@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_SUBTLE, ERROR, WARNING, SUCCESS } from '../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_SUBTLE, ERROR, WARNING, SUCCESS } from '../../styles/colors'
 import {
   computePanelBackHeight,
   toggleOrientation, toggleEmptyOrientation,
@@ -23,9 +23,7 @@ export default function Step2PVAreaRefinement({
   lineStart,
   setLineStart,
   referenceLine,
-  setReferenceLine,
   referenceLineLengthCm,
-  setReferenceLineLengthCm,
   panelType,
   setPanelType,
   panelFrontHeight,
@@ -136,10 +134,7 @@ export default function Step2PVAreaRefinement({
     const x = ((e.clientX - rect.left) / rect.width) * imageRef.naturalWidth
     const y = ((e.clientY - rect.top) / rect.height) * imageRef.naturalHeight
 
-    if (isDrawingLine) {
-      if (!lineStart) { setLineStart({ x, y }) }
-      else { setReferenceLine({ start: lineStart, end: { x, y } }); setLineStart(null); setIsDrawingLine(false) }
-    } else if (activeGroupId) {
+    if (activeGroupId) {
       if (!baselineDrawStart) { setBaselineDrawStart([x, y]) }
       else {
         updateGroup(activeGroupId, 'baseline', { p1: baselineDrawStart, p2: [x, y] })
@@ -149,7 +144,7 @@ export default function Step2PVAreaRefinement({
     }
   }
 
-  const isDrawingAnything = isDrawingLine || !!activeGroupId
+  const isDrawingAnything = !!activeGroupId
 
   // ── Diagram data ──────────────────────────────────────────────────────────
   const dg = projectMode === 'plan'
@@ -172,8 +167,6 @@ export default function Step2PVAreaRefinement({
             viewZoom={viewZoom} setViewZoom={setViewZoom}
             imageRef={imageRef} setImageRef={setImageRef}
             roofPolygon={roofPolygon}
-            referenceLine={referenceLine}
-            isDrawingLine={isDrawingLine} lineStart={lineStart}
             areas={areas} projectMode={projectMode}
             activeGroupId={activeGroupId} baselineDrawStart={baselineDrawStart}
             handleImageClick={handleImageClick}
@@ -225,32 +218,6 @@ export default function Step2PVAreaRefinement({
                     <option value="AIKO-G670-MCH72Mw">AIKO-G670-MCH72Mw (2382×1134×30mm)</option>
                   </select>
                   <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: TEXT_LIGHT, fontStyle: 'italic' }}>238.2 cm (L) × 113.4 cm (W)</p>
-                </div>
-
-                {/* Reference Line (global, both modes) */}
-                <div style={{ marginBottom: '1.1rem', padding: '0.85rem', background: '#fcfdf7', borderRadius: '8px', border: `1px solid ${PRIMARY}` }}>
-                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Reference Line (scale)</label>
-                  <button
-                    onClick={() => { if (isDrawingLine) { setIsDrawingLine(false); setLineStart(null) } else { setIsDrawingLine(true); setActiveGroupId(null); setBaselineDrawStart(null); setReferenceLine(null) } }}
-                    style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? ERROR : PRIMARY, color: isDrawingLine ? 'white' : TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
-                  >
-                    {isDrawingLine ? 'Cancel Drawing' : (referenceLine ? 'Redraw Line' : 'Draw Line on Image')}
-                  </button>
-                  {referenceLine && (
-                    <>
-                      <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: TEXT_SECONDARY }}>Line Length (cm)</label>
-                      <input type="number" min="0" step="0.1" value={referenceLineLengthCm}
-                        onChange={(e) => setReferenceLineLengthCm(e.target.value)}
-                        placeholder="Enter length in cm"
-                        style={{ width: '100%', padding: '0.6rem', border: `2px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
-                      />
-                      {referenceLineLengthCm && (
-                        <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: TEXT_MUTED }}>
-                          Ratio: {(referenceLineLengthCm / Math.sqrt(Math.pow(referenceLine.end.x - referenceLine.start.x, 2) + Math.pow(referenceLine.end.y - referenceLine.start.y, 2))).toFixed(4)} cm/px
-                        </p>
-                      )}
-                    </>
-                  )}
                 </div>
 
                 {/* Mode-specific config */}

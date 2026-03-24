@@ -3,13 +3,10 @@ import { BLACK, PRIMARY, WARNING } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 
-const DRAW_COLOR = '#FF00FF'
-
 export default function AreaCanvas({
   uploadedImageData, viewZoom, setViewZoom,
   imageRef, setImageRef,
   roofPolygon,
-  referenceLine, isDrawingLine, lineStart,
   areas, projectMode,
   activeGroupId, baselineDrawStart,
   handleImageClick, isDrawingAnything,
@@ -107,27 +104,8 @@ export default function AreaCanvas({
                   </mask>
                 </defs>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)"/>
-                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.2)" stroke={PRIMARY} strokeWidth="3"/>
+                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="none" stroke={PRIMARY} strokeWidth="3"/>
               </>
-            )}
-
-            {/* Reference line (drawn) */}
-            {referenceLine && (
-              <>
-                <line x1={referenceLine.start.x} y1={referenceLine.start.y} x2={referenceLine.end.x} y2={referenceLine.end.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray}/>
-                <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={dotR} fill={DRAW_COLOR}/>
-                <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={dotR} fill={DRAW_COLOR}/>
-              </>
-            )}
-
-            {/* Reference line: first click dot */}
-            {isDrawingLine && lineStart && (
-              <circle cx={lineStart.x} cy={lineStart.y} r={dotR} fill={DRAW_COLOR}/>
-            )}
-
-            {/* Reference line: live preview */}
-            {isDrawingLine && lineStart && mousePos && (
-              <line x1={lineStart.x} y1={lineStart.y} x2={mousePos.x} y2={mousePos.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray}/>
             )}
 
             {/* Group baselines (plan mode) */}
@@ -176,9 +154,7 @@ export default function AreaCanvas({
         {/* Drawing hint banner */}
         {isDrawingAnything && (
           <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: `${WARNING}eb`, color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-            {isDrawingLine
-              ? (lineStart ? 'Click second point to finish reference line' : 'Click first point of reference line')
-              : (baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${activeGroup?.label}`)}
+            {baselineDrawStart ? 'Click second point to finish baseline' : `Click first point of baseline for ${activeGroup?.label}`}
           </div>
         )}
       </div>

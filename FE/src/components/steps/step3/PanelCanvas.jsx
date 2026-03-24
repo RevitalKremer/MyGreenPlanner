@@ -323,7 +323,7 @@ export default function PanelCanvas({
             {roofPolygon && (
               <>
                 <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
-                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="rgba(196,214,0,0.1)" stroke={PRIMARY} strokeWidth="3" />
+                <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="none" stroke={PRIMARY} strokeWidth="3" />
               </>
             )}
 

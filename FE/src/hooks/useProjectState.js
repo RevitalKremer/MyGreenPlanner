@@ -116,9 +116,32 @@ export function useProjectState() {
     }
   }
 
+  const generateWhiteCanvas = () => {
+    const W = 3000, H = 2000
+    const canvas = document.createElement('canvas')
+    canvas.width = W; canvas.height = H
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+    return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isScratch: true }
+  }
+
   const handleCreateProject = (projectInfo) => {
     setCurrentProject(projectInfo)
+    if (projectInfo.mode === 'scratch') {
+      const data = generateWhiteCanvas()
+      setUploadedImageData(data)
+      setUploadedImageMode(true)
+      setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
+    }
     setAppScreen('wizard')
+  }
+
+  const handleWhiteboardStart = () => {
+    const data = generateWhiteCanvas()
+    setUploadedImageData(data)
+    setUploadedImageMode(true)
+    setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
   }
 
   const handleImportProject = (data, existingCloudId = null) => {
@@ -542,13 +565,15 @@ export function useProjectState() {
 
   const canProceedToNextStep = () => {
     switch (currentStep) {
-      case 1: return roofPolygon !== null
+      case 1: return (
+        roofPolygon !== null &&
+        referenceLine !== null &&
+        referenceLineLengthCm !== '' &&
+        parseFloat(referenceLineLengthCm) > 0
+      )
       case 2:
         if (projectMode === 'plan') {
           return (
-            referenceLine !== null &&
-            referenceLineLengthCm !== '' &&
-            parseFloat(referenceLineLengthCm) > 0 &&
             areas.length > 0 &&
             areas.every(g =>
               g.baseline !== null &&
@@ -558,9 +583,6 @@ export function useProjectState() {
           )
         }
         return (
-          referenceLine !== null &&
-          referenceLineLengthCm !== '' &&
-          parseFloat(referenceLineLengthCm) > 0 &&
           panelFrontHeight !== '' && parseFloat(panelFrontHeight) >= 0 &&
           panelAngle !== '' && parseFloat(panelAngle) >= 0 && parseFloat(panelAngle) <= 30
         )
@@ -630,6 +652,7 @@ export function useProjectState() {
     addManualPanel,
     handlePointSelect,
     handleImageUploaded,
+    handleWhiteboardStart,
     handleImageClick,
     handleNext,
     handleBack,
