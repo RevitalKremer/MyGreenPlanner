@@ -4,14 +4,16 @@ import {
 } from '../../styles/colors'
 import ProductsTab from './ProductsTab'
 import SettingsTab from './SettingsTab'
+import UsersTab from './UsersTab'
 
 const TABS = [
+  { key: 'users', label: 'Users' },
   { key: 'products', label: 'Products' },
   { key: 'settings', label: 'Default Settings' },
 ]
 
-export default function AdminPanel({ onClose }) {
-  const [activeTab, setActiveTab] = useState('products')
+export default function AdminPanel({ onClose, currentUserId }) {
+  const [activeTab, setActiveTab] = useState('users')
 
   return (
     <div style={{
@@ -54,6 +56,7 @@ export default function AdminPanel({ onClose }) {
 
         {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
+          {activeTab === 'users'    && <UsersTab currentUserId={currentUserId} />}
           {activeTab === 'products' && <ProductsTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>

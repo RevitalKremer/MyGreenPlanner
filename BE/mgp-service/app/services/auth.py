@@ -48,3 +48,18 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     if not user or not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+def create_email_token(email: str, purpose: str, expire_hours: int = 24) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(hours=expire_hours)
+    return jwt.encode({"sub": email, "exp": expire, "type": purpose}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def verify_email_token(token: str, expected_purpose: str) -> str | None:
+    try:
+        data = decode_token(token)
+        if data.get("type") != expected_purpose:
+            return None
+        return data["sub"]
+    except (JWTError, KeyError):
+        return None

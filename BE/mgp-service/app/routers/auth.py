@@ -6,17 +6,20 @@ import uuid
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.schemas.auth import Token, LoginRequest
+from app.schemas.auth import Token, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.schemas.user import UserCreate, UserRead, UserProfileUpdate
 from app.services.auth import (
     authenticate_user,
     create_access_token,
     create_refresh_token,
+    create_email_token,
+    verify_email_token,
     decode_token,
     get_user_by_email,
     get_user_by_id,
     hash_password,
 )
+from app.services.email_service import send_verification_email, send_reset_email
 from app.routers.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -49,7 +52,42 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    token = create_email_token(user.email, "verify", expire_hours=24)
+    await send_verification_email(user.email, token)
     return user
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    user = await get_user_by_email(db, payload.email)
+    if user and user.is_active:
+        token = create_email_token(user.email, "reset", expire_hours=1)
+        await send_reset_email(user.email, token)
+    # Always 204 — never reveal whether the email exists
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    email = verify_email_token(payload.token, "reset")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+    user = await get_user_by_email(db, email)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    user.hashed_password = hash_password(payload.new_password)
+    await db.commit()
+
+
+@router.get("/verify-email", status_code=status.HTTP_204_NO_CONTENT)
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    email = verify_email_token(token, "verify")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
+    user = await get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    user.is_verified = True
+    await db.commit()
 
 
 @router.post("/login", response_model=Token)

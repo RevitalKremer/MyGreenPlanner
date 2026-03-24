@@ -97,7 +97,7 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
         />
       )}
       {showAdmin && user?.role === 'admin' && (
-        <AdminPanel onClose={() => setShowAdmin(false)} />
+        <AdminPanel onClose={() => setShowAdmin(false)} currentUserId={user.id} />
       )}
     </>
   )

@@ -31,6 +31,15 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       REFRESH_TOKEN_EXPIRE_DAYS: 30
       ALLOWED_ORIGINS: "http://localhost,http://localhost:80,http://localhost:5173,http://localhost:5174,http://localhost:3000,${FRONTEND_URL}"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@mygreenplanner.com}
+      SYSADMIN_EMAIL: ${SYSADMIN_EMAIL:-sysadmin@mgp.local}
+      SYSADMIN_PASSWORD: ${SYSADMIN_PASSWORD:-Sysadmin1234!}
+      SYSADMIN_NAME: ${SYSADMIN_NAME:-System Administrator}
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 

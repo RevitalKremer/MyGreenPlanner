@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, TEXT } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
@@ -11,6 +11,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
+import { listProjects, getProject, deleteProject } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -23,7 +24,30 @@ function App() {
   const auth = useAuth()
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [showAuthGate, setShowAuthGate] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export'
+  const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export' | 'save'
+  const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
+  const [cloudProjects, setCloudProjects] = useState([])
+  const [cloudProjectsLoading, setCloudProjectsLoading] = useState(false)
+  const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
+  const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+
+  // Handle ?verifyToken= and ?resetToken= URL params on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const verifyToken = params.get('verifyToken')
+    const resetToken = params.get('resetToken')
+    if (verifyToken) {
+      window.history.replaceState({}, '', window.location.pathname)
+      auth.verifyEmail(verifyToken)
+        .then(() => setVerifyBanner('success'))
+        .catch(() => setVerifyBanner('error'))
+    } else if (resetToken) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setUrlResetToken(resetToken)
+      setShowAuthGate(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const requireLogin = (action) => {
     if (auth.user) return true
@@ -32,13 +56,64 @@ function App() {
     return false
   }
 
+  const fetchCloudProjects = useCallback(async () => {
+    if (!auth.user) return
+    setCloudProjectsLoading(true)
+    try {
+      const list = await listProjects()
+      setCloudProjects(list)
+    } catch {
+      setCloudProjects([])
+    } finally {
+      setCloudProjectsLoading(false)
+    }
+  }, [auth.user])
+
+  useEffect(() => {
+    if (auth.user) fetchCloudProjects()
+    else setCloudProjects([])
+  }, [auth.user, fetchCloudProjects])
+
+  const handleCloudSave = async () => {
+    setSaveState('saving')
+    try {
+      await s.handleSaveProject()
+      setSaveState('saved')
+      fetchCloudProjects()
+      setTimeout(() => setSaveState(null), 2500)
+    } catch {
+      setSaveState('error')
+      setTimeout(() => setSaveState(null), 3000)
+    }
+  }
+
   const handleAuthGateSuccess = async (tab, email, password, fullName, phone) => {
     if (tab === 'login') await auth.login(email, password)
     else await auth.register(email, password, fullName, phone)
     setShowAuthGate(false)
     if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
     else if (pendingAction === 'export') s.handleExportProject()
+    else if (pendingAction === 'save') handleCloudSave()
     setPendingAction(null)
+  }
+
+  const handleLoadCloudProject = async (projectId) => {
+    try {
+      const cloudProject = await getProject(projectId)
+      s.handleImportProject(cloudProject.data, cloudProject.id)
+    } catch (err) {
+      alert('Could not load project: ' + err.message)
+    }
+  }
+
+  const handleDeleteCloudProject = async (projectId) => {
+    if (!confirm('Delete this cloud project? This cannot be undone.')) return
+    try {
+      await deleteProject(projectId)
+      setCloudProjects(prev => prev.filter(p => p.id !== projectId))
+    } catch (err) {
+      alert('Could not delete project: ' + err.message)
+    }
   }
 
   if (s.appScreen === 'welcome') {
@@ -52,6 +127,12 @@ function App() {
         onLogout={auth.logout}
         onUpdateProfile={auth.updateProfile}
         authLoading={auth.authLoading}
+        cloudProjects={cloudProjects}
+        cloudProjectsLoading={cloudProjectsLoading}
+        onLoadCloudProject={handleLoadCloudProject}
+        onDeleteCloudProject={handleDeleteCloudProject}
+        onForgotPassword={auth.forgotPassword}
+        onResetPassword={auth.resetPassword}
       />
     )
   }
@@ -108,18 +189,45 @@ function App() {
             {/* Divider */}
             <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.13)', margin: '0 0.2rem' }} />
 
-            {/* Export icon button */}
-            <button
-              onClick={() => requireLogin('export') && s.handleExportProject()}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>Export</span>
-            </button>
+            {/* Save / Export button */}
+            {auth.user ? (
+              <button
+                onClick={handleCloudSave}
+                disabled={saveState === 'saving'}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: saveState === 'saving' ? 'default' : 'pointer', padding: '0.3rem 0.65rem', color: saveState === 'saved' ? '#6fcf97' : saveState === 'error' ? '#eb5757' : 'rgba(255,255,255,0.75)' }}
+              >
+                {saveState === 'saving' ? (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+                    <circle cx="12" cy="12" r="9"/>
+                  </svg>
+                ) : saveState === 'saved' ? (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                ) : (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                )}
+                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>
+                  {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Error' : 'Save'}
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={() => requireLogin('export') && s.handleExportProject()}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>Export</span>
+              </button>
+            )}
 
             {/* Start Over icon button */}
             <button
@@ -272,9 +380,26 @@ function App() {
 
         {showAuthGate && (
           <AuthModal
-            onClose={() => { setShowAuthGate(false); setPendingAction(null) }}
+            onClose={() => { setShowAuthGate(false); setPendingAction(null); setUrlResetToken(null) }}
             onSuccess={handleAuthGateSuccess}
+            onForgotPassword={auth.forgotPassword}
+            onResetPassword={auth.resetPassword}
+            resetToken={urlResetToken}
           />
+        )}
+
+        {verifyBanner && (
+          <div style={{
+            position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1100, padding: '0.75rem 1.25rem', borderRadius: '10px',
+            background: verifyBanner === 'success' ? '#e8f5e9' : '#ffebee',
+            color: verifyBanner === 'success' ? '#2e7d32' : '#c62828',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.88rem', fontWeight: '600',
+            display: 'flex', alignItems: 'center', gap: '0.6rem',
+          }}>
+            {verifyBanner === 'success' ? '✓ Email verified successfully!' : '✗ Email verification failed — link may have expired.'}
+            <button onClick={() => setVerifyBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
+          </div>
         )}
       </main>
 

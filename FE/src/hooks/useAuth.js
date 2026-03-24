@@ -75,5 +75,32 @@ export function useAuth() {
     return updated
   }, [])
 
-  return { user, authLoading, login, logout, register, updateProfile }
+  const forgotPassword = useCallback(async (email) => {
+    const res = await mgpRequest('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) throw new Error('Request failed')
+  }, [])
+
+  const resetPassword = useCallback(async (token, newPassword) => {
+    const res = await mgpRequest('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || 'Reset failed')
+    }
+  }, [])
+
+  const verifyEmail = useCallback(async (token) => {
+    const res = await mgpRequest(`/auth/verify-email?token=${encodeURIComponent(token)}`)
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || 'Verification failed')
+    }
+  }, [])
+
+  return { user, authLoading, login, logout, register, updateProfile, forgotPassword, resetPassword, verifyEmail }
 }

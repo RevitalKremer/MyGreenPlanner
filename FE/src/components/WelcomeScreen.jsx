@@ -15,7 +15,7 @@ const IconFolder = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading }) {
+export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword }) {
   const [mode, setMode] = useState(null) // 'new' | 'import'
   const [showAuth, setShowAuth] = useState(false)
   const [projectMode, setProjectMode] = useState('scratch') // 'scratch' | 'plan'
@@ -50,9 +50,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
   }
 
   const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
-    if (tab === 'login') await onLogin(email, password)
-    else await onRegister(email, password, fullName, phone)
-    setShowAuth(false)
+    if (tab === 'login') {
+      await onLogin(email, password)
+      setShowAuth(false)
+    } else {
+      await onRegister(email, password, fullName, phone)
+      // Don't close — AuthModal transitions to 'registered' screen internally
+    }
   }
 
   return (
@@ -290,6 +294,65 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
         </div>
       </div>
 
+      {/* My Projects — visible to logged-in users */}
+      {user && (
+        <div style={{ width: '100%', maxWidth: '780px', marginTop: '1.75rem' }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
+            My Saved Projects
+          </div>
+
+          {cloudProjectsLoading ? (
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>Loading…</div>
+          ) : cloudProjects.length === 0 ? (
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>No cloud projects yet. Save a project to see it here.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {cloudProjects.map(p => (
+                <div key={p.id} style={{
+                  background: 'white', borderRadius: '10px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+                  border: `1.5px solid ${BORDER_LIGHT}`,
+                  padding: '0.75rem 1rem',
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
+                      {p.location ? `${p.location} · ` : ''}
+                      {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onLoadCloudProject(p.id)}
+                    style={{
+                      padding: '0.4rem 0.9rem', background: TEXT_DARK, color: 'white',
+                      border: 'none', borderRadius: '7px', cursor: 'pointer',
+                      fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Open
+                  </button>
+                  <button
+                    onClick={() => onDeleteCloudProject(p.id)}
+                    title="Delete project"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Sadot Energy branding */}
       <div style={{ marginTop: '3.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
         <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
@@ -306,6 +369,8 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
         <AuthModal
           onClose={() => setShowAuth(false)}
           onSuccess={handleAuthSuccess}
+          onForgotPassword={onForgotPassword}
+          onResetPassword={onResetPassword}
         />
       )}
     </div>

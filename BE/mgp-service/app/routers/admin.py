@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.product import Product
 from app.models.setting import AppSetting
 from app.schemas.user import UserRead, UserUpdate
@@ -30,18 +30,42 @@ async def list_users(
 async def update_user(
     user_id: str,
     payload: UserUpdate,
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.is_sysadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify the system administrator")
+    if user.id == current_admin.id and payload.role is not None and payload.role != current_admin.role:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change your own role")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: str,
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.is_sysadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete the system administrator")
+    if user.id == current_admin.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete your own account")
+    if user.role == UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete other admin accounts")
+    await db.delete(user)
+    await db.commit()
 
 
 # ── Products ───────────────────────────────────────────────────────────────────

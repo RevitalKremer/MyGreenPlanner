@@ -18,6 +18,8 @@ class UserRead(BaseModel):
     phone_number: str | None
     role: UserRole
     is_active: bool
+    is_verified: bool
+    is_sysadmin: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
