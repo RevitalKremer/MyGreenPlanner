@@ -16,4 +16,4 @@ export const deleteProduct = (id) => mgpRequest(`/admin/products/${id}`, { metho
 
 // Settings
 export const getSettings = () => mgpRequest('/admin/settings').then(r => r.json())
-export const updateSetting = (key, value_json) => mgpRequest(`/admin/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value_json }) }).then(r => r.json())
+export const updateSetting = (key, payload) => mgpRequest(`/admin/settings/${key}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(r => r.json())

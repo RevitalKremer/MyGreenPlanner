@@ -18,3 +18,5 @@ class SettingRead(BaseModel):
 
 class SettingUpdate(BaseModel):
     value_json: Any
+    min_val: float | None = None
+    max_val: float | None = None

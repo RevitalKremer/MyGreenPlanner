@@ -150,6 +150,10 @@ async def update_setting(
     if not setting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Setting not found")
     setting.value_json = payload.value_json
+    if payload.min_val is not None:
+        setting.min_val = payload.min_val
+    if payload.max_val is not None:
+        setting.max_val = payload.max_val
     await db.commit()
     await db.refresh(setting)
     return setting
