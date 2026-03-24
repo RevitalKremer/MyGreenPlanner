@@ -31,10 +31,19 @@ dev-dist
 sw.js
 workbox-*.js
 
+# Vite cache
+.vite/
+FE/.vite/
+
 # Environment variables
 .env
 .env.local
 .env.*.local
+
+# PDF and office files
+*.pdf
+*.xlsx
+*.docx
 
 # Python
 __pycache__/
