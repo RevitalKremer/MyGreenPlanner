@@ -38,6 +38,20 @@ export default function PanelCanvas({
   const [snapGuideState, setSnapGuideState] = useState(null) // {pivotY, minX, maxX, snapping}
 
   const willDeselectRef = useRef(false)
+  const wheelContainerRef = useRef(null)
+
+  // Attach wheel listener as non-passive so preventDefault works
+  useEffect(() => {
+    const el = wheelContainerRef.current
+    if (!el) return
+    const handler = (e) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.1 : 0.1
+      setViewZoom(z => Math.max(0.5, Math.min(3, z + delta)))
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   const ptInPoly = (px, py, verts) => {
     let inside = false
@@ -532,7 +546,7 @@ export default function PanelCanvas({
       <div
         className="uploaded-image-container"
         style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)` }}
-        onWheel={(e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; setViewZoom(Math.max(0.5, Math.min(3, viewZoom + delta))) }}
+        ref={wheelContainerRef}
       >
         <img
           ref={imgRefCallback}
