@@ -53,6 +53,8 @@ export default function Step3PanelPlacement({
 }) {
   const panelSpec = PANEL_TYPES.find(t => t.id === panelType) ?? DEFAULT_PANEL_TYPE
   const [activeTool, setActiveTool] = useState(projectMode === 'scratch' ? 'draw' : 'move')
+  const activeToolRef = useRef(activeTool)
+  useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
@@ -109,9 +111,10 @@ export default function Step3PanelPlacement({
       const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
       if (areaPanels.length > 0) {
         setSelectedPanels(prev => {
-          // If all selected panels still exist (e.g. after a move drag), keep exact selection
-          if (prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
-          // Otherwise panels were recomputed with new IDs — re-sync to full area
+          // In move/rotate: if all selected panels still exist, keep exact selection (e.g. after drag)
+          const tool = activeToolRef.current
+          if ((tool === 'move' || tool === 'rotate') && prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
+          // Otherwise (draw mode, or recompute with new IDs) — re-sync to full area
           const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
           return same ? prev : areaPanels
         })
