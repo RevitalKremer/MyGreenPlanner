@@ -9,12 +9,14 @@ export default function ToolPanel({
   selectedPanels, selectedAreaLabel, selectedRowAngle,
   nudgeRow, rotateSelectedRow, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
-  allAreaTrapIds, selectedTrapezoidId,
+  selectedAreaTrapIds, selectedTrapezoidId,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
   reassignToTrapezoid, addTrapezoid,
   selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   projectMode, areas, getAreaKey,
   updateTrapezoidConfig, resetTrapezoidConfig,
+  panelFrontHeight, panelAngle,
+  rectAreas, setRectAreas,
   showHGridlines, setShowHGridlines,
   showVGridlines, setShowVGridlines,
   snapToGridlines, setSnapToGridlines,
@@ -255,9 +257,13 @@ export default function ToolPanel({
           getAreaKey={getAreaKey}
           updateTrapezoidConfig={updateTrapezoidConfig}
           resetTrapezoidConfig={resetTrapezoidConfig}
-          selectedAreaTrapIds={allAreaTrapIds}
+          selectedAreaTrapIds={selectedAreaTrapIds}
           reassignToTrapezoid={reassignToTrapezoid}
           addTrapezoid={addTrapezoid}
+          panelFrontHeight={panelFrontHeight}
+          panelAngle={panelAngle}
+          rectAreas={rectAreas}
+          setRectAreas={setRectAreas}
         />
       )}
 

@@ -278,11 +278,59 @@ export default function Step3PanelPlacement({
   const getAreaKey = (panel) =>
     (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
+  // Auto-derive linesPerRow + lineOrientations from panel rows (scratch mode only).
+  // Must be after selectedRow and getAreaKey are defined.
+  const defaultScratchTrapId = projectMode === 'scratch' && selectedRow
+    ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}1`
+    : null
+
   const selectedTrapezoidId = trapIdOverride ?? (
     selectedPanels.length > 0
-      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || null)
+      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || defaultScratchTrapId)
       : null
   )
+
+  // Pre-compute stable primitives for the auto-derive effect deps
+  const _scratchAreaKey = projectMode === 'scratch' && selectedRow ? getAreaKey(selectedRow[0]) : null
+  const _scratchFH = _scratchAreaKey !== null ? (parseFloat(rectAreas[_scratchAreaKey]?.frontHeight) || 0) : 0
+  const _scratchAngle = _scratchAreaKey !== null ? (parseFloat(rectAreas[_scratchAreaKey]?.angle) || 0) : 0
+
+  useEffect(() => {
+    if (projectMode !== 'scratch' || !selectedRow || !selectedTrapezoidId) return
+
+    const rowMap = new Map()
+    selectedRow.forEach(p => {
+      const r = p.row ?? 0
+      if (!rowMap.has(r)) rowMap.set(r, p)
+    })
+    const sortedRows = [...rowMap.entries()].sort(([a], [b]) => Number(a) - Number(b))
+    if (sortedRows.length === 0) return
+
+    const autoOrients = sortedRows.map(([, p]) =>
+      (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal'
+    )
+    const autoLPR = sortedRows.length
+
+    // Source of truth for angle/frontH is rectAreas[areaKey], fall back to global defaults
+    const areaKey = getAreaKey(selectedRow[0])
+    const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
+    const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0
+
+    const current = trapezoidConfigs?.[selectedTrapezoidId] || {}
+    if (
+      current.linesPerRow === autoLPR &&
+      JSON.stringify(current.lineOrientations) === JSON.stringify(autoOrients) &&
+      current.angle === a &&
+      current.frontHeight === fH
+    ) return
+
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR).toFixed(1))
+
+    setTrapezoidConfigs(prev => ({
+      ...prev,
+      [selectedTrapezoidId]: { ...current, linesPerRow: autoLPR, lineOrientations: autoOrients, backHeight: bH, angle: a, frontHeight: fH },
+    }))
+  }, [selectedRow, selectedTrapezoidId, projectMode, _scratchFH, _scratchAngle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const areaLabel = (areaKey, i) => {
     const g = areas[areaKey]?.label
@@ -297,14 +345,17 @@ export default function Step3PanelPlacement({
     panels.forEach(p => {
       const aKey = p.area ?? p.row
       if (aKey === undefined || aKey === null) return
-      const tId = p.trapezoidId || 'A1'
+      const defaultTrapId = projectMode === 'scratch'
+        ? `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}1`
+        : 'A1'
+      const tId = p.trapezoidId || defaultTrapId
       if (!map[aKey]) map[aKey] = new Set()
       map[aKey].add(tId)
     })
     const result = {}
     Object.entries(map).forEach(([k, s]) => { result[k] = [...s].sort() })
     return result
-  }, [panels])
+  }, [panels, projectMode, rectAreas])
 
   const allSelectedSameArea = useMemo(() => {
     if (selectedPanels.length === 0) return false
@@ -319,9 +370,6 @@ export default function Step3PanelPlacement({
     return areaTrapezoidMap[ak] || []
   }, [allSelectedSameArea, selectedRow, areaTrapezoidMap])
 
-  const allAreaTrapIds = useMemo(() =>
-    [...new Set(Object.values(areaTrapezoidMap).flat())]
-  , [areaTrapezoidMap])
 
   const addTrapezoid = () => {
     if (!allSelectedSameArea || !selectedRow) return
@@ -411,9 +459,14 @@ export default function Step3PanelPlacement({
   }
 
   const updateTrapezoidConfig = (field, rawValue) => {
-    if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
+    if (!selectedTrapezoidId) return
 
-    const globalCfg = refinedArea.panelConfig
+    const globalCfg = refinedArea?.panelConfig || {
+      angle: parseFloat(panelAngle) || 0,
+      frontHeight: parseFloat(panelFrontHeight) || 0,
+      linesPerRow: 1,
+      lineOrientations: ['vertical'],
+    }
     const current = trapezoidConfigs[selectedTrapezoidId] || {}
 
     if (field === 'angle' || field === 'frontHeight') {
@@ -449,14 +502,27 @@ export default function Step3PanelPlacement({
   }
 
   const resetTrapezoidConfig = () => {
-    if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
-    const globalCfg = refinedArea.panelConfig
+    if (!selectedTrapezoidId) return
     setTrapezoidConfigs(prev => {
       const next = { ...prev }
       delete next[selectedTrapezoidId]
       return next
     })
-    const angleRad = (globalCfg.angle || 0) * Math.PI / 180
+    if (!refinedArea?.pixelToCmRatio) {
+      // scratch mode — reset angle/frontH back to global defaults
+      if (selectedRow && setRectAreas) {
+        const aKey = getAreaKey(selectedRow[0])
+        if (aKey !== null) {
+          setRectAreas(prev => prev.map((a, i) => i === aKey
+            ? { ...a, angle: String(parseFloat(panelAngle) || 0), frontHeight: String(parseFloat(panelFrontHeight) || 0) }
+            : a
+          ))
+        }
+      }
+      return
+    }
+    const globalAngle = refinedArea?.panelConfig?.angle || 0
+    const angleRad = globalAngle * Math.PI / 180
     const rowIds = selectedRow.map(p => p.id)
     setPanels(prev => prev.map(p => {
       if (!rowIds.includes(p.id)) return p
@@ -543,13 +609,15 @@ export default function Step3PanelPlacement({
             pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
             addError={addError} setAddError={setAddError}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
-            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds} allAreaTrapIds={allAreaTrapIds}
+            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds}
             selectedTrapezoidId={selectedTrapezoidId}
             reassignToTrapezoid={reassignToTrapezoid} addTrapezoid={addTrapezoid}
             selectedRow={selectedRow} refinedArea={refinedArea}
             trapezoidConfigs={trapezoidConfigs} setTrapezoidConfigs={setTrapezoidConfigs}
             projectMode={projectMode} areas={areas} getAreaKey={getAreaKey}
             updateTrapezoidConfig={updateTrapezoidConfig} resetTrapezoidConfig={resetTrapezoidConfig}
+            panelFrontHeight={panelFrontHeight} panelAngle={panelAngle}
+            rectAreas={rectAreas} setRectAreas={setRectAreas}
             showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
