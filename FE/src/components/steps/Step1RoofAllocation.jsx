@@ -93,7 +93,7 @@ export default function Step1RoofAllocation({
     setAddRoofImage(checked)
     if (checked) {
       // Clear white canvas so ImageUploader is shown
-      if (uploadedImageData?.isScratch) setUploadedImageData(null)
+      if (uploadedImageData?.isWhiteboard) setUploadedImageData(null)
       setRoofPolygon(null)
       setUploadedImageMode(true)
     } else {
@@ -104,7 +104,7 @@ export default function Step1RoofAllocation({
   const handleSourceToggle = (imageMode) => {
     setUploadedImageMode(imageMode)
     setRoofPolygon(null)
-    if (!imageMode && uploadedImageData?.isScratch) setUploadedImageData(null)
+    if (!imageMode && uploadedImageData?.isWhiteboard) setUploadedImageData(null)
   }
 
   const localImgRef = useRef(null)
@@ -406,7 +406,7 @@ export default function Step1RoofAllocation({
 
         {/* Unified floating panel */}
         {(() => {
-          const hasRealImage = uploadedImageMode && uploadedImageData && !uploadedImageData.isScratch
+          const hasRealImage = uploadedImageMode && uploadedImageData && !uploadedImageData.isWhiteboard
           const showPanel = true || hasRealImage || selectedPoint || (drawMode === 'draw' && roofPolygon) || (roofPolygon && uploadedImageMode && uploadedImageData)
           if (!showPanel) return null
 
@@ -441,7 +441,7 @@ export default function Step1RoofAllocation({
                         </button>
                       </div>
                     </div>
-                    {uploadedImageMode && uploadedImageData && !uploadedImageData.isScratch && (
+                    {uploadedImageMode && uploadedImageData && !uploadedImageData.isWhiteboard && (
                       <div>
                         <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Detection</div>
                         <div className="seg-control">

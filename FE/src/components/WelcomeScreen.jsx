@@ -28,7 +28,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
 
   const handleCreate = () => {
     if (!canCreate) return
-    onCreateProject({ name: projectName.trim(), location: location.trim(), date, mode: 'scratch' })
+    onCreateProject({ name: projectName.trim(), location: location.trim(), date })
   }
 
   const handleFileChange = (e) => {

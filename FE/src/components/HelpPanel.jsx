@@ -25,71 +25,48 @@ const HELP = {
     ]
   },
   2: {
-    title: 'PV Area Refinement',
-    purpose: 'Refine the installation area, set the real-world scale, and configure panel mounting parameters. You can define exclusion zones (obstacles, HVAC units) and — in Plan mode — draw multiple row baselines with individual configurations.',
+    title: 'Panel Layout',
+    purpose: 'Draw panel areas on the roof image, set the real-world scale, and configure mounting parameters. Areas are auto-filled with panels and can be resized, rotated, and fine-tuned interactively.',
     qa: [
       {
         q: 'How do I set the real-world scale?',
-        a: 'Use the distance measurement tool to draw a line over a known distance on the image (e.g., a wall edge with a known length). Enter the actual length in cm to calibrate pixel-to-cm ratio.'
+        a: 'Use the distance measurement tool to draw a line over a known distance on the image (e.g., a wall edge with a known length). Enter the actual length in cm to calibrate the pixel-to-cm ratio.'
       },
       {
-        q: 'What is the panel angle?',
-        a: 'The tilt angle of the panel relative to the horizontal (0° = flat on roof, 30° = steeply tilted). This affects the panel\'s vertical profile and the required row spacing to avoid self-shading.'
-      },
-      {
-        q: 'What is front vs back height?',
-        a: 'Front height is the mounting height at the low edge of the panel (toward the eave). Back height is computed from the front height plus the panel slope projection. Together they define the panel\'s 3D trapezoid profile used for shade and row spacing calculations.'
-      },
-      {
-        q: 'What does "Lines per Area" mean?',
-        a: 'Each row can have 1 or 2 panel lines (portrait or landscape) stacked together. Two lines increase output per row but require more depth. Orientation (vertical = portrait, horizontal = landscape) controls which dimension faces along the baseline.'
-      },
-      {
-        q: 'What is Plan mode vs Scratch mode?',
-        a: 'Scratch mode generates rows automatically from a single baseline in Step 3. Plan mode (set at project creation) lets you define each row\'s baseline and configuration here in Step 2, giving full control over individual row placement.'
-      }
-    ]
-  },
-  3: {
-    title: 'Panel Placement',
-    purpose: 'Review, adjust, and fine-tune the auto-generated panel layout. In Scratch mode, draw panel areas directly on the canvas and resize/rotate them interactively.',
-    qa: [
-      {
-        q: 'How do I create a new area? (Scratch mode)',
-        a: 'Select the Draw tool and drag on the canvas to create a panel area. Release the mouse to place it — panels fill automatically. If no panels fit (e.g. area too small or fully occupied by another area), the area is discarded automatically.'
+        q: 'How do I create a new area?',
+        a: 'Select the Draw tool and drag on the canvas to create a panel area. Release the mouse to place it — panels fill automatically. If no panels fit (area too small or fully occupied by another area), the area is discarded.'
       },
       {
         q: 'What is Free mode vs Y-lock mode?',
-        a: 'Free mode (Y⊞): drag any corner to resize the area freely. The opposite corner (pivot) stays fixed. Y-lock mode (Y⊟): the area height is locked — drag a non-pivot corner to extend width, drag the pivot corner to move the entire area, or click inside the polygon body to rotate it. Toggle with the Y⊞/Y⊟ button in the sidebar.'
+        a: 'Free mode (Y⊞): drag any corner to resize freely. The opposite corner (pivot) stays fixed. Y-lock mode (Y⊟): area height is locked — drag a non-pivot corner to extend width, drag the pivot corner to move the entire area, or click inside the body to rotate. Toggle with Y⊞/Y⊟ in the sidebar.'
       },
       {
-        q: 'Scratch mode gestures reference',
+        q: 'Gesture reference',
         a: [
           'Draw tool drag → create new area (auto-filled with panels)',
-          'Sidebar row click → select area (only the selected area\'s corners are interactive)',
+          'Sidebar row click → select area',
           'Free mode corner drag → resize area; polygon fits to panels on release',
           'Y-lock mode body click+drag → rotate area around pivot corner',
           'Y-lock mode non-pivot corner drag → extend/shrink width',
-          'Y-lock mode pivot corner drag → move entire area (move cursor)',
+          'Y-lock mode pivot corner drag → move entire area',
           '0° snap guide (dashed yellow) → shown when |rotation| < 10°; snaps at < 3°',
           'Y⊞/Y⊟ button → toggle free/y-lock mode',
           '✕ button → delete area',
           '↺ button → regenerate panels for area',
-          'Minimum area size → 1 panel (enforced during resize)',
           'Collision detection → panels blocked where another area already exists',
         ].join(' | ')
       },
       {
-        q: 'Can I regenerate just one row?',
-        a: 'Yes — click the ↺ button next to any row in the Rows list to regenerate only that row from its original baseline, without affecting other rows.'
+        q: 'What is the panel angle?',
+        a: 'The tilt angle of the panel relative to horizontal (0° = flat, 30° = steeply tilted). Set a default in the sidebar; each area can also have its own override via the row config panel.'
       },
       {
-        q: 'Why do some panels appear outside the roof boundary?',
-        a: 'Panel placement checks that all four panel corners fit inside the roof polygon. If panels appear near the edge, the polygon boundary might be slightly inaccurate. You can manually move those panels or clear and redraw the boundary in Step 1.'
+        q: 'What is front vs back height?',
+        a: 'Front height is the mounting height at the lower edge of the panel (toward the eave). Back height is computed from front height plus the panel slope projection. Together they define the 3D trapezoid profile used in construction planning.'
       },
       {
-        q: 'What does the Rotate tool do?',
-        a: 'The Rotate tool lets you spin selected panels around their group center. Use this to align panels with unusual roof segments or to fine-tune alignment with the row baseline.'
+        q: 'What does "Lines per Area" mean?',
+        a: 'Each area can have multiple panel lines (portrait or landscape) stacked together. More lines increase output per area but require more depth. Orientation (vertical = portrait, horizontal = landscape) controls which panel dimension faces the slope direction.'
       }
     ]
   },

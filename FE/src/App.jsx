@@ -14,7 +14,7 @@ import { listProjects, getProject, deleteProject } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
-const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
+const STEP_TITLES = ['Allocate Roof', 'Panel Layout', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
 const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
 
@@ -299,8 +299,8 @@ function App() {
             setShowDistances={s.setShowDistances}
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
-            generatePanelLayoutHandler={s.computeScratchPanels}
-            regenerateSingleRowHandler={s.computeScratchPanels}
+            generatePanelLayoutHandler={s.computePanels}
+            regenerateSingleRowHandler={s.computePanels}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -335,48 +335,6 @@ function App() {
             setPanelAngle={s.setPanelAngle}
           />
         )}
-        {s.currentStep === 3 && (
-          <Step3PanelPlacement
-            uploadedImageData={s.uploadedImageData}
-            roofPolygon={s.roofPolygon}
-            refinedArea={s.refinedArea}
-            imageRef={s.imageRef}
-            setImageRef={s.setImageRef}
-            baseline={s.baseline}
-            setBaseline={s.setBaseline}
-            panels={s.panels}
-            setPanels={s.setPanels}
-            selectedPanels={s.selectedPanels}
-            setSelectedPanels={s.setSelectedPanels}
-            dragState={s.dragState}
-            setDragState={s.setDragState}
-            rotationState={s.rotationState}
-            setRotationState={s.setRotationState}
-            viewZoom={s.viewZoom}
-            setViewZoom={s.setViewZoom}
-            showBaseline={s.showBaseline}
-            showDistances={s.showDistances}
-            setShowDistances={s.setShowDistances}
-            distanceMeasurement={s.distanceMeasurement}
-            setDistanceMeasurement={s.setDistanceMeasurement}
-            generatePanelLayoutHandler={s.generatePanelLayoutHandler}
-            regenerateSingleRowHandler={s.regenerateSingleRowHandler}
-            areas={s.areas}
-            setAreas={s.setAreas}
-            addManualPanel={s.addManualPanel}
-            trapezoidConfigs={s.trapezoidConfigs}
-            setTrapezoidConfigs={s.setTrapezoidConfigs}
-            panelType={s.panelType}
-            setPanelType={s.setPanelType}
-            panelFrontHeight={s.panelFrontHeight}
-            setPanelFrontHeight={s.setPanelFrontHeight}
-            panelAngle={s.panelAngle}
-            setPanelAngle={s.setPanelAngle}
-            rectAreas={s.rectAreas}
-            setRectAreas={s.setRectAreas}
-          />
-        )}
-
         {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
         <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
@@ -470,7 +428,7 @@ function App() {
           className="btn-nav btn-next"
           onClick={() => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
-            s.handleNext(TOTAL_STEPS, s.currentStep === 2)
+            s.handleNext(TOTAL_STEPS)
           }}
           disabled={!s.canProceedToNextStep()}
         >

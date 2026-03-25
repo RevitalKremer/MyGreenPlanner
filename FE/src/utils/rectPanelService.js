@@ -1,4 +1,4 @@
-// Pure panel fill computation for scratch-mode rect/polygon areas.
+// Pure panel fill computation for rect/polygon areas.
 
 const DEFAULT_LENGTH_CM = 238.2  // long dimension
 const DEFAULT_WIDTH_CM  = 113.4  // short dimension

@@ -121,17 +121,15 @@ export function useProjectState() {
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, W, H)
-    return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isScratch: true }
+    return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isWhiteboard: true }
   }
 
   const handleCreateProject = (projectInfo) => {
     setCurrentProject(projectInfo)
-    if (projectInfo.mode === 'scratch') {
-      const data = generateWhiteCanvas()
-      setUploadedImageData(data)
-      setUploadedImageMode(true)
-      setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-    }
+    const data = generateWhiteCanvas()
+    setUploadedImageData(data)
+    setUploadedImageMode(true)
+    setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
     setAppScreen('wizard')
   }
 
@@ -386,7 +384,7 @@ export function useProjectState() {
   // ── Wizard navigation ─────────────────────────────────────────────────────
 
   // Compute panels from rectAreas without advancing the step (used by panel-edit tab in Step 2).
-  const computeScratchPanels = () => {
+  const computePanels = () => {
     if (!referenceLine || !referenceLineLengthCm) return
     const dx = referenceLine.end.x - referenceLine.start.x
     const dy = referenceLine.end.y - referenceLine.start.y
@@ -486,11 +484,11 @@ export function useProjectState() {
 
   // Auto-compute panels whenever rectAreas or global mounting defaults change
   useEffect(() => {
-    computeScratchPanels()
+    computePanels()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight])
 
-  const handleNext = (totalSteps, skipScratchPanelRegen = false) => {
+  const handleNext = (totalSteps) => {
     if (currentStep >= totalSteps) return
 
     if (currentStep === 2) {
@@ -499,29 +497,12 @@ export function useProjectState() {
         Math.pow(referenceLine.end.y - referenceLine.start.y, 2)
       )
       const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-
-      // If panels were already computed+edited in panel-edit tab, keep them.
-      // Otherwise compute fresh from rectAreas.
-      if (skipScratchPanelRegen) {
-        setRefinedArea({
-          polygon: roofPolygon, panelType, referenceLine,
-          referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-          pixelToCmRatio,
-          panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
-        })
-      } else {
-        computeScratchPanels()
-      }
-    }
-
-    if (currentStep === 3) {
-      setTrapezoidConfigs(prev => {
-        const usedIds = new Set(panels.map(p => p.trapezoidId).filter(Boolean))
-        const next = {}
-        for (const [id, cfg] of Object.entries(prev)) {
-          if (usedIds.has(id)) next[id] = cfg
-        }
-        return next
+      // Panels are already computed by the auto-effect; just update refinedArea with the calibrated ratio.
+      setRefinedArea({
+        polygon: roofPolygon, panelType, referenceLine,
+        referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+        pixelToCmRatio,
+        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, linesPerRow: 1, lineOrientations: ['vertical'] },
       })
     }
 
@@ -623,7 +604,7 @@ export function useProjectState() {
     handleImageUploaded,
     handleWhiteboardStart,
     handleImageClick,
-    computeScratchPanels,
+    computePanels,
     handleNext,
     handleBack,
     canProceedToNextStep,

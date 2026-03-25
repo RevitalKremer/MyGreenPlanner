@@ -140,7 +140,7 @@ export default function PanelCanvas({
     }
 
     // Draw tool — creates a new rect area
-    // Baseline drawing (scratch mode)
+    // Baseline drawing
     if (!baseline || baseline.p2 === null) {
       if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
       if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
@@ -683,7 +683,7 @@ export default function PanelCanvas({
               })
             })()}
 
-            {/* Polygon area outlines + corner handles (scratch mode) */}
+            {/* Polygon area outlines + corner handles */}
             {/* Active/selected area renders last so its corners are always on top */}
             {(() => {
               const selectedAreaIdx = selectedPanels.length > 0

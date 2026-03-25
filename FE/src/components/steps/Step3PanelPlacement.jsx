@@ -250,22 +250,22 @@ export default function Step3PanelPlacement({
   const getAreaKey = (panel) =>
     (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
-  // Auto-derive linesPerRow + lineOrientations from panel rows (scratch mode only).
+  // Auto-derive linesPerRow + lineOrientations from panel rows.
   // Must be after selectedRow and getAreaKey are defined.
-  const defaultScratchTrapId = selectedRow
+  const defaultTrapId = selectedRow
     ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}1`
     : null
 
   const selectedTrapezoidId = trapIdOverride ?? (
     selectedPanels.length > 0
-      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || defaultScratchTrapId)
+      ? (panels.find(p => p.id === selectedPanels[0])?.trapezoidId || defaultTrapId)
       : null
   )
 
   // Pre-compute stable primitives for the auto-derive effect deps
-  const _scratchAreaKey = selectedRow ? getAreaKey(selectedRow[0]) : null
-  const _scratchFH = _scratchAreaKey !== null ? (parseFloat(rectAreas[_scratchAreaKey]?.frontHeight) || 0) : 0
-  const _scratchAngle = _scratchAreaKey !== null ? (parseFloat(rectAreas[_scratchAreaKey]?.angle) || 0) : 0
+  const _areaKey = selectedRow ? getAreaKey(selectedRow[0]) : null
+  const _frontH = _areaKey !== null ? (parseFloat(rectAreas[_areaKey]?.frontHeight) || 0) : 0
+  const _angle  = _areaKey !== null ? (parseFloat(rectAreas[_areaKey]?.angle)       || 0) : 0
 
   useEffect(() => {
     if (!selectedRow || !selectedTrapezoidId) return
@@ -302,7 +302,7 @@ export default function Step3PanelPlacement({
       ...prev,
       [selectedTrapezoidId]: { ...current, linesPerRow: autoLPR, lineOrientations: autoOrients, backHeight: bH, angle: a, frontHeight: fH },
     }))
-  }, [selectedRow, selectedTrapezoidId, _scratchFH, _scratchAngle]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedRow, selectedTrapezoidId, _frontH, _angle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const areaLabel = (areaKey, i) => {
     const g = areas[areaKey]?.label
@@ -370,7 +370,7 @@ export default function Step3PanelPlacement({
       return next
     })
     if (!refinedArea?.pixelToCmRatio) {
-      // scratch mode — reset angle/frontH back to global defaults
+      // reset angle/frontH back to global defaults
       if (selectedRow && setRectAreas) {
         const aKey = getAreaKey(selectedRow[0])
         if (aKey !== null) {
