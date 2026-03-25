@@ -52,19 +52,36 @@ const HELP = {
   },
   3: {
     title: 'Panel Placement',
-    purpose: 'Review, adjust, and fine-tune the auto-generated panel layout. You can move individual panels or groups, select by rectangle or shift-click, regenerate specific rows, and adjust per-row mounting geometry (trapezoid profile).',
+    purpose: 'Review, adjust, and fine-tune the auto-generated panel layout. In Scratch mode, draw panel areas directly on the canvas and resize/rotate them interactively.',
     qa: [
       {
-        q: 'How do I select and move panels?',
-        a: 'Select the Move tool, then click a panel to select it, or drag on the background to draw a rectangle selection. Hold Shift and click to add/remove panels from the selection. Drag selected panels to reposition them.'
+        q: 'How do I create a new area? (Scratch mode)',
+        a: 'Select the Draw tool and drag on the canvas to create a panel area. Release the mouse to place it — panels fill automatically. If no panels fit (e.g. area too small or fully occupied by another area), the area is discarded automatically.'
+      },
+      {
+        q: 'What is Free mode vs Y-lock mode?',
+        a: 'Free mode (Y⊞): drag any corner to resize the area freely. The opposite corner (pivot) stays fixed. Y-lock mode (Y⊟): the area height is locked — drag a non-pivot corner to extend width, drag the pivot corner to move the entire area, or click inside the polygon body to rotate it. Toggle with the Y⊞/Y⊟ button in the sidebar.'
+      },
+      {
+        q: 'Scratch mode gestures reference',
+        a: [
+          'Draw tool drag → create new area (auto-filled with panels)',
+          'Sidebar row click → select area (only the selected area\'s corners are interactive)',
+          'Free mode corner drag → resize area; polygon fits to panels on release',
+          'Y-lock mode body click+drag → rotate area around pivot corner',
+          'Y-lock mode non-pivot corner drag → extend/shrink width',
+          'Y-lock mode pivot corner drag → move entire area (move cursor)',
+          '0° snap guide (dashed yellow) → shown when |rotation| < 10°; snaps at < 3°',
+          'Y⊞/Y⊟ button → toggle free/y-lock mode',
+          '✕ button → delete area',
+          '↺ button → regenerate panels for area',
+          'Minimum area size → 1 panel (enforced during resize)',
+          'Collision detection → panels blocked where another area already exists',
+        ].join(' | ')
       },
       {
         q: 'Can I regenerate just one row?',
         a: 'Yes — click the ↺ button next to any row in the Rows list to regenerate only that row from its original baseline, without affecting other rows.'
-      },
-      {
-        q: 'What does the Trapezoid editor do?',
-        a: 'Select a row and the trapezoid editor shows the mounting profile (angle, back height). Changing these values overrides the global defaults for that row only — shown with an orange indicator dot. Click the reset button to restore global defaults.'
       },
       {
         q: 'Why do some panels appear outside the roof boundary?',

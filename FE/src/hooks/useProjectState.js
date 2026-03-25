@@ -3,6 +3,8 @@ import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
 import { createProject, updateProject } from '../services/projectsApi'
+import { computePolygonPanels } from '../utils/rectPanelService'
+import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../data/panelTypes'
 
 export function useProjectState() {
   // App-level screen
@@ -40,6 +42,7 @@ export function useProjectState() {
   const [distanceMeasurement, setDistanceMeasurement] = useState(null)
   const [panels, setPanels] = useState([])
   const [areas, setAreas] = useState([])
+  const [rectAreas, setRectAreas] = useState([])
   const [selectedPanels, setSelectedPanels] = useState([])
   const [dragState, setDragState] = useState(null)
   const [rotationState, setRotationState] = useState(null)
@@ -97,6 +100,7 @@ export function useProjectState() {
     setLineStart(null)
     setPanels([])
     setAreas([])
+    setRectAreas([])
     setSelectedPanels([])
     setDragState(null)
     setRotationState(null)
@@ -169,6 +173,7 @@ export function useProjectState() {
     }
     if (data.areas) setAreas(data.areas)
     else if (data.rowGroups) setAreas(data.rowGroups)
+    if (data.rectAreas) setRectAreas(data.rectAreas)
     if (data.trapezoidConfigs) {
       setTrapezoidConfigs(data.trapezoidConfigs)
     } else if (data.rowConfigs) {
@@ -220,6 +225,7 @@ export function useProjectState() {
     baseline,
     panels,
     areas,
+    rectAreas,
     trapezoidConfigs,
     step4GlobalSettings,
     step4AreaSettings,
@@ -455,7 +461,98 @@ export function useProjectState() {
 
   // ── Wizard navigation ─────────────────────────────────────────────────────
 
-  const handleNext = (totalSteps) => {
+  // Compute panels from rectAreas without advancing the step (used by panel-edit tab in Step 2).
+  const computeScratchPanels = () => {
+    if (!referenceLine || !referenceLineLengthCm) return
+    const dx = referenceLine.end.x - referenceLine.start.x
+    const dy = referenceLine.end.y - referenceLine.start.y
+    const pixelLength = Math.sqrt(dx * dx + dy * dy)
+    if (pixelLength <= 0) return
+    const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
+
+    // SAT OBB-OBB overlap test — returns true if the two panels physically intersect
+    const obbsOverlap = (a, b) => {
+      const corners = (p) => {
+        const r = (p.rotation || 0) * Math.PI / 180
+        const c = Math.cos(r), s = Math.sin(r)
+        const hw = p.width / 2, hh = p.height / 2
+        return [
+          { x: p.cx + hw*c - hh*s, y: p.cy + hw*s + hh*c },
+          { x: p.cx - hw*c - hh*s, y: p.cy - hw*s + hh*c },
+          { x: p.cx - hw*c + hh*s, y: p.cy - hw*s - hh*c },
+          { x: p.cx + hw*c + hh*s, y: p.cy + hw*s - hh*c },
+        ]
+      }
+      const ac = corners(a), bc = corners(b)
+      const axes = [a, b].flatMap(p => {
+        const r = (p.rotation || 0) * Math.PI / 180
+        return [{ x: Math.cos(r), y: Math.sin(r) }, { x: -Math.sin(r), y: Math.cos(r) }]
+      })
+      for (const ax of axes) {
+        const proj = pts => pts.map(p => p.x * ax.x + p.y * ax.y)
+        const ap = proj(ac), bp = proj(bc)
+        if (Math.max(...ap) <= Math.min(...bp) || Math.max(...bp) <= Math.min(...ap)) return false
+      }
+      return true
+    }
+
+    // Areas that already had panels before this compute are "existing" — never auto-deleted
+    const existingAreaIndices = new Set(panels.map(p => p.area))
+
+    const allPanels = []
+    const groupTrapConfigs = {}
+    let panelId = 1
+    const panelSpec = PANEL_TYPES.find(t => t.id === panelType) ?? DEFAULT_PANEL_TYPE
+    rectAreas.forEach((area, areaIdx) => {
+      const trapezoidId = `${area.label}1`
+      const aFront = parseFloat(area.frontHeight) || 0
+      const aAngle = parseFloat(area.angle) || 0
+      const aBack = computePanelBackHeight(aFront, aAngle, ['vertical'], 1)
+      groupTrapConfigs[trapezoidId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack, linesPerRow: 1, lineOrientations: ['vertical'] }
+      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
+      let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
+      // Existing areas always keep at least 1 panel so the area stays visible
+      if (filtered.length === 0 && existingAreaIndices.has(areaIdx) && computed.length > 0) {
+        filtered = [computed[0]]
+      }
+      filtered.forEach(p => {
+        allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId, yDir: area.yDir ?? 'ttb' })
+      })
+    })
+
+    // Auto-delete only NEW areas (not previously having panels) that got zero panels
+    const areaIndicesWithPanels = new Set(allPanels.map(p => p.area))
+    const emptyNewIndices = rectAreas
+      .map((_, i) => i)
+      .filter(i => !areaIndicesWithPanels.has(i) && !existingAreaIndices.has(i))
+    if (emptyNewIndices.length > 0) {
+      setRectAreas(prev => prev.filter((_, i) => !emptyNewIndices.includes(i)))
+      return // re-triggered by rectAreas change; don't commit partial state
+    }
+
+    setPanels(allPanels)
+    setAreas(rectAreas.map(a => ({ label: a.label, angle: parseFloat(a.angle) || 0, frontHeight: parseFloat(a.frontHeight) || 0, linesPerRow: 1, lineOrientations: ['vertical'] })))
+    setTrapezoidConfigs(prev => {
+      const next = {}
+      Object.keys(groupTrapConfigs).forEach(id => { next[id] = { ...(prev[id] || {}), ...groupTrapConfigs[id] } })
+      return next
+    })
+    setRefinedArea({
+      polygon: roofPolygon, panelType, referenceLine,
+      referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+      pixelToCmRatio,
+      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+    })
+  }
+
+  // Auto-compute panels in scratch mode whenever rectAreas changes
+  useEffect(() => {
+    if (projectMode !== 'scratch') return
+    computeScratchPanels()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rectAreas])
+
+  const handleNext = (totalSteps, skipScratchPanelRegen = false) => {
     if (currentStep >= totalSteps) return
 
     if (currentStep === 2) {
@@ -512,20 +609,19 @@ export function useProjectState() {
           return next
         })
       } else {
-        setRefinedArea({
-          polygon: roofPolygon, panelType, referenceLine,
-          referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-          pixelToCmRatio,
-          panelConfig: {
-            frontHeight: parseFloat(panelFrontHeight),
-            backHeight: getComputedBackHeight(),
-            angle: parseFloat(panelAngle),
-            linesPerRow,
-            lineOrientations: [...lineOrientations]
-          },
-          panelFrontHeight: parseFloat(panelFrontHeight),
-          panelAngle: parseFloat(panelAngle)
-        })
+        // Scratch mode: if panels were already computed+edited in panel-edit tab, keep them.
+        // Otherwise compute fresh from rectAreas.
+        if (skipScratchPanelRegen) {
+          // Panels already set by computeScratchPanels; just ensure refinedArea is current.
+          setRefinedArea({
+            polygon: roofPolygon, panelType, referenceLine,
+            referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+            pixelToCmRatio,
+            panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+          })
+        } else {
+          computeScratchPanels()
+        }
       }
     }
 
@@ -540,7 +636,7 @@ export function useProjectState() {
       })
     }
 
-    const nextStep = currentStep + 1
+    const nextStep = (projectMode === 'scratch' && currentStep === 2) ? 4 : currentStep + 1
     console.log(`\n${'─'.repeat(40)}\n  STEP ${nextStep}\n${'─'.repeat(40)}`)
     if (nextStep === 3) {
       const baselines = projectMode === 'plan'
@@ -559,7 +655,8 @@ export function useProjectState() {
   const handleBack = () => {
     if (currentStep > 1) {
       console.log(`\n${'─'.repeat(40)}\n  STEP ${currentStep - 1}\n${'─'.repeat(40)}`)
-      setCurrentStep(prev => prev - 1)
+      const prevStep = (projectMode === 'scratch' && currentStep === 4) ? 2 : currentStep - 1
+      setCurrentStep(prevStep)
     }
   }
 
@@ -582,9 +679,13 @@ export function useProjectState() {
             )
           )
         }
+        // Scratch mode: need at least one rect with settings
         return (
-          panelFrontHeight !== '' && parseFloat(panelFrontHeight) >= 0 &&
-          panelAngle !== '' && parseFloat(panelAngle) >= 0 && parseFloat(panelAngle) <= 30
+          rectAreas.length > 0 &&
+          rectAreas.every(a =>
+            a.frontHeight !== '' && parseFloat(a.frontHeight) >= 0 &&
+            a.angle !== '' && parseFloat(a.angle) >= 0 && parseFloat(a.angle) <= 30
+          )
         )
       case 3: return panels.length > 0
       case 4: return true
@@ -624,6 +725,7 @@ export function useProjectState() {
     distanceMeasurement, setDistanceMeasurement,
     panels, setPanels,
     areas, setAreas,
+    rectAreas, setRectAreas,
     selectedPanels, setSelectedPanels,
     dragState, setDragState,
     rotationState, setRotationState,
@@ -654,6 +756,7 @@ export function useProjectState() {
     handleImageUploaded,
     handleWhiteboardStart,
     handleImageClick,
+    computeScratchPanels,
     handleNext,
     handleBack,
     canProceedToNextStep,

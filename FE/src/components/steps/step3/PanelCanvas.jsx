@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
-import { PRIMARY, ERROR, BLACK, PANEL_STROKE_MID, GRIDLINE_AREA } from '../../../styles/colors'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { PRIMARY, ERROR, BLACK, PANEL_STROKE_MID, GRIDLINE_AREA, WARNING, SUCCESS } from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
+import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from '../../../utils/rectPanelService'
 
 export default function PanelCanvas({
   uploadedImageData, viewZoom, setViewZoom,
@@ -13,17 +14,57 @@ export default function PanelCanvas({
   rotationState, setRotationState,
   distanceMeasurement, setDistanceMeasurement,
   showBaseline, showDistances, showHGridlines, showVGridlines, snapToGridlines,
-  refinedArea, trapezoidConfigs,
+  refinedArea,
   activeTool, projectMode,
   pendingAddNextTo, onAddNextToPanel, setPendingAddNextTo,
   getRowPanelIds,
+  rectAreas = [],
+  setRectAreas,
+  onAddRectArea,
+  cmPerPixel,
+  panelSpec,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
+  const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
   const [isSpaceDown, setIsSpaceDown] = useState(false)
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
   const [rectSelect, setRectSelect] = useState(null)
   const [mousePos, setMousePos] = useState(null)
+  const [drawRectStart, setDrawRectStart] = useState(null)
+  const [drawRectEnd, setDrawRectEnd] = useState(null)
+  const [yLockDragState, setYLockDragState] = useState(null)
+  const [freeDragState, setFreeDragState]   = useState(null) // {areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist}
+  const [moveDragState, setMoveDragState]   = useState(null) // {areaIdx, startX, startY, origVertices}
+  const [overYLockArea, setOverYLockArea]   = useState(false)
+  const [snapGuideState, setSnapGuideState] = useState(null) // {pivotY, minX, maxX, snapping}
+
   const willDeselectRef = useRef(false)
+
+  const ptInPoly = (px, py, verts) => {
+    let inside = false
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+      const xi = verts[i].x, yi = verts[i].y, xj = verts[j].x, yj = verts[j].y
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside
+    }
+    return inside
+  }
+
+  // Live panel preview while drawing a rect
+  const drawPreviewPanels = useMemo(() => {
+    if (!drawRectStart || !drawRectEnd || !cmPerPixel) return []
+    const dx = drawRectEnd.x - drawRectStart.x
+    const dy = drawRectEnd.y - drawRectStart.y
+    if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return []
+    return computeRectPanels({
+      cx: (drawRectStart.x + drawRectEnd.x) / 2,
+      cy: (drawRectStart.y + drawRectEnd.y) / 2,
+      width: Math.abs(dx),
+      height: Math.abs(dy),
+      rotation: 0,
+      xDir: dx >= 0 ? 'ltr' : 'rtl',
+      yDir: dy >= 0 ? 'ttb' : 'btt',
+    }, cmPerPixel, panelSpec)
+  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec])
 
   // Space bar for pan-anywhere
   useEffect(() => {
@@ -44,15 +85,19 @@ export default function PanelCanvas({
 
   const getSVGCursor = () => {
     if (isSpaceDown) return panActive ? 'grabbing' : 'grab'
+    if (moveDragState) return 'grabbing'
+    if (yLockDragState) return 'ns-resize'
     if (panActive || dragState) return 'grabbing'
     if (rectSelect) return 'crosshair'
     if (rotationState) return 'crosshair'
+    if (overYLockArea) return 'ns-resize'
     switch (activeTool) {
       case 'move': return 'default'
       case 'rotate': return 'crosshair'
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
+      case 'draw': return 'crosshair'
       default: return 'grab'
     }
   }
@@ -75,6 +120,32 @@ export default function PanelCanvas({
     if (e.button === 1 || (e.button === 0 && isSpaceDown)) { e.preventDefault(); startPan(e); return }
 
     const { x, y } = svgCoords(e)
+
+    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (takes priority)
+    if (projectMode === 'scratch') {
+      const selAreaIdx = selectedPanels.length > 0
+        ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
+        : null
+      for (let areaIdx = 0; areaIdx < rectAreas.length; areaIdx++) {
+        const area = rectAreas[areaIdx]
+        if (area.mode !== 'ylocked' || !area.vertices?.length) continue
+        if (areaIdx !== selAreaIdx) continue
+        if (!ptInPoly(x, y, area.vertices)) continue
+        const pIdx = area.pivotIdx ?? 0
+        const pivot = area.vertices[pIdx]
+        const adj = area.vertices[(pIdx + 1) % area.vertices.length]
+        const refLength = Math.max(Math.hypot(adj.x - pivot.x, adj.y - pivot.y), 1)
+        setYLockDragState({ areaIdx, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices })
+        return
+      }
+    }
+
+    // Draw tool — creates a new rect area
+    if (activeTool === 'draw') {
+      setDrawRectStart({ x, y })
+      setDrawRectEnd({ x, y })
+      return
+    }
 
     // Baseline drawing (scratch mode)
     if (projectMode !== 'plan' && (!baseline || baseline.p2 === null)) {
@@ -152,6 +223,129 @@ export default function PanelCanvas({
     const { x, y } = svgCoords(e)
     setMousePos({ x, y })
 
+    if (projectMode === 'scratch' && !yLockDragState) {
+      setOverYLockArea(rectAreas.some(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices)))
+    }
+
+    if (activeTool === 'draw' && drawRectStart) {
+      setDrawRectEnd({ x, y })
+      return
+    }
+
+    if (moveDragState) {
+      const { areaIdx, startX, startY, origVertices } = moveDragState
+      const dx = x - startX, dy = y - startY
+      const newVertices = origVertices.map(v => ({ x: v.x + dx, y: v.y + dy }))
+      setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, vertices: newVertices } : a))
+      return
+    }
+
+    if (freeDragState) {
+      const { areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist } = freeDragState
+      const dx = x - pivotX, dy = y - pivotY
+      // Project mouse onto local width / height axes
+      const projW = dx * wdx + dy * wdy
+      const projH = dx * hdx + dy * hdy
+      // Each corner controls specific axes (pivot = v[0] fixed)
+      // Minimum: area must fit at least 1 landscape panel (pLen × pWid)
+      const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
+      const minH = cmPerPixel > 0 && panelSpec ? panelSpec.widthCm  / cmPerPixel : 1
+      const newWidth  = cornerIdx === 3 ? origWidthDist  : Math.max(minW, projW)
+      const newHeight = cornerIdx === 1 ? origHeightDist : Math.max(minH, projH)
+      const newVertices = [
+        { x: pivotX,                                           y: pivotY },
+        { x: pivotX + newWidth * wdx,                         y: pivotY + newWidth * wdy },
+        { x: pivotX + newWidth * wdx + newHeight * hdx,       y: pivotY + newWidth * wdy + newHeight * hdy },
+        { x: pivotX + newHeight * hdx,                        y: pivotY + newHeight * hdy },
+      ]
+      setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, vertices: newVertices } : a))
+      return
+    }
+
+    if (yLockDragState) {
+      const { areaIdx, startY, startRotation, pivotX, pivotY, refLength, origVertices, origCornerX, origCornerY } = yLockDragState
+      let deltaAngleDeg
+      if (origCornerX !== undefined) {
+        // Corner drag: Y → rotation, X → width extension
+
+        // 1. Rotation from Y (rigid body: corner Y tracks mouse directly)
+        const dyFromPivot = y - pivotY
+        const dxSq = refLength * refLength - dyFromPivot * dyFromPivot
+        if (dxSq < 0) return
+        const newCornerX = pivotX + Math.sign(origCornerX - pivotX) * Math.sqrt(dxSq)
+        const origAngle = Math.atan2(origCornerY - pivotY, origCornerX - pivotX)
+        const newAngle  = Math.atan2(y - pivotY, newCornerX - pivotX)
+        deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
+
+        // Snap to 0° if resulting rotation is within 3°
+        const rawRotation = startRotation + deltaAngleDeg
+        const absRot = Math.abs(rawRotation)
+        const snapping = absRot < 3
+        if (snapping) deltaAngleDeg = -startRotation
+
+        // 2. Rebuild polygon with rotated height (locked) + new width from X projection
+        const rad = deltaAngleDeg * Math.PI / 180
+        const cosA = Math.cos(rad), sinA = Math.sin(rad)
+
+        // Original local vectors (pivotIdx always 0)
+        const owx = origVertices[1].x - pivotX, owy = origVertices[1].y - pivotY // width vec
+        const ohx = origVertices[3].x - pivotX, ohy = origVertices[3].y - pivotY // height vec (locked)
+        const origWidthDist = Math.hypot(owx, owy)
+
+        // Rotate height vector (locked magnitude)
+        const nhx = ohx * cosA - ohy * sinA
+        const nhy = ohx * sinA + ohy * cosA
+
+        // New width direction (rotated original width direction, unit vector)
+        const nwdx = (owx * cosA - owy * sinA) / origWidthDist
+        const nwdy = (owx * sinA + owy * cosA) / origWidthDist
+
+        // Project mouse onto new width direction from pivot → new width (min: 1 landscape panel)
+        const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
+        const newWidth = Math.max(minW, (x - pivotX) * nwdx + (y - pivotY) * nwdy)
+
+        const newVertices = [
+          { x: pivotX,             y: pivotY },
+          { x: pivotX + newWidth * nwdx,             y: pivotY + newWidth * nwdy },
+          { x: pivotX + newWidth * nwdx + nhx,       y: pivotY + newWidth * nwdy + nhy },
+          { x: pivotX + nhx,                         y: pivotY + nhy },
+        ]
+        const actualRotation = startRotation + deltaAngleDeg
+        setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
+
+        if (absRot < 10) {
+          const xs = newVertices.map(v => v.x)
+          setSnapGuideState({ pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), snapping })
+        } else {
+          setSnapGuideState(null)
+        }
+      } else {
+        // Body drag fallback: Y only, fixed width
+        deltaAngleDeg = Math.atan2(y - startY, refLength) * (180 / Math.PI)
+        const rawRotation = startRotation + deltaAngleDeg
+        const absRot = Math.abs(rawRotation)
+        const snapping = absRot < 3
+        if (snapping) deltaAngleDeg = -startRotation
+        const actualRotation = startRotation + deltaAngleDeg
+        const rad = deltaAngleDeg * Math.PI / 180
+        const cosA = Math.cos(rad), sinA = Math.sin(rad)
+        const newVertices = origVertices.map(v => ({
+          x: pivotX + (v.x - pivotX) * cosA - (v.y - pivotY) * sinA,
+          y: pivotY + (v.x - pivotX) * sinA + (v.y - pivotY) * cosA,
+        }))
+        setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
+
+        if (absRot < 10) {
+          const xs = newVertices.map(v => v.x)
+          setSnapGuideState({ pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), snapping })
+        } else {
+          setSnapGuideState(null)
+        }
+      }
+      return
+    }
+
+
     if (rectSelect) { setRectSelect(prev => ({ ...prev, endX: x, endY: y })); return }
 
     if (panRef.current && !dragState && !rotationState) {
@@ -228,17 +422,89 @@ export default function PanelCanvas({
   }
 
   const handleSVGMouseUp = () => {
+    if (moveDragState) {
+      const { areaIdx } = moveDragState
+      setMoveDragState(null)
+      setRectAreas(prev => {
+        const area = prev[areaIdx]
+        if (!area?.vertices?.length || !cmPerPixel) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!panels.length) return prev
+        const pivot = area.vertices[area.pivotIdx ?? 0]
+        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        if (!fitted) return prev
+        return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
+      })
+      return
+    }
+    if (freeDragState) {
+      const { areaIdx } = freeDragState
+      setFreeDragState(null)
+      setRectAreas(prev => {
+        const area = prev[areaIdx]
+        if (!area?.vertices?.length || !cmPerPixel) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!panels.length) return prev
+        const pivot = area.vertices[area.pivotIdx ?? 0]
+        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        if (!fitted) return prev
+        return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
+      })
+      return
+    }
+    if (yLockDragState) {
+      const { areaIdx } = yLockDragState
+      setYLockDragState(null)
+      setSnapGuideState(null)
+      setRectAreas(prev => {
+        const area = prev[areaIdx]
+        if (!area?.vertices?.length || !cmPerPixel) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!panels.length) return prev
+        const pivot = area.vertices[area.pivotIdx ?? 0]
+        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        if (!fitted) return prev
+        return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
+      })
+      return
+    }
+
+    if (drawRectStart && drawRectEnd) {
+      const dx = drawRectEnd.x - drawRectStart.x
+      const dy = drawRectEnd.y - drawRectStart.y
+      if (Math.abs(dx) > 2 && Math.abs(dy) > 2 && drawPreviewPanels.length > 0) {
+        const yDir = dy >= 0 ? 'ttb' : 'btt'
+        const xDir = dx >= 0 ? 'ltr' : 'rtl'
+        const vertices = fitPolygonToRectPanels(
+          drawPreviewPanels, 0, drawRectStart.x, drawRectStart.y
+        )
+        if (vertices) {
+          onAddRectArea?.({ vertices, rotation: 0, yDir, xDir, pivotIdx: 0, mode: 'free' })
+        }
+      }
+      setDrawRectStart(null)
+      setDrawRectEnd(null)
+      return
+    }
+
     if (rectSelect) {
       const minX = Math.min(rectSelect.startX, rectSelect.endX)
       const maxX = Math.max(rectSelect.startX, rectSelect.endX)
       const minY = Math.min(rectSelect.startY, rectSelect.endY)
       const maxY = Math.max(rectSelect.startY, rectSelect.endY)
       if (Math.max(maxX - minX, maxY - minY) > 8) {
-        const hit = panels.filter(p => {
+        let hit = panels.filter(p => {
           const cx = p.x + p.width / 2, cy = p.y + p.height / 2
           return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY
-        }).map(p => p.id)
-        setSelectedPanels(hit)
+        })
+        if (projectMode === 'scratch' && hit.length > 0) {
+          // Restrict to the most-represented area
+          const counts = {}
+          hit.forEach(p => { counts[p.area] = (counts[p.area] || 0) + 1 })
+          const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+          hit = hit.filter(p => String(p.area) === dominant)
+        }
+        setSelectedPanels(hit.map(p => p.id))
       } else {
         setSelectedPanels([])
       }
@@ -254,7 +520,7 @@ export default function PanelCanvas({
   }
 
   const handleMouseLeave = () => {
-    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null)
+    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null); setDrawRectStart(null); setDrawRectEnd(null); setYLockDragState(null); setFreeDragState(null); setMoveDragState(null); setSnapGuideState(null)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -271,7 +537,7 @@ export default function PanelCanvas({
         onWheel={(e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; setViewZoom(Math.max(0.5, Math.min(3, viewZoom + delta))) }}
       >
         <img
-          ref={(el) => { if (el) setImageRef(el) }}
+          ref={imgRefCallback}
           src={uploadedImageData.imageData}
           alt="Roof with panels"
           style={{
@@ -419,6 +685,155 @@ export default function PanelCanvas({
               })
             })()}
 
+            {/* Polygon area outlines + corner handles (scratch mode) */}
+            {/* Active/selected area renders last so its corners are always on top */}
+            {(() => {
+              const selectedAreaIdx = selectedPanels.length > 0
+                ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
+                : null
+              const activeAreaIdx =
+                freeDragState?.areaIdx ??
+                yLockDragState?.areaIdx ??
+                moveDragState?.areaIdx ??
+                selectedAreaIdx
+              const order = rectAreas.map((_, i) => i).sort((a, b) =>
+                a === activeAreaIdx ? 1 : b === activeAreaIdx ? -1 : 0
+              )
+              return order.map(areaIdx => {
+              const area = rectAreas[areaIdx]
+              if (!area.vertices?.length) return null
+              const pts = area.vertices.map(v => `${v.x},${v.y}`).join(' ')
+              const labelCx = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+              const labelCy = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+              const handleR = Math.max(5, (imageRef?.naturalWidth ?? 1000) * 0.006)
+              const isYLocked = area.mode === 'ylocked'
+              const pivotIdx = area.pivotIdx ?? 0
+              return (
+                <g key={area.id} style={{ pointerEvents: 'auto' }}>
+                  <polygon
+                    points={pts}
+                    fill={`${area.color}15`}
+                    stroke={area.color}
+                    strokeWidth={lineW * 2}
+                    strokeDasharray={isYLocked ? undefined : dashArray}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  <text
+                    x={labelCx} y={labelCy}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={area.color}
+                    fontSize={Math.max(10, (imageRef?.naturalWidth ?? 1000) * 0.012)}
+                    fontWeight="700"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {area.label}{isYLocked ? ' ⊟' : ''}
+                  </text>
+                  {area.vertices.map((v, cornerIdx) => {
+                    const isPivot = cornerIdx === pivotIdx
+                    const isDraggable = !isPivot || isYLocked
+                    const cursor = isPivot && isYLocked ? 'move' : (isYLocked ? 'ns-resize' : (isDraggable ? 'crosshair' : 'default'))
+                    return (
+                      <circle
+                        key={cornerIdx}
+                        cx={v.x} cy={v.y} r={handleR}
+                        fill={isYLocked ? (isPivot ? 'white' : area.color) : 'white'}
+                        stroke={area.color} strokeWidth={lineW * 1.5}
+                        style={{ cursor, pointerEvents: isDraggable && areaIdx === selectedAreaIdx ? 'auto' : 'none' }}
+                        onMouseDown={isDraggable ? (e) => {
+                          e.stopPropagation()
+                          const pivot = area.vertices[pivotIdx]
+                          if (isPivot && isYLocked) {
+                            // Use the vertex position as drag start (already in SVG coords)
+                            setMoveDragState({ areaIdx, startX: v.x, startY: v.y, origVertices: area.vertices })
+                          } else if (isYLocked) {
+                            const refLength = Math.max(Math.hypot(v.x - pivot.x, v.y - pivot.y), 1)
+                            setYLockDragState({ areaIdx, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, origCornerX: v.x, origCornerY: v.y })
+                          } else {
+                            const owx = area.vertices[1].x - pivot.x, owy = area.vertices[1].y - pivot.y
+                            const ohx = area.vertices[3].x - pivot.x, ohy = area.vertices[3].y - pivot.y
+                            const wd = Math.max(Math.hypot(owx, owy), 1)
+                            const hd = Math.max(Math.hypot(ohx, ohy), 1)
+                            setFreeDragState({ areaIdx, cornerIdx, pivotX: pivot.x, pivotY: pivot.y, wdx: owx / wd, wdy: owy / wd, hdx: ohx / hd, hdy: ohy / hd, origWidthDist: wd, origHeightDist: hd })
+                          }
+                        } : undefined}
+                      />
+                    )
+                  })}
+                </g>
+              )
+              })
+            })()}
+            {/* 0° snap guide (y-lock drag) */}
+            {snapGuideState && (() => {
+              const { pivotY, minX, maxX, snapping } = snapGuideState
+              const guideColor = snapping ? SUCCESS : WARNING
+              const guideW = lineW * 1.5
+              const gd = `${lineW * 8} ${lineW * 4}`
+              const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+              return (
+                <g style={{ pointerEvents: 'none' }}>
+                  <line
+                    x1={minX} y1={pivotY} x2={maxX} y2={pivotY}
+                    stroke={guideColor} strokeWidth={guideW}
+                    strokeDasharray={snapping ? undefined : gd}
+                    opacity={snapping ? 1 : 0.75}
+                  />
+                  <text
+                    x={maxX + lineW * 4} y={pivotY}
+                    dominantBaseline="middle"
+                    fill={guideColor}
+                    fontSize={labelSize}
+                    fontWeight="700"
+                  >0°</text>
+                </g>
+              )
+            })()}
+
+            {/* Live draw preview */}
+            {drawRectStart && drawRectEnd && (() => {
+              const dx = drawRectEnd.x - drawRectStart.x
+              const dy = drawRectEnd.y - drawRectStart.y
+              if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return null
+              const cx = (drawRectStart.x + drawRectEnd.x) / 2
+              const cy = (drawRectStart.y + drawRectEnd.y) / 2
+              const ibw = Math.max(1, imageRef?.naturalWidth * 0.003 ?? 1)
+              return (
+                <g style={{ pointerEvents: 'none' }}>
+                  <rect
+                    x={cx - Math.abs(dx)/2} y={cy - Math.abs(dy)/2}
+                    width={Math.abs(dx)} height={Math.abs(dy)}
+                    fill="rgba(255,200,0,0.06)"
+                    stroke={WARNING}
+                    strokeWidth={lineW}
+                    strokeDasharray={dashArray}
+                  />
+                  {drawPreviewPanels.map((p, i) => {
+                    const aLen = Math.min(p.width, p.height) * 0.16
+                    const aW = aLen * 0.55
+                    const down = dy >= 0  // yDir === 'ttb': slope front is at bottom
+                    const stemFar  = p.y + p.height * (down ? 0.42 : 0.58)
+                    const stemNear = p.y + p.height * (down ? 0.62 : 0.38)
+                    const tipY     = p.y + p.height * (down ? 0.78 : 0.22)
+                    return (
+                      <g key={i} transform={`rotate(${p.rotation || 0} ${p.cx} ${p.cy})`}>
+                        <rect x={p.x} y={p.y} width={p.width} height={p.height}
+                          fill="rgba(135,206,235,0.3)" stroke="none" />
+                        <rect x={p.x + ibw/2} y={p.y + ibw/2}
+                          width={p.width - ibw} height={p.height - ibw}
+                          fill="none" stroke="#4682B4" strokeWidth={ibw} strokeOpacity={0.7} />
+                        <line x1={p.cx} y1={stemFar} x2={p.cx} y2={stemNear}
+                          stroke="rgba(70,130,180,0.75)" strokeWidth={aW * 0.28} strokeLinecap="round"
+                          style={{ pointerEvents: 'none' }} />
+                        <polygon
+                          points={`${p.cx},${tipY} ${p.cx - aW * 0.55},${stemNear} ${p.cx + aW * 0.55},${stemNear}`}
+                          fill="rgba(70,130,180,0.75)" style={{ pointerEvents: 'none' }} />
+                      </g>
+                    )
+                  })}
+                </g>
+              )
+            })()}
+
             {/* Ghost panels (empty lines) */}
             {panels.filter(p => p.isEmpty).map(panel => {
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
@@ -438,13 +853,12 @@ export default function PanelCanvas({
               const isHovered = activeTool === 'delete' && hoveredPanelId === panel.id
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
               const trapId = panel.trapezoidId || 'A1'
-              const hasOverride = !!trapezoidConfigs?.[trapId]
-              let fill, borderColor, ibw
+let fill, borderColor, ibw
               if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = ERROR; ibw = panel.width * 0.012 }
               else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
               else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
-              const bh = Math.min(panel.width, panel.height) * 0.36
+              const bh = Math.min(panel.width, panel.height) * 0.22
               const bw = bh * (trapId.length > 2 ? 2.8 : 1.9)
               const fs = bh * 0.62
               return (
@@ -464,22 +878,48 @@ export default function PanelCanvas({
                       style={{ pointerEvents: 'none' }}
                     />
                   </g>
-                  {!isHovered && (
-                    <>
-                      <rect x={cx - bw / 2} y={cy - bh / 2} width={bw} height={bh} rx={bh / 2}
-                        fill={isSelected ? 'rgba(0,62,126,0.82)' : 'rgba(15,15,15,0.55)'}
-                        style={{ pointerEvents: 'none' }} />
-                      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                        fontSize={fs} fontWeight="600" fill="white"
-                        style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}>
-                        {trapId}
-                      </text>
-                      {hasOverride && (
-                        <circle cx={cx + bw / 2 - bh * 0.18} cy={cy - bh / 2 + bh * 0.18}
-                          r={bh * 0.2} fill={PRIMARY} style={{ pointerEvents: 'none' }} />
-                      )}
-                    </>
-                  )}
+                  {!isHovered && (() => {
+                    const r = (panel.rotation || 0) * Math.PI / 180
+                    const rDeg = panel.rotation || 0
+                    const down = (panel.yDir ?? 'ttb') === 'ttb'
+                    // Badge: centered at (cx, cy), capped to fit within panel width
+                    const scale = bw > panel.width * 0.82 ? (panel.width * 0.82) / bw : 1
+                    const bwS = bw * scale, fsS = fs * scale, bhS = bh * scale
+                    // Chevron: positioned along local panel Y axis, above or below badge
+                    const cupW = bwS * 0.52
+                    const cupH = bhS * 0.42
+                    const cupDist = bhS * 0.85
+                    // Local-down direction in SVG space
+                    const ldx = -Math.sin(r), ldy = Math.cos(r)
+                    const cupSign = down ? 1 : -1
+                    const cupX = cx + ldx * cupSign * cupDist
+                    const cupY = cy + ldy * cupSign * cupDist
+                    return (
+                      <>
+                        {/* Badge */}
+                        <rect x={cx - bwS / 2} y={cy - bhS / 2} width={bwS} height={bhS} rx={bhS / 2}
+                          fill={isSelected ? 'rgba(0,62,126,0.82)' : 'rgba(15,15,15,0.55)'}
+                          style={{ pointerEvents: 'none' }} />
+                        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+                          fontSize={fsS} fontWeight="600" fill="white"
+                          style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}>
+                          {trapId}
+                        </text>
+                        {/* Slope chevron: V below badge (down) or ^ above badge (up) */}
+                        {(() => {
+                          const badgeFill = isSelected ? 'rgba(0,62,126,0.9)' : 'rgba(15,15,15,0.62)'
+                          const pts = down
+                            ? `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
+                            : `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                          return (
+                            <g transform={`translate(${cupX},${cupY}) rotate(${rDeg})`} style={{ pointerEvents: 'none' }}>
+                              <polygon points={pts} fill="white" stroke={badgeFill} strokeWidth={cupH * 0.18} strokeLinejoin="round" />
+                            </g>
+                          )
+                        })()}
+                      </>
+                    )
+                  })()}
                   {isHovered && (
                     <>
                       <rect x={cx - bh / 2} y={cy - bh / 2} width={bh} height={bh} rx={bh / 2}

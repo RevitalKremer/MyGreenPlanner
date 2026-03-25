@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
+import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
 import RowSidebar from './step3/RowSidebar'
 import ToolPanel from './step3/ToolPanel'
 import PanelCanvas from './step3/PanelCanvas'
@@ -27,7 +28,6 @@ export default function Step3PanelPlacement({
   viewZoom,
   setViewZoom,
   showBaseline,
-  setShowBaseline,
   showDistances,
   setShowDistances,
   distanceMeasurement,
@@ -39,9 +39,20 @@ export default function Step3PanelPlacement({
   setAreas,
   addManualPanel,
   trapezoidConfigs,
-  setTrapezoidConfigs
+  setTrapezoidConfigs,
+  rectAreas = [],
+  setRectAreas,
+  onAddRectArea,
+  cmPerPixel,
+  panelType,
+  setPanelType,
+  panelFrontHeight,
+  setPanelFrontHeight,
+  panelAngle,
+  setPanelAngle,
 }) {
-  const [activeTool, setActiveTool] = useState('move')
+  const panelSpec = PANEL_TYPES.find(t => t.id === panelType) ?? DEFAULT_PANEL_TYPE
+  const [activeTool, setActiveTool] = useState(projectMode === 'scratch' ? 'draw' : 'move')
   const [trapIdOverride, setTrapIdOverride] = useState(null)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
@@ -51,6 +62,67 @@ export default function Step3PanelPlacement({
   useEffect(() => {
     setTrapIdOverride(null)
   }, [selectedPanels])
+
+  // Track newly drawn area index so we can select it once panels are computed
+  const pendingNewAreaIdxRef = useRef(null)
+  // Stable area index — survives panel ID changes across recomputes
+  const selectedAreaIdxRef = useRef(null)
+
+  const handleAddRectArea = useCallback((area) => {
+    pendingNewAreaIdxRef.current = rectAreas.length
+    onAddRectArea?.(area)
+  }, [rectAreas.length, onAddRectArea])
+
+  const handleDeleteArea = useCallback((areaKey) => {
+    // After deletion, indices shift: next area lands at same index, or previous if it was last
+    const nextIdx = areaKey < rectAreas.length - 1 ? areaKey : areaKey - 1
+    selectedAreaIdxRef.current = nextIdx >= 0 ? nextIdx : null
+    setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))
+    setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
+    setSelectedPanels([])
+  }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels])
+
+  // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
+  useEffect(() => {
+    if (selectedPanels.length === 0) { selectedAreaIdxRef.current = null; return }
+    const found = panels.find(p => selectedPanels.includes(p.id))
+    if (found != null) selectedAreaIdxRef.current = found.area ?? null
+  }, [selectedPanels])
+
+  // Re-sync selectedPanels after panels recompute (IDs change but area index is stable)
+  useEffect(() => {
+    if (projectMode !== 'scratch' || panels.length === 0) return
+
+    // Pending new area — select it once it's computed
+    if (pendingNewAreaIdxRef.current !== null) {
+      const newPanels = panels.filter(p => p.area === pendingNewAreaIdxRef.current)
+      if (newPanels.length > 0) {
+        selectedAreaIdxRef.current = pendingNewAreaIdxRef.current
+        setSelectedPanels(newPanels.map(p => p.id))
+        pendingNewAreaIdxRef.current = null
+      }
+      return
+    }
+
+    // Re-derive selectedPanels from the stable area index
+    if (selectedAreaIdxRef.current !== null) {
+      const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
+      if (areaPanels.length > 0) {
+        setSelectedPanels(prev => {
+          const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
+          return same ? prev : areaPanels
+        })
+        return
+      }
+    }
+
+    // Auto-select single area when nothing is selected
+    const areaKeys = [...new Set(panels.map(p => p.area))]
+    if (areaKeys.length === 1 && selectedAreaIdxRef.current === null) {
+      selectedAreaIdxRef.current = areaKeys[0]
+      setSelectedPanels(panels.map(p => p.id))
+    }
+  }, [panels, projectMode])
 
   // ── Derived row data ────────────────────────────────────────────────────────
 
@@ -73,6 +145,9 @@ export default function Step3PanelPlacement({
         return na - nb
       })
       .forEach(([, rowPanels]) => {
+        // Scratch mode: rect areas are already one group — never sub-split
+        if (projectMode === 'scratch') { result.push(rowPanels); return }
+
         const isMultiLine = rowPanels.some(p => p.line !== undefined && p.line > 0)
         if (rowPanels.length <= 1 || isMultiLine) { result.push(rowPanels); return }
 
@@ -97,7 +172,7 @@ export default function Step3PanelPlacement({
       })
 
     return result
-  }, [panels])
+  }, [panels, projectMode])
 
   const panelToRowMap = useMemo(() => {
     const map = new Map()
@@ -281,6 +356,7 @@ export default function Step3PanelPlacement({
   }, [areaTrapezoidMap])
 
   useEffect(() => {
+    if (projectMode === 'scratch') return  // scratch panels are rect-bound; don't auto-split
     if (rows.length === 0 || panels.length === 0) return
 
     const distinctAreaKeys = new Set()
@@ -396,7 +472,7 @@ export default function Step3PanelPlacement({
   return (
     <>
       <div className="step-content-area" style={{ position: 'relative' }}>
-        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) ? (
+        {uploadedImageData && (projectMode === 'plan' || projectMode === 'scratch' || (roofPolygon && refinedArea)) ? (
           <PanelCanvas
             uploadedImageData={uploadedImageData}
             viewZoom={viewZoom} setViewZoom={setViewZoom}
@@ -411,10 +487,15 @@ export default function Step3PanelPlacement({
             showBaseline={showBaseline} showDistances={showDistances}
             showHGridlines={showHGridlines} showVGridlines={showVGridlines}
             snapToGridlines={snapToGridlines}
-            refinedArea={refinedArea} trapezoidConfigs={trapezoidConfigs}
+            refinedArea={refinedArea}
             activeTool={activeTool} projectMode={projectMode}
             pendingAddNextTo={pendingAddNextTo} onAddNextToPanel={addNextToPanel} setPendingAddNextTo={setPendingAddNextTo}
             getRowPanelIds={getRowPanelIds}
+            rectAreas={rectAreas}
+            setRectAreas={setRectAreas}
+            onAddRectArea={handleAddRectArea}
+            cmPerPixel={cmPerPixel}
+            panelSpec={panelSpec}
           />
         ) : (
           <div className="step-content">
@@ -426,7 +507,7 @@ export default function Step3PanelPlacement({
         )}
 
         {/* ── LEFT PANEL ──────────────────────────────────────────────────────── */}
-        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (
+        {uploadedImageData && (projectMode === 'plan' || projectMode === 'scratch' || (roofPolygon && refinedArea)) && (
           <RowSidebar
             projectMode={projectMode}
             baseline={baseline} setBaseline={setBaseline}
@@ -440,11 +521,20 @@ export default function Step3PanelPlacement({
             regenerateSingleRowHandler={regenerateSingleRowHandler}
             generatePanelLayoutHandler={generatePanelLayoutHandler}
             regeneratePlanPanelsHandler={regeneratePlanPanelsHandler}
+            rectAreas={rectAreas}
+            setRectAreas={setRectAreas}
+            panelType={panelType}
+            setPanelType={setPanelType}
+            panelFrontHeight={panelFrontHeight}
+            setPanelFrontHeight={setPanelFrontHeight}
+            panelAngle={panelAngle}
+            setPanelAngle={setPanelAngle}
+            onDeleteArea={handleDeleteArea}
           />
         )}
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
-        {uploadedImageData && (projectMode === 'plan' || (roofPolygon && refinedArea)) && (projectMode === 'plan' ? panels.length > 0 : baseline?.p2) && (
+        {uploadedImageData && (projectMode === 'plan' || projectMode === 'scratch' || (roofPolygon && refinedArea)) && (panels.length > 0 || projectMode === 'scratch') && (
           <ToolPanel
             activeTool={activeTool} handleToolChange={handleToolChange}
             selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel} selectedRowAngle={selectedRowAngle}
@@ -460,7 +550,6 @@ export default function Step3PanelPlacement({
             trapezoidConfigs={trapezoidConfigs} setTrapezoidConfigs={setTrapezoidConfigs}
             projectMode={projectMode} areas={areas} getAreaKey={getAreaKey}
             updateTrapezoidConfig={updateTrapezoidConfig} resetTrapezoidConfig={resetTrapezoidConfig}
-            showBaseline={showBaseline} setShowBaseline={setShowBaseline}
             showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}

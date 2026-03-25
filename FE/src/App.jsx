@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PRIMARY, TEXT } from './styles/colors'
+import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
@@ -277,7 +277,69 @@ function App() {
           />
         )}
 
-        {s.currentStep === 2 && (
+        {s.currentStep === 2 && s.projectMode === 'scratch' && (
+          <Step3PanelPlacement
+            projectMode={s.projectMode}
+            uploadedImageData={s.uploadedImageData}
+            roofPolygon={s.roofPolygon}
+            refinedArea={s.refinedArea}
+            imageRef={s.imageRef}
+            setImageRef={s.setImageRef}
+            baseline={{ p1: [0, 0], p2: [1, 1] }}
+            setBaseline={() => {}}
+            panels={s.panels}
+            setPanels={s.setPanels}
+            selectedPanels={s.selectedPanels}
+            setSelectedPanels={s.setSelectedPanels}
+            dragState={s.dragState}
+            setDragState={s.setDragState}
+            rotationState={s.rotationState}
+            setRotationState={s.setRotationState}
+            viewZoom={s.viewZoom}
+            setViewZoom={s.setViewZoom}
+            showBaseline={false}
+            showDistances={s.showDistances}
+            setShowDistances={s.setShowDistances}
+            distanceMeasurement={s.distanceMeasurement}
+            setDistanceMeasurement={s.setDistanceMeasurement}
+            generatePanelLayoutHandler={s.computeScratchPanels}
+            regeneratePlanPanelsHandler={s.computeScratchPanels}
+            regenerateSingleRowHandler={s.computeScratchPanels}
+            areas={s.areas}
+            setAreas={s.setAreas}
+            addManualPanel={s.addManualPanel}
+            trapezoidConfigs={s.trapezoidConfigs}
+            setTrapezoidConfigs={s.setTrapezoidConfigs}
+            rectAreas={s.rectAreas}
+            setRectAreas={s.setRectAreas}
+            onAddRectArea={(rawRect) => {
+              s.setRectAreas(prev => {
+                const idx = prev.length
+                return [...prev, {
+                  ...rawRect,
+                  id: Date.now(),
+                  label: String.fromCharCode(65 + idx % 26),
+                  color: AREA_PALETTE[idx % AREA_PALETTE.length],
+                  frontHeight: s.panelFrontHeight ?? '',
+                  angle: s.panelAngle ?? '',
+                }]
+              })
+            }}
+            cmPerPixel={(() => {
+              if (s.refinedArea?.pixelToCmRatio) return s.refinedArea.pixelToCmRatio
+              if (!s.referenceLine || !s.referenceLineLengthCm) return null
+              const dx = s.referenceLine.end.x - s.referenceLine.start.x
+              const dy = s.referenceLine.end.y - s.referenceLine.start.y
+              const len = Math.sqrt(dx * dx + dy * dy)
+              return len > 0 ? parseFloat(s.referenceLineLengthCm) / len : null
+            })()}
+            panelFrontHeight={s.panelFrontHeight}
+            setPanelFrontHeight={s.setPanelFrontHeight}
+            panelAngle={s.panelAngle}
+            setPanelAngle={s.setPanelAngle}
+          />
+        )}
+        {s.currentStep === 2 && s.projectMode !== 'scratch' && (
           <Step2PVAreaRefinement
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
@@ -307,6 +369,15 @@ function App() {
             projectMode={s.projectMode}
             areas={s.areas}
             setAreas={s.setAreas}
+            rectAreas={s.rectAreas}
+            setRectAreas={s.setRectAreas}
+            cmPerPixel={(() => {
+              if (!s.referenceLine || !s.referenceLineLengthCm) return null
+              const dx = s.referenceLine.end.x - s.referenceLine.start.x
+              const dy = s.referenceLine.end.y - s.referenceLine.start.y
+              const len = Math.sqrt(dx * dx + dy * dy)
+              return len > 0 ? parseFloat(s.referenceLineLengthCm) / len : null
+            })()}
           />
         )}
 
@@ -331,7 +402,6 @@ function App() {
             viewZoom={s.viewZoom}
             setViewZoom={s.setViewZoom}
             showBaseline={s.showBaseline}
-            setShowBaseline={s.setShowBaseline}
             showDistances={s.showDistances}
             setShowDistances={s.setShowDistances}
             distanceMeasurement={s.distanceMeasurement}
@@ -344,6 +414,14 @@ function App() {
             addManualPanel={s.addManualPanel}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
+            panelType={s.panelType}
+            setPanelType={s.setPanelType}
+            panelFrontHeight={s.panelFrontHeight}
+            setPanelFrontHeight={s.setPanelFrontHeight}
+            panelAngle={s.panelAngle}
+            setPanelAngle={s.setPanelAngle}
+            rectAreas={s.rectAreas}
+            setRectAreas={s.setRectAreas}
           />
         )}
 
@@ -440,7 +518,7 @@ function App() {
           className="btn-nav btn-next"
           onClick={() => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
-            s.handleNext(TOTAL_STEPS)
+            s.handleNext(TOTAL_STEPS, s.projectMode === 'scratch' && s.currentStep === 2)
           }}
           disabled={!s.canProceedToNextStep()}
         >
