@@ -9,6 +9,7 @@ export default function RowSidebar({
   rows, areas, setAreas, areaLabel, getAreaKey,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
   regenerateSingleRowHandler,
+  refreshAreaTrapezoids,
   rectAreas = [],
   setRectAreas,
   panelTypes = PANEL_TYPES,
@@ -198,6 +199,13 @@ export default function RowSidebar({
                           title={`Regenerate ${areaLabel(areaKey, i)}`}
                           style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
                         >↺</button>
+                        {typeof areaKey === 'number' && refreshAreaTrapezoids && !rectAreas[areaKey]?.manualTrapezoids && (
+                          <button
+                            onClick={() => refreshAreaTrapezoids(areaKey)}
+                            title="Re-split trapezoids based on current panel layout"
+                            style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
+                          >⟳</button>
+                        )}
                       </div>
                       {/* Second row: trapezoid badge(s) */}
                       {!hasMultiTrap && trapIds.length === 1 && (

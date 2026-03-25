@@ -49,6 +49,7 @@ export default function Step3PanelPlacement({
   setPanelFrontHeight,
   panelAngle,
   setPanelAngle,
+  refreshAreaTrapezoids,
 }) {
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('draw')
@@ -184,20 +185,11 @@ export default function Step3PanelPlacement({
     if (!selectedPanels.length) return
     setPanels(prev => prev.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
-      const cx = panel.x + panel.width / 2
-      const cy = panel.y + panel.height / 2
-      const newW = panel.height
-      const newH = panel.width
+      const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
+      const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
-      return {
-        ...panel,
-        width: newW,
-        height: newH,
-        heightCm: newHeightCm,
-        x: cx - newW / 2,
-        y: cy - newH / 2,
-      }
+      return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
     }))
   }
 
@@ -271,6 +263,11 @@ export default function Step3PanelPlacement({
   useEffect(() => {
     if (!selectedRow || !selectedTrapezoidId) return
 
+    // Auto-split areas have their trapezoid configs set by computePanels (which includes
+    // empty-* orientations for ghost rows). Don't overwrite them here.
+    const areaKey = getAreaKey(selectedRow[0])
+    if (!rectAreas[areaKey]?.manualTrapezoids) return
+
     const rowMap = new Map()
     selectedRow.forEach(p => {
       const r = p.row ?? 0
@@ -284,8 +281,6 @@ export default function Step3PanelPlacement({
     )
     const autoLPR = sortedRows.length
 
-    // Source of truth for angle/frontH is rectAreas[areaKey], fall back to global defaults
-    const areaKey = getAreaKey(selectedRow[0])
     const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
     const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0
 
@@ -361,6 +356,20 @@ export default function Step3PanelPlacement({
     const selIds = new Set(selectedPanels)
     setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: trapId } : p))
     setTrapIdOverride(trapId)
+    // Lock auto-split for this area; store column→trapId mapping so recomputes respect it
+    if (selectedRow) {
+      const ak = getAreaKey(selectedRow[0])
+      if (ak !== null && ak !== undefined) {
+        const selPanels = panels.filter(p => selIds.has(p.id))
+        const cols = [...new Set(selPanels.map(p => p.col).filter(c => c !== undefined))]
+        setRectAreas(prev => prev.map((a, i) => {
+          if (i !== ak) return a
+          const newColMap = { ...(a.manualColTrapezoids || {}) }
+          cols.forEach(c => { newColMap[String(c)] = trapId })
+          return { ...a, manualTrapezoids: true, manualColTrapezoids: newColMap }
+        }))
+      }
+    }
   }
 
   const resetTrapezoidConfig = () => {
@@ -445,6 +454,7 @@ export default function Step3PanelPlacement({
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
             regenerateSingleRowHandler={regenerateSingleRowHandler}
+            refreshAreaTrapezoids={refreshAreaTrapezoids}
             generatePanelLayoutHandler={generatePanelLayoutHandler}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}

@@ -300,7 +300,8 @@ function App() {
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
             generatePanelLayoutHandler={s.computePanels}
-            regenerateSingleRowHandler={s.computePanels}
+            regenerateSingleRowHandler={s.regenerateSingleRowHandler}
+            refreshAreaTrapezoids={s.refreshAreaTrapezoids}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -318,6 +319,8 @@ function App() {
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
+                  manualTrapezoids: false,
+                  manualColTrapezoids: {},
                 }]
               })
             }}

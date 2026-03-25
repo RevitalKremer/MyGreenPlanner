@@ -32,6 +32,7 @@ export function computeRectPanels(rect, cmPerPixel, panelSpec) {
   const localPanels = []
   let localY = 0
   let rowIndex = 0
+  const portraitPitch = portraitW + gapPx
 
   while (localY < height) {
     const remaining = height - localY
@@ -51,12 +52,21 @@ export function computeRectPanels(rect, cmPerPixel, panelSpec) {
     let colIndex = 0
     while (localX + panelW <= width + 0.001) {
       if (width - localX < panelW * 0.5) break
+      // Which portrait-pitch-aligned columns does this panel's fill extent cover?
+      const coveredCols = []
+      const kStart = Math.floor(localX / portraitPitch)
+      const kEnd = Math.ceil((localX + panelW) / portraitPitch)
+      for (let k = kStart; k <= kEnd; k++) {
+        const portCenter = k * portraitPitch + portraitW / 2
+        if (portCenter >= localX && portCenter < localX + panelW) coveredCols.push(k)
+      }
       localPanels.push({
         localCx: localX + panelW / 2,
         localCy: localY + rowH / 2,
         panelW, rowH,
         widthCm, heightCm,
         rowIndex, colIndex,
+        coveredCols,
       })
       localX += panelW + gapPx
       colIndex++
@@ -95,6 +105,8 @@ export function computeRectPanels(rect, cmPerPixel, panelSpec) {
       cy: imgCy,
       row:  p.rowIndex,
       line: p.rowIndex,
+      col:  p.coveredCols?.[0] ?? p.colIndex,
+      coveredCols: p.coveredCols,
     }
   })
 }
@@ -162,6 +174,7 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec) {
   const localPanels = []
   let localY = 0
   let rowIndex = 0
+  const portraitPitch = portraitW + gapPx
 
   while (localY < bboxH) {
     const remaining = bboxH - localY
@@ -181,10 +194,19 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec) {
     let colIndex = 0
     while (localX + panelW <= bboxW + 0.001) {
       if (bboxW - localX < panelW * 0.5) break
+      // Which portrait-pitch-aligned columns does this panel's fill extent cover?
+      const coveredCols = []
+      const kStart = Math.floor(localX / portraitPitch)
+      const kEnd = Math.ceil((localX + panelW) / portraitPitch)
+      for (let k = kStart; k <= kEnd; k++) {
+        const portCenter = k * portraitPitch + portraitW / 2
+        if (portCenter >= localX && portCenter < localX + panelW) coveredCols.push(k)
+      }
       localPanels.push({
         localCx: xDir === 'rtl' ? maxLX - localX - panelW / 2 : minLX + localX + panelW / 2,
         localCy: yDir === 'btt' ? maxLY - localY - rowH / 2 : minLY + localY + rowH / 2,
         panelW, rowH, widthCm, heightCm, rowIndex, colIndex,
+        coveredCols,
       })
       localX += panelW + gapPx
       colIndex++
@@ -213,6 +235,8 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec) {
       cy: imgCy,
       row:  p.rowIndex,
       line: p.rowIndex,
+      col:  p.coveredCols?.[0] ?? p.colIndex,
+      coveredCols: p.coveredCols,
     }
   })
 }

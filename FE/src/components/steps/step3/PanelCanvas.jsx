@@ -193,8 +193,10 @@ export default function PanelCanvas({
     }
 
     if (activeTool === 'delete') {
-      if (clickedPanel) { setPanels(panels.filter(p => p.id !== clickedPanel.id)); setSelectedPanels([]) }
-      else startPan(e)
+      if (clickedPanel) {
+        setPanels(prev => prev.filter(p => p.id !== clickedPanel.id))
+        setSelectedPanels([])
+      } else startPan(e)
       return
     }
 
