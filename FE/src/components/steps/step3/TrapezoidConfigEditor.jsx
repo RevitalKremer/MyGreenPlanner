@@ -21,13 +21,13 @@ export default function TrapezoidConfigEditor({
   const defaultAngle = parseFloat(panelAngle) || globalCfg.angle || 0
   const defaultFrontHeight = parseFloat(panelFrontHeight) || globalCfg.frontHeight || 0
 
-  const scratchAreaKey = getAreaKey(selectedRow[0])
-  const scratchArea = scratchAreaKey !== null ? (rectAreas?.[scratchAreaKey] ?? null) : null
-  const scratchAngleRaw = scratchArea?.angle ?? ''
-  const scratchFHRaw = scratchArea?.frontHeight ?? ''
+  const areaKey = getAreaKey(selectedRow[0])
+  const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
+  const angleRaw = area?.angle ?? ''
+  const frontHeightRaw = area?.frontHeight ?? ''
 
-  const angle = scratchAngleRaw !== '' ? parseFloat(scratchAngleRaw) || 0 : defaultAngle
-  const frontHeight = scratchFHRaw !== '' ? parseFloat(scratchFHRaw) || 0 : defaultFrontHeight
+  const angle = angleRaw !== '' ? parseFloat(angleRaw) || 0 : defaultAngle
+  const frontHeight = frontHeightRaw !== '' ? parseFloat(frontHeightRaw) || 0 : defaultFrontHeight
   const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
 
   // ── Derive lines from actual panel layout ────────────────────────────────
@@ -98,10 +98,10 @@ export default function TrapezoidConfigEditor({
           <button
             onClick={() => {
               resetTrapezoidConfig()
-              if (setRectAreas && scratchAreaKey !== null && scratchAreaKey !== undefined) {
+              if (setRectAreas && areaKey !== null && areaKey !== undefined) {
                 const resetAngle = String(parseFloat(panelAngle) || defaultAngle || 0)
                 const resetFH = String(parseFloat(panelFrontHeight) || defaultFrontHeight || 0)
-                setRectAreas(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, angle: resetAngle, frontHeight: resetFH } : a))
+                setRectAreas(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: resetAngle, frontHeight: resetFH } : a))
               }
             }}
             style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: 'white', color: TEXT_PLACEHOLDER, border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer' }}
@@ -126,8 +126,8 @@ export default function TrapezoidConfigEditor({
         <text x={fX - 2} y={(groundY + groundY - frontHeight * sc) / 2} textAnchor="end" fill={TEXT_PLACEHOLDER} fontSize="8">{frontHeight.toFixed(0)}</text>
         <text x={finalX + 3} y={(groundY + groundY - backHeight * sc) / 2} fill={TEXT_PLACEHOLDER} fontSize="8">{backHeight.toFixed(1)}</text>
         <text x={(fX + finalX) / 2} y={H - 1} textAnchor="middle" fill={TEXT_SECONDARY} fontSize="7.5" fontWeight="700">{angle.toFixed(1)}°</text>
-        {scratchArea && (() => {
-          const isDown = (scratchArea.yDir ?? 'ttb') === 'ttb'
+        {area && (() => {
+          const isDown = (area.yDir ?? 'ttb') === 'ttb'
           const leftLabel = isDown ? 'N' : 'S'
           const rightLabel = isDown ? 'S' : 'N'
           return (
@@ -145,8 +145,8 @@ export default function TrapezoidConfigEditor({
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
           <input
             type="number" min="0" max="30" step="0.5"
-            value={scratchAngleRaw !== '' ? scratchAngleRaw : defaultAngle}
-            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, angle: e.target.value } : a))}
+            value={angleRaw !== '' ? angleRaw : defaultAngle}
+            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: e.target.value } : a))}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
@@ -154,8 +154,8 @@ export default function TrapezoidConfigEditor({
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
           <input
             type="number" min="0" step="0.5"
-            value={scratchFHRaw !== '' ? scratchFHRaw : defaultFrontHeight}
-            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, frontHeight: e.target.value } : a))}
+            value={frontHeightRaw !== '' ? frontHeightRaw : defaultFrontHeight}
+            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, frontHeight: e.target.value } : a))}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
