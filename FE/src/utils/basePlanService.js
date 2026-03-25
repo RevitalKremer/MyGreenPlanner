@@ -34,7 +34,9 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
     const panel = rowPanels.find(p => (p.line ?? 0) === lineIdx) || rowPanels[0]
     lineMap[li].orientation = getPanelOrientation(panel)
   }
-  const lines = Object.values(lineMap).sort((a, b) => a.lineIdx - b.lineIdx)
+  // Sort by physical position (minY) so lines[0] is always the rearmost (topmost in image)
+  // regardless of lineIdx ordering, which differs between yDir='ttb' and yDir='btt' areas.
+  const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
 
   // Frame spans panel edges (not rail ends)
   const frameXMinPx   = localBounds.minX

@@ -94,7 +94,7 @@ export function computeRectPanels(rect, cmPerPixel, panelSpec) {
       cx: imgCx,
       cy: imgCy,
       row:  p.rowIndex,
-      line: 0,
+      line: p.rowIndex,
     }
   })
 }
@@ -212,7 +212,7 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec) {
       cx: imgCx,
       cy: imgCy,
       row:  p.rowIndex,
-      line: 0,
+      line: p.rowIndex,
     }
   })
 }

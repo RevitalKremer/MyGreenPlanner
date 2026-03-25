@@ -9,7 +9,7 @@ import {
  * Cross-section side-view SVG for a single row configuration.
  * Computes all geometry internally from config props.
  */
-export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHeight = 0, linesPerRow = 1, orientations = ['vertical'], projectMode = 'scratch' }) {
+export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHeight = 0, linesPerRow = 1, orientations = ['vertical'] }) {
   const hasValues = frontHeight > 0 || angle > 0
 
   const angleRad   = angle * Math.PI / 180
@@ -42,7 +42,7 @@ export default function CrossSectionDiagram({ angle = 0, frontHeight = 0, backHe
   if (!hasValues) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG_LIGHT, borderRadius: '6px', padding: '2rem', textAlign: 'center', color: TEXT_FAINTEST, fontSize: '0.85rem' }}>
-        {projectMode === 'plan' ? 'Add a group and enter measurements' : 'Enter measurements to see diagram'}
+        {'Enter measurements to see diagram'}
       </div>
     )
   }

@@ -7,14 +7,12 @@ export default function AreaCanvas({
   uploadedImageData, viewZoom, setViewZoom,
   imageRef, setImageRef,
   roofPolygon,
-  areas, projectMode,
   activeGroupId, baselineDrawStart,
   handleImageClick, isDrawingAnything,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const [mousePos, setMousePos] = useState(null)
 
-  const labelFontSize = imageRef ? Math.max(12, Math.min(36, imageRef.naturalWidth * 0.012)) : 14
   const dotR     = imageRef ? Math.max(2, imageRef.naturalWidth * 0.002) : 2
   const lineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) : 1
   const dashArray = imageRef
@@ -108,26 +106,6 @@ export default function AreaCanvas({
               </>
             )}
 
-            {/* Group baselines (plan mode) */}
-            {projectMode === 'plan' && areas.map(group => (
-              group.baseline && (
-                <g key={group.id}>
-                  <line
-                    x1={group.baseline.p1[0]} y1={group.baseline.p1[1]}
-                    x2={group.baseline.p2[0]} y2={group.baseline.p2[1]}
-                    stroke={group.color} strokeWidth={Math.max(2, labelFontSize * 0.15)}
-                  />
-                  <circle cx={group.baseline.p1[0]} cy={group.baseline.p1[1]} r={labelFontSize * 0.4} fill={group.color}/>
-                  <circle cx={group.baseline.p2[0]} cy={group.baseline.p2[1]} r={labelFontSize * 0.4} fill={group.color}/>
-                  <text
-                    x={group.baseline.p1[0] + labelFontSize * 0.6}
-                    y={group.baseline.p1[1] - labelFontSize * 0.6}
-                    fill={group.color} fontSize={labelFontSize} fontWeight="700"
-                    style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
-                  >{group.label}</text>
-                </g>
-              )
-            ))}
 
             {/* Baseline: first click dot */}
             {activeGroup && baselineDrawStart && (

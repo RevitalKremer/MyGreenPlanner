@@ -15,7 +15,7 @@ export default function PanelCanvas({
   distanceMeasurement, setDistanceMeasurement,
   showBaseline, showDistances, showHGridlines, showVGridlines, snapToGridlines,
   refinedArea,
-  activeTool, projectMode,
+  activeTool,
   pendingAddNextTo, onAddNextToPanel, setPendingAddNextTo,
   rectAreas = [],
   setRectAreas,
@@ -121,7 +121,7 @@ export default function PanelCanvas({
     const { x, y } = svgCoords(e)
 
     // Y-lock rotation: click inside a y-locked polygon starts rotation drag (draw mode only)
-    if (projectMode === 'scratch' && activeTool === 'draw') {
+    if (activeTool === 'draw') {
       const selAreaIdx = selectedPanels.length > 0
         ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
         : null
@@ -141,7 +141,7 @@ export default function PanelCanvas({
 
     // Draw tool — creates a new rect area
     // Baseline drawing (scratch mode)
-    if (projectMode !== 'plan' && (!baseline || baseline.p2 === null)) {
+    if (!baseline || baseline.p2 === null) {
       if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
       if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
     }
@@ -221,7 +221,7 @@ export default function PanelCanvas({
     const { x, y } = svgCoords(e)
     setMousePos({ x, y })
 
-    if (projectMode === 'scratch' && !yLockDragState) {
+    if (!yLockDragState) {
       setOverYLockArea(rectAreas.some(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices)))
     }
 
@@ -495,7 +495,7 @@ export default function PanelCanvas({
           const cx = p.x + p.width / 2, cy = p.y + p.height / 2
           return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY
         })
-        if (projectMode === 'scratch' && hit.length > 0) {
+        if (hit.length > 0) {
           // Restrict to the most-represented area
           const counts = {}
           hit.forEach(p => { counts[p.area] = (counts[p.area] || 0) + 1 })

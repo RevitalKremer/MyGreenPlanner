@@ -11,10 +11,10 @@ export default function ToolPanel({
   distanceMeasurement, setDistanceMeasurement,
   selectedAreaTrapIds, selectedTrapezoidId,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
-  reassignToTrapezoid, addTrapezoid,
-  selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
-  projectMode, areas, getAreaKey,
-  updateTrapezoidConfig, resetTrapezoidConfig,
+  reassignToTrapezoid,
+  selectedRow, refinedArea, trapezoidConfigs,
+  getAreaKey,
+  resetTrapezoidConfig,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
   showHGridlines, setShowHGridlines,
@@ -72,11 +72,9 @@ export default function ToolPanel({
           Tool
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
-          {projectMode === 'scratch' && (
-            <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title="Draw area">
-              <span>▦</span>{toolLabel('Draw')}
-            </button>
-          )}
+          <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title="Draw area">
+            <span>▦</span>{toolLabel('Draw')}
+          </button>
           <button style={toolBtnStyle('move')} onClick={() => handleToolChange('move')} title="Move row">
             <span>✥</span>{toolLabel('Move')}
           </button>
@@ -243,15 +241,10 @@ export default function ToolPanel({
           selectedAreaLabel={selectedAreaLabel}
           refinedArea={refinedArea}
           trapezoidConfigs={trapezoidConfigs}
-          setTrapezoidConfigs={setTrapezoidConfigs}
-          projectMode={projectMode}
-          areas={areas}
           getAreaKey={getAreaKey}
-          updateTrapezoidConfig={updateTrapezoidConfig}
           resetTrapezoidConfig={resetTrapezoidConfig}
           selectedAreaTrapIds={selectedAreaTrapIds}
           reassignToTrapezoid={reassignToTrapezoid}
-          addTrapezoid={addTrapezoid}
           panelFrontHeight={panelFrontHeight}
           panelAngle={panelAngle}
           rectAreas={rectAreas}

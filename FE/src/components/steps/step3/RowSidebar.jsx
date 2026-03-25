@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { PANEL_TYPES } from '../../../data/panelTypes'
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, WARNING, WARNING_BG, BLUE, BLUE_BG, BLUE_BORDER, ERROR } from '../../../styles/colors'
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
 
 export default function RowSidebar({
-  projectMode, panels, setPanels,
+  panels, setPanels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
   rows, areas, setAreas, areaLabel, getAreaKey,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
-  regenerateSingleRowHandler, regeneratePlanPanelsHandler,
+  regenerateSingleRowHandler,
   rectAreas = [],
   setRectAreas,
   panelType,
@@ -66,8 +66,8 @@ export default function RowSidebar({
         </select>
       </div>
 
-      {/* Default mounting settings (scratch mode) */}
-      {projectMode === 'scratch' && (
+      {/* Default mounting settings */}
+      {(
         <div style={{ marginBottom: '1rem', padding: '0.6rem 0.7rem 0.5rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BORDER_FAINT}` }}>
           <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
             Default Mounting
@@ -105,21 +105,7 @@ export default function RowSidebar({
         </div>
       )}
 
-      {/* State: plan mode, panels cleared */}
-      {projectMode === 'plan' && panels.length === 0 && (
-        <div style={{ padding: '1rem', background: WARNING_BG, borderRadius: '8px', border: `2px solid ${WARNING}` }}>
-          <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.75rem 0' }}>
-            Panels were cleared. Regenerate from the baselines defined in Step 2.
-          </p>
-          <button
-            onClick={regeneratePlanPanelsHandler}
-            style={{ width: '100%', padding: '0.75rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem' }}
-          >
-            ↺ Regenerate from Baselines
-          </button>
-        </div>
-      )}
-      {projectMode === 'scratch' && panels.length === 0 && (
+      {panels.length === 0 && (
         <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.5rem', lineHeight: 1.4 }}>
           Select the <strong>Draw</strong> tool and drag on the canvas to create a panel area.
         </p>
@@ -167,7 +153,7 @@ export default function RowSidebar({
                         >
                           {row.length}p
                         </span>
-                        {projectMode === 'scratch' && (() => {
+                        {(() => {
                           const isLocked = rectAreas[areaKey]?.mode === 'ylocked'
                           return (
                             <button
@@ -196,7 +182,7 @@ export default function RowSidebar({
                         })()}
                         <button
                           onClick={() => {
-                            if (projectMode === 'scratch' && onDeleteArea) {
+                            if (onDeleteArea) {
                               onDeleteArea(areaKey)
                             } else {
                               setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))

@@ -47,7 +47,6 @@ export default function Step1RoofAllocation({
   setRoofPolygon,
   handlePointSelect,
   onWhiteboardStart,
-  projectMode,
   isDrawingLine,
   setIsDrawingLine,
   lineStart,
@@ -89,8 +88,6 @@ export default function Step1RoofAllocation({
   const refDashArray = imageRef
     ? `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
     : '6,3'
-
-  const isScratch = projectMode === 'scratch'
 
   const handleAddRoofImageToggle = (checked) => {
     setAddRoofImage(checked)
@@ -194,7 +191,7 @@ export default function Step1RoofAllocation({
     setIsDrawing(true)
   }
 
-  const hint = isScratch && !addRoofImage
+  const hint = !addRoofImage
     ? 'White canvas ready — click Next to set scale, or add a roof image using the panel'
     : !uploadedImageMode
       ? 'Click anywhere on the roof — SAM2 will detect its outline'
@@ -209,20 +206,6 @@ export default function Step1RoofAllocation({
       {/* ── Toolbar ── */}
       <div className="step-options">
 
-        {/* Source: Map vs Image — only shown in plan mode (scratch uses floating panel) */}
-        {!isScratch && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            <span style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source</span>
-            <div className="seg-control">
-              <button className={`seg-btn${!uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(false)}>
-                <IconMap /> Map
-              </button>
-              <button className={`seg-btn${uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(true)}>
-                <IconImage /> Image
-              </button>
-            </div>
-          </div>
-        )}
 
 
         {/* Hint text */}
@@ -424,14 +407,14 @@ export default function Step1RoofAllocation({
         {/* Unified floating panel */}
         {(() => {
           const hasRealImage = uploadedImageMode && uploadedImageData && !uploadedImageData.isScratch
-          const showPanel = isScratch || hasRealImage || selectedPoint || (drawMode === 'draw' && roofPolygon) || (roofPolygon && uploadedImageMode && uploadedImageData)
+          const showPanel = true || hasRealImage || selectedPoint || (drawMode === 'draw' && roofPolygon) || (roofPolygon && uploadedImageMode && uploadedImageData)
           if (!showPanel) return null
 
           return (
           <div className="info-panel">
 
-            {/* Add roof image — scratch mode only */}
-            {isScratch && (
+            {/* Add roof image */}
+            {(
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: addRoofImage ? '0.85rem' : 0 }}>
                   <input
@@ -473,29 +456,14 @@ export default function Step1RoofAllocation({
                     )}
                   </div>
                 )}
-                {(!isScratch || addRoofImage) && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
+                {addRoofImage && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
                   <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '0.85rem 0' }} />
                 )}
               </>
             )}
 
-            {/* Detection — plan mode only (scratch mode shows it inside the addRoofImage block) */}
-            {!isScratch && uploadedImageMode && uploadedImageData && !uploadedImageData.isScratch && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Detection</div>
-                <div className="seg-control">
-                  <button className={`seg-btn${drawMode === 'auto' ? ' seg-active' : ''}`} onClick={() => { setDrawMode('auto'); setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}>
-                    <IconAuto /> Auto (SAM2)
-                  </button>
-                  <button className={`seg-btn${drawMode === 'draw' ? ' seg-active seg-accent' : ''}`} onClick={() => setDrawMode('draw')}>
-                    <IconPen /> Draw Polygon
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* Polygon / location info — hidden in scratch mode when no roof image is added */}
-            {(!isScratch || addRoofImage) && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
+            {addRoofImage && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
               <>
                 <h3>{drawMode === 'draw' ? 'Drawn Polygon' : 'Selected Location'}</h3>
                 {drawMode === 'auto' && selectedPoint && (

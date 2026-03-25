@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
-import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
@@ -264,7 +263,6 @@ function App() {
             setRoofPolygon={s.setRoofPolygon}
             handlePointSelect={s.handlePointSelect}
             onWhiteboardStart={s.handleWhiteboardStart}
-            projectMode={s.projectMode}
             setUploadedImageData={s.setUploadedImageData}
             isDrawingLine={s.isDrawingLine}
             setIsDrawingLine={s.setIsDrawingLine}
@@ -277,9 +275,8 @@ function App() {
           />
         )}
 
-        {s.currentStep === 2 && s.projectMode === 'scratch' && (
+        {s.currentStep === 2 && (
           <Step3PanelPlacement
-            projectMode={s.projectMode}
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
@@ -303,7 +300,6 @@ function App() {
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
             generatePanelLayoutHandler={s.computeScratchPanels}
-            regeneratePlanPanelsHandler={s.computeScratchPanels}
             regenerateSingleRowHandler={s.computeScratchPanels}
             areas={s.areas}
             setAreas={s.setAreas}
@@ -339,42 +335,8 @@ function App() {
             setPanelAngle={s.setPanelAngle}
           />
         )}
-        {s.currentStep === 2 && s.projectMode !== 'scratch' && (
-          <Step2PVAreaRefinement
-            uploadedImageData={s.uploadedImageData}
-            roofPolygon={s.roofPolygon}
-            imageRef={s.imageRef}
-            setImageRef={s.setImageRef}
-            viewZoom={s.viewZoom}
-            setViewZoom={s.setViewZoom}
-            isDrawingLine={s.isDrawingLine}
-            setIsDrawingLine={s.setIsDrawingLine}
-            lineStart={s.lineStart}
-            setLineStart={s.setLineStart}
-            referenceLine={s.referenceLine}
-            setReferenceLine={s.setReferenceLine}
-            referenceLineLengthCm={s.referenceLineLengthCm}
-            setReferenceLineLengthCm={s.setReferenceLineLengthCm}
-            panelType={s.panelType}
-            setPanelType={s.setPanelType}
-            panelFrontHeight={s.panelFrontHeight}
-            setPanelFrontHeight={s.setPanelFrontHeight}
-            linesPerRow={s.linesPerRow}
-            setLinesPerRow={s.setLinesPerRow}
-            lineOrientations={s.lineOrientations}
-            setLineOrientations={s.setLineOrientations}
-            computedBackHeight={s.getComputedBackHeight()}
-            panelAngle={s.panelAngle}
-            setPanelAngle={s.setPanelAngle}
-            projectMode={s.projectMode}
-            areas={s.areas}
-            setAreas={s.setAreas}
-          />
-        )}
-
         {s.currentStep === 3 && (
           <Step3PanelPlacement
-            projectMode={s.projectMode}
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
@@ -398,7 +360,6 @@ function App() {
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
             generatePanelLayoutHandler={s.generatePanelLayoutHandler}
-            regeneratePlanPanelsHandler={s.regeneratePlanPanelsHandler}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             areas={s.areas}
             setAreas={s.setAreas}
@@ -490,7 +451,7 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(step => (
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).filter(step => step !== 3).map(step => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
@@ -509,7 +470,7 @@ function App() {
           className="btn-nav btn-next"
           onClick={() => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
-            s.handleNext(TOTAL_STEPS, s.projectMode === 'scratch' && s.currentStep === 2)
+            s.handleNext(TOTAL_STEPS, s.currentStep === 2)
           }}
           disabled={!s.canProceedToNextStep()}
         >

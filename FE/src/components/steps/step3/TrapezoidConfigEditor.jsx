@@ -1,16 +1,15 @@
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
 import {
-  computePanelBackHeight, computeTotalSlopeDepth,
-  toggleOrientation, toggleEmptyOrientation,
+  computeTotalSlopeDepth,
   isHorizontalOrientation, isEmptyOrientation,
 } from '../../../utils/trapezoidGeometry'
 
 export default function TrapezoidConfigEditor({
   selectedRow, selectedTrapezoidId, selectedAreaLabel,
-  refinedArea, trapezoidConfigs, setTrapezoidConfigs,
-  projectMode, areas, getAreaKey,
-  updateTrapezoidConfig, resetTrapezoidConfig,
-  selectedAreaTrapIds, reassignToTrapezoid, addTrapezoid,
+  refinedArea, trapezoidConfigs,
+  getAreaKey,
+  resetTrapezoidConfig,
+  selectedAreaTrapIds, reassignToTrapezoid,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
 }) {
@@ -22,21 +21,16 @@ export default function TrapezoidConfigEditor({
   const defaultAngle = parseFloat(panelAngle) || globalCfg.angle || 0
   const defaultFrontHeight = parseFloat(panelFrontHeight) || globalCfg.frontHeight || 0
 
-  // For scratch mode, rectAreas[areaKey] is the source of truth for angle/frontH
-  const scratchAreaKey = projectMode === 'scratch' ? getAreaKey(selectedRow[0]) : null
+  const scratchAreaKey = getAreaKey(selectedRow[0])
   const scratchArea = scratchAreaKey !== null ? (rectAreas?.[scratchAreaKey] ?? null) : null
   const scratchAngleRaw = scratchArea?.angle ?? ''
   const scratchFHRaw = scratchArea?.frontHeight ?? ''
 
-  const angle = projectMode === 'scratch'
-    ? (scratchAngleRaw !== '' ? parseFloat(scratchAngleRaw) || 0 : defaultAngle)
-    : (override.angle ?? defaultAngle)
-  const frontHeight = projectMode === 'scratch'
-    ? (scratchFHRaw !== '' ? parseFloat(scratchFHRaw) || 0 : defaultFrontHeight)
-    : (override.frontHeight ?? defaultFrontHeight)
+  const angle = scratchAngleRaw !== '' ? parseFloat(scratchAngleRaw) || 0 : defaultAngle
+  const frontHeight = scratchFHRaw !== '' ? parseFloat(scratchFHRaw) || 0 : defaultFrontHeight
   const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
 
-  // ── Derive lines from actual panel layout (scratch mode) ──────────────────
+  // ── Derive lines from actual panel layout ────────────────────────────────
   const rowMap = new Map()
   selectedRow.forEach(p => {
     const r = p.row ?? 0
@@ -46,17 +40,8 @@ export default function TrapezoidConfigEditor({
   const derivedOrients = derivedRows.map(([, p]) => (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal')
   const derivedLPR = Math.max(1, derivedRows.length)
 
-  const selectedAreaKey = getAreaKey(selectedRow[0])
-  const planArea = projectMode === 'plan' && selectedAreaKey !== null
-    ? areas[selectedAreaKey] ?? null
-    : null
-
-  const effectiveLinesPerRow = projectMode === 'scratch'
-    ? derivedLPR
-    : (override.linesPerRow ?? planArea?.linesPerRow ?? globalCfg.linesPerRow) || 1
-  const effectiveLineOrientations = projectMode === 'scratch'
-    ? derivedOrients
-    : (override.lineOrientations ?? planArea?.lineOrientations ?? globalCfg.lineOrientations) || ['vertical']
+  const effectiveLinesPerRow = derivedLPR
+  const effectiveLineOrientations = derivedOrients
 
   const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow)
 
@@ -109,19 +94,11 @@ export default function TrapezoidConfigEditor({
 
       {/* Row 2: actions */}
       <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.5rem' }}>
-        {addTrapezoid && projectMode !== 'scratch' && (
-          <button
-            onClick={addTrapezoid}
-            style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: '#f0f4e8', color: PRIMARY_DARK, border: `1px solid ${PRIMARY}`, borderRadius: '5px', cursor: 'pointer' }}
-          >
-            + New Trapezoid
-          </button>
-        )}
         {isOverridden && (
           <button
             onClick={() => {
               resetTrapezoidConfig()
-              if (projectMode === 'scratch' && setRectAreas && scratchAreaKey !== null && scratchAreaKey !== undefined) {
+              if (setRectAreas && scratchAreaKey !== null && scratchAreaKey !== undefined) {
                 const resetAngle = String(parseFloat(panelAngle) || defaultAngle || 0)
                 const resetFH = String(parseFloat(panelFrontHeight) || defaultFrontHeight || 0)
                 setRectAreas(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, angle: resetAngle, frontHeight: resetFH } : a))
@@ -149,7 +126,7 @@ export default function TrapezoidConfigEditor({
         <text x={fX - 2} y={(groundY + groundY - frontHeight * sc) / 2} textAnchor="end" fill={TEXT_PLACEHOLDER} fontSize="8">{frontHeight.toFixed(0)}</text>
         <text x={finalX + 3} y={(groundY + groundY - backHeight * sc) / 2} fill={TEXT_PLACEHOLDER} fontSize="8">{backHeight.toFixed(1)}</text>
         <text x={(fX + finalX) / 2} y={H - 1} textAnchor="middle" fill={TEXT_SECONDARY} fontSize="7.5" fontWeight="700">{angle.toFixed(1)}°</text>
-        {projectMode === 'scratch' && scratchArea && (() => {
+        {scratchArea && (() => {
           const isDown = (scratchArea.yDir ?? 'ttb') === 'ttb'
           const leftLabel = isDown ? 'N' : 'S'
           const rightLabel = isDown ? 'S' : 'N'
@@ -166,121 +143,40 @@ export default function TrapezoidConfigEditor({
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
-          {projectMode === 'scratch' ? (
-            <input
-              type="number" min="0" max="30" step="0.5"
-              value={scratchAngleRaw !== '' ? scratchAngleRaw : defaultAngle}
-              onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, angle: e.target.value } : a))}
-              style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-            />
-          ) : (
-            <input
-              key={`${selectedTrapezoidId}-angle-${isOverridden}`}
-              type="number" min="0" max="30" step="0.5"
-              defaultValue={angle}
-              onChange={e => updateTrapezoidConfig('angle', e.target.value)}
-              style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? PRIMARY : BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-            />
-          )}
+          <input
+            type="number" min="0" max="30" step="0.5"
+            value={scratchAngleRaw !== '' ? scratchAngleRaw : defaultAngle}
+            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, angle: e.target.value } : a))}
+            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
+          />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
-          {projectMode === 'scratch' ? (
-            <input
-              type="number" min="0" step="0.5"
-              value={scratchFHRaw !== '' ? scratchFHRaw : defaultFrontHeight}
-              onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, frontHeight: e.target.value } : a))}
-              style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-            />
-          ) : (
-            <input
-              key={`${selectedTrapezoidId}-frontH-${isOverridden}`}
-              type="number" min="0" step="0.5"
-              defaultValue={frontHeight}
-              onChange={e => updateTrapezoidConfig('frontHeight', e.target.value)}
-              style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${isOverridden ? PRIMARY : BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-            />
-          )}
+          <input
+            type="number" min="0" step="0.5"
+            value={scratchFHRaw !== '' ? scratchFHRaw : defaultFrontHeight}
+            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === scratchAreaKey ? { ...a, frontHeight: e.target.value } : a))}
+            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
+          />
         </div>
       </div>
 
-      {/* Lines — scratch: auto-derived display; plan: manual selector */}
-      {projectMode === 'scratch' ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem', padding: '0.3rem 0.4rem', background: BG_SUBTLE, borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}` }}>
-          <div style={{ display: 'flex', gap: '0.2rem', flex: 1 }}>
-            {derivedOrients.map((o, idx) => (
-              <span key={idx} style={{
-                fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
-                background: isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
-                color: isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
-                border: `1px solid ${isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
-              }}>
-                {isHorizontalOrientation(o) ? '▬' : '|'}
-              </span>
-            ))}
-          </div>
-          <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{derivedLPR}×</span>
+      {/* Lines — auto-derived display */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem', padding: '0.3rem 0.4rem', background: BG_SUBTLE, borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}` }}>
+        <div style={{ display: 'flex', gap: '0.2rem', flex: 1 }}>
+          {derivedOrients.map((o, idx) => (
+            <span key={idx} style={{
+              fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
+              background: isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
+              color: isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
+              border: `1px solid ${isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
+            }}>
+              {isHorizontalOrientation(o) ? '▬' : '|'}
+            </span>
+          ))}
         </div>
-      ) : (
-        <>
-          {/* Manual Lines per Area selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.45rem' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: '600', color: TEXT_LIGHT, whiteSpace: 'nowrap' }}>Lines:</span>
-            <div style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
-              {[1,2,3,4,5].map(n => (
-                <button key={n}
-                  onClick={() => {
-                    if (!selectedTrapezoidId || !refinedArea?.panelConfig) return
-                    const gCfg = refinedArea.panelConfig
-                    const cur = trapezoidConfigs?.[selectedTrapezoidId] || {}
-                    const newOrients = [...effectiveLineOrientations]
-                    while (newOrients.length < n) newOrients.push('vertical')
-                    const slicedOrients = newOrients.slice(0, n)
-                    const a  = cur.angle       ?? gCfg.angle       ?? 0
-                    const fH = cur.frontHeight ?? gCfg.frontHeight ?? 0
-                    const bH = parseFloat(computePanelBackHeight(fH, a || 0, slicedOrients, n).toFixed(1))
-                    setTrapezoidConfigs(prev => ({ ...prev, [selectedTrapezoidId]: { ...cur, linesPerRow: n, lineOrientations: slicedOrients, backHeight: bH } }))
-                  }}
-                  style={{ flex: 1, padding: '0.3rem 0', background: effectiveLinesPerRow === n ? BLUE : 'white', color: effectiveLinesPerRow === n ? 'white' : TEXT_SECONDARY, border: `2px solid ${effectiveLinesPerRow === n ? BLUE : BORDER_LIGHT}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.8rem' }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Line Orientations */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            {effectiveLineOrientations.slice(0, effectiveLinesPerRow).map((o, idx) => {
-              const isEmpty = isEmptyOrientation(o)
-              const isH = isHorizontalOrientation(o)
-              return (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <span
-                    onClick={() => {
-                      const newOrients = [...effectiveLineOrientations]
-                      newOrients[idx] = toggleEmptyOrientation(newOrients[idx])
-                      updateTrapezoidConfig('lineOrientations', newOrients)
-                    }}
-                    title="Click to mark/unmark as empty"
-                    style={{ fontSize: '0.65rem', width: '14px', flexShrink: 0, cursor: 'pointer', userSelect: 'none', color: isEmpty ? BORDER_MID : '#999', fontWeight: '700', textAlign: 'center' }}
-                  >{idx + 1}</span>
-                  <button
-                    onClick={() => {
-                      const newOrients = [...effectiveLineOrientations]
-                      newOrients[idx] = toggleOrientation(newOrients[idx])
-                      updateTrapezoidConfig('lineOrientations', newOrients)
-                    }}
-                    style={{ flex: 1, padding: '0.28rem 0.4rem', background: isEmpty ? BG_SUBTLE : isH ? WARNING_BG : BLUE_BG, color: isEmpty ? BORDER_MID : isH ? WARNING_DARK : BLUE, border: `1.5px solid ${isEmpty ? BORDER : isH ? WARNING_LIGHT : BLUE_BORDER}`, borderRadius: '5px', cursor: 'pointer', fontWeight: '700', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', textDecoration: isEmpty ? 'line-through' : 'none' }}
-                  >
-                    {isH ? '▬ Landscape' : '| Portrait'}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
+        <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{derivedLPR}×</span>
+      </div>
 
     </div>
   )
