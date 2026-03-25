@@ -11,6 +11,7 @@ export default function RowSidebar({
   regenerateSingleRowHandler,
   rectAreas = [],
   setRectAreas,
+  panelTypes = PANEL_TYPES,
   panelType,
   setPanelType,
   panelFrontHeight,
@@ -58,7 +59,7 @@ export default function RowSidebar({
           onChange={e => setPanelType?.(e.target.value)}
           style={{ width: '100%', padding: '0.35rem 0.5rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.82rem', color: TEXT_DARK, background: 'white', cursor: 'pointer' }}
         >
-          {PANEL_TYPES.map(t => (
+          {panelTypes.map(t => (
             <option key={t.id} value={t.id}>
               {t.name} — {t.kw}W ({t.lengthCm}×{t.widthCm} cm)
             </option>

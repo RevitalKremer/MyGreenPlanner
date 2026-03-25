@@ -329,6 +329,9 @@ function App() {
               const len = Math.sqrt(dx * dx + dy * dy)
               return len > 0 ? parseFloat(s.referenceLineLengthCm) / len : null
             })()}
+            panelTypes={s.panelTypes}
+            panelType={s.panelType}
+            setPanelType={s.setPanelType}
             panelFrontHeight={s.panelFrontHeight}
             setPanelFrontHeight={s.setPanelFrontHeight}
             panelAngle={s.panelAngle}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
-import { createProject, updateProject } from '../services/projectsApi'
+import { createProject, updateProject, fetchPanelTypes } from '../services/projectsApi'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../data/panelTypes'
 
@@ -60,6 +60,9 @@ export function useProjectState() {
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
 
+  // Panel types — fetched from server, falls back to hardcoded list
+  const [panelTypes, setPanelTypes] = useState(PANEL_TYPES)
+
 
   const getComputedBackHeight = () =>
     computePanelBackHeight(parseFloat(panelFrontHeight) || 0, parseFloat(panelAngle) || 0, lineOrientations, linesPerRow)
@@ -67,6 +70,12 @@ export function useProjectState() {
   // ── Backend ───────────────────────────────────────────────────────────────
 
   useEffect(() => { checkBackend() }, [])
+
+  useEffect(() => {
+    fetchPanelTypes()
+      .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
+      .catch(() => { /* keep hardcoded fallback */ })
+  }, [])
 
   const checkBackend = async () => {
     const status = await SAM2Service.checkHealth()
@@ -425,7 +434,7 @@ export function useProjectState() {
     const groupTrapConfigs = {}
     const areaLineConfigs = {}
     let panelId = 1
-    const panelSpec = PANEL_TYPES.find(t => t.id === panelType) ?? DEFAULT_PANEL_TYPE
+    const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
     rectAreas.forEach((area, areaIdx) => {
       const trapezoidId = `${area.label}1`
       const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
@@ -559,6 +568,7 @@ export function useProjectState() {
     imageRef, setImageRef,
     // Step 2
     refinedArea,
+    panelTypes,
     panelType, setPanelType,
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,

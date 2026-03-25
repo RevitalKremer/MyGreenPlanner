@@ -3,7 +3,7 @@ import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
-import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
+import { DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
 import RowSidebar from './step3/RowSidebar'
 import ToolPanel from './step3/ToolPanel'
 import PanelCanvas from './step3/PanelCanvas'
@@ -42,6 +42,7 @@ export default function Step3PanelPlacement({
   setRectAreas,
   onAddRectArea,
   cmPerPixel,
+  panelTypes = [],
   panelType,
   setPanelType,
   panelFrontHeight,
@@ -49,7 +50,7 @@ export default function Step3PanelPlacement({
   panelAngle,
   setPanelAngle,
 }) {
-  const panelSpec = PANEL_TYPES.find(t => t.id === panelType) ?? DEFAULT_PANEL_TYPE
+  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('draw')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
@@ -447,6 +448,7 @@ export default function Step3PanelPlacement({
             generatePanelLayoutHandler={generatePanelLayoutHandler}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
+            panelTypes={panelTypes}
             panelType={panelType}
             setPanelType={setPanelType}
             panelFrontHeight={panelFrontHeight}

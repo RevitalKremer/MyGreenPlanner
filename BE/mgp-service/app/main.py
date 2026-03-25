@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.user import User, UserRole
-from app.routers import auth, projects, admin
+from app.routers import auth, projects, admin, products
 from app.services.auth import get_user_by_email, hash_password
 
 
@@ -53,6 +53,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(admin.router)
+app.include_router(products.router)
 
 
 @app.get("/health")
