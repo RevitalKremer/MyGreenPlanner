@@ -369,15 +369,6 @@ function App() {
             projectMode={s.projectMode}
             areas={s.areas}
             setAreas={s.setAreas}
-            rectAreas={s.rectAreas}
-            setRectAreas={s.setRectAreas}
-            cmPerPixel={(() => {
-              if (!s.referenceLine || !s.referenceLineLengthCm) return null
-              const dx = s.referenceLine.end.x - s.referenceLine.start.x
-              const dy = s.referenceLine.end.y - s.referenceLine.start.y
-              const len = Math.sqrt(dx * dx + dy * dy)
-              return len > 0 ? parseFloat(s.referenceLineLengthCm) / len : null
-            })()}
           />
         )}
 

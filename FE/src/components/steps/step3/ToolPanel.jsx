@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_DARK, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 
 const NUDGE_PX = 5
@@ -15,7 +15,6 @@ export default function ToolPanel({
   selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   projectMode, areas, getAreaKey,
   updateTrapezoidConfig, resetTrapezoidConfig,
-  showBaseline, setShowBaseline,
   showHGridlines, setShowHGridlines,
   showVGridlines, setShowVGridlines,
   snapToGridlines, setSnapToGridlines,
@@ -77,6 +76,11 @@ export default function ToolPanel({
           Tool
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {projectMode === 'scratch' && (
+            <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title="Draw area">
+              <span>▦</span>{toolLabel('Draw')}
+            </button>
+          )}
           <button style={toolBtnStyle('move')} onClick={() => handleToolChange('move')} title="Move row">
             <span>✥</span>{toolLabel('Move')}
           </button>
@@ -267,13 +271,6 @@ export default function ToolPanel({
         </button>
       )}
 
-      {/* Baseline toggle */}
-      <button
-        onClick={() => setShowBaseline(!showBaseline)}
-        style={{ width: '100%', padding: '0.5rem', background: showBaseline ? '#FFF8E1' : 'white', color: showBaseline ? WARNING_DARK : TEXT_VERY_LIGHT, border: `1px solid ${showBaseline ? '#FFCC02' : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.78rem' }}
-      >
-        {showBaseline ? '👁 Baseline visible' : '👁 Show Baseline'}
-      </button>
       </>}
     </div>
   )

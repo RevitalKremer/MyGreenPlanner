@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_SUBTLE, ERROR, WARNING, SUCCESS } from '../../styles/colors'
+import { PRIMARY, TEXT_SECONDARY, TEXT_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_SUBTLE, WARNING, SUCCESS } from '../../styles/colors'
 import {
   computePanelBackHeight,
   toggleOrientation, toggleEmptyOrientation,
 } from '../../utils/trapezoidGeometry'
 import AreaCanvas from './step2/AreaCanvas'
 import CrossSectionPanel from './step2/CrossSectionPanel'
-import ScratchConfigPanel from './step2/ScratchConfigPanel'
 import PlanConfigPanel from './step2/PlanConfigPanel'
 
 const GROUP_COLORS = ['#2196F3', '#FF5722', '#9C27B0', WARNING, SUCCESS, '#00BCD4']
@@ -20,22 +19,17 @@ export default function Step2PVAreaRefinement({
   setViewZoom,
   isDrawingLine,
   setIsDrawingLine,
-  lineStart,
   setLineStart,
   referenceLine,
   referenceLineLengthCm,
   panelType,
   setPanelType,
   panelFrontHeight,
-  setPanelFrontHeight,
   panelAngle,
-  setPanelAngle,
   linesPerRow,
-  setLinesPerRow,
   lineOrientations,
-  setLineOrientations,
   computedBackHeight,
-  projectMode = 'scratch',
+  projectMode = 'plan',
   areas = [],
   setAreas,
 }) {
@@ -43,24 +37,6 @@ export default function Step2PVAreaRefinement({
   const [baselineDrawStart, setBaselineDrawStart] = useState(null)
   const [diagramGroupId, setDiagramGroupId] = useState(null)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
-
-  // ── Scratch mode helpers ──────────────────────────────────────────────────
-  const handleLinesPerRowChange = (n) => {
-    setLinesPerRow(n)
-    setLineOrientations(prev => {
-      const next = [...prev]
-      while (next.length < n) next.push('vertical')
-      return next.slice(0, n)
-    })
-  }
-
-  const handleToggleOrientation = (idx) => {
-    setLineOrientations(prev => { const next = [...prev]; next[idx] = toggleOrientation(next[idx]); return next })
-  }
-
-  const handleToggleEmptyOrientation = (idx) => {
-    setLineOrientations(prev => { const next = [...prev]; next[idx] = toggleEmptyOrientation(next[idx]); return next })
-  }
 
   // ── Plan mode helpers ────────────────────────────────────────────────────
   const addGroup = () => {
@@ -147,9 +123,7 @@ export default function Step2PVAreaRefinement({
   const isDrawingAnything = !!activeGroupId
 
   // ── Diagram data ──────────────────────────────────────────────────────────
-  const dg = projectMode === 'plan'
-    ? (areas.find(g => g.id === diagramGroupId) || areas[0] || null)
-    : null
+  const dg = areas.find(g => g.id === diagramGroupId) || areas[0] || null
 
   const diagAngle   = dg ? (parseFloat(dg.angle) || 0)       : (parseFloat(panelAngle) || 0)
   const diagFrontH  = dg ? (parseFloat(dg.frontHeight) || 0) : (parseFloat(panelFrontHeight) || 0)
@@ -210,7 +184,6 @@ export default function Step2PVAreaRefinement({
                   Panel Configuration
                 </h3>
 
-                {/* Panel Type (global, both modes) */}
                 <div style={{ marginBottom: '1.1rem' }}>
                   <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Panel Type</label>
                   <select value={panelType} onChange={(e) => setPanelType(e.target.value)}
@@ -220,31 +193,18 @@ export default function Step2PVAreaRefinement({
                   <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: TEXT_LIGHT, fontStyle: 'italic' }}>238.2 cm (L) × 113.4 cm (W)</p>
                 </div>
 
-                {/* Mode-specific config */}
-                {projectMode === 'plan' ? (
-                  <PlanConfigPanel
-                    areas={areas}
-                    activeGroupId={activeGroupId} setActiveGroupId={setActiveGroupId}
-                    baselineDrawStart={baselineDrawStart} setBaselineDrawStart={setBaselineDrawStart}
-                    isDrawingLine={isDrawingLine} setIsDrawingLine={setIsDrawingLine} setLineStart={setLineStart}
-                    diagramGroupId={diagramGroupId} setDiagramGroupId={setDiagramGroupId}
-                    addGroup={addGroup} updateGroup={updateGroup} removeGroup={removeGroup}
-                    updateGroupLinesPerRow={updateGroupLinesPerRow}
-                    toggleGroupOrientation={toggleGroupOrientation}
-                    toggleGroupEmptyOrientation={toggleGroupEmptyOrientation}
-                    referenceLine={referenceLine} referenceLineLengthCm={referenceLineLengthCm}
-                  />
-                ) : (
-                  <ScratchConfigPanel
-                    panelFrontHeight={panelFrontHeight} setPanelFrontHeight={setPanelFrontHeight}
-                    panelAngle={panelAngle} setPanelAngle={setPanelAngle}
-                    linesPerRow={linesPerRow} lineOrientations={lineOrientations}
-                    handleLinesPerRowChange={handleLinesPerRowChange}
-                    handleToggleOrientation={handleToggleOrientation}
-                    handleToggleEmptyOrientation={handleToggleEmptyOrientation}
-                    referenceLine={referenceLine} referenceLineLengthCm={referenceLineLengthCm}
-                  />
-                )}
+                <PlanConfigPanel
+                  areas={areas}
+                  activeGroupId={activeGroupId} setActiveGroupId={setActiveGroupId}
+                  baselineDrawStart={baselineDrawStart} setBaselineDrawStart={setBaselineDrawStart}
+                  isDrawingLine={isDrawingLine} setIsDrawingLine={setIsDrawingLine} setLineStart={setLineStart}
+                  diagramGroupId={diagramGroupId} setDiagramGroupId={setDiagramGroupId}
+                  addGroup={addGroup} updateGroup={updateGroup} removeGroup={removeGroup}
+                  updateGroupLinesPerRow={updateGroupLinesPerRow}
+                  toggleGroupOrientation={toggleGroupOrientation}
+                  toggleGroupEmptyOrientation={toggleGroupEmptyOrientation}
+                  referenceLine={referenceLine} referenceLineLengthCm={referenceLineLengthCm}
+                />
               </>
             )}
           </div>
