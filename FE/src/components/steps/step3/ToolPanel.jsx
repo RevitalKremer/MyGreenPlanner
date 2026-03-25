@@ -6,8 +6,8 @@ const NUDGE_PX = 5
 
 export default function ToolPanel({
   activeTool, handleToolChange,
-  selectedPanels, selectedAreaLabel, selectedRowAngle,
-  nudgeRow, rotateSelectedRow, addManualPanel,
+  selectedPanels, selectedAreaLabel,
+  nudgeRow, togglePanelOrientation, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
   selectedAreaTrapIds, selectedTrapezoidId,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
@@ -49,12 +49,6 @@ export default function ToolPanel({
     padding: '0.3rem', background: 'white', color: TEXT_SECONDARY,
     border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer',
     fontWeight: '700', fontSize: '0.85rem', textAlign: 'center', lineHeight: 1,
-  }
-
-  const rotBtnStyle = {
-    flex: 1, padding: '0.35rem 0.1rem', background: 'white', color: TEXT_SECONDARY,
-    border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer',
-    fontWeight: '600', fontSize: '0.68rem', textAlign: 'center',
   }
 
   return (
@@ -164,24 +158,22 @@ export default function ToolPanel({
         {activeTool === 'rotate' && (
           selectedPanels.length > 0 ? (
             <div>
-              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.4rem' }}>
-                {selectedAreaLabel}
-                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER }}> · {selectedPanels.length} panels</span>
+              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
+                {selectedPanels.length} panel{selectedPanels.length !== 1 ? 's' : ''} selected
               </div>
-              <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginBottom: '0.5rem' }}>
-                Angle: <strong style={{ color: TEXT_SECONDARY }}>{selectedRowAngle.toFixed(1)}°</strong>
+              <button
+                onClick={togglePanelOrientation}
+                style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
+              >
+                ↻ Rotate 90°
+              </button>
+              <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.35rem' }}>
+                Toggles portrait ↔ landscape
               </div>
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.3rem' }}>
-                <button onClick={() => rotateSelectedRow(-5)} style={rotBtnStyle}>◁◁ 5°</button>
-                <button onClick={() => rotateSelectedRow(-1)} style={rotBtnStyle}>◁ 1°</button>
-                <button onClick={() => rotateSelectedRow(1)} style={rotBtnStyle}>1° ▷</button>
-                <button onClick={() => rotateSelectedRow(5)} style={rotBtnStyle}>5° ▷▷</button>
-              </div>
-              <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center' }}>or drag on canvas</div>
             </div>
           ) : (
             <div style={{ fontSize: '0.82rem', color: TEXT_FAINTEST, textAlign: 'center', paddingTop: '0.75rem' }}>
-              Click an area to select it
+              Click a panel to select it
             </div>
           )
         )}

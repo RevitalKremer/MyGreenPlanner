@@ -17,7 +17,6 @@ export default function PanelCanvas({
   refinedArea,
   activeTool, projectMode,
   pendingAddNextTo, onAddNextToPanel, setPendingAddNextTo,
-  getRowPanelIds,
   rectAreas = [],
   setRectAreas,
   onAddRectArea,
@@ -121,8 +120,8 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
-    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (takes priority)
-    if (projectMode === 'scratch') {
+    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (draw mode only)
+    if (projectMode === 'scratch' && activeTool === 'draw') {
       const selAreaIdx = selectedPanels.length > 0
         ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
         : null
@@ -141,12 +140,6 @@ export default function PanelCanvas({
     }
 
     // Draw tool — creates a new rect area
-    if (activeTool === 'draw') {
-      setDrawRectStart({ x, y })
-      setDrawRectEnd({ x, y })
-      return
-    }
-
     // Baseline drawing (scratch mode)
     if (projectMode !== 'plan' && (!baseline || baseline.p2 === null)) {
       if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
@@ -163,7 +156,27 @@ export default function PanelCanvas({
       return
     }
 
-    const clickedPanel = panels.find(p => x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height)
+    const hitTestPanel = (p, px, py) => {
+      const cx = p.x + p.width / 2, cy = p.y + p.height / 2
+      const rad = -(p.rotation || 0) * Math.PI / 180
+      const dx = px - cx, dy = py - cy
+      const lx = dx * Math.cos(rad) - dy * Math.sin(rad)
+      const ly = dx * Math.sin(rad) + dy * Math.cos(rad)
+      return Math.abs(lx) <= p.width / 2 && Math.abs(ly) <= p.height / 2
+    }
+    const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
+
+    if (activeTool === 'draw') {
+      if (clickedPanel) {
+        // Select the entire area this panel belongs to
+        const areaKey = clickedPanel.area ?? clickedPanel.row
+        setSelectedPanels(panels.filter(p => (p.area ?? p.row) === areaKey).map(p => p.id))
+      } else {
+        setDrawRectStart({ x, y })
+        setDrawRectEnd({ x, y })
+      }
+      return
+    }
 
     if (activeTool === 'delete') {
       if (clickedPanel) { setPanels(panels.filter(p => p.id !== clickedPanel.id)); setSelectedPanels([]) }
@@ -171,39 +184,24 @@ export default function PanelCanvas({
       return
     }
 
-    if (activeTool === 'move') {
+    if (activeTool === 'move' || activeTool === 'rotate') {
       if (clickedPanel) {
         if (e.shiftKey) {
           setSelectedPanels(prev => prev.includes(clickedPanel.id) ? prev.filter(id => id !== clickedPanel.id) : [...prev, clickedPanel.id])
           return
         }
-        const panelIds = selectedPanels.includes(clickedPanel.id) && selectedPanels.length > 0 ? selectedPanels : [clickedPanel.id]
-        setSelectedPanels(panelIds)
-        const originalPositions = {}
-        panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
-        setDragState({ panelIds, startX: x, startY: y, originalPositions })
+        if (!selectedPanels.includes(clickedPanel.id)) {
+          setSelectedPanels([clickedPanel.id])
+        }
+        if (activeTool === 'move') {
+          const panelIds = selectedPanels.includes(clickedPanel.id) ? selectedPanels : [clickedPanel.id]
+          const originalPositions = {}
+          panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
+          setDragState({ panelIds, startX: x, startY: y, originalPositions })
+        }
       } else {
-        setRectSelect({ startX: x, startY: y, endX: x, endY: y })
-      }
-      return
-    }
-
-    if (activeTool === 'rotate') {
-      if (clickedPanel) {
-        const rowIds = getRowPanelIds(clickedPanel.id)
-        setSelectedPanels(rowIds)
-        const rowPanels = panels.filter(p => rowIds.includes(p.id))
-        const cx = rowPanels.reduce((s, p) => s + p.x + p.width / 2, 0) / rowPanels.length
-        const cy = rowPanels.reduce((s, p) => s + p.y + p.height / 2, 0) / rowPanels.length
-        const startAngle = Math.atan2(y - cy, x - cx) * (180 / Math.PI)
-        const originalData = {}
-        rowIds.forEach(id => {
-          const p = panels.find(p => p.id === id)
-          if (p) originalData[id] = { rotation: p.rotation || 0, centerX: p.x + p.width / 2, centerY: p.y + p.height / 2, x: p.x, y: p.y }
-        })
-        setRotationState({ panelIds: rowIds, anchorCenterX: cx, anchorCenterY: cy, startAngle, originalData })
-      } else {
-        startPan(e)
+        if (activeTool === 'move') setRectSelect({ startX: x, startY: y, endX: x, endY: y })
+        else startPan(e)
       }
       return
     }

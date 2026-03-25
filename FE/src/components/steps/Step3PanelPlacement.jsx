@@ -109,6 +109,9 @@ export default function Step3PanelPlacement({
       const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
       if (areaPanels.length > 0) {
         setSelectedPanels(prev => {
+          // If all selected panels still exist (e.g. after a move drag), keep exact selection
+          if (prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
+          // Otherwise panels were recomputed with new IDs — re-sync to full area
           const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
           return same ? prev : areaPanels
         })
@@ -180,50 +183,41 @@ export default function Step3PanelPlacement({
     return map
   }, [rows])
 
-  const getRowPanelIds = (panelId) => {
-    const rowIndex = panelToRowMap.get(panelId)
-    if (rowIndex === undefined) return [panelId]
-    return rows[rowIndex].map(p => p.id)
-  }
-
   const selectedRowIndex = selectedPanels.length > 0
     ? (panelToRowMap.get(selectedPanels[0]) ?? null)
     : null
 
   const selectedRow = (selectedRowIndex !== null) ? rows[selectedRowIndex] : null
 
-  const selectedRowAngle = selectedPanels.length > 0
-    ? (panels.find(p => selectedPanels.includes(p.id))?.rotation || 0)
-    : 0
-
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
   const handleToolChange = (tool) => {
+    const keepSelection = (tool === 'move' || tool === 'rotate') &&
+                          (activeTool === 'move' || activeTool === 'rotate')
     setActiveTool(tool)
-    setSelectedPanels([])
+    if (!keepSelection) setSelectedPanels([])
     setPendingAddNextTo(false)
     setAddError(null)
     if (tool === 'measure') setShowDistances(true)
   }
 
-  const rotateSelectedRow = (deltaDeg) => {
+  const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
-    const rowPanels = panels.filter(p => selectedPanels.includes(p.id))
-    const cx = rowPanels.reduce((s, p) => s + p.x + p.width / 2, 0) / rowPanels.length
-    const cy = rowPanels.reduce((s, p) => s + p.y + p.height / 2, 0) / rowPanels.length
-    const rad = deltaDeg * (Math.PI / 180)
     setPanels(prev => prev.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
-      const pcx = panel.x + panel.width / 2
-      const pcy = panel.y + panel.height / 2
-      const dx = pcx - cx, dy = pcy - cy
-      const newCx = cx + dx * Math.cos(rad) - dy * Math.sin(rad)
-      const newCy = cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+      const cx = panel.x + panel.width / 2
+      const cy = panel.y + panel.height / 2
+      const newW = panel.height
+      const newH = panel.width
+      const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
+      const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
       return {
         ...panel,
-        x: newCx - panel.width / 2,
-        y: newCy - panel.height / 2,
-        rotation: ((panel.rotation || 0) + deltaDeg) % 360
+        width: newW,
+        height: newH,
+        heightCm: newHeightCm,
+        x: cx - newW / 2,
+        y: cy - newH / 2,
       }
     }))
   }
@@ -556,7 +550,6 @@ export default function Step3PanelPlacement({
             refinedArea={refinedArea}
             activeTool={activeTool} projectMode={projectMode}
             pendingAddNextTo={pendingAddNextTo} onAddNextToPanel={addNextToPanel} setPendingAddNextTo={setPendingAddNextTo}
-            getRowPanelIds={getRowPanelIds}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             onAddRectArea={handleAddRectArea}
@@ -603,8 +596,8 @@ export default function Step3PanelPlacement({
         {uploadedImageData && (projectMode === 'plan' || projectMode === 'scratch' || (roofPolygon && refinedArea)) && (panels.length > 0 || projectMode === 'scratch') && (
           <ToolPanel
             activeTool={activeTool} handleToolChange={handleToolChange}
-            selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel} selectedRowAngle={selectedRowAngle}
-            nudgeRow={nudgeRow} rotateSelectedRow={rotateSelectedRow}
+            selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel}
+            nudgeRow={nudgeRow} togglePanelOrientation={togglePanelOrientation}
             addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
             pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
             addError={addError} setAddError={setAddError}
