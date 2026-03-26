@@ -11,13 +11,12 @@ class ProductBase(BaseModel):
     additional_info: str | None = None
     active: bool = True
     extra: str | None = None
-    alt: str | None = None
     alt_group: int | None = None
+    is_default: bool = False
     # Panel-only fields — only relevant when product_type == 'panel'
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
-    sort_order: int = 0
 
 
 class ProductCreate(ProductBase):
@@ -31,13 +30,12 @@ class ProductUpdate(BaseModel):
     additional_info: str | None = None
     active: bool | None = None
     extra: str | None = None
-    alt: str | None = None
     alt_group: int | None = None
+    is_default: bool | None = None
     # Panel-only fields
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
-    sort_order: int | None = None
 
 
 class ProductRead(ProductBase):

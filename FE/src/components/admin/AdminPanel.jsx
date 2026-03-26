@@ -10,8 +10,8 @@ import UsersTab from './UsersTab'
 
 const TABS = [
   { key: 'users', label: 'Users' },
-  { key: 'panel-types', label: 'Panel Types' },
-  { key: 'products', label: 'Products' },
+  { key: 'panel-types', label: 'Panels' },
+  { key: 'products', label: 'Materials' },
   { key: 'settings', label: 'Default Settings' },
 ]
 

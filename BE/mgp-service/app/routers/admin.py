@@ -79,7 +79,7 @@ async def list_products(
     q = select(Product)
     if product_type is not None:
         q = q.where(Product.product_type == product_type)
-    result = await db.execute(q.order_by(Product.sort_order, Product.name))
+    result = await db.execute(q.order_by(Product.name))
     return list(result.scalars().all())
 
 

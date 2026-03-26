@@ -10,7 +10,7 @@ import {
   SECTION_HEADER_BG,
 } from '../../../styles/colors'
 import { buildBOM } from '../../../utils/constructionCalculator'
-import { PRODUCT_DICT, productByType } from '../../../data/productDict'
+import { PRODUCT_DICT, productByType, altsByType } from '../../../data/productDict'
 
 const ALL_ELEMENTS = PRODUCT_DICT.map(p => p.type)
 
@@ -114,11 +114,12 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
   const [addElement, setAddElement] = useState('')
   const [addQty, setAddQty]         = useState('')
 
-  const overrides   = bomDeltas.overrides ?? {}
-  const additions   = bomDeltas.additions ?? []
-  const hasAnyDelta = Object.keys(overrides).length > 0 || additions.length > 0
+  const overrides     = bomDeltas.overrides     ?? {}
+  const additions     = bomDeltas.additions     ?? []
+  const alternatives  = bomDeltas.alternatives  ?? {}
+  const hasAnyDelta   = Object.keys(overrides).length > 0 || additions.length > 0 || Object.keys(alternatives).length > 0
 
-  function patch(next) { onBomDeltasChange?.({ overrides, additions, ...next }) }
+  function patch(next) { onBomDeltasChange?.({ overrides, additions, alternatives, ...next }) }
 
   function setOverrideField(key, field, value) {
     const base = overrides[key] ?? {}
@@ -332,7 +333,6 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
               return visibleRows.map((row, ri) => {
                 if (!row.removed) lineNum++
                 const displayNum = row.removed ? null : lineNum
-              const product    = productByType[row.element]
               const rowBg      = row.isAdded  ? ADD_GREEN_BG
                                : row.removed  ? BG_MID
                                : row.modified ? AMBER_BG
@@ -364,24 +364,62 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
 
                   {/* Element */}
                   <td style={{ padding: '0.5rem 0.8rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {row.isAdded && (
-                        <span style={{ fontSize: '0.6rem', background: ADD_GREEN, color: WHITE, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0 }}>NEW</span>
-                      )}
-                      <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: '600',
-                          color: row.removed ? TEXT_LIGHT : TEXT,
-                          textDecoration: row.removed ? 'line-through' : 'none' }}>
-                          {product?.name ?? row.element}
-                        </div>
-                        {product?.pn && (
-                          <div style={{ fontFamily: 'monospace', fontSize: '0.72rem',
-                            color: row.removed ? TEXT_FAINT : TEXT_MUTED, marginTop: '1px' }}>
-                            P/N {product.pn}
+                    {(() => {
+                      const rowAlts        = !row.isAdded ? (altsByType[row.element] ?? []) : []
+                      const chosenType     = !row.isAdded ? (alternatives[row.element] ?? row.element) : row.element
+                      const isAlt          = chosenType !== row.element
+                      const effectProduct  = productByType[chosenType]
+                      const allOptions     = rowAlts.length > 0
+                        ? [{ type: row.element, ...productByType[row.element] }, ...rowAlts]
+                        : []
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          {row.isAdded && (
+                            <span style={{ fontSize: '0.6rem', background: ADD_GREEN, color: WHITE, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>NEW</span>
+                          )}
+                          {isAlt && (
+                            <span style={{ fontSize: '0.6rem', background: PRIMARY, color: BLACK, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>ALT</span>
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600',
+                              color: row.removed ? TEXT_LIGHT : TEXT,
+                              textDecoration: row.removed ? 'line-through' : 'none' }}>
+                              {effectProduct?.name ?? chosenType}
+                            </div>
+                            {effectProduct?.pn && (
+                              <div style={{ fontFamily: 'monospace', fontSize: '0.72rem',
+                                color: row.removed ? TEXT_FAINT : TEXT_MUTED, marginTop: '1px' }}>
+                                P/N {effectProduct.pn}
+                              </div>
+                            )}
+                            {allOptions.length > 0 && !row.removed && (
+                              <div style={{ marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <span style={{ fontSize: '0.63rem', color: TEXT_MUTED, fontWeight: '600' }}>Alt:</span>
+                                <select
+                                  value={chosenType}
+                                  onChange={e => {
+                                    const chosen = e.target.value
+                                    if (chosen === row.element) {
+                                      const next = { ...alternatives }; delete next[row.element]
+                                      patch({ alternatives: next })
+                                    } else {
+                                      patch({ alternatives: { ...alternatives, [row.element]: chosen } })
+                                    }
+                                  }}
+                                  style={{ fontSize: '0.72rem', padding: '1px 4px', border: `1px solid ${isAlt ? PRIMARY : BORDER}`, borderRadius: '4px', background: isAlt ? PRIMARY_BG : WHITE, color: isAlt ? PRIMARY_DARK : TEXT, fontWeight: isAlt ? '700' : '400', cursor: 'pointer' }}
+                                >
+                                  {allOptions.map(opt => (
+                                    <option key={opt.type} value={opt.type}>
+                                      {opt.type === row.element ? `${opt.name} (default)` : opt.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      )
+                    })()}
                   </td>
 
                   {/* Length */}
