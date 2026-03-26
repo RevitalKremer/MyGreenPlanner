@@ -1,4 +1,4 @@
-import { CadPage } from '../Step5PdfReport'
+import { CadPage } from '../Step4PdfReport'
 import DetailView from '../step3/DetailView'
 
 // CadPage content area dimensions (A4 landscape, scale 3.2 px/mm, frame 8mm, footer 26mm)

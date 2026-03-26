@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { CadPage } from '../Step5PdfReport'
+import { CadPage } from '../Step4PdfReport'
 import AreasTab from '../step3/AreasTab'
 import { getPanelsBoundingBox } from '../step3/tabUtils'
 
