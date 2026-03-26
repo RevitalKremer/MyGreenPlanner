@@ -240,7 +240,7 @@ export default function Step1RoofAllocation({
                   ref={(el) => { localImgRef.current = el; setImageRef(el) }}
                   src={uploadedImageData.imageData}
                   alt="Uploaded roof"
-                  onClick={drawMode === 'auto' && !isDrawingLine ? handleImageClick : undefined}
+                  onClick={drawMode === 'auto' && !isDrawingLine && !uploadedImageData?.isWhiteboard ? handleImageClick : undefined}
                   style={{
                     display: 'block',
                     transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
