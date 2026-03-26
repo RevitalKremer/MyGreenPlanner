@@ -123,6 +123,7 @@ export default function ProductsTab() {
               <th style={thStyle}>Key</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>P.N.</th>
+              <th style={thStyle}>Type</th>
               <th style={thStyle}>Status</th>
               <th style={thStyle}>Actions</th>
             </tr>
@@ -139,6 +140,7 @@ export default function ProductsTab() {
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.type_key}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.part_number || '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, fontSize: '0.75rem' }}>{p.product_type ?? 'material'}</td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <button onClick={() => handleToggleActive(p)} style={{
                       padding: '0.2rem 0.55rem', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700', border: 'none', cursor: 'pointer',
