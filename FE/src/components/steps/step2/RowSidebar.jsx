@@ -146,8 +146,8 @@ export default function RowSidebar({
                           style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isRowSelected ? PRIMARY : BORDER_MID, cursor: 'pointer' }}
                         />
                         <input
-                          value={areas[areaKey]?.label ?? areaLabel(areaKey, i)}
-                          onChange={e => setAreas?.(prev => prev.map((a, idx) => idx === areaKey ? { ...a, label: e.target.value } : a))}
+                          value={rectAreas[areaKey]?.label ?? areaLabel(areaKey, i)}
+                          onChange={e => setRectAreas?.(prev => prev.map((a, idx) => idx === areaKey ? { ...a, label: e.target.value } : a))}
                           onClick={ev => { ev.stopPropagation(); setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
                           style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isRowSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', minWidth: 0, flex: 1, cursor: 'text' }}
                         />

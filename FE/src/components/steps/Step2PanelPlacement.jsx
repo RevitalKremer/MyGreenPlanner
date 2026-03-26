@@ -246,7 +246,7 @@ export default function Step2PanelPlacement({
   // Auto-derive linesPerRow + lineOrientations from panel rows.
   // Must be after selectedRow and getAreaKey are defined.
   const defaultTrapId = selectedRow
-    ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}1`
+    ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}`
     : null
 
   const selectedTrapezoidId = trapIdOverride ?? (
@@ -301,7 +301,7 @@ export default function Step2PanelPlacement({
   }, [selectedRow, selectedTrapezoidId, _frontH, _angle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const areaLabel = (areaKey, i) => {
-    const g = areas[areaKey]?.label
+    const g = rectAreas[areaKey]?.label
     return g ? `${g}` : `Area ${i + 1}`
   }
   const selectedAreaLabel = selectedRowIndex !== null ? areaLabel(getAreaKey(selectedRow[0]), selectedRowIndex) : '?'
@@ -313,7 +313,7 @@ export default function Step2PanelPlacement({
     panels.forEach(p => {
       const aKey = p.area ?? p.row
       if (aKey === undefined || aKey === null) return
-      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}1`
+      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}`
       const tId = p.trapezoidId || defaultTrapId
       if (!map[aKey]) map[aKey] = new Set()
       map[aKey].add(tId)

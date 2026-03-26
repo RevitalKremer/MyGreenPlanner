@@ -393,6 +393,10 @@ export function useProjectState() {
       const s = colSig(col)
       if (!sigToTrap.has(s)) sigToTrap.set(s, `${area.label}${n++}`)
     })
+    if (sigToTrap.size === 1) {
+      const [[sig]] = [...sigToTrap.entries()]
+      sigToTrap.set(sig, area.label)
+    }
 
     // Compute trap configs for each trapezoid shape
     const newTrapConfigs = {}
@@ -411,7 +415,7 @@ export function useProjectState() {
       const updated = panelWithCols.find(pw => pw.id === p.id)
       if (!updated) return p
       const sig = colSig(updated.col)
-      const newTrapId = sigToTrap.get(sig) || `${area.label}1`
+      const newTrapId = sigToTrap.get(sig) || area.label
       if (newTrapId === p.trapezoidId && updated.col === p.col) return p
       return { ...p, col: updated.col, coveredCols: updated.coveredCols, trapezoidId: newTrapId }
     }))
@@ -420,7 +424,8 @@ export function useProjectState() {
     setTrapezoidConfigs(prev => {
       const next = {}
       Object.entries(prev).forEach(([id, cfg]) => {
-        if (!id.startsWith(area.label)) next[id] = cfg
+        const rest = id.slice(area.label.length)
+        if (id !== area.label && !(id.startsWith(area.label) && /^\d/.test(rest))) next[id] = cfg
       })
       Object.entries(newTrapConfigs).forEach(([id, cfg]) => {
         next[id] = { ...(prev[id] || {}), ...cfg }
@@ -640,6 +645,10 @@ export function useProjectState() {
           const s = colSig(col)
           if (!sigToTrap.has(s)) sigToTrap.set(s, `${area.label}${n++}`)
         })
+        if (sigToTrap.size === 1) {
+          const [[sig]] = [...sigToTrap.entries()]
+          sigToTrap.set(sig, area.label)
+        }
 
         // Build groupTrapConfigs for each unique trap shape
         sigToTrap.forEach((trapId, sig) => {
@@ -653,13 +662,13 @@ export function useProjectState() {
           const physCol = p.coveredCols?.[0] ?? p.col ?? 0
           const sig = colSig(physCol)
           allPanels.push({ ...p, id: panelId++, area: areaIdx,
-            trapezoidId: sigToTrap.get(sig) || `${area.label}1`,
+            trapezoidId: sigToTrap.get(sig) || area.label,
             yDir: area.yDir ?? 'ttb' })
         })
       } else {
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
-        const defaultTrap = `${area.label}1`
+        const defaultTrap = area.label
         const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, derivedLPR)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
