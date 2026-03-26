@@ -841,7 +841,7 @@ export default function PanelCanvas({
                     const bw = bh * 1.9
                     const scale = bw > p.width * 0.82 ? (p.width * 0.82) / bw : 1
                     const bwS = bw * scale, bhS = bh * scale
-                    const cupW = bwS * 0.52, cupH = bhS * 0.42, cupDist = bhS * 0.85
+                    const cupW = bwS * 1.2, cupH = bhS * 0.9, cupDist = bhS * 1.1
                     const ldx = -Math.sin(r), ldy = Math.cos(r)
                     const cupSign = down ? -1 : 1
                     const cupX = pcx + ldx * cupSign * cupDist
@@ -922,9 +922,9 @@ let fill, borderColor, ibw
                     const scale = bw > panel.width * 0.82 ? (panel.width * 0.82) / bw : 1
                     const bwS = bw * scale, fsS = fs * scale, bhS = bh * scale
                     // Chevron: positioned along local panel Y axis, above or below badge
-                    const cupW = bwS * 0.52
-                    const cupH = bhS * 0.42
-                    const cupDist = bhS * 0.85
+                    const cupW = bwS * 1.2
+                    const cupH = bhS * 0.9
+                    const cupDist = bhS * 1.1
                     // Local-down direction in SVG space
                     const ldx = -Math.sin(r), ldy = Math.cos(r)
                     const cupSign = down ? -1 : 1
