@@ -837,9 +837,9 @@ export default function PanelCanvas({
                     const aLen = Math.min(p.width, p.height) * 0.16
                     const aW = aLen * 0.55
                     const down = dy >= 0  // yDir === 'ttb': slope front is at bottom
-                    const stemFar  = p.y + p.height * (down ? 0.42 : 0.58)
-                    const stemNear = p.y + p.height * (down ? 0.62 : 0.38)
-                    const tipY     = p.y + p.height * (down ? 0.78 : 0.22)
+                    const stemFar  = p.y + p.height * (down ? 0.58 : 0.42)
+                    const stemNear = p.y + p.height * (down ? 0.38 : 0.62)
+                    const tipY     = p.y + p.height * (down ? 0.22 : 0.78)
                     return (
                       <g key={i} transform={`rotate(${p.rotation || 0} ${p.cx} ${p.cy})`}>
                         <rect x={p.x} y={p.y} width={p.width} height={p.height}
@@ -917,7 +917,7 @@ let fill, borderColor, ibw
                     const cupDist = bhS * 0.85
                     // Local-down direction in SVG space
                     const ldx = -Math.sin(r), ldy = Math.cos(r)
-                    const cupSign = down ? 1 : -1
+                    const cupSign = down ? -1 : 1
                     const cupX = cx + ldx * cupSign * cupDist
                     const cupY = cy + ldy * cupSign * cupDist
                     return (
@@ -931,12 +931,12 @@ let fill, borderColor, ibw
                           style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}>
                           {trapId}
                         </text>
-                        {/* Slope chevron: V below badge (down) or ^ above badge (up) */}
+                        {/* Slope chevron: ^ above badge (down) or V below badge (up) */}
                         {(() => {
                           const badgeFill = isSelected ? PANEL_BADGE_SEL_CHV : PANEL_BADGE_SELECTED
                           const pts = down
-                            ? `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
-                            : `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                            ? `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                            : `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
                           return (
                             <g transform={`translate(${cupX},${cupY}) rotate(${rDeg})`} style={{ pointerEvents: 'none' }}>
                               <polygon points={pts} fill="white" stroke={badgeFill} strokeWidth={cupH * 0.18} strokeLinejoin="round" />
