@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { CadPage } from '../Step5PdfReport'
-import AreasTab from '../step4/AreasTab'
-import { getPanelsBoundingBox } from '../step4/tabUtils'
+import AreasTab from '../step3/AreasTab'
+import { getPanelsBoundingBox } from '../step3/tabUtils'
 
 const PAD = 40, MAX_W = 900
 const CONTENT_W = (297 - 2 * 8) * 3.2

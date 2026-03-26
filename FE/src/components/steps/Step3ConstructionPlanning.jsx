@@ -4,17 +4,17 @@ import {
   computeRowConstruction,
   assignTypes,
 } from '../../utils/constructionCalculator'
-import RailLayoutTab from './step4/RailLayoutTab'
-import BasesPlanTab  from './step4/BasesPlanTab'
+import RailLayoutTab from './step3/RailLayoutTab'
+import BasesPlanTab  from './step3/BasesPlanTab'
 import { computeRowRailLayout, countLargeGaps, initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
-import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step4/constants'
+import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/constants'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
-import Step4Sidebar from './step4/Step4Sidebar'
-import AreasTab from './step4/AreasTab'
-import LayoutView from './step4/LayoutView'
-import RowsView from './step4/RowsView'
-import DetailView from './step4/DetailView'
+import Step3Sidebar from './step3/Step3Sidebar'
+import AreasTab from './step3/AreasTab'
+import LayoutView from './step3/LayoutView'
+import RowsView from './step3/RowsView'
+import DetailView from './step3/DetailView'
 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,9 +39,9 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
   return Math.cos(angleRad) * (lastRailGlobal - firstRailGlobal)
 }
 
-// ─── Main Step4 component ────────────────────────────────────────────────────
+// ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step4ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('areas')
@@ -533,7 +533,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
 
       {/* ── Left sidebar ── */}
-      <Step4Sidebar
+      <Step3Sidebar
         rowConstructions={rowConstructions} rowKeys={rowKeys}
         areaTrapezoidMap={areaTrapezoidMap} areaLabel={areaLabel}
         selectedRowIdx={selectedRowIdx} setSelectedRowIdx={setSelectedRowIdx}

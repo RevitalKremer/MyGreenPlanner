@@ -90,7 +90,7 @@ const SECTIONS = [
   { tabKey: 'detail', label: 'Trapezoids' },
 ]
 
-export default function Step4Sidebar({
+export default function Step3Sidebar({
   rowConstructions, rowKeys, areaTrapezoidMap, areaLabel,
   selectedRowIdx, setSelectedRowIdx,
   setSelectedTrapezoidId, effectiveSelectedTrapId,

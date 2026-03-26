@@ -1,5 +1,5 @@
 import { CadPage } from '../Step5PdfReport'
-import DetailView from '../step4/DetailView'
+import DetailView from '../step3/DetailView'
 
 // CadPage content area dimensions (A4 landscape, scale 3.2 px/mm, frame 8mm, footer 26mm)
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px

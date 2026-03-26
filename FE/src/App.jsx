@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
-import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
+import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
@@ -344,7 +344,7 @@ function App() {
         {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
         <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
-          <Step4ConstructionPlanning
+          <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
             trapezoidConfigs={s.trapezoidConfigs}

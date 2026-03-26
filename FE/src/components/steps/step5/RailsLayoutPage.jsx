@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { CadPage } from '../Step5PdfReport'
-import RailLayoutTab from '../step4/RailLayoutTab'
-import { getPanelsBoundingBox } from '../step4/tabUtils'
+import RailLayoutTab from '../step3/RailLayoutTab'
+import { getPanelsBoundingBox } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
