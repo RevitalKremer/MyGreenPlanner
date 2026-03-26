@@ -415,9 +415,9 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).filter(step => step !== 3).map(step => (
+          {[1, 2, 4, 5].map((step, displayIdx) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
-              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
+              <div className="step-number">{s.currentStep > step ? '✓' : displayIdx + 1}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                 {STEP_TITLES[step - 1]}
                 {step >= LOGIN_REQUIRED_STEP && !auth.user && (
