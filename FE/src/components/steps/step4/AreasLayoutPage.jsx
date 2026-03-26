@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from 'react'
-import { CadPage } from '../Step5PdfReport'
-import AreasTab from '../step4/AreasTab'
-import { getPanelsBoundingBox, buildRowGroups } from '../step4/tabUtils'
+import { CadPage } from '../Step4PdfReport'
+import AreasTab from '../step3/AreasTab'
+import { getPanelsBoundingBox, buildRowGroups } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px

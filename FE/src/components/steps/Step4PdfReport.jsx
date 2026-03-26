@@ -3,15 +3,15 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import * as XLSX from 'xlsx'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
-import BOMView from './step4/BOMView'
-import TrapDetailPage from './step5/TrapDetailPage'
-import { buildTrapezoidGroups } from './step4/tabUtils'
+import BOMView from './step3/BOMView'
+import TrapDetailPage from './step4/TrapDetailPage'
+import { buildTrapezoidGroups } from './step3/tabUtils'
 import { buildBOM } from '../../utils/constructionCalculator'
 import { productByType } from '../../data/productDict'
-import PanelsLayoutPage from './step5/PanelsLayoutPage'
-import AreasLayoutPage from './step5/AreasLayoutPage'
-import RailsLayoutPage from './step5/RailsLayoutPage'
-import BasesLayoutPage from './step5/BasesLayoutPage'
+import PanelsLayoutPage from './step4/PanelsLayoutPage'
+import AreasLayoutPage from './step4/AreasLayoutPage'
+import RailsLayoutPage from './step4/RailsLayoutPage'
+import BasesLayoutPage from './step4/BasesLayoutPage'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -236,7 +236,7 @@ function ScaledPage({ scale, children }) {
 }
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
-export default function Step5PdfReport({
+export default function Step4PdfReport({
   panels = [], refinedArea, areas = {}, rowConstructions = [], rowLabels = [], project,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},

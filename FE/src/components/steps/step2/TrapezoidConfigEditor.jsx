@@ -171,11 +171,9 @@ export default function TrapezoidConfigEditor({
             return (
               <span key={idx} style={{
                 fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
-                opacity: isEmpty ? 0.4 : 1,
-                background: isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
-                color: isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
-                border: `1px solid ${isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
-                textDecoration: isEmpty ? 'line-through' : 'none',
+                background: isEmpty ? BG_MID : isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
+                color: isEmpty ? TEXT_VERY_LIGHT : isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
+                border: `1px solid ${isEmpty ? BORDER_MID : isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
               }}>
                 {isHorizontalOrientation(o) ? '▬' : '|'}
               </span>

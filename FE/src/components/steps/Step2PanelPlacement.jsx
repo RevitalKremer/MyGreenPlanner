@@ -4,11 +4,11 @@ import {
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
 import { DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
-import RowSidebar from './step3/RowSidebar'
-import ToolPanel from './step3/ToolPanel'
-import PanelCanvas from './step3/PanelCanvas'
+import RowSidebar from './step2/RowSidebar'
+import ToolPanel from './step2/ToolPanel'
+import PanelCanvas from './step2/PanelCanvas'
 
-export default function Step3PanelPlacement({
+export default function Step2PanelPlacement({
   uploadedImageData,
   roofPolygon,
   refinedArea,

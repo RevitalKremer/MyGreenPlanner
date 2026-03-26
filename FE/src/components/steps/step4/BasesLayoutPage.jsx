@@ -1,17 +1,21 @@
 import { useMemo } from 'react'
-import { CadPage } from '../Step5PdfReport'
-import AreasTab from '../step4/AreasTab'
-import { getPanelsBoundingBox } from '../step4/tabUtils'
+import { CadPage } from '../Step4PdfReport'
+import BasesPlanTab from '../step3/BasesPlanTab'
+import { getPanelsBoundingBox } from '../step3/tabUtils'
 
-const PAD = 40, MAX_W = 900
-const CONTENT_W = (297 - 2 * 8) * 3.2
-const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
+const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
+const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 
-export default function PanelsLayoutPage({ panels = [], project, panelType, panelWp, totalKw, date, pageRef }) {
+const PAD = 60, MAX_W = 900
+
+export default function BasesLayoutPage({
+  panels = [], refinedArea,
+  trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
+  project, panelType, panelWp, totalKw, date, pageRef,
+}) {
   const { naturalW, naturalH } = useMemo(() => {
-    const nonEmpty = panels.filter(p => !p.isEmpty)
-    if (!nonEmpty.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
-    const bbox = getPanelsBoundingBox(nonEmpty)
+    if (!panels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
+    const bbox = getPanelsBoundingBox(panels)
     const bboxW = bbox.maxX - bbox.minX
     const bboxH = bbox.maxY - bbox.minY
     const sc    = bboxW > 0 ? MAX_W / bboxW : 1
@@ -23,12 +27,12 @@ export default function PanelsLayoutPage({ panels = [], project, panelType, pane
   return (
     <CadPage
       pageRef={pageRef}
-      pageName="Panels"
+      pageName="Bases"
       project={project}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={panels.filter(p => !p.isEmpty).length}
+      panelCount={panels.length}
       date={date}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -40,11 +44,14 @@ export default function PanelsLayoutPage({ panels = [], project, panelType, pane
           transform: `scale(${fitZoom})`,
           transformOrigin: 'top left',
         }}>
-          <AreasTab
+          <BasesPlanTab
             panels={panels}
+            refinedArea={refinedArea}
+            trapSettingsMap={trapSettingsMap}
+            trapLineRailsMap={trapLineRailsMap}
+            trapRCMap={trapRCMap}
+            customBasesMap={customBasesMap}
             printMode
-            printShowAreas={false}
-            printShowCounts
           />
         </div>
       </div>

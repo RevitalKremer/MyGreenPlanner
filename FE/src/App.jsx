@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
-import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
-import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
-import Step5PdfReport from './components/steps/Step5PdfReport'
+import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
+import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
+import Step4PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
@@ -276,7 +276,7 @@ function App() {
         )}
 
         {s.currentStep === 2 && (
-          <Step3PanelPlacement
+          <Step2PanelPlacement
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
@@ -344,35 +344,35 @@ function App() {
         {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
         <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
-          <Step4ConstructionPlanning
+          <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
-            initialGlobalSettings={s.step4GlobalSettings}
-            initialAreaSettings={s.step4AreaSettings}
-            onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
-            onBOMDataChange={s.setStep4BOMData}
+            initialGlobalSettings={s.step3GlobalSettings}
+            initialAreaSettings={s.step3AreaSettings}
+            onSettingsChange={(g, a) => { s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
+            onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
           />
         </div>
 
         {s.currentStep === 5 && (
-          <Step5PdfReport
+          <Step4PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
             project={s.currentProject}
-            rowConstructions={s.step4BOMData.rowConstructions}
-            rowLabels={s.step4BOMData.rowLabels}
+            rowConstructions={s.step3BOMData.rowConstructions}
+            rowLabels={s.step3BOMData.rowLabels}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
-            bomDeltas={s.step5BomDeltas ?? {}}
-            onBomDeltasChange={s.setStep5BomDeltas}
+            bomDeltas={s.step4BomDeltas ?? {}}
+            onBomDeltasChange={s.setStep4BomDeltas}
           />
         )}
 
@@ -415,9 +415,9 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).filter(step => step !== 3).map(step => (
+          {[1, 2, 4, 5].map((step, displayIdx) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
-              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
+              <div className="step-number">{s.currentStep > step ? '✓' : displayIdx + 1}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                 {STEP_TITLES[step - 1]}
                 {step >= LOGIN_REQUIRED_STEP && !auth.user && (
