@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, BORDER_LIGHT } from '../../styles/colors'
 import UserProfileModal from './UserProfileModal'
 import AdminPanel from '../admin/AdminPanel'
+import { useLang } from '../../i18n/LangContext'
 
 const GearIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -23,6 +24,7 @@ const PersonIcon = ({ size = 22, color = 'currentColor' }) => (
  * dark=false → welcome screen (light bg, dark text)
  */
 export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, dark = false }) {
+  const { t } = useLang()
   const [showProfile, setShowProfile] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
 
@@ -56,7 +58,7 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.3rem 0.55rem' }}>
               <button
                 onClick={() => setShowProfile(true)}
-                title="My Account"
+                title={t('user.myAccount')}
                 style={{
                   width: '28px', height: '28px', borderRadius: '50%',
                   background: PRIMARY, color: TEXT, border: 'none',
@@ -69,14 +71,14 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
               <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.9)'), maxWidth: '68px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.full_name?.split(' ')[0]}
               </span>
-              <button onClick={onSignOut} style={signOutStyle}>Sign Out</button>
+              <button onClick={onSignOut} style={signOutStyle}>{t('user.signOut')}</button>
             </div>
 
             {/* Admin gear — only for admins */}
             {user.role === 'admin' && (
-              <button onClick={() => setShowAdmin(true)} style={iconBtn()} title="Admin Panel">
+              <button onClick={() => setShowAdmin(true)} style={iconBtn()} title={t('user.adminPanel')}>
                 <GearIcon />
-                <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>Admin</span>
+                <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>{t('user.adminBadge')}</span>
               </button>
             )}
           </>
@@ -84,7 +86,7 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
           /* Guest — person icon + Sign In */
           <button onClick={onSignIn} style={iconBtn()}>
             <PersonIcon color={col(TEXT_MUTED, 'rgba(255,255,255,0.75)')} />
-            <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>Sign In</span>
+            <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>{t('auth.signIn')}</span>
           </button>
         )}
       </div>

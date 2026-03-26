@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_FAINT, BG_MID, LAYER_ACCENT } from '../../../styles/colors'
 
 /**
@@ -8,6 +9,7 @@ import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, 
  * actions: optional [{ label, onClick, style }] buttons shown below summary
  */
 export default function LayersPanel({ layers, summary, actions }) {
+  const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -19,7 +21,7 @@ export default function LayersPanel({ layers, summary, actions }) {
         onClick={() => setCollapsed(c => !c)}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.65rem', cursor: 'pointer', background: BG_FAINT, borderBottom: collapsed ? 'none' : `1px solid ${BG_MID}` }}
       >
-        {!collapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_SECONDARY, whiteSpace: 'nowrap' }}>Layers</span>}
+        {!collapsed && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_SECONDARY, whiteSpace: 'nowrap' }}>{t('step3.layers.title')}</span>}
         <span style={{ fontSize: '0.75rem', color: TEXT_VERY_LIGHT, marginLeft: 'auto' }}>{collapsed ? '◀' : '▶'}</span>
       </div>
       {!collapsed && (

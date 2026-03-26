@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -8,6 +9,7 @@ import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null, printMode = false }) {
+  const { t } = useLang()
   const [showAnnotations,  setShowAnnotations]  = useState(true)
   const [showPunches,      setShowPunches]      = useState(true)
   const [showDiagHandles,  setShowDiagHandles]  = useState(true)
@@ -40,7 +42,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
   const hl = (group) => hlGroup === group
 
-  if (!rc) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>Select a row to see its trapezoid detail</div>
+  if (!rc) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
 
   const baseOverhangCm = settings.baseOverhangCm ?? 0
   const { heightRear, heightFront, baseLength, angle, topBeamLength } = rc

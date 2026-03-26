@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ERROR_DARK } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 /**
  * Reusable ruler/distance measurement tool overlay.
@@ -11,6 +12,7 @@ import { ERROR_DARK } from '../../styles/colors'
  *  containerRef – ref to the pan container div (screen coords base)
  */
 export default function RulerTool({ active, zoom, pxPerCm, containerRef }) {
+  const { t } = useLang()
   const [pts, setPts] = useState([])
 
   const handleClick = (e) => {
@@ -63,7 +65,7 @@ export default function RulerTool({ active, zoom, pxPerCm, containerRef }) {
             borderRadius: '5px', cursor: 'pointer', zIndex: 9,
           }}
         >
-          ✕ Clear ruler
+          {t('ruler.clear')}
         </button>
       )}
 

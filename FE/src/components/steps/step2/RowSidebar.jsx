@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES } from '../../../data/panelTypes'
+import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
 
@@ -21,6 +22,7 @@ export default function RowSidebar({
   setPanelAngle,
   onDeleteArea,
 }) {
+  const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
 
   const applyDefaultsToAll = () => {
@@ -47,13 +49,13 @@ export default function RowSidebar({
       </button>
       {!collapsed && <>
       <h3 style={{ margin: '0 0 1rem 0', color: TEXT_SECONDARY, fontSize: '1rem', fontWeight: '700' }}>
-        Panel Layout
+        {t('step2.sidebar.title')}
       </h3>
 
       {/* Panel type selector */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-          Panel Type
+          {t('step2.sidebar.panelType')}
         </div>
         <select
           value={panelType ?? ''}
@@ -72,27 +74,27 @@ export default function RowSidebar({
       {(
         <div style={{ marginBottom: '1rem', padding: '0.6rem 0.7rem 0.5rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BORDER_FAINT}` }}>
           <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
-            Default Mounting
+            {t('step2.sidebar.defaultMounting')}
           </div>
           <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
+              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.frontH')}</div>
               <input
                 type="number" min="0" max="200" step="1"
                 value={panelFrontHeight ?? ''}
                 onChange={e => setPanelFrontHeight?.(e.target.value)}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
-                placeholder="e.g. 35"
+                placeholder={t('step2.sidebar.frontHPlaceholder')}
               />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
+              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.angle')}</div>
               <input
                 type="number" min="0" max="30" step="1"
                 value={panelAngle ?? ''}
                 onChange={e => setPanelAngle?.(e.target.value)}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
-                placeholder="0–30"
+                placeholder={t('step2.sidebar.angleRange')}
               />
             </div>
           </div>
@@ -101,7 +103,7 @@ export default function RowSidebar({
               onClick={applyDefaultsToAll}
               style={{ width: '100%', padding: '0.28rem 0', background: 'white', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600', color: TEXT_DARK }}
             >
-              Apply to All Areas
+              {t('step2.sidebar.applyToAll')}
             </button>
           )}
         </div>
@@ -109,7 +111,7 @@ export default function RowSidebar({
 
       {panels.length === 0 && (
         <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.5rem', lineHeight: 1.4 }}>
-          Select the <strong>Draw</strong> tool and drag on the canvas to create a panel area.
+          {t('step2.sidebar.drawHint')}
         </p>
       )}
 
@@ -120,7 +122,7 @@ export default function RowSidebar({
           {/* Area list with trapezoid sub-items */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              Areas ({rows.length})
+              {t('step2.sidebar.areas')} ({rows.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {rows.map((row, i) => {
@@ -202,7 +204,7 @@ export default function RowSidebar({
                         {typeof areaKey === 'number' && refreshAreaTrapezoids && !rectAreas[areaKey]?.manualTrapezoids && (
                           <button
                             onClick={() => refreshAreaTrapezoids(areaKey)}
-                            title="Re-split trapezoids based on current panel layout"
+                            title={t('step2.sidebar.reSplit')}
                             style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
                           >⟳</button>
                         )}
@@ -240,7 +242,7 @@ export default function RowSidebar({
                               <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? PRIMARY_BG_ALT : BG_MID, padding: '1px 6px', borderRadius: '10px', letterSpacing: '0.02em' }}>{trapId}</span>
                               <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, marginLeft: 'auto' }}>{trapPanels.length} panels</span>
                               {!!trapezoidConfigs?.[trapId] && (
-                                <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: PRIMARY, flexShrink: 0 }} />
+                                <span title={t('step2.sidebar.customConfig')} style={{ width: '5px', height: '5px', borderRadius: '50%', background: PRIMARY, flexShrink: 0 }} />
                               )}
                             </div>
                           )

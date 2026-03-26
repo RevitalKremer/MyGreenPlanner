@@ -1,4 +1,5 @@
 import { useMemo, useCallback } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import AreasTab from '../step3/AreasTab'
 import { getPanelsBoundingBox, buildRowGroups } from '../step3/tabUtils'
@@ -13,14 +14,15 @@ export default function AreasLayoutPage({
   panels = [], areas = {},
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
+  const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
   const rowKeys = useMemo(() => buildRowGroups(nonEmptyPanels).keys, [nonEmptyPanels])
 
   const areaLabel = useCallback((areaKey, i) => {
     const g = areas[areaKey]?.label
-    return g ? `${g}` : `Area ${i + 1}`
-  }, [areas])
+    return g ? `${g}` : t('step4.pdf.area', { n: i + 1 })
+  }, [areas, t])
 
   const { naturalW, naturalH } = useMemo(() => {
     if (!nonEmptyPanels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
@@ -36,7 +38,7 @@ export default function AreasLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName="Areas"
+      pageName={t('step4.pdf.areas')}
       project={project}
       panelType={panelType}
       panelWp={panelWp}

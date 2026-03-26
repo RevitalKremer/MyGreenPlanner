@@ -2,6 +2,8 @@ import { useState, useRef } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
+import { useLang } from '../i18n/LangContext'
+import LangToggle from '../i18n/LangToggle'
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -16,6 +18,7 @@ const IconFolder = () => (
 )
 
 export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword }) {
+  const { t } = useLang()
   const [mode, setMode] = useState(null) // 'new' | 'import'
   const [showAuth, setShowAuth] = useState(false)
   const [projectName, setProjectName] = useState('')
@@ -42,7 +45,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
         if (!data.version) throw new Error('Invalid project file')
         onImportProject(data)
       } catch {
-        setImportError('Could not read project file. Make sure it is a valid .mgp file.')
+        setImportError(t('welcome.importError'))
       }
     }
     reader.readAsText(file)
@@ -66,9 +69,10 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
       padding: '2rem', fontFamily: 'inherit', position: 'relative'
     }}>
 
-      {/* Auth area — top right */}
-      {!authLoading && (
-        <div style={{ position: 'absolute', top: '1.25rem', right: '1.5rem' }}>
+      {/* Top right: lang toggle + auth */}
+      <div style={{ position: 'absolute', top: '1.25rem', right: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <LangToggle dark={false} />
+        {!authLoading && (
           <UserChip
             user={user}
             onSignIn={() => setShowAuth(true)}
@@ -76,17 +80,17 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
             onUpdateProfile={onUpdateProfile}
             dark={false}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Logo + title */}
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <img src="/mgp-logo.svg" alt="MyGreenPlanner" style={{ height: '80px', width: 'auto', marginBottom: '1.1rem' }} />
         <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: TEXT_DARKEST }}>
-          MyGreenPlanner
+          {t('app.title')}
         </h1>
         <p style={{ margin: 0, fontSize: '1rem', color: TEXT_FAINT, fontWeight: '400' }}>
-          Solar PV Roof Planning System
+          {t('app.subtitle')}
         </p>
       </div>
 
@@ -124,8 +128,8 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
               <IconPlus />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>New Project</div>
-              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>Start a new solar planning session</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('welcome.newProject')}</div>
+              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{t('welcome.newProjectDesc')}</div>
             </div>
           </div>
 
@@ -133,7 +137,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                  Project Name <span style={{ color: '#e53935' }}>*</span>
+                  {t('welcome.projectName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
                 </label>
                 <input
                   autoFocus
@@ -141,7 +145,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
                   value={projectName}
                   onChange={e => setProjectName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  placeholder="e.g. Smith Residence"
+                  placeholder={t('welcome.projectNamePlaceholder')}
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
                     border: `1.5px solid ${projectName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
@@ -151,14 +155,14 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                  Location
+                  {t('welcome.location')}
                 </label>
                 <input
                   type="text"
                   value={location}
                   onChange={e => setLocation(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  placeholder="e.g. Tel Aviv, Israel"
+                  placeholder={t('welcome.locationPlaceholder')}
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
                     border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
@@ -167,7 +171,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                  Date
+                  {t('welcome.date')}
                 </label>
                 <input
                   type="date"
@@ -192,7 +196,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
                   transition: 'background 0.15s'
                 }}
               >
-                Start Planning →
+                {t('welcome.startPlanning')}
               </button>
             </div>
           )}
@@ -225,15 +229,15 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
               <IconFolder />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>Import Project</div>
-              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>Resume from a saved .mgp file</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('welcome.importProject')}</div>
+              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{t('welcome.importProjectDesc')}</div>
             </div>
           </div>
 
           {mode === 'import' && (
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
               <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: TEXT_MUTED, lineHeight: 1.5 }}>
-                Select a <strong>.mgp</strong> project file exported from a previous session.
+                {t('welcome.importInstruction')}
               </p>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -244,7 +248,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
                   cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem'
                 }}
               >
-                Select File…
+                {t('welcome.selectFile')}
               </button>
               <input
                 ref={fileInputRef}
@@ -267,13 +271,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
       {user && (
         <div style={{ width: '100%', maxWidth: '780px', marginTop: '1.75rem' }}>
           <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-            My Saved Projects
+            {t('welcome.savedProjects')}
           </div>
 
           {cloudProjectsLoading ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>Loading…</div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
           ) : cloudProjects.length === 0 ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>No cloud projects yet. Save a project to see it here.</div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {cloudProjects.map(p => (
@@ -301,11 +305,11 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
                       fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
                     }}
                   >
-                    Open
+                    {t('welcome.open')}
                   </button>
                   <button
                     onClick={() => onDeleteCloudProject(p.id)}
-                    title="Delete project"
+                    title={t('welcome.deleteProject')}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
@@ -325,13 +329,13 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
       {/* Sadot Energy branding */}
       <div style={{ marginTop: '3.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
         <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-          Powered by
+          {t('welcome.poweredBy')}
         </span>
         <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '32px', width: 'auto' }} />
       </div>
 
       <p style={{ marginTop: '2rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
-        MyGreenPlanner © {new Date().getFullYear()}
+        {t('welcome.copyright')} {new Date().getFullYear()}
       </p>
 
       {showAuth && (

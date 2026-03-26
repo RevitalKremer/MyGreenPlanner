@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, RAIL_STROKE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -26,6 +27,7 @@ export default function RailLayoutTab({
   trapSettingsMap = {},
   trapLineRailsMap = {},
 }) {
+  const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
   const stockLengths        = settings.stockLengths        ?? DEFAULT_STOCK_LENGTHS_MM
   const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
@@ -92,7 +94,7 @@ export default function RailLayoutTab({
   if (rowKeys.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
-        No panel rows found — complete Step 3 first.
+        {t('step3.empty.noRows')}
       </div>
     )
   }
@@ -399,16 +401,16 @@ export default function RailLayoutTab({
 
           <LayersPanel
             layers={[
-              { label: 'Rails',            checked: showRails,           setter: setShowRails },
-              { label: 'Dimensions',       checked: showDimensions,      setter: setShowDimensions },
-              { label: 'Material summary', checked: showMaterialSummary, setter: setShowMaterialSummary },
-              { label: 'Edit Bar',         checked: showEditBar,    setter: setShowEditBar },
+              { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
+              { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
+              { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
+              { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
             ]}
             summary={null}
             actions={[
-              { label: 'Apply to all areas', onClick: onApplyRailsToAll, style: { color: TEXT_SECONDARY, background: BG_MID, border: `1px solid ${BORDER}` } },
-              { label: 'Reset to defaults',  onClick: onResetRails,      style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } },
-              { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+              { label: t('step3.layer.applyToAll'),    onClick: onApplyRailsToAll, style: { color: TEXT_SECONDARY, background: BG_MID, border: `1px solid ${BORDER}` } },
+              { label: t('step3.layer.resetDefaults'), onClick: onResetRails,      style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } },
+              { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
             ]}
           />
 

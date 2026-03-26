@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import AreasTab from '../step3/AreasTab'
 import { getPanelsBoundingBox } from '../step3/tabUtils'
@@ -8,6 +9,7 @@ const CONTENT_W = (297 - 2 * 8) * 3.2
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
 export default function PanelsLayoutPage({ panels = [], project, panelType, panelWp, totalKw, date, pageRef }) {
+  const { t } = useLang()
   const { naturalW, naturalH } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
     if (!nonEmpty.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
@@ -23,7 +25,7 @@ export default function PanelsLayoutPage({ panels = [], project, panelType, pane
   return (
     <CadPage
       pageRef={pageRef}
-      pageName="Panels"
+      pageName={t('step4.pdf.panels')}
       project={project}
       panelType={panelType}
       panelWp={panelWp}

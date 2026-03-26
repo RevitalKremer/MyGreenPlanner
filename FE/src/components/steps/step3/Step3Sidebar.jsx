@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { ACCENT, PARAM_SCHEMA, PARAM_GROUP } from './constants'
+import { useLang } from '../../../i18n/LangContext'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 
@@ -47,12 +48,13 @@ function DebouncedNumberInput({ value, min, max, step, onCommit, onFocus, onBlur
 function InfoTooltip({ param }) {
   const [show, setShow] = useState(false)
   const lines = []
+  const { t } = useLang()
   if (param.default != null) {
     const d = Array.isArray(param.default) ? param.default.join(', ') : String(param.default)
-    lines.push(`Default: ${d}`)
+    lines.push(`${t('step3.sidebar.default')}${d}`)
   }
-  if (param.min != null) lines.push(`Min: ${param.min}`)
-  if (param.max != null) lines.push(`Max: ${param.max}`)
+  if (param.min != null) lines.push(`${t('step3.sidebar.min')}${param.min}`)
+  if (param.max != null) lines.push(`${t('step3.sidebar.max')}${param.max}`)
   if (lines.length === 0) return null
   return (
     <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
@@ -84,10 +86,11 @@ function InfoTooltip({ param }) {
   )
 }
 
+// SECTIONS labels are resolved via t() at render time below
 const SECTIONS = [
-  { tabKey: 'rails',  label: 'Rails' },
-  { tabKey: 'bases',  label: 'Bases' },
-  { tabKey: 'detail', label: 'Trapezoids' },
+  { tabKey: 'rails',  labelKey: 'step3.sidebar.rails' },
+  { tabKey: 'bases',  labelKey: 'step3.sidebar.bases' },
+  { tabKey: 'detail', labelKey: 'step3.sidebar.trapezoids' },
 ]
 
 export default function Step3Sidebar({
@@ -110,6 +113,7 @@ export default function Step3Sidebar({
   updateTrapBaseSetting,
   applyBasesToAll,
 }) {
+  const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
   const isOverride = (key) => !!(areaSettings[selectedRowIdx] && key in areaSettings[selectedRowIdx])
@@ -139,7 +143,7 @@ export default function Step3Sidebar({
         <InfoTooltip param={param} />
         {scope === 'global' && (
           <span style={{ marginLeft: 'auto', fontSize: '0.55rem', color: TEXT_FAINTEST, fontWeight: '600', letterSpacing: '0.04em' }}>
-            GLOBAL
+            {t('step3.sidebar.global')}
           </span>
         )}
       </div>
@@ -207,7 +211,7 @@ export default function Step3Sidebar({
               e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
-            placeholder="e.g. 5000, 6000"
+            placeholder={t('step3.sidebar.stockLengthsPlaceholder')}
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
         </div>
       )
@@ -280,7 +284,7 @@ export default function Step3Sidebar({
         background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`,
         borderRadius: '4px', cursor: 'pointer',
       }}>
-      Apply to all areas
+      {t('step3.sidebar.applyToAll')}
     </button>
   )
 
@@ -288,7 +292,7 @@ export default function Step3Sidebar({
   return (
     <div style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${BORDER_FAINT}`, display: 'flex', flexDirection: 'column', overflowY: 'auto', background: BG_FAINT }}>
       <div style={{ padding: '0.75rem 1rem', borderBottom: `1px solid ${BORDER_FAINT}` }}>
-        <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Areas</div>
+        <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('step3.sidebar.areas')}</div>
       </div>
 
       {/* Area / trapezoid hierarchy list */}
@@ -361,6 +365,7 @@ export default function Step3Sidebar({
 
       {/* Settings sections — fully schema-driven */}
       {selectedRC && !settingsCollapsed && SECTIONS.map(sec => {
+        const secLabel   = t(sec.labelKey)
         const isOpen     = activeTab === sec.tabKey
         const areaParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'area')
         const globalParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'global')
@@ -372,7 +377,7 @@ export default function Step3Sidebar({
               onClick={() => setActiveTab(isOpen ? activeTab : sec.tabKey)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', cursor: 'pointer', background: isOpen ? SECTION_HEADER_BG : BG_FAINT }}
             >
-              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? PRIMARY_DARK : TEXT_PLACEHOLDER, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.label}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isOpen ? PRIMARY_DARK : TEXT_PLACEHOLDER, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{secLabel}</span>
               <span style={{ fontSize: '0.8rem', color: TEXT_VERY_LIGHT }}>{isOpen ? '▲' : '▼'}</span>
             </div>
 

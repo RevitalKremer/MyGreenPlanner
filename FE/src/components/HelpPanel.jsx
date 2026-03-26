@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PRIMARY, PRIMARY_BG, PRIMARY_MID, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BG_MID } from '../styles/colors'
+import { useLang } from '../i18n/LangContext'
 
 const HELP = {
   1: {
@@ -101,6 +102,7 @@ const HELP = {
 }
 
 export default function HelpPanel({ currentStep, onClose }) {
+  const { t } = useLang()
   const [openQA, setOpenQA] = useState(null)
   const help = HELP[currentStep] || HELP[1]
 
@@ -138,7 +140,7 @@ export default function HelpPanel({ currentStep, onClose }) {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
             <div>
               <div style={{ fontSize: '0.65rem', fontWeight: '700', color: PRIMARY, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>
-                Step {currentStep} Guide
+                {t('help.stepGuide', { n: currentStep })}
               </div>
               <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: TEXT }}>
                 {help.title}
@@ -167,7 +169,7 @@ export default function HelpPanel({ currentStep, onClose }) {
             marginBottom: '1.5rem'
           }}>
             <div style={{ fontSize: '0.65rem', fontWeight: '700', color: PRIMARY_MID, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-              Purpose
+              {t('help.purpose')}
             </div>
             <p style={{ margin: 0, fontSize: '0.88rem', color: TEXT_DARK, lineHeight: 1.65 }}>
               {help.purpose}
@@ -176,7 +178,7 @@ export default function HelpPanel({ currentStep, onClose }) {
 
           {/* Q&A */}
           <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-            Frequently Asked Questions
+            {t('help.faq')}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -234,7 +236,7 @@ export default function HelpPanel({ currentStep, onClose }) {
           }}>
             <span style={{ fontSize: '1rem', flexShrink: 0 }}>🤖</span>
             <p style={{ margin: 0, fontSize: '0.75rem', color: TEXT_PLACEHOLDER, lineHeight: 1.55 }}>
-              <strong style={{ color: TEXT_MUTED }}>Coming soon:</strong> This panel will be upgraded to an AI assistant that can answer questions about your specific project and guide you through each step interactively.
+              <strong style={{ color: TEXT_MUTED }}>{t('help.comingSoon')}</strong> {t('help.comingSoonDesc')}
             </p>
           </div>
         </div>

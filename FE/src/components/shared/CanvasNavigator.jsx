@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { BORDER_MID } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 /**
  * Floating navigator panel — always visible in the bottom-right of the canvas.
@@ -31,6 +32,7 @@ export default function CanvasNavigator({
   children,
   left = 16,
 }) {
+  const { t } = useLang()
   const [hidden, setHidden] = useState(false)
   const dragRef = useRef(false)
 
@@ -47,7 +49,7 @@ export default function CanvasNavigator({
       <div style={panelStyle}>
         <button
           onClick={() => setHidden(false)}
-          title="Show navigator"
+          title={t('canvas.showNavigator')}
           style={{
             background: 'rgba(20,20,20,0.78)',
             backdropFilter: 'blur(6px)',
@@ -61,7 +63,7 @@ export default function CanvasNavigator({
             letterSpacing: '0.04em',
           }}
         >
-          ◀ Display
+          ◀ {t('canvas.display')}
         </button>
       </div>
     )
@@ -84,11 +86,11 @@ export default function CanvasNavigator({
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
         <span style={{ fontSize: '0.62rem', fontWeight: '700', color: '#999', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Display
+          {t('canvas.display')}
         </span>
         <button
           onClick={() => setHidden(true)}
-          title="Hide"
+          title={t('canvas.hideNavigator')}
           style={{ background: 'none', border: 'none', color: '#777', cursor: 'pointer', fontSize: '0.7rem', padding: 0, lineHeight: 1 }}
         >
           ▶
@@ -98,10 +100,10 @@ export default function CanvasNavigator({
       {/* Zoom row */}
       <div style={{ marginBottom: '0.55rem' }}>
         <div style={{ fontSize: '0.6rem', color: '#777', marginBottom: '0.22rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Zoom — {zoomPct}
+          {t('canvas.zoom', { pct: zoomPct })}
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
-          {[['−', onZoomOut], [zoomPct, onZoomReset], ['+', onZoomIn]].map(([label, fn], i) => (
+          {[[t('canvas.zoomOut'), onZoomOut], [zoomPct, onZoomReset], [t('canvas.zoomIn'), onZoomIn]].map(([label, fn], i) => (
             <button
               key={i}
               onClick={fn}
@@ -124,7 +126,7 @@ export default function CanvasNavigator({
 
       {/* Minimap — always shown; imageData optional (dark bg when absent) */}
       <div style={{ fontSize: '0.6rem', color: '#777', marginBottom: '0.22rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        Navigator
+        {t('canvas.navigator')}
       </div>
       <div
         style={{ width: mmWidth, height: mmHeight, borderRadius: '5px', overflow: 'hidden', cursor: 'crosshair', position: 'relative', background: imageData ? undefined : '#1e2433' }}
