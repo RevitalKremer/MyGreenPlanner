@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
-import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
+import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
@@ -276,7 +276,7 @@ function App() {
         )}
 
         {s.currentStep === 2 && (
-          <Step3PanelPlacement
+          <Step2PanelPlacement
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
