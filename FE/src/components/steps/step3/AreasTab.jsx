@@ -195,16 +195,16 @@ export default function AreasTab({
         {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
           const down = yDir === 'ttb'
           const r = rotation * Math.PI / 180
-          const chevW = fontSize * 1.0
-          const chevH = fontSize * 0.6
+          const chevW = fontSize * 2.2
+          const chevH = fontSize * 1.3
           const dist = fontSize * 1.1
           const ldx = -Math.sin(r), ldy = Math.cos(r)
-          const cupSign = down ? 1 : -1
+          const cupSign = down ? -1 : 1
           const chevX = svgCx + ldx * cupSign * dist
           const chevY = svgCy + ldy * cupSign * dist
           const chevPts = down
-            ? `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
-            : `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+            ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+            : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
           return (
             <g key={`lbl-${areaKey}`}>
               <text x={svgCx} y={svgCy}
@@ -265,12 +265,12 @@ export default function AreasTab({
                 const chevH = fontSize * 0.6
                 const dist = fontSize * 1.1
                 const ldx = -Math.sin(r), ldy = Math.cos(r)
-                const cupSign = down ? 1 : -1
+                const cupSign = down ? -1 : 1
                 const chevX = svgCx + ldx * cupSign * dist
                 const chevY = svgCy + ldy * cupSign * dist
                 const chevPts = down
-                  ? `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
-                  : `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+                  ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+                  : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
                 return (
                   <g key={`lbl-${areaKey}`} style={{ pointerEvents: 'none', userSelect: 'none' }}>
                     <text x={svgCx} y={svgCy}
