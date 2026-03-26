@@ -4,7 +4,6 @@ import {
   DRAW_COLOR,
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
   PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE,
-  PANEL_GHOST_FILL, PANEL_GHOST_BORDER,
   PANEL_BADGE_DEFAULT, PANEL_BADGE_SELECTED, PANEL_BADGE_SEL_FILL, PANEL_BADGE_SEL_CHV,
   PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
   TEXT_VERY_LIGHT,
@@ -822,7 +821,6 @@ export default function PanelCanvas({
               if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return null
               const cx = (drawRectStart.x + drawRectEnd.x) / 2
               const cy = (drawRectStart.y + drawRectEnd.y) / 2
-              const ibw = Math.max(1, imageRef?.naturalWidth * 0.003 ?? 1)
               return (
                 <g style={{ pointerEvents: 'none' }}>
                   <rect
@@ -834,25 +832,37 @@ export default function PanelCanvas({
                     strokeDasharray={dashArray}
                   />
                   {drawPreviewPanels.map((p, i) => {
-                    const aLen = Math.min(p.width, p.height) * 0.16
-                    const aW = aLen * 0.55
-                    const down = dy >= 0  // yDir === 'ttb': slope front is at bottom
-                    const stemFar  = p.y + p.height * (down ? 0.58 : 0.42)
-                    const stemNear = p.y + p.height * (down ? 0.38 : 0.62)
-                    const tipY     = p.y + p.height * (down ? 0.22 : 0.78)
+                    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2
+                    const pibw = p.width * 0.012
+                    const down = dy >= 0
+                    const r = (p.rotation || 0) * Math.PI / 180
+                    const rDeg = p.rotation || 0
+                    const bh = Math.min(p.width, p.height) * 0.22
+                    const bw = bh * 1.9
+                    const scale = bw > p.width * 0.82 ? (p.width * 0.82) / bw : 1
+                    const bwS = bw * scale, bhS = bh * scale
+                    const cupW = bwS * 0.52, cupH = bhS * 0.42, cupDist = bhS * 0.85
+                    const ldx = -Math.sin(r), ldy = Math.cos(r)
+                    const cupSign = down ? -1 : 1
+                    const cupX = pcx + ldx * cupSign * cupDist
+                    const cupY = pcy + ldy * cupSign * cupDist
+                    const pts = down
+                      ? `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                      : `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
                     return (
-                      <g key={i} transform={`rotate(${p.rotation || 0} ${p.cx} ${p.cy})`}>
-                        <rect x={p.x} y={p.y} width={p.width} height={p.height}
-                          fill={PANEL_GHOST_FILL} stroke="none" />
-                        <rect x={p.x + ibw/2} y={p.y + ibw/2}
-                          width={p.width - ibw} height={p.height - ibw}
-                          fill="none" stroke={PANEL_MID} strokeWidth={ibw} strokeOpacity={0.7} />
-                        <line x1={p.cx} y1={stemFar} x2={p.cx} y2={stemNear}
-                          stroke={PANEL_GHOST_BORDER} strokeWidth={aW * 0.28} strokeLinecap="round"
-                          style={{ pointerEvents: 'none' }} />
-                        <polygon
-                          points={`${p.cx},${tipY} ${p.cx - aW * 0.55},${stemNear} ${p.cx + aW * 0.55},${stemNear}`}
-                          fill={PANEL_GHOST_BORDER} style={{ pointerEvents: 'none' }} />
+                      <g key={i} style={{ pointerEvents: 'none' }}>
+                        <g transform={`rotate(${rDeg} ${pcx} ${pcy})`}>
+                          <rect x={p.x} y={p.y} width={p.width} height={p.height}
+                            fill={PANEL_FILL} stroke="none" />
+                          <rect x={p.x + pibw/2} y={p.y + pibw/2}
+                            width={p.width - pibw} height={p.height - pibw}
+                            fill="none" stroke={PANEL_MID} strokeWidth={pibw} />
+                        </g>
+                        <rect x={pcx - bwS/2} y={pcy - bhS/2} width={bwS} height={bhS} rx={bhS/2}
+                          fill={PANEL_BADGE_DEFAULT} />
+                        <g transform={`translate(${cupX},${cupY}) rotate(${rDeg})`}>
+                          <polygon points={pts} fill="white" stroke={PANEL_BADGE_SELECTED} strokeWidth={cupH * 0.18} strokeLinejoin="round" />
+                        </g>
                       </g>
                     )
                   })}
