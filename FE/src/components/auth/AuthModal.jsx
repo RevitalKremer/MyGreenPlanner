@@ -3,6 +3,7 @@ import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_LIGHT,
   TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT, ERROR, ERROR_BG, SUCCESS, SUCCESS_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 const inputStyle = (focused) => ({
   width: '100%', padding: '0.65rem 0.8rem', boxSizing: 'border-box',
@@ -16,6 +17,7 @@ const inputStyle = (focused) => ({
  * resetToken: string — pre-fill the reset flow from URL param
  */
 export default function AuthModal({ onClose, onSuccess, onForgotPassword, onResetPassword, defaultTab = 'login', resetToken = null }) {
+  const { t } = useLang()
   const [mode, setMode] = useState(resetToken ? 'reset' : defaultTab)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,11 +45,11 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
         setMode('registered')
       } else if (mode === 'forgot') {
         await onForgotPassword(email)
-        setInfo('If that email is registered, a reset link has been sent. Check your inbox.')
+        setInfo(t('auth.resetLinkSent'))
       } else if (mode === 'reset') {
-        if (newPassword !== confirmPassword) throw new Error('Passwords do not match')
+        if (newPassword !== confirmPassword) throw new Error(t('auth.passwordsMismatch'))
         await onResetPassword(resetToken, newPassword)
-        setInfo('Password updated successfully. You can now sign in.')
+        setInfo(t('auth.passwordUpdated'))
         setTimeout(() => switchMode('login'), 2000)
       }
     } catch (err) {
@@ -87,11 +89,11 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📧</div>
             <div style={{ fontSize: '1rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.5rem' }}>
-              Check your email!
+              {t('auth.checkEmail')}
             </div>
             <div style={{ fontSize: '0.85rem', color: TEXT_LIGHT, lineHeight: 1.6, marginBottom: '1.5rem' }}>
-              We sent a verification link to <strong>{email}</strong>.<br />
-              Click it to activate your account.
+              {t('auth.verifyLinkSent')} <strong>{email}</strong>.<br />
+              {t('auth.clickToActivate')}
             </div>
             <button onClick={onClose} style={{
               width: '100%', padding: '0.75rem',
@@ -99,13 +101,13 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
               border: 'none', borderRadius: '8px',
               cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem',
             }}>
-              Got it
+              {t('auth.gotIt')}
             </button>
             <button onClick={() => switchMode('login')} style={{
               marginTop: '0.75rem', background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '0.82rem', color: TEXT_LIGHT, textDecoration: 'underline',
             }}>
-              Sign in instead
+              {t('auth.signInInstead')}
             </button>
           </div>
         )}
@@ -114,16 +116,16 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
         {mode === 'forgot' && (
           <>
             <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '1rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.3rem' }}>Forgot password?</div>
-              <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT }}>Enter your email and we'll send a reset link.</div>
+              <div style={{ fontSize: '1rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.3rem' }}>{t('auth.forgotTitle')}</div>
+              <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT }}>{t('auth.forgotDesc')}</div>
             </div>
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>Email</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.email')}</label>
                 <input
                   type="email" value={email} onChange={e => setEmail(e.target.value)}
                   onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
-                  placeholder="you@example.com" required autoFocus
+                  placeholder={t('auth.emailPlaceholder')} required autoFocus
                   style={inputStyle(focused === 'email')}
                 />
               </div>
@@ -135,14 +137,14 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 border: 'none', borderRadius: '8px', cursor: loading ? 'default' : 'pointer',
                 fontWeight: '700', fontSize: '0.95rem', transition: 'background 0.15s',
               }}>
-                {loading ? 'Sending…' : 'Send Reset Link'}
+                {loading ? t('auth.sendingReset') : t('auth.sendResetLink')}
               </button>
             </form>
             <button onClick={() => switchMode('login')} style={{
               marginTop: '1rem', background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '0.82rem', color: TEXT_LIGHT, textDecoration: 'underline', padding: 0,
             }}>
-              ← Back to Sign In
+              {t('auth.backToSignIn')}
             </button>
           </>
         )}
@@ -151,25 +153,25 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
         {mode === 'reset' && (
           <>
             <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '1rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.3rem' }}>Set new password</div>
-              <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT }}>Choose a new password for your account.</div>
+              <div style={{ fontSize: '1rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.3rem' }}>{t('auth.setNewPassword')}</div>
+              <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT }}>{t('auth.setNewPasswordDesc')}</div>
             </div>
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>New Password</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.newPassword')}</label>
                 <input
                   type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
                   onFocus={() => setFocused('new')} onBlur={() => setFocused(null)}
-                  placeholder="••••••••" required autoFocus
+                  placeholder={t('auth.passwordPlaceholder')} required autoFocus
                   style={inputStyle(focused === 'new')}
                 />
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>Confirm Password</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.confirmPassword')}</label>
                 <input
                   type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                   onFocus={() => setFocused('confirm')} onBlur={() => setFocused(null)}
-                  placeholder="••••••••" required
+                  placeholder={t('auth.passwordPlaceholder')} required
                   style={inputStyle(focused === 'confirm')}
                 />
               </div>
@@ -181,7 +183,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 border: 'none', borderRadius: '8px', cursor: loading ? 'default' : 'pointer',
                 fontWeight: '700', fontSize: '0.95rem', transition: 'background 0.15s',
               }}>
-                {loading ? 'Saving…' : 'Set New Password'}
+                {loading ? t('auth.savingPassword') : t('auth.setPasswordBtn')}
               </button>
             </form>
           </>
@@ -191,15 +193,15 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
         {(mode === 'login' || mode === 'register') && (
           <>
             <div style={{ display: 'flex', borderBottom: `2px solid ${BORDER_FAINT}`, marginBottom: '1.5rem' }}>
-              {['login', 'register'].map(t => (
-                <button key={t} onClick={() => switchMode(t)} style={{
+              {['login', 'register'].map(tab => (
+                <button key={tab} onClick={() => switchMode(tab)} style={{
                   flex: 1, padding: '0.6rem', background: 'none', border: 'none',
-                  cursor: 'pointer', fontSize: '0.9rem', fontWeight: mode === t ? '700' : '500',
-                  color: mode === t ? TEXT_DARKEST : TEXT_LIGHT,
-                  borderBottom: `2px solid ${mode === t ? TEXT_DARKEST : 'transparent'}`,
+                  cursor: 'pointer', fontSize: '0.9rem', fontWeight: mode === tab ? '700' : '500',
+                  color: mode === tab ? TEXT_DARKEST : TEXT_LIGHT,
+                  borderBottom: `2px solid ${mode === tab ? TEXT_DARKEST : 'transparent'}`,
                   marginBottom: '-2px', transition: 'all 0.15s',
                 }}>
-                  {t === 'login' ? 'Sign In' : 'Create Account'}
+                  {tab === 'login' ? t('auth.signIn') : t('auth.createAccount')}
                 </button>
               ))}
             </div>
@@ -209,43 +211,43 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 <>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                      Full Name <span style={{ color: ERROR }}>*</span>
+                      {t('auth.fullName')} <span style={{ color: ERROR }}>{t('auth.required')}</span>
                     </label>
                     <input
                       type="text" value={fullName} onChange={e => setFullName(e.target.value)}
                       onFocus={() => setFocused('name')} onBlur={() => setFocused(null)}
-                      placeholder="Your full name" required style={inputStyle(focused === 'name')}
+                      placeholder={t('auth.fullNamePlaceholder')} required style={inputStyle(focused === 'name')}
                     />
                   </div>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                      Phone Number
+                      {t('auth.phone')}
                     </label>
                     <input
                       type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                       onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
-                      placeholder="+972 50 000 0000" style={inputStyle(focused === 'phone')}
+                      placeholder={t('auth.phonePlaceholder')} style={inputStyle(focused === 'phone')}
                     />
                   </div>
                 </>
               )}
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>Email</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.email')}</label>
                 <input
                   type="email" value={email} onChange={e => setEmail(e.target.value)}
                   onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
-                  placeholder="you@example.com" required autoFocus
+                  placeholder={t('auth.emailPlaceholder')} required autoFocus
                   style={inputStyle(focused === 'email')}
                 />
               </div>
 
               <div style={{ marginBottom: mode === 'login' ? '0.5rem' : '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>Password</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.password')}</label>
                 <input
                   type="password" value={password} onChange={e => setPassword(e.target.value)}
                   onFocus={() => setFocused('pass')} onBlur={() => setFocused(null)}
-                  placeholder="••••••••" required style={inputStyle(focused === 'pass')}
+                  placeholder={t('auth.passwordPlaceholder')} required style={inputStyle(focused === 'pass')}
                 />
               </div>
 
@@ -255,7 +257,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: '0.78rem', color: TEXT_LIGHT, textDecoration: 'underline', padding: 0,
                   }}>
-                    Forgot password?
+                    {t('auth.forgotPassword')}
                   </button>
                 </div>
               )}
@@ -268,7 +270,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 border: 'none', borderRadius: '8px', cursor: loading ? 'default' : 'pointer',
                 fontWeight: '700', fontSize: '0.95rem', transition: 'background 0.15s',
               }}>
-                {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+                {loading ? t('auth.pleaseWait') : mode === 'login' ? t('auth.signIn') : t('auth.createAccount')}
               </button>
             </form>
           </>

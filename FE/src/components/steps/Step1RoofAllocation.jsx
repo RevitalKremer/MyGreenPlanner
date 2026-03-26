@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
 import CanvasNavigator from '../shared/CanvasNavigator'
 import RoofMapper from '../RoofMapper'
@@ -56,6 +57,7 @@ export default function Step1RoofAllocation({
   referenceLineLengthCm,
   setReferenceLineLengthCm,
 }) {
+  const { t } = useLang()
   const [drawMode, setDrawMode]           = useState('auto')   // 'auto' | 'draw'
   const [isDrawing, setIsDrawing]         = useState(false)
   const [drawingPoints, setDrawingPoints] = useState([])
@@ -192,14 +194,14 @@ export default function Step1RoofAllocation({
   }
 
   const hint = !addRoofImage
-    ? 'White canvas ready — click Next to set scale, or add a roof image using the panel'
+    ? t('step1.hintWhiteboard')
     : !uploadedImageMode
-      ? 'Click anywhere on the roof — SAM2 will detect its outline'
+      ? t('step1.hintClickRoof')
       : drawMode === 'draw'
         ? isDrawing
-          ? 'Click to add vertices · double-click or click first point to close · Esc to cancel'
-          : 'Press "Start Drawing" then click to trace the roof outline'
-        : 'Click anywhere on the roof — SAM2 will detect its boundary'
+          ? t('step1.hintDrawPolygon')
+          : t('step1.hintStartDrawing')
+        : t('step1.hintClickBoundary')
 
   return (
     <>
@@ -215,10 +217,10 @@ export default function Step1RoofAllocation({
 
         {/* SAM2 status */}
         <div className="step-status" style={{ alignSelf: 'flex-end', paddingBottom: '2px' }}>
-          {backendStatus.status === 'checking' && <span className="status-badge status-checking">Checking</span>}
-          {backendStatus.status === 'running' && backendStatus.model_loaded && <span className="status-badge status-ready">SAM2 Ready</span>}
-          {backendStatus.status === 'running' && !backendStatus.model_loaded && <span className="status-badge status-warning">Loading</span>}
-          {backendStatus.status === 'offline' && <span className="status-badge status-offline">Offline</span>}
+          {backendStatus.status === 'checking' && <span className="status-badge status-checking">{t('step1.statusChecking')}</span>}
+          {backendStatus.status === 'running' && backendStatus.model_loaded && <span className="status-badge status-ready">{t('step1.statusReady')}</span>}
+          {backendStatus.status === 'running' && !backendStatus.model_loaded && <span className="status-badge status-warning">{t('step1.statusLoading')}</span>}
+          {backendStatus.status === 'offline' && <span className="status-badge status-offline">{t('step1.statusOffline')}</span>}
         </div>
       </div>
 
@@ -331,7 +333,7 @@ export default function Step1RoofAllocation({
                 {/* Reference line drawing banner */}
                 {isDrawingLine && (
                   <div style={{ position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: `${PRIMARY}eb`, color: 'white', padding: '0.5rem 1.25rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 10 }}>
-                    {lineStart ? 'Click second point to finish reference line' : 'Click first point of reference line'}
+                    {lineStart ? t('step1.clickSecondPoint') : t('step1.clickFirstPoint')}
                   </div>
                 )}
 
@@ -357,19 +359,19 @@ export default function Step1RoofAllocation({
                     {!isDrawing && (
                       <button onClick={startDrawing}
                         style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: TEXT, border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
-                        {roofPolygon ? 'Re-draw' : 'Start Drawing'}
+                        {roofPolygon ? t('step1.redraw') : t('step1.startDrawing')}
                       </button>
                     )}
                     {isDrawing && drawingPoints.length >= 3 && (
                       <button onClick={() => commitPolygon(drawingPoints)}
                         style={{ padding: '0.5rem 1.2rem', background: ACCENT, color: TEXT, border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
-                        Close ({drawingPoints.length} pts)
+                        {t('step1.closePts', { n: drawingPoints.length })}
                       </button>
                     )}
                     {isDrawing && (
                       <button onClick={() => { setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}
                         style={{ padding: '0.5rem 1.2rem', background: 'white', color: ERROR, border: `1.5px solid ${ERROR}`, borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.88rem' }}>
-                        Cancel
+                        {t('step1.cancel')}
                       </button>
                     )}
                   </div>
@@ -425,31 +427,31 @@ export default function Step1RoofAllocation({
                     style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: PRIMARY }}
                   />
                   <label htmlFor="addRoofImage" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#555', cursor: 'pointer' }}>
-                    Add roof image
+                    {t('step1.addRoofImage')}
                   </label>
                 </div>
                 {addRoofImage && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div>
-                      <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Source</div>
+                      <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.source')}</div>
                       <div className="seg-control">
                         <button className={`seg-btn${uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(true)}>
-                          <IconImage /> Image
+                          <IconImage /> {t('step1.image')}
                         </button>
                         <button className={`seg-btn${!uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(false)}>
-                          <IconMap /> Map
+                          <IconMap /> {t('step1.map')}
                         </button>
                       </div>
                     </div>
                     {uploadedImageMode && uploadedImageData && !uploadedImageData.isWhiteboard && (
                       <div>
-                        <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>Detection</div>
+                        <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.detection')}</div>
                         <div className="seg-control">
                           <button className={`seg-btn${drawMode === 'auto' ? ' seg-active' : ''}`} onClick={() => { setDrawMode('auto'); setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}>
-                            <IconAuto /> Auto (SAM2)
+                            <IconAuto /> {t('step1.autoSam2')}
                           </button>
                           <button className={`seg-btn${drawMode === 'draw' ? ' seg-active seg-accent' : ''}`} onClick={() => setDrawMode('draw')}>
-                            <IconPen /> Draw Polygon
+                            <IconPen /> {t('step1.drawPolygon')}
                           </button>
                         </div>
                       </div>
@@ -465,24 +467,24 @@ export default function Step1RoofAllocation({
 
             {addRoofImage && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
               <>
-                <h3>{drawMode === 'draw' ? 'Drawn Polygon' : 'Selected Location'}</h3>
+                <h3>{drawMode === 'draw' ? t('step1.drawnPolygon') : t('step1.selectedLocation')}</h3>
                 {drawMode === 'auto' && selectedPoint && (
                   uploadedImageMode
-                    ? <><p>Pixel X: {selectedPoint.x}</p><p>Pixel Y: {selectedPoint.y}</p></>
-                    : <><p>Latitude: {selectedPoint.lat?.toFixed(6)}</p><p>Longitude: {selectedPoint.lng?.toFixed(6)}</p></>
+                    ? <><p>{t('step1.pixelX')}{selectedPoint.x}</p><p>{t('step1.pixelY')}{selectedPoint.y}</p></>
+                    : <><p>{t('step1.latitude')}{selectedPoint.lat?.toFixed(6)}</p><p>{t('step1.longitude')}{selectedPoint.lng?.toFixed(6)}</p></>
                 )}
                 {roofPolygon && (
                   <div>
-                    <h4>Roof Polygon Created</h4>
-                    {roofPolygon.area && <p>Area: {roofPolygon.area.toLocaleString()} {uploadedImageMode ? 'pixels' : 'm²'}</p>}
-                    {roofPolygon.confidence && roofPolygon.confidence < 1 && <p>Confidence: {(roofPolygon.confidence * 100).toFixed(1)}%</p>}
-                    {roofPolygon.coordinates && <p>Points: {roofPolygon.coordinates.length}</p>}
+                    <h4>{t('step1.roofPolygonCreated')}</h4>
+                    {roofPolygon.area && <p>{t('step1.area')}{roofPolygon.area.toLocaleString()} {uploadedImageMode ? 'pixels' : 'm²'}</p>}
+                    {roofPolygon.confidence && roofPolygon.confidence < 1 && <p>{t('step1.confidence')}{(roofPolygon.confidence * 100).toFixed(1)}%</p>}
+                    {roofPolygon.coordinates && <p>{t('step1.points')}{roofPolygon.coordinates.length}</p>}
                     <div style={{ marginTop: '1rem' }}>
                       <button
                         onClick={() => { setSelectedPoint(null); setRoofPolygon(null) }}
                         style={{ background: ERROR, color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
                       >
-                        Clear & Try Again
+                        {t('step1.clearTryAgain')}
                       </button>
                     </div>
                   </div>
@@ -495,24 +497,24 @@ export default function Step1RoofAllocation({
               <>
                 <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '0.85rem 0' }} />
                 <div style={{ padding: '0.85rem', background: '#fcfdf7', borderRadius: '8px', border: `1px solid ${PRIMARY}` }}>
-                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>Reference Line (scale)</label>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>{t('step1.referenceLine')}</label>
                   <button
                     onClick={() => { if (isDrawingLine) { setIsDrawingLine(false); setLineStart(null) } else { setIsDrawingLine(true); setReferenceLine(null) } }}
                     style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? ERROR : PRIMARY, color: isDrawingLine ? 'white' : TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
                   >
-                    {isDrawingLine ? 'Cancel Drawing' : (referenceLine ? 'Redraw Line' : 'Draw Line on Image')}
+                    {isDrawingLine ? t('step1.cancelDrawing') : (referenceLine ? t('step1.redrawLine') : t('step1.drawLine'))}
                   </button>
                   {referenceLine && (
                     <>
-                      <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: TEXT_SECONDARY }}>Line Length (cm)</label>
+                      <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: TEXT_SECONDARY }}>{t('step1.lineLength')}</label>
                       <input type="number" min="0" step="0.1" value={referenceLineLengthCm}
                         onChange={(e) => setReferenceLineLengthCm(e.target.value)}
-                        placeholder="Enter length in cm"
+                        placeholder={t('step1.lineLengthPlaceholder')}
                         style={{ width: '100%', padding: '0.6rem', border: `2px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box' }}
                       />
                       {referenceLineLengthCm && (
                         <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: TEXT_MUTED }}>
-                          Ratio: {(referenceLineLengthCm / Math.sqrt(Math.pow(referenceLine.end.x - referenceLine.start.x, 2) + Math.pow(referenceLine.end.y - referenceLine.start.y, 2))).toFixed(4)} cm/px
+                          {t('step1.ratio')}{(referenceLineLengthCm / Math.sqrt(Math.pow(referenceLine.end.x - referenceLine.start.x, 2) + Math.pow(referenceLine.end.y - referenceLine.start.y, 2))).toFixed(4)} cm/px
                         </p>
                       )}
                     </>

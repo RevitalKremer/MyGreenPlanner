@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
@@ -14,6 +15,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 
 
 export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+  const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -119,7 +121,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
   if (trapIds.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
-        No panel rows found — complete Step 3 first.
+        {t('step3.empty.noRows')}
       </div>
     )
   }
@@ -618,18 +620,18 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
         <LayersPanel
           layers={[
-            { label: 'Bases',       checked: showBases,      setter: setShowBases },
-            { label: 'Blocks',      checked: showBlocks,     setter: setShowBlocks },
-            { label: 'Base IDs',    checked: showBaseIDs,    setter: setShowBaseIDs },
-            { label: 'Rail lines',  checked: showRailLines,  setter: setShowRailLines },
-            { label: 'Edit bar',    checked: showEditBar,    setter: setShowEditBar },
-            { label: 'Dimensions',  checked: showDimensions, setter: setShowDimensions },
-            { label: 'Diagonals',   checked: showDiagonals,  setter: setShowDiagonals },
+            { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
+            { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
+            { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
+            { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
+            { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
+            { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
+            { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
           ]}
           summary={null}
           actions={[
-            ...(onResetBases ? [{ label: 'Reset to defaults', onClick: onResetBases, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
-            { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+            ...(onResetBases ? [{ label: t('step3.layer.resetDefaults'), onClick: onResetBases, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
+            { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
           ]}
         />
 

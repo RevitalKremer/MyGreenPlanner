@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import {
   TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_MUTED,
   TEXT_LIGHT, TEXT_FAINT, TEXT_PLACEHOLDER,
@@ -42,8 +43,9 @@ function EditNum({ value, disabled, onCommit, dim = false }) {
         padding: '0.15rem 0.3rem', border: `2px solid ${AMBER}`, borderRadius: '4px', outline: 'none', background: AMBER_BG }} />
   )
 
+  const { t: tEdit } = useLang()
   return (
-    <span onClick={start} title={disabled ? undefined : 'Click to edit'}
+    <span onClick={start} title={disabled ? undefined : tEdit('bom.clickToEdit')}
       style={{ fontWeight: '700', fontSize: '0.92rem',
         color: disabled ? TEXT_FAINT : dim ? TEXT_MUTED : TEXT_DARKEST,
         textDecoration: disabled ? 'line-through' : 'none',
@@ -94,6 +96,7 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 
 // ───────────────────────────────────────────────────────────────────────────
 export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = {}, onBomDeltasChange }) {
+  const { t } = useLang()
   const baseRows = useMemo(() => buildBOM(rowConstructions, rowLabels), [rowConstructions, rowLabels])
   const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [baseRows])
 
@@ -233,19 +236,19 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
       }}>
         <div style={{ flex: 1, padding: '1rem 1.25rem' }}>
           <div style={{ fontSize: '0.62rem', fontWeight: '700', color: PRIMARY, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>
-            Bill of Materials
+            {t('bom.billOfMaterials')}
           </div>
           <div style={{ fontSize: '1.05rem', fontWeight: '800', color: WHITE, letterSpacing: '-0.01em' }}>
-            {areaLabels.length} {areaLabels.length === 1 ? 'area' : 'areas'} · {totalItems} line items
+            {t('bom.areas', { n: areaLabels.length, s: areaLabels.length !== 1 ? 's' : '' })} · {t('bom.lineItems', { n: totalItems, s: totalItems !== 1 ? 's' : '' })}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'stretch', borderLeft: `1px solid ${WHITE_10}` }}>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem', borderRight: `1px solid ${WHITE_10}` }}>
-            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Angle profile</div>
+            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.angleProfile')}</div>
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalAngleM.toFixed(1)} m</div>
           </div>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem' }}>
-            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total pieces</div>
+            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.totalPieces')}</div>
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{grandTotal.toLocaleString()}</div>
           </div>
           {hasAnyDelta && (
@@ -254,7 +257,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                 fontSize: '0.72rem', padding: '0.35rem 0.75rem', cursor: 'pointer',
                 background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: '6px',
                 color: AMBER_DARK, fontWeight: '700', whiteSpace: 'nowrap',
-              }}>↺ Reset</button>
+              }}>{t('bom.reset')}</button>
             </div>
           )}
         </div>
@@ -267,32 +270,32 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
         background: SECTION_HEADER_BG,
         borderLeft: `1px solid ${BORDER_FAINT}`, borderRight: `1px solid ${BORDER_FAINT}`,
       }}>
-        <span style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>Filter</span>
+        <span style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>{t('bom.filter')}</span>
         <select
           value={filterArea}
           onChange={e => setFilterArea(e.target.value)}
           style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem', border: `1px solid ${BORDER}`, borderRadius: '5px', background: WHITE, minWidth: '8rem' }}
         >
-          <option value="">All areas</option>
+          <option value="">{t('bom.allAreas')}</option>
           {areaLabels.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
         <input
           type="text"
           value={filterText}
           onChange={e => setFilterText(e.target.value)}
-          placeholder="Search element…"
+          placeholder={t('bom.searchElement')}
           style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem', border: `1px solid ${BORDER}`, borderRadius: '5px', background: WHITE, flex: 1, minWidth: '10rem' }}
         />
         {(filterArea || filterText) && (
           <button onClick={() => { setFilterArea(''); setFilterText('') }}
             style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', cursor: 'pointer', background: 'none', border: `1px solid ${BORDER}`, borderRadius: '5px', color: TEXT_MUTED }}>
-            ✕ Clear filter
+            {t('bom.clearFilter')}
           </button>
         )}
         {sortKey !== 'area' && (
           <button onClick={() => { setSortKey('area'); setSortDir('asc') }}
             style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', cursor: 'pointer', background: 'none', border: `1px solid ${BORDER}`, borderRadius: '5px', color: TEXT_MUTED }}>
-            ↺ Clear sort
+            {t('bom.clearSort')}
           </button>
         )}
         <button
@@ -305,10 +308,10 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
             fontWeight: showRemoved ? '400' : '600',
           }}
         >
-          {showRemoved ? 'Hide removed' : 'Show removed'}
+          {showRemoved ? t('bom.hideRemoved') : t('bom.showRemoved')}
         </button>
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: TEXT_PLACEHOLDER, flexShrink: 0 }}>
-          {visibleRows.length} of {displayRows.length} rows
+          {t('bom.rowsOf', { n: visibleRows.length, total: displayRows.length })}
         </span>
       </div>
 
@@ -318,12 +321,12 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
           <thead>
             <tr>
               <th style={{ background: SECTION_HEADER_BG, width: '2.5rem', padding: '0.5rem 0.6rem', color: TEXT_PLACEHOLDER, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>#</th>
-              <SortTh label="Area"      colKey="area"    sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thStyle }} />
-              <SortTh label="Element"   colKey="element" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thStyle }} />
-              <SortTh label="Length (m)" colKey="length" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '5.5rem' }} />
-              <SortTh label="Qty"       colKey="qty"     sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4rem' }} />
-              <SortTh label="Extras"    colKey="extras"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4.5rem' }} />
-              <SortTh label="Total"     colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '5.5rem' }} />
+              <SortTh label={t('bom.colArea')}    colKey="area"    sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thStyle }} />
+              <SortTh label={t('bom.colElement')} colKey="element" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thStyle }} />
+              <SortTh label={t('bom.colLength')}  colKey="length"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '5.5rem' }} />
+              <SortTh label={t('bom.colQty')}     colKey="qty"     sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4rem' }} />
+              <SortTh label={t('bom.colExtras')}  colKey="extras"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4.5rem' }} />
+              <SortTh label={t('bom.colTotal')}   colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '5.5rem' }} />
               <th style={{ background: SECTION_HEADER_BG, width: '3.5rem' }} />
             </tr>
           </thead>
@@ -375,10 +378,10 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                       return (
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                           {row.isAdded && (
-                            <span style={{ fontSize: '0.6rem', background: ADD_GREEN, color: WHITE, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>NEW</span>
+                            <span style={{ fontSize: '0.6rem', background: ADD_GREEN, color: WHITE, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>{t('bom.badgeNew')}</span>
                           )}
                           {isAlt && (
-                            <span style={{ fontSize: '0.6rem', background: PRIMARY, color: BLACK, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>ALT</span>
+                            <span style={{ fontSize: '0.6rem', background: PRIMARY, color: BLACK, borderRadius: '4px', padding: '1px 5px', fontWeight: '800', flexShrink: 0, marginTop: '2px' }}>{t('bom.badgeAlt')}</span>
                           )}
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: '600',
@@ -394,7 +397,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                             )}
                             {allOptions.length > 0 && !row.removed && (
                               <div style={{ marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <span style={{ fontSize: '0.63rem', color: TEXT_MUTED, fontWeight: '600' }}>Alt:</span>
+                                <span style={{ fontSize: '0.63rem', color: TEXT_MUTED, fontWeight: '600' }}>{t('bom.altLabel')}</span>
                                 <select
                                   value={chosenType}
                                   onChange={e => {
@@ -410,7 +413,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                                 >
                                   {allOptions.map(opt => (
                                     <option key={opt.type} value={opt.type}>
-                                      {opt.type === row.element ? `${opt.name} (default)` : opt.name}
+                                      {opt.type === row.element ? `${opt.name} ${t('bom.defaultSuffix')}` : opt.name}
                                     </option>
                                   ))}
                                 </select>
@@ -451,12 +454,12 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                     ) : (
                       <div style={{ display: 'flex', gap: '2px', justifyContent: 'center' }}>
                         <ActionBtn onClick={() => toggleRemoved(row.key)}
-                          title={row.removed ? 'Restore' : 'Mark removed'}
+                          title={row.removed ? t('bom.restore') : t('bom.markRemoved')}
                           color={row.removed ? ADD_GREEN : TEXT_LIGHT}>
                           {row.removed ? '↩' : '✕'}
                         </ActionBtn>
                         {overrides[row.key] && (
-                          <ActionBtn onClick={() => restoreRow(row.key)} title="Reset to default" color={AMBER_DARK}>↺</ActionBtn>
+                          <ActionBtn onClick={() => restoreRow(row.key)} title={t('bom.resetDefault')} color={AMBER_DARK}>↺</ActionBtn>
                         )}
                       </div>
                     )}
@@ -469,7 +472,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
             {visibleRows.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: TEXT_PLACEHOLDER, fontStyle: 'italic' }}>
-                  No rows match the current filter.
+                  {t('bom.noRows')}
                 </td>
               </tr>
             )}
@@ -477,7 +480,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
           <tfoot>
             <tr style={{ background: PRIMARY_BG, borderTop: `2px solid ${PRIMARY}` }}>
               <td colSpan={3} style={{ padding: '0.55rem 0.8rem', color: PRIMARY_DARK, fontWeight: '700', fontSize: '0.82rem' }}>
-                Total linear meters (angle profile)
+                {t('bom.totalAngle')}
               </td>
               <td style={{ padding: '0.55rem 0.8rem', textAlign: 'right', fontWeight: '800', color: PRIMARY_DARK, fontSize: '0.95rem' }}>
                 {totalAngleM.toFixed(2)} m
@@ -503,26 +506,26 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
           <span style={{ fontSize: '0.6rem', fontWeight: '800', color: WHITE,
-            background: ADD_GREEN, borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.06em' }}>+ ADD ROW</span>
-          <span style={{ fontSize: '0.72rem', color: TEXT_MUTED }}>Add a custom line item to the BOM</span>
+            background: ADD_GREEN, borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.06em' }}>{t('bom.addRow')}</span>
+          <span style={{ fontSize: '0.72rem', color: TEXT_MUTED }}>{t('bom.addRowDesc')}</span>
         </div>
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <Field label="Area">
+          <Field label={t('bom.addArea')}>
             <select value={addArea} onChange={e => setAddArea(e.target.value)} style={selectStyle}>
-              <option value="">— select area —</option>
+              <option value="">{t('bom.selectArea')}</option>
               {areaLabels.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </Field>
-          <Field label="Element">
+          <Field label={t('bom.addElement')}>
             <select value={addElement} onChange={e => setAddElement(e.target.value)}
               style={{ ...selectStyle, minWidth: '16rem' }}>
-              <option value="">— select element —</option>
+              <option value="">{t('bom.selectElement')}</option>
               {ALL_ELEMENTS.map(el => (
                 <option key={el} value={el}>{productByType[el]?.name ?? el}</option>
               ))}
             </select>
           </Field>
-          <Field label="Qty">
+          <Field label={t('bom.addQty')}>
             <input type="number" value={addQty} min={1} placeholder="0"
               onChange={e => setAddQty(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddRow() }}
@@ -534,7 +537,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
               background: (!addArea || !addElement || !addQty) ? BG_MID : ADD_GREEN,
               color: (!addArea || !addElement || !addQty) ? TEXT_MUTED : WHITE,
               border: 'none', borderRadius: '6px',
-            }}>Add</button>
+            }}>{t('bom.add')}</button>
         </div>
       </div>
 

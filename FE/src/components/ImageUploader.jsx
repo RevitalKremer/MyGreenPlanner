@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
 import './ImageUploader.css'
+import { useLang } from '../i18n/LangContext'
 
 function ImageUploader({ onImageUploaded, onClose }) {
+  const { t } = useLang()
   const [uploadedImage, setUploadedImage] = useState(null)
   const [rotation, setRotation] = useState(0)
   const [imageScale, setImageScale] = useState(1)
@@ -18,7 +20,7 @@ function ImageUploader({ onImageUploaded, onClose }) {
       }
       reader.readAsDataURL(file)
     } else {
-      alert('Please select a valid image file')
+      alert(t('welcome.invalidImage'))
     }
   }
 
@@ -75,8 +77,8 @@ function ImageUploader({ onImageUploaded, onClose }) {
                     <circle cx="12" cy="13" r="4"></circle>
                   </svg>
                 </div>
-                <p>Click to upload an aerial image of your roof</p>
-                <p className="upload-hint">Supported: JPG, PNG, JPEG</p>
+                <p>{t('uploader.clickToUpload')}</p>
+                <p className="upload-hint">{t('uploader.supported')}</p>
               </label>
             </div>
           ) : (
@@ -99,15 +101,15 @@ function ImageUploader({ onImageUploaded, onClose }) {
               <div className="image-controls">
                 <div className="control-section">
                   <label className="control-label">
-                    Rotate to align North upward
+                    {t('uploader.rotateAlign')}
                   </label>
                   <div className="rotation-control">
-                    <button 
+                    <button
                       className="quick-rotate-btn"
                       onClick={() => quickRotate(-90)}
-                      title="Rotate 90° left"
+                      title={t('uploader.rotateLeftTitle')}
                     >
-                      ↺ 90°
+                      {t('uploader.rotateLeft')}
                     </button>
                     <input
                       type="range"
@@ -117,12 +119,12 @@ function ImageUploader({ onImageUploaded, onClose }) {
                       onChange={handleRotationChange}
                       className="slider rotation-slider"
                     />
-                    <button 
+                    <button
                       className="quick-rotate-btn"
                       onClick={() => quickRotate(90)}
-                      title="Rotate 90° right"
+                      title={t('uploader.rotateRightTitle')}
                     >
-                      ↻ 90°
+                      {t('uploader.rotateRight')}
                     </button>
                   </div>
                   <div className="rotation-display">{rotation}°</div>
@@ -130,7 +132,7 @@ function ImageUploader({ onImageUploaded, onClose }) {
 
                 <div className="control-section">
                   <label className="control-label">
-                    Zoom
+                    {t('uploader.zoom')}
                   </label>
                   <input
                     type="range"
@@ -145,12 +147,12 @@ function ImageUploader({ onImageUploaded, onClose }) {
                 </div>
 
                 <div className="instruction-box">
-                  <p><strong>Instructions:</strong></p>
+                  <p><strong>{t('uploader.instructions')}</strong></p>
                   <ol>
-                    <li>Use the slider to rotate the image</li>
-                    <li>Align so that North (↑) points upward</li>
-                    <li>Adjust zoom if needed</li>
-                    <li>Click "Use This Image" when ready</li>
+                    <li>{t('uploader.inst1')}</li>
+                    <li>{t('uploader.inst2')}</li>
+                    <li>{t('uploader.inst3')}</li>
+                    <li>{t('uploader.inst4')}</li>
                   </ol>
                 </div>
               </div>
@@ -160,10 +162,10 @@ function ImageUploader({ onImageUploaded, onClose }) {
           {uploadedImage && (
             <div className="uploader-footer">
               <button className="btn-reset" onClick={handleReset}>
-                Upload Different Image
+                {t('uploader.uploadDifferent')}
               </button>
               <button className="btn-confirm" onClick={handleConfirm}>
-                Use This Image
+                {t('uploader.useThis')}
               </button>
             </div>
           )}

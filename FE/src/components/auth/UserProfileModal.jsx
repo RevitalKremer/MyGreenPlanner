@@ -3,6 +3,7 @@ import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, ERROR, ERROR_BG, SUCCESS, SUCCESS_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 const inputStyle = (focused) => ({
   width: '100%', padding: '0.65rem 0.8rem', boxSizing: 'border-box',
@@ -12,6 +13,7 @@ const inputStyle = (focused) => ({
 })
 
 export default function UserProfileModal({ user, onClose, onSave }) {
+  const { t } = useLang()
   const [fullName, setFullName] = useState(user.full_name ?? '')
   const [phone, setPhone] = useState(user.phone_number ?? '')
   const [focused, setFocused] = useState(null)
@@ -67,7 +69,7 @@ export default function UserProfileModal({ user, onClose, onSave }) {
             {user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
           </div>
           <div>
-            <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>My Account</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('profile.title')}</div>
             <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{user.email}</div>
           </div>
         </div>
@@ -76,26 +78,26 @@ export default function UserProfileModal({ user, onClose, onSave }) {
           {/* Email — read only */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-              Email
+              {t('profile.email')}
             </label>
             <input
               type="email" value={user.email} disabled
               style={{ ...inputStyle(false), background: BORDER_FAINT, color: TEXT_LIGHT, cursor: 'not-allowed' }}
             />
             <div style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, marginTop: '4px' }}>
-              Email cannot be changed. All invoices and plans will be sent here.
+              {t('profile.emailNote')}
             </div>
           </div>
 
           {/* Full name */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-              Full Name <span style={{ color: ERROR }}>*</span>
+              {t('profile.fullName')} <span style={{ color: ERROR }}>{t('profile.required')}</span>
             </label>
             <input
               type="text" value={fullName} onChange={e => setFullName(e.target.value)}
               onFocus={() => setFocused('name')} onBlur={() => setFocused(null)}
-              placeholder="Your full name" required
+              placeholder={t('profile.fullNamePlaceholder')} required
               style={inputStyle(focused === 'name')}
             />
           </div>
@@ -103,12 +105,12 @@ export default function UserProfileModal({ user, onClose, onSave }) {
           {/* Phone */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-              Phone Number
+              {t('profile.phone')}
             </label>
             <input
               type="tel" value={phone} onChange={e => setPhone(e.target.value)}
               onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
-              placeholder="+972 50 000 0000"
+              placeholder={t('profile.phonePlaceholder')}
               style={inputStyle(focused === 'phone')}
             />
           </div>
@@ -120,7 +122,7 @@ export default function UserProfileModal({ user, onClose, onSave }) {
           )}
           {saved && (
             <div style={{ marginBottom: '1rem', padding: '0.6rem 0.8rem', background: SUCCESS_BG, borderRadius: '8px', fontSize: '0.83rem', color: SUCCESS }}>
-              Profile updated successfully.
+              {t('profile.profileUpdated')}
             </div>
           )}
 
@@ -133,7 +135,7 @@ export default function UserProfileModal({ user, onClose, onSave }) {
             fontWeight: '700', fontSize: '0.95rem',
             transition: 'background 0.15s',
           }}>
-            {loading ? 'Saving…' : 'Save Changes'}
+            {loading ? t('profile.saving') : t('profile.saveChanges')}
           </button>
         </form>
       </div>

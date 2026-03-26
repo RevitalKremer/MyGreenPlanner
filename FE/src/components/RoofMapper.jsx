@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { PRIMARY, WARNING } from '../styles/colors'
+import { useLang } from '../i18n/LangContext'
 import { MapContainer, TileLayer, Marker, Polygon, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -50,6 +51,7 @@ function LocationHandler({ triggerLocation }) {
 }
 
 function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
+  const { t } = useLang()
   // Default center - can be changed to user's location
   const [center] = useState([32.0853, 34.7818]) // Tel Aviv as default
   const [zoom] = useState(21) // Maximum zoom for best roof identification
@@ -67,11 +69,11 @@ function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
         },
         (error) => {
           console.error('Error getting location:', error)
-          alert('Unable to get your location. Please enable location services.')
+          alert(t('step1.geolocationDenied'))
         }
       )
     } else {
-      alert('Geolocation is not supported by your browser.')
+      alert(t('step1.geolocationUnsupported'))
     }
   }
 

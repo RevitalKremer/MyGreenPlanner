@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
+import { useLang } from './i18n/LangContext'
+import LangToggle from './i18n/LangToggle'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
@@ -14,13 +16,20 @@ import { listProjects, getProject, deleteProject } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
-const STEP_TITLES = ['Allocate Roof', 'Panel Layout', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
 const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
 
 function App() {
   const s = useProjectState()
   const auth = useAuth()
+  const { t } = useLang()
+
+  const STEP_NAME = {
+    1: t('step.1.name'),
+    2: t('step.2.name'),
+    4: t('step.4.name'),
+    5: t('step.5.name'),
+  }
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [showAuthGate, setShowAuthGate] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export' | 'save'
@@ -101,17 +110,17 @@ function App() {
       const cloudProject = await getProject(projectId)
       s.handleImportProject(cloudProject.data, cloudProject.id)
     } catch (err) {
-      alert('Could not load project: ' + err.message)
+      alert(t('app.loadProjectError', { msg: err.message }))
     }
   }
 
   const handleDeleteCloudProject = async (projectId) => {
-    if (!confirm('Delete this cloud project? This cannot be undone.')) return
+    if (!confirm(t('app.deleteProjectConfirm'))) return
     try {
       await deleteProject(projectId)
       setCloudProjects(prev => prev.filter(p => p.id !== projectId))
     } catch (err) {
-      alert('Could not delete project: ' + err.message)
+      alert(t('app.deleteProjectError', { msg: err.message }))
     }
   }
 
@@ -146,7 +155,7 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
             <img src="/mgp-logo.svg" alt="MyGreenPlanner Logo" style={{ height: '52px', width: 'auto', flexShrink: 0 }} />
             <div style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>MyGreenPlanner</h1>
+              <h1 style={{ margin: 0 }}>{t('app.title')}</h1>
               {s.currentProject?.name ? (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '2px', minWidth: 0 }}>
                   <span style={{ fontSize: '0.85rem', fontWeight: '600', color: PRIMARY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '260px' }}>
@@ -162,7 +171,7 @@ function App() {
                   </span>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Solar PV Roof Planning System</div>
+                <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{t('app.subtitle')}</div>
               )}
             </div>
           </div>
@@ -172,9 +181,12 @@ function App() {
 
             {/* Sadot Energy branding */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', paddingRight: '0.75rem', borderRight: '1px solid rgba(255,255,255,0.13)', marginRight: '0.25rem' }}>
-              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>by</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('app.by')}</span>
               <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '22px', width: 'auto', filter: 'brightness(0) invert(1)', opacity: 0.7 }} />
             </div>
+
+            {/* Language toggle */}
+            <LangToggle dark />
 
             {/* User chip — avatar / sign-in / admin gear */}
             <UserChip
@@ -211,7 +223,7 @@ function App() {
                   </svg>
                 )}
                 <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>
-                  {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Error' : 'Save'}
+                  {saveState === 'saving' ? t('app.saving') : saveState === 'saved' ? t('app.saved') : saveState === 'error' ? t('app.error') : t('app.save')}
                 </span>
               </button>
             ) : (
@@ -224,7 +236,7 @@ function App() {
                   <polyline points="7 10 12 15 17 10"/>
                   <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>Export</span>
+                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>{t('app.export')}</span>
               </button>
             )}
 
@@ -237,7 +249,7 @@ function App() {
                 <polyline points="1 4 1 10 7 10"/>
                 <path d="M3.51 15a9 9 0 1 0 .49-3.21"/>
               </svg>
-              <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Start Over</span>
+              <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{t('app.startOver')}</span>
             </button>
 
             <HelpButton currentStep={s.currentStep} />
@@ -379,7 +391,7 @@ function App() {
         {s.isProcessing && (
           <div className="processing-overlay">
             <div className="spinner"></div>
-            <p>Analyzing roof...</p>
+            <p>{t('app.analyzingRoof')}</p>
           </div>
         )}
 
@@ -402,7 +414,7 @@ function App() {
             boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.88rem', fontWeight: '600',
             display: 'flex', alignItems: 'center', gap: '0.6rem',
           }}>
-            {verifyBanner === 'success' ? '✓ Email verified successfully!' : '✗ Email verification failed — link may have expired.'}
+            {verifyBanner === 'success' ? t('app.verifySuccess') : t('app.verifyFailed')}
             <button onClick={() => setVerifyBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
           </div>
         )}
@@ -411,7 +423,7 @@ function App() {
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={s.handleBack} disabled={s.currentStep === 1}>
-          ← Back
+          {t('nav.back')}
         </button>
 
         <div className="wizard-steps">
@@ -419,7 +431,7 @@ function App() {
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : displayIdx + 1}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                {STEP_TITLES[step - 1]}
+                {STEP_NAME[step]}
                 {step >= LOGIN_REQUIRED_STEP && !auth.user && (
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ opacity: 0.55, flexShrink: 0 }}>
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -438,7 +450,7 @@ function App() {
           }}
           disabled={!s.canProceedToNextStep()}
         >
-          {s.currentStep === TOTAL_STEPS ? 'Finish' : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? 'Sign In to Continue →' : 'Next →'}
+          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
         </button>
       </footer>
     </div>

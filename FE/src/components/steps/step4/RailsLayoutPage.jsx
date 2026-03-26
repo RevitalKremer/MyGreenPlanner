@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import RailLayoutTab from '../step3/RailLayoutTab'
 import { getPanelsBoundingBox } from '../step3/tabUtils'
@@ -14,6 +15,7 @@ export default function RailsLayoutPage({
   trapSettingsMap = {}, trapLineRailsMap = {},
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
+  const { t } = useLang()
   const { naturalW, naturalH } = useMemo(() => {
     if (!panels.length) return { naturalW: MAX_W + PM_PAD * 2, naturalH: 200 }
     const bbox = getPanelsBoundingBox(panels)
@@ -28,7 +30,7 @@ export default function RailsLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName="Rails"
+      pageName={t('step4.pdf.rails')}
       project={project}
       panelType={panelType}
       panelWp={panelWp}

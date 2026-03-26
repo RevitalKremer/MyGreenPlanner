@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT } from '../../styles/colors'
 import {
   computeRowConstruction,
@@ -42,6 +43,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
 export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
+  const { t } = useLang()
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('areas')
@@ -60,8 +62,8 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
 
   const areaLabel = useCallback((areaKey, i) => {
     const g = areas[areaKey]?.label
-    return g ? `${g}` : `Area ${i + 1}`
-  }, [areas])
+    return g ? `${g}` : t('step3.label.area', { n: i + 1 })
+  }, [areas, t])
 
   const updateSetting = (areaIdx, key, value) => {
     setAreaSettings(prev => ({
@@ -512,18 +514,18 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   // ─── Tabs ─────────────────────────────────────────────────────────────────
 
   const tabs = [
-    { key: 'areas',  label: 'Areas' },
-    { key: 'rails',  label: 'Rails Layout' },
-    { key: 'bases',  label: 'Bases Layout' },
-    { key: 'detail', label: 'Trapezoids Details' },
-    { key: 'layout', label: 'Trapezoid Layout' },
-    { key: 'rows',   label: 'Row Dimensions' },
+    { key: 'areas',  label: t('step3.tabs.areas') },
+    { key: 'rails',  label: t('step3.tabs.rails') },
+    { key: 'bases',  label: t('step3.tabs.bases') },
+    { key: 'detail', label: t('step3.tabs.detail') },
+    { key: 'layout', label: t('step3.tabs.layout') },
+    { key: 'rows',   label: t('step3.tabs.rows') },
   ]
 
   if (rowKeys.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
-        No panel areas found — complete Step 3 first.
+        {t('step3.empty.noAreas')}
       </div>
     )
   }

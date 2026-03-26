@@ -1,21 +1,23 @@
 import { useState } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_MUTED, BORDER_LIGHT, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_BG, AMBER_DARK } from '../../../styles/colors'
 import { fmt } from './tabUtils'
 
 export default function BasesTable({ bp, rowIdx }) {
+  const { t } = useLang()
   const [expanded, setExpanded] = useState(false)
   if (!bp) return null
   const tdBase = { padding: '0.3rem 0.5rem' }
   return (
     <div style={{ marginBottom: '1.5rem' }}>
       <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
-        Row {rowIdx + 1}
+        {t('step3.label.row', { n: rowIdx + 1 })}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
         <thead>
           <tr style={{ background: BG_SUBTLE }}>
             <th style={{ ...tdBase, width: '28px' }} />
-            {['Frame Length (mm)', 'Bases', 'Edge Offset (mm)', 'Spacing (mm)', 'Last Gap (mm)'].map(h => (
+            {[t('step3.bases.colFrameLength'), t('step3.bases.colBases'), t('step3.bases.colEdgeOffset'), t('step3.bases.colSpacing'), t('step3.bases.colLastGap')].map(h => (
               <th key={h} style={{ ...tdBase, textAlign: 'left', fontWeight: '700', color: TEXT_SECONDARY, whiteSpace: 'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -33,7 +35,7 @@ export default function BasesTable({ bp, rowIdx }) {
             <tr key={i} style={{ borderTop: `1px solid ${BG_MID}`, background: i % 2 === 0 ? 'white' : BG_FAINT }}>
               <td style={tdBase} />
               <td style={{ ...tdBase, fontWeight: '600', color: TEXT_SECONDARY }}>B{i + 1}</td>
-              <td style={{ ...tdBase, color: '#666' }} colSpan={4}>{fmt(base.offsetFromStartMm)} mm from left edge</td>
+              <td style={{ ...tdBase, color: '#666' }} colSpan={4}>{t('step3.bases.mmFromEdge', { n: fmt(base.offsetFromStartMm) })}</td>
             </tr>
           ))}
         </tbody>

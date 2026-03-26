@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import BasesPlanTab from '../step3/BasesPlanTab'
 import { getPanelsBoundingBox } from '../step3/tabUtils'
@@ -13,6 +14,7 @@ export default function BasesLayoutPage({
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
+  const { t } = useLang()
   const { naturalW, naturalH } = useMemo(() => {
     if (!panels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
     const bbox = getPanelsBoundingBox(panels)
@@ -27,7 +29,7 @@ export default function BasesLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName="Bases"
+      pageName={t('step4.pdf.bases')}
       project={project}
       panelType={panelType}
       panelWp={panelWp}

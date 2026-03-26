@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
+import { useLang } from '../../../i18n/LangContext'
 
 const NUDGE_PX = 5
 
@@ -21,6 +22,7 @@ export default function ToolPanel({
   showVGridlines, setShowVGridlines,
   snapToGridlines, setSnapToGridlines,
 }) {
+  const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
 
   const toolBtnStyle = (tool) => ({
@@ -69,26 +71,26 @@ export default function ToolPanel({
       {/* Tool selector */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.7rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.45rem' }}>
-          Tool
+          {t('step2.tool.title')}
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
-          <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title="Draw area">
-            <span>▦</span>{toolLabel('Draw')}
+          <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title={t('step2.tool.drawArea')}>
+            <span>▦</span>{toolLabel(t('step2.tool.draw'))}
           </button>
-          <button style={toolBtnStyle('move')} onClick={() => handleToolChange('move')} title="Move row">
-            <span>✥</span>{toolLabel('Move')}
+          <button style={toolBtnStyle('move')} onClick={() => handleToolChange('move')} title={t('step2.tool.moveRow')}>
+            <span>✥</span>{toolLabel(t('step2.tool.move'))}
           </button>
-          <button style={toolBtnStyle('rotate')} onClick={() => handleToolChange('rotate')} title="Rotate row">
-            <span>↻</span>{toolLabel('Rotate')}
+          <button style={toolBtnStyle('rotate')} onClick={() => handleToolChange('rotate')} title={t('step2.tool.rotateRow')}>
+            <span>↻</span>{toolLabel(t('step2.tool.rotate'))}
           </button>
-          <button style={toolBtnStyle('delete')} onClick={() => handleToolChange('delete')} title="Delete panel">
-            <span>✂</span>{toolLabel('Delete')}
+          <button style={toolBtnStyle('delete')} onClick={() => handleToolChange('delete')} title={t('step2.tool.deletePanel')}>
+            <span>✂</span>{toolLabel(t('step2.tool.delete'))}
           </button>
-          <button style={toolBtnStyle('add')} onClick={() => handleToolChange('add')} title="Add panel">
-            <span>＋</span>{toolLabel('Add')}
+          <button style={toolBtnStyle('add')} onClick={() => handleToolChange('add')} title={t('step2.tool.addPanel')}>
+            <span>＋</span>{toolLabel(t('step2.tool.add'))}
           </button>
-          <button style={toolBtnStyle('measure')} onClick={() => handleToolChange('measure')} title="Measure distance">
-            <span style={{ fontSize: '0.85rem' }}>📏</span>{toolLabel('Ruler')}
+          <button style={toolBtnStyle('measure')} onClick={() => handleToolChange('measure')} title={t('step2.tool.measureDistance')}>
+            <span style={{ fontSize: '0.85rem' }}>📏</span>{toolLabel(t('step2.tool.ruler'))}
           </button>
         </div>
       </div>
@@ -99,15 +101,15 @@ export default function ToolPanel({
           <button
             onClick={() => setShowHGridlines(!showHGridlines)}
             style={{ flex: 1, padding: '0.4rem 0.2rem', background: showHGridlines ? '#F3F9E6' : 'white', color: showHGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showHGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
-          >⊟ H-Grid</button>
+          >{t('step2.tool.hGrid')}</button>
           <button
             onClick={() => setShowVGridlines(!showVGridlines)}
             style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? '#F3F9E6' : 'white', color: showVGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showVGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
-          >⊞ V-Grid</button>
+          >{t('step2.tool.vGrid')}</button>
           <button
             onClick={() => setSnapToGridlines(!snapToGridlines)}
             style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? '#e8f0ff' : 'white', color: snapToGridlines ? '#1a4fd6' : '#aaa', border: `1px solid ${snapToGridlines ? '#7baaf7' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
-          >⌖ Snap</button>
+          >{t('step2.tool.snap')}</button>
         </div>
       </div>
 
@@ -119,10 +121,10 @@ export default function ToolPanel({
           selectedPanels.length > 0 ? (
             <div>
               <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
-                {selectedPanels.length} panel{selectedPanels.length !== 1 ? 's' : ''} selected
-                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, fontSize: '0.75rem' }}> — drag to move</span>
+                {t('step2.tool.panelsSelected', { n: selectedPanels.length, s: selectedPanels.length !== 1 ? 's' : '' })}
+                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, fontSize: '0.75rem' }}>{t('step2.tool.dragToMove')}</span>
               </div>
-              <div style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT, marginBottom: '0.35rem' }}>Fine adjust</div>
+              <div style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT, marginBottom: '0.35rem' }}>{t('step2.tool.fineAdjust')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 30px)', gap: '0.2rem', justifyContent: 'center' }}>
                 <div />
                 <button style={nudgeBtnStyle} onClick={() => nudgeRow(0, -NUDGE_PX)}>↑</button>
@@ -137,16 +139,16 @@ export default function ToolPanel({
                 <div />
               </div>
               <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.4rem' }}>
-                or drag on canvas
+                {t('step2.tool.orDragCanvas')}
               </div>
             </div>
           ) : (
             <div style={{ fontSize: '0.8rem', color: TEXT_FAINTEST, textAlign: 'center', paddingTop: '0.5rem', lineHeight: 1.6 }}>
-              <div>Click a panel to select</div>
-              <div style={{ fontSize: '0.7rem' }}>Drag empty area to box-select</div>
-              <div style={{ fontSize: '0.7rem' }}>Shift+click to add/remove</div>
+              <div>{t('step2.tool.clickToSelect')}</div>
+              <div style={{ fontSize: '0.7rem' }}>{t('step2.tool.boxSelect')}</div>
+              <div style={{ fontSize: '0.7rem' }}>{t('step2.tool.shiftClick')}</div>
               <div style={{ marginTop: '0.5rem', fontSize: '0.68rem', color: BORDER_MID, borderTop: `1px solid ${BG_MID}`, paddingTop: '0.4rem' }}>
-                Hold <kbd style={{ background: BG_MID, border: `1px solid ${BORDER}`, borderRadius: '3px', padding: '0 4px', fontSize: '0.65rem', color: '#666' }}>Space</kbd> + drag to pan · Middle-click drag to pan
+                {t('step2.tool.panHint')}
               </div>
             </div>
           )
@@ -157,21 +159,21 @@ export default function ToolPanel({
           selectedPanels.length > 0 ? (
             <div>
               <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
-                {selectedPanels.length} panel{selectedPanels.length !== 1 ? 's' : ''} selected
+                {t('step2.tool.panelsSelected', { n: selectedPanels.length, s: selectedPanels.length !== 1 ? 's' : '' })}
               </div>
               <button
                 onClick={togglePanelOrientation}
                 style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
               >
-                ↻ Rotate 90°
+                {t('step2.tool.rotate90')}
               </button>
               <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.35rem' }}>
-                Toggles portrait ↔ landscape
+                {t('step2.tool.rotate90Hint')}
               </div>
             </div>
           ) : (
             <div style={{ fontSize: '0.82rem', color: TEXT_FAINTEST, textAlign: 'center', paddingTop: '0.75rem' }}>
-              Click a panel to select it
+              {t('step2.tool.clickToSelectIt')}
             </div>
           )
         )}
@@ -179,9 +181,9 @@ export default function ToolPanel({
         {/* Delete tool */}
         {activeTool === 'delete' && (
           <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#c62828', marginBottom: '0.35rem' }}>✂ Delete Panel</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#c62828', marginBottom: '0.35rem' }}>{t('step2.tool.cutDelete')}</div>
             <div style={{ fontSize: '0.78rem', color: TEXT_PLACEHOLDER, lineHeight: '1.5' }}>
-              Click any panel to remove it. The row splits automatically if needed.
+              {t('step2.tool.deleteHint')}
             </div>
           </div>
         )}
@@ -193,11 +195,11 @@ export default function ToolPanel({
               onClick={() => { setAddError(null); setPendingAddNextTo(p => !p) }}
               style={{ width: '100%', padding: '0.5rem', marginBottom: '0.4rem', background: pendingAddNextTo ? PRIMARY : 'white', color: pendingAddNextTo ? TEXT : TEXT_SECONDARY, border: `2px solid ${pendingAddNextTo ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
             >
-              ＋ Add Next to Panel
+              {t('step2.tool.addNext')}
             </button>
             {pendingAddNextTo && (
               <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center', marginBottom: '0.4rem' }}>
-                Click any panel on the canvas
+                {t('step2.tool.addNextHint')}
               </div>
             )}
             {addError && (
@@ -209,7 +211,7 @@ export default function ToolPanel({
               onClick={() => { setAddError(null); addManualPanel() }}
               style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}
             >
-              ＋ Add Standalone
+              {t('step2.tool.addStandalone')}
             </button>
           </div>
         )}
@@ -217,16 +219,16 @@ export default function ToolPanel({
         {/* Measure tool */}
         {activeTool === 'measure' && (
           <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: BLUE, marginBottom: '0.35rem' }}>📏 Measure Distance</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: BLUE, marginBottom: '0.35rem' }}>📏 {t('step2.tool.measureDistance')}</div>
             <div style={{ fontSize: '0.78rem', color: TEXT_PLACEHOLDER, lineHeight: '1.5', marginBottom: '0.5rem' }}>
-              Click two points on the canvas to measure.
+              {t('step2.tool.measureHint')}
             </div>
             {distanceMeasurement?.p2 && (
               <button
                 onClick={() => setDistanceMeasurement(null)}
                 style={{ width: '100%', padding: '0.4rem', background: 'white', color: '#2196F3', border: `1px solid ${BLUE_BORDER}`, borderRadius: '5px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600' }}
               >
-                🗑️ Clear Measurement
+                {t('step2.tool.clearMeasurement')}
               </button>
             )}
           </div>
@@ -258,7 +260,7 @@ export default function ToolPanel({
           onClick={() => setDistanceMeasurement(null)}
           style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', background: BLUE_BG, color: BLUE, border: `1px solid ${BLUE_BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.78rem' }}
         >
-          🗑️ Clear Ruler
+          {t('step2.tool.clearRuler')}
         </button>
       )}
 

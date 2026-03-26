@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react'
+import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, TEXT_DARKEST } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -71,6 +72,7 @@ export default function AreasTab({
   printMode = false,
   printShowAreas = true, printShowCounts = true,
 }) {
+  const { t } = useLang()
   const [showAreas, setShowAreas] = useState(true)
   const [showCounts, setShowCounts] = useState(true)
 
@@ -156,7 +158,7 @@ export default function AreasTab({
   if (nonEmptyPanels.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
-        No panels found — complete Step 3 first.
+        {t('step3.empty.noPanels')}
       </div>
     )
   }
@@ -294,8 +296,8 @@ export default function AreasTab({
 
       <LayersPanel
         layers={[
-          { label: 'Areas', checked: showAreas, setter: setShowAreas },
-          { label: 'Panel counts', checked: showCounts, setter: setShowCounts },
+          { label: t('step3.areas.label'), checked: showAreas, setter: setShowAreas },
+          { label: t('step3.areas.panelCounts'), checked: showCounts, setter: setShowCounts },
         ]}
       />
 
