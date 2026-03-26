@@ -3,7 +3,7 @@ import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
-import Step5PdfReport from './components/steps/Step5PdfReport'
+import Step4PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
@@ -359,7 +359,7 @@ function App() {
         </div>
 
         {s.currentStep === 5 && (
-          <Step5PdfReport
+          <Step4PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -371,8 +371,8 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
-            bomDeltas={s.step5BomDeltas ?? {}}
-            onBomDeltasChange={s.setStep5BomDeltas}
+            bomDeltas={s.step4BomDeltas ?? {}}
+            onBomDeltasChange={s.setStep4BomDeltas}
           />
         )}
 

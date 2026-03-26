@@ -55,7 +55,7 @@ export function useProjectState() {
   const [step4BOMData,        setStep4BOMData]        = useState({ rowConstructions: [], rowLabels: [] })
 
   // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
-  const [step5BomDeltas, setStep5BomDeltas] = useState(null)
+  const [step4BomDeltas, setStep4BomDeltas] = useState(null)
 
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
@@ -111,7 +111,7 @@ export function useProjectState() {
     setTrapezoidConfigs({})
     setStep4GlobalSettings(null)
     setStep4AreaSettings(null)
-    setStep5BomDeltas(null)
+    setStep4BomDeltas(null)
     setCloudProjectId(null)
   }
 
@@ -192,7 +192,7 @@ export function useProjectState() {
     if (data.step4AreaSettings)   setStep4AreaSettings(data.step4AreaSettings)
     else if (data.step4RowSettings) setStep4AreaSettings(data.step4RowSettings)
     if (data.step4BOMData)   setStep4BOMData(data.step4BOMData)
-    if (data.step5BomDeltas) setStep5BomDeltas(data.step5BomDeltas)
+    if (data.step4BomDeltas) setStep4BomDeltas(data.step4BomDeltas)
     if (data.currentStep) setCurrentStep(data.currentStep)
     if (existingCloudId) setCloudProjectId(existingCloudId)
     setAppScreen('wizard')
@@ -220,7 +220,7 @@ export function useProjectState() {
     step4GlobalSettings,
     step4AreaSettings,
     step4BOMData,
-    step5BomDeltas,
+    step4BomDeltas,
   })
 
   const handleExportProject = () => {
@@ -815,7 +815,7 @@ export function useProjectState() {
     step4AreaSettings, setStep4AreaSettings,
     step4BOMData, setStep4BOMData,
     // Step 5
-    step5BomDeltas, setStep5BomDeltas,
+    step4BomDeltas, setStep4BomDeltas,
     // Derived
     getComputedBackHeight,
     // Cloud
