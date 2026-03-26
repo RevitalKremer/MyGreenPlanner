@@ -86,6 +86,7 @@ const en = {
   'step1.uploadedRoof':           'Uploaded roof',
   'step1.roofWithPanels':         'Roof with panels',
   'step1.addRoofImage':           'Add roof image',
+  'step1.uploadImageOptional':    'Upload image (optional)',
   'step1.source':                 'Source',
   'step1.image':                  'Image',
   'step1.map':                    'Map',

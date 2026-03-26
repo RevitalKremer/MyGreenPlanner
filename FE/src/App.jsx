@@ -274,7 +274,6 @@ function App() {
             setSelectedPoint={s.setSelectedPoint}
             setRoofPolygon={s.setRoofPolygon}
             handlePointSelect={s.handlePointSelect}
-            onWhiteboardStart={s.handleWhiteboardStart}
             setUploadedImageData={s.setUploadedImageData}
             isDrawingLine={s.isDrawingLine}
             setIsDrawingLine={s.setIsDrawingLine}

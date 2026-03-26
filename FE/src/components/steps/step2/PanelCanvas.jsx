@@ -18,7 +18,7 @@ import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from 
 export default function PanelCanvas({
   uploadedImageData, viewZoom, setViewZoom,
   imageRef, setImageRef,
-  roofPolygon, baseline, setBaseline,
+  roofPolygon, baseline,
   panels, setPanels,
   selectedPanels, setSelectedPanels,
   dragState, setDragState,
@@ -162,13 +162,6 @@ export default function PanelCanvas({
         setYLockDragState({ areaIdx, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices })
         return
       }
-    }
-
-    // Draw tool — creates a new rect area
-    // Baseline drawing
-    if (!baseline || baseline.p2 === null) {
-      if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
-      if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
     }
 
     // Measure tool

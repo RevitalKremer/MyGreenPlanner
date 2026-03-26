@@ -34,12 +34,18 @@ function ImageUploader({ onImageUploaded, onClose }) {
 
   const handleConfirm = () => {
     if (uploadedImage && imageFile) {
-      onImageUploaded({
-        imageData: uploadedImage,
-        file: imageFile,
-        rotation: rotation,
-        scale: imageScale
-      })
+      const img = new Image()
+      img.onload = () => {
+        onImageUploaded({
+          imageData: uploadedImage,
+          file: imageFile,
+          rotation: rotation,
+          scale: imageScale,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+        })
+      }
+      img.src = uploadedImage
     }
   }
 

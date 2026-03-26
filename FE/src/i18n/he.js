@@ -57,7 +57,7 @@ const he = {
   'welcome.required':               '*',
 
   // ── Image uploader ───────────────────────────────────────────────────────
-  'uploader.clickToUpload':    'לחץ להעלאת תמונה אווירית של הגג',
+  'uploader.clickToUpload':    'לחץ להעלאת תמונת מבט-על של הגג',
   'uploader.supported':        'נתמך: JPG, PNG, JPEG',
   'uploader.rotateAlign':      'סובב ליישור צפון כלפי מעלה',
   'uploader.rotateLeft':       '↺ 90°',
@@ -86,6 +86,7 @@ const he = {
   'step1.uploadedRoof':           'גג שהועלה',
   'step1.roofWithPanels':         'גג עם פנלים',
   'step1.addRoofImage':           'הוסף תמונת גג',
+  'step1.uploadImageOptional':    'העלה תמונה (אופציונלי)',
   'step1.source':                 'מקור',
   'step1.image':                  'תמונה',
   'step1.map':                    'מפה',

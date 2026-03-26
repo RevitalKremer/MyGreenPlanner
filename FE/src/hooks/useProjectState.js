@@ -484,9 +484,11 @@ export function useProjectState() {
   }
 
   const handleImageUploaded = (imageData) => {
-    console.log('Image uploaded:', imageData)
     setUploadedImageData(imageData)
     setUploadedImageMode(true)
+    setRoofPolygon({ coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], area: imageData.width * imageData.height, confidence: 1 })
+    setReferenceLine(null)
+    setReferenceLineLengthCm('')
   }
 
   const dataURLtoBlob = (dataURL) => {
