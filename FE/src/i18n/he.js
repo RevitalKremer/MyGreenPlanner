@@ -290,8 +290,6 @@ const he = {
   'step3.tabs.rails':      'פריסת קושרות',
   'step3.tabs.bases':      'פריסת בסיסים',
   'step3.tabs.detail':     'פרטי טרפזים',
-  'step3.tabs.layout':     'פריסת טרפזים',
-  'step3.tabs.rows':       'מידות שורה',
 
   // ── Step 3 – Empty states ─────────────────────────────────────────────────
   'step3.empty.noAreas':   'לא נמצאו אזורי פנלים — השלם את שלב 3 תחילה.',

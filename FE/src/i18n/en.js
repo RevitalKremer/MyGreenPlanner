@@ -290,8 +290,6 @@ const en = {
   'step3.tabs.rails':      'Rails Layout',
   'step3.tabs.bases':      'Bases Layout',
   'step3.tabs.detail':     'Trapezoids Details',
-  'step3.tabs.layout':     'Trapezoid Layout',
-  'step3.tabs.rows':       'Row Dimensions',
 
   // ── Step 3 – Empty states ─────────────────────────────────────────────────
   'step3.empty.noAreas':   'No panel areas found — complete Step 3 first.',

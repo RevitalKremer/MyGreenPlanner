@@ -13,8 +13,6 @@ import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/co
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
-import LayoutView from './step3/LayoutView'
-import RowsView from './step3/RowsView'
 import DetailView from './step3/DetailView'
 
 
@@ -518,8 +516,6 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     { key: 'rails',  label: t('step3.tabs.rails') },
     { key: 'bases',  label: t('step3.tabs.bases') },
     { key: 'detail', label: t('step3.tabs.detail') },
-    { key: 'layout', label: t('step3.tabs.layout') },
-    { key: 'rows',   label: t('step3.tabs.rows') },
   ]
 
   if (rowKeys.length === 0) {
@@ -586,8 +582,6 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'areas'  && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={areaLabel} />}
-          {activeTab === 'layout' && <div style={{ height: '100%', overflowY: 'auto' }}><LayoutView rowConstructions={rowConstructions} rowLabels={rowLabels} selectedIdx={selectedRowIdx} onSelectRow={i => { setSelectedRowIdx(i) }} highlightParam={highlightParam} /></div>}
-          {activeTab === 'rows'   && <div style={{ height: '100%', overflowY: 'auto' }}><RowsView rowConstructions={rowConstructions} rowLabels={rowLabels} highlightParam={highlightParam} /></div>}
           {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} onReset={() => resetDetailSettings(selectedRowIdx)} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
 
           {activeTab === 'rails'  && (
