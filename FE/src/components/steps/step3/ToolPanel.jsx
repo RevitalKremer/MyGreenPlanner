@@ -1,21 +1,22 @@
 import { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_DARK, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 
 const NUDGE_PX = 5
 
 export default function ToolPanel({
   activeTool, handleToolChange,
-  selectedPanels, selectedAreaLabel, selectedRowAngle,
-  nudgeRow, rotateSelectedRow, addManualPanel,
+  selectedPanels, selectedAreaLabel,
+  nudgeRow, togglePanelOrientation, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
-  allAreaTrapIds, selectedTrapezoidId,
+  selectedAreaTrapIds, selectedTrapezoidId,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
-  reassignToTrapezoid, addTrapezoid,
-  selectedRow, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
-  projectMode, areas, getAreaKey,
-  updateTrapezoidConfig, resetTrapezoidConfig,
-  showBaseline, setShowBaseline,
+  reassignToTrapezoid,
+  selectedRow, refinedArea, trapezoidConfigs,
+  getAreaKey,
+  resetTrapezoidConfig,
+  panelFrontHeight, panelAngle,
+  rectAreas, setRectAreas,
   showHGridlines, setShowHGridlines,
   showVGridlines, setShowVGridlines,
   snapToGridlines, setSnapToGridlines,
@@ -50,12 +51,6 @@ export default function ToolPanel({
     fontWeight: '700', fontSize: '0.85rem', textAlign: 'center', lineHeight: 1,
   }
 
-  const rotBtnStyle = {
-    flex: 1, padding: '0.35rem 0.1rem', background: 'white', color: TEXT_SECONDARY,
-    border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer',
-    fontWeight: '600', fontSize: '0.68rem', textAlign: 'center',
-  }
-
   return (
     <div style={{
       position: 'absolute', top: '20px', right: '20px',
@@ -77,6 +72,9 @@ export default function ToolPanel({
           Tool
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <button style={toolBtnStyle('draw')} onClick={() => handleToolChange('draw')} title="Draw area">
+            <span>▦</span>{toolLabel('Draw')}
+          </button>
           <button style={toolBtnStyle('move')} onClick={() => handleToolChange('move')} title="Move row">
             <span>✥</span>{toolLabel('Move')}
           </button>
@@ -158,24 +156,22 @@ export default function ToolPanel({
         {activeTool === 'rotate' && (
           selectedPanels.length > 0 ? (
             <div>
-              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.4rem' }}>
-                {selectedAreaLabel}
-                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER }}> · {selectedPanels.length} panels</span>
+              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
+                {selectedPanels.length} panel{selectedPanels.length !== 1 ? 's' : ''} selected
               </div>
-              <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginBottom: '0.5rem' }}>
-                Angle: <strong style={{ color: TEXT_SECONDARY }}>{selectedRowAngle.toFixed(1)}°</strong>
+              <button
+                onClick={togglePanelOrientation}
+                style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
+              >
+                ↻ Rotate 90°
+              </button>
+              <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.35rem' }}>
+                Toggles portrait ↔ landscape
               </div>
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.3rem' }}>
-                <button onClick={() => rotateSelectedRow(-5)} style={rotBtnStyle}>◁◁ 5°</button>
-                <button onClick={() => rotateSelectedRow(-1)} style={rotBtnStyle}>◁ 1°</button>
-                <button onClick={() => rotateSelectedRow(1)} style={rotBtnStyle}>1° ▷</button>
-                <button onClick={() => rotateSelectedRow(5)} style={rotBtnStyle}>5° ▷▷</button>
-              </div>
-              <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center' }}>or drag on canvas</div>
             </div>
           ) : (
             <div style={{ fontSize: '0.82rem', color: TEXT_FAINTEST, textAlign: 'center', paddingTop: '0.75rem' }}>
-              Click an area to select it
+              Click a panel to select it
             </div>
           )
         )}
@@ -245,15 +241,14 @@ export default function ToolPanel({
           selectedAreaLabel={selectedAreaLabel}
           refinedArea={refinedArea}
           trapezoidConfigs={trapezoidConfigs}
-          setTrapezoidConfigs={setTrapezoidConfigs}
-          projectMode={projectMode}
-          areas={areas}
           getAreaKey={getAreaKey}
-          updateTrapezoidConfig={updateTrapezoidConfig}
           resetTrapezoidConfig={resetTrapezoidConfig}
-          selectedAreaTrapIds={allAreaTrapIds}
+          selectedAreaTrapIds={selectedAreaTrapIds}
           reassignToTrapezoid={reassignToTrapezoid}
-          addTrapezoid={addTrapezoid}
+          panelFrontHeight={panelFrontHeight}
+          panelAngle={panelAngle}
+          rectAreas={rectAreas}
+          setRectAreas={setRectAreas}
         />
       )}
 
@@ -267,13 +262,6 @@ export default function ToolPanel({
         </button>
       )}
 
-      {/* Baseline toggle */}
-      <button
-        onClick={() => setShowBaseline(!showBaseline)}
-        style={{ width: '100%', padding: '0.5rem', background: showBaseline ? '#FFF8E1' : 'white', color: showBaseline ? WARNING_DARK : TEXT_VERY_LIGHT, border: `1px solid ${showBaseline ? '#FFCC02' : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.78rem' }}
-      >
-        {showBaseline ? '👁 Baseline visible' : '👁 Show Baseline'}
-      </button>
       </>}
     </div>
   )

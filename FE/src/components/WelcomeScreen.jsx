@@ -18,7 +18,6 @@ const IconFolder = () => (
 export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword }) {
   const [mode, setMode] = useState(null) // 'new' | 'import'
   const [showAuth, setShowAuth] = useState(false)
-  const [projectMode, setProjectMode] = useState('scratch') // 'scratch' | 'plan'
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -29,7 +28,7 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
 
   const handleCreate = () => {
     if (!canCreate) return
-    onCreateProject({ name: projectName.trim(), location: location.trim(), date, mode: projectMode })
+    onCreateProject({ name: projectName.trim(), location: location.trim(), date })
   }
 
   const handleFileChange = (e) => {
@@ -132,36 +131,6 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
 
           {mode === 'new' && (
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
-              {/* Project mode selector */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.5rem' }}>
-                  Project Type
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {[
-                    { value: 'scratch', label: 'From Scratch', desc: 'Map roof → design layout' },
-                    { value: 'plan', label: 'I Have a Plan', desc: 'Import & detect existing panels' }
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setProjectMode(opt.value)}
-                      style={{
-                        flex: 1, padding: '0.6rem 0.5rem', border: '1.5px solid',
-                        borderColor: projectMode === opt.value ? TEXT_DARK : BORDER_LIGHT,
-                        borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                        background: projectMode === opt.value ? '#f6f6f6' : 'white',
-                        transition: 'all 0.15s'
-                      }}
-                    >
-                      <div style={{ fontSize: '0.8rem', fontWeight: '700', color: projectMode === opt.value ? TEXT_DARKEST : TEXT_SECONDARY }}>
-                        {opt.label}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: TEXT_LIGHT, marginTop: '2px' }}>{opt.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
                   Project Name <span style={{ color: '#e53935' }}>*</span>

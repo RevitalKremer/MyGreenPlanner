@@ -155,6 +155,15 @@ See [ISRAELI_GIS_GUIDE.md](ISRAELI_GIS_GUIDE.md) for details.
 
 ---
 
+## Developer Docs
+
+| Doc | Description |
+| --- | --- |
+| [CLAUDE.md](CLAUDE.md) | Coding rules — colors, parameters, imports, help text |
+| [docs/step3-scratch-gestures.md](docs/step3-scratch-gestures.md) | Step 3 scratch mode — full gestures reference & verification table |
+
+---
+
 ## Environment Variables
 
 ### Frontend (FE/.env)

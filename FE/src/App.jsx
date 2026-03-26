@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PRIMARY, TEXT } from './styles/colors'
+import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
-import Step2PVAreaRefinement from './components/steps/Step2PVAreaRefinement'
 import Step3PanelPlacement from './components/steps/Step3PanelPlacement'
 import Step4ConstructionPlanning from './components/steps/Step4ConstructionPlanning'
 import Step5PdfReport from './components/steps/Step5PdfReport'
@@ -15,7 +14,7 @@ import { listProjects, getProject, deleteProject } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
-const STEP_TITLES = ['Allocate Roof', 'Refine PV Area', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
+const STEP_TITLES = ['Allocate Roof', 'Panel Layout', 'Place Solar Panels', 'Construction Planning', 'Finalize & Export']
 
 const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
 
@@ -263,17 +262,8 @@ function App() {
             setSelectedPoint={s.setSelectedPoint}
             setRoofPolygon={s.setRoofPolygon}
             handlePointSelect={s.handlePointSelect}
-          />
-        )}
-
-        {s.currentStep === 2 && (
-          <Step2PVAreaRefinement
-            uploadedImageData={s.uploadedImageData}
-            roofPolygon={s.roofPolygon}
-            imageRef={s.imageRef}
-            setImageRef={s.setImageRef}
-            viewZoom={s.viewZoom}
-            setViewZoom={s.setViewZoom}
+            onWhiteboardStart={s.handleWhiteboardStart}
+            setUploadedImageData={s.setUploadedImageData}
             isDrawingLine={s.isDrawingLine}
             setIsDrawingLine={s.setIsDrawingLine}
             lineStart={s.lineStart}
@@ -282,33 +272,18 @@ function App() {
             setReferenceLine={s.setReferenceLine}
             referenceLineLengthCm={s.referenceLineLengthCm}
             setReferenceLineLengthCm={s.setReferenceLineLengthCm}
-            panelType={s.panelType}
-            setPanelType={s.setPanelType}
-            panelFrontHeight={s.panelFrontHeight}
-            setPanelFrontHeight={s.setPanelFrontHeight}
-            linesPerRow={s.linesPerRow}
-            setLinesPerRow={s.setLinesPerRow}
-            lineOrientations={s.lineOrientations}
-            setLineOrientations={s.setLineOrientations}
-            computedBackHeight={s.getComputedBackHeight()}
-            panelAngle={s.panelAngle}
-            setPanelAngle={s.setPanelAngle}
-            projectMode={s.projectMode}
-            areas={s.areas}
-            setAreas={s.setAreas}
           />
         )}
 
-        {s.currentStep === 3 && (
+        {s.currentStep === 2 && (
           <Step3PanelPlacement
-            projectMode={s.projectMode}
             uploadedImageData={s.uploadedImageData}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
             imageRef={s.imageRef}
             setImageRef={s.setImageRef}
-            baseline={s.baseline}
-            setBaseline={s.setBaseline}
+            baseline={{ p1: [0, 0], p2: [1, 1] }}
+            setBaseline={() => {}}
             panels={s.panels}
             setPanels={s.setPanels}
             selectedPanels={s.selectedPanels}
@@ -319,23 +294,53 @@ function App() {
             setRotationState={s.setRotationState}
             viewZoom={s.viewZoom}
             setViewZoom={s.setViewZoom}
-            showBaseline={s.showBaseline}
-            setShowBaseline={s.setShowBaseline}
+            showBaseline={false}
             showDistances={s.showDistances}
             setShowDistances={s.setShowDistances}
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
-            generatePanelLayoutHandler={s.generatePanelLayoutHandler}
-            regeneratePlanPanelsHandler={s.regeneratePlanPanelsHandler}
+            generatePanelLayoutHandler={s.computePanels}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
+            refreshAreaTrapezoids={s.refreshAreaTrapezoids}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
+            rectAreas={s.rectAreas}
+            setRectAreas={s.setRectAreas}
+            onAddRectArea={(rawRect) => {
+              s.setRectAreas(prev => {
+                const idx = prev.length
+                return [...prev, {
+                  ...rawRect,
+                  id: Date.now(),
+                  label: String.fromCharCode(65 + idx % 26),
+                  color: AREA_PALETTE[idx % AREA_PALETTE.length],
+                  frontHeight: s.panelFrontHeight ?? '',
+                  angle: s.panelAngle ?? '',
+                  manualTrapezoids: false,
+                  manualColTrapezoids: {},
+                }]
+              })
+            }}
+            cmPerPixel={(() => {
+              if (s.refinedArea?.pixelToCmRatio) return s.refinedArea.pixelToCmRatio
+              if (!s.referenceLine || !s.referenceLineLengthCm) return null
+              const dx = s.referenceLine.end.x - s.referenceLine.start.x
+              const dy = s.referenceLine.end.y - s.referenceLine.start.y
+              const len = Math.sqrt(dx * dx + dy * dy)
+              return len > 0 ? parseFloat(s.referenceLineLengthCm) / len : null
+            })()}
+            panelTypes={s.panelTypes}
+            panelType={s.panelType}
+            setPanelType={s.setPanelType}
+            panelFrontHeight={s.panelFrontHeight}
+            setPanelFrontHeight={s.setPanelFrontHeight}
+            panelAngle={s.panelAngle}
+            setPanelAngle={s.setPanelAngle}
           />
         )}
-
         {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
         <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
@@ -410,7 +415,7 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(step => (
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).filter(step => step !== 3).map(step => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>

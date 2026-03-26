@@ -139,7 +139,10 @@ export default function AreasTab({
       const extW = Math.max(...pts.map(([x]) => x)) - Math.min(...pts.map(([x]) => x))
       const extH = Math.max(...pts.map(([, y]) => y)) - Math.min(...pts.map(([, y]) => y))
 
-      return { areaKey, pts, svgCx, svgCy, extW, extH, label: areaLabel(areaKey, i) }
+      const samplePanel = areaPanels[0]
+      const yDir = samplePanel?.yDir ?? 'ttb'
+      const rotation = samplePanel?.rotation ?? 0
+      return { areaKey, pts, svgCx, svgCy, extW, extH, label: areaLabel(areaKey, i), yDir, rotation }
     }).filter(Boolean)
 
     // Use the smallest area to determine font size so it fits in every area
@@ -189,14 +192,32 @@ export default function AreasTab({
           pixelToCmRatio={1}
           clipIdPrefix="atpm"
         />
-        {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
-          <text key={`lbl-${areaKey}`}
-            x={svgCx} y={svgCy}
-            textAnchor="middle" dominantBaseline="middle"
-            fill={BLUE} fontSize={fontSize} fontWeight="800"
-            stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
-          >{label}</text>
-        ))}
+        {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
+          const down = yDir === 'ttb'
+          const r = rotation * Math.PI / 180
+          const chevW = fontSize * 1.0
+          const chevH = fontSize * 0.6
+          const dist = fontSize * 1.1
+          const ldx = -Math.sin(r), ldy = Math.cos(r)
+          const cupSign = down ? 1 : -1
+          const chevX = svgCx + ldx * cupSign * dist
+          const chevY = svgCy + ldy * cupSign * dist
+          const chevPts = down
+            ? `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
+            : `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+          return (
+            <g key={`lbl-${areaKey}`}>
+              <text x={svgCx} y={svgCy}
+                textAnchor="middle" dominantBaseline="middle"
+                fill={BLUE} fontSize={fontSize} fontWeight="800"
+                stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
+              >{label}</text>
+              <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
+                <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke="white" strokeWidth={chevH * 0.18} strokeLinejoin="round" />
+              </g>
+            </g>
+          )
+        })}
         {printShowCounts && countLabels}
       </svg>
     )
@@ -236,16 +257,33 @@ export default function AreasTab({
                 clipIdPrefix="at"
               />
 
-              {/* Area labels — on top of panels */}
-              {showAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label }) => (
-                <text key={`lbl-${areaKey}`}
-                  x={svgCx} y={svgCy}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fill={BLUE} fontSize={fontSize} fontWeight="800"
-                  stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}
-                >{label}</text>
-              ))}
+              {/* Area labels with slope chevron — on top of panels */}
+              {showAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
+                const down = yDir === 'ttb'
+                const r = rotation * Math.PI / 180
+                const chevW = fontSize * 1.0
+                const chevH = fontSize * 0.6
+                const dist = fontSize * 1.1
+                const ldx = -Math.sin(r), ldy = Math.cos(r)
+                const cupSign = down ? 1 : -1
+                const chevX = svgCx + ldx * cupSign * dist
+                const chevY = svgCy + ldy * cupSign * dist
+                const chevPts = down
+                  ? `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
+                  : `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+                return (
+                  <g key={`lbl-${areaKey}`} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                    <text x={svgCx} y={svgCy}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fill={BLUE} fontSize={fontSize} fontWeight="800"
+                      stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
+                    >{label}</text>
+                    <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
+                      <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke="white" strokeWidth={chevH * 0.18} strokeLinejoin="round" />
+                    </g>
+                  </g>
+                )
+              })}
 
               {/* Panel count labels per line */}
               {showCounts && countLabels}

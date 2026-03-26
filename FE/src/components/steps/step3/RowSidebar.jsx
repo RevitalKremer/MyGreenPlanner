@@ -1,24 +1,46 @@
 import { useState } from 'react'
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, WARNING, WARNING_DARK, WARNING_BG, SUCCESS, SUCCESS_DARK, SUCCESS_BG, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
+import { PANEL_TYPES } from '../../../data/panelTypes'
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR } from '../../../styles/colors'
+// BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
 
 export default function RowSidebar({
-  projectMode, baseline, setBaseline, panels, setPanels,
+  panels, setPanels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
   rows, areas, setAreas, areaLabel, getAreaKey,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
-  regenerateSingleRowHandler, generatePanelLayoutHandler, regeneratePlanPanelsHandler,
+  regenerateSingleRowHandler,
+  refreshAreaTrapezoids,
+  rectAreas = [],
+  setRectAreas,
+  panelTypes = PANEL_TYPES,
+  panelType,
+  setPanelType,
+  panelFrontHeight,
+  setPanelFrontHeight,
+  panelAngle,
+  setPanelAngle,
+  onDeleteArea,
 }) {
   const [collapsed, setCollapsed] = useState(false)
+
+  const applyDefaultsToAll = () => {
+    setRectAreas?.(prev => prev.map(a => ({
+      ...a,
+      frontHeight: panelFrontHeight ?? '',
+      angle: panelAngle ?? '',
+    })))
+  }
 
   return (
     <div style={{
       position: 'absolute', top: '20px', left: '20px',
-      width: collapsed ? '32px' : '255px', minHeight: '36px', overflow: 'hidden',
+      width: collapsed ? '32px' : '255px', minHeight: '36px',
+      overflowX: 'hidden', overflowY: collapsed ? 'hidden' : 'auto',
+      maxHeight: 'calc(100% - 40px)',
       padding: '1.25rem',
       background: 'white', borderRadius: '12px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
       border: `2px solid ${PRIMARY}`,
-      maxHeight: collapsed ? 'none' : 'calc(100vh - 120px)', overflowY: collapsed ? 'hidden' : 'auto',
     }}>
       <button onClick={() => setCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: BG_FAINT, border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: TEXT_PLACEHOLDER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {collapsed ? '›' : '‹'}
@@ -28,83 +50,72 @@ export default function RowSidebar({
         Panel Layout
       </h3>
 
-      {/* State: drawing baseline (scratch mode only) */}
-      {projectMode !== 'plan' && (!baseline || !baseline.p2) && (
-        <div style={{ padding: '1rem', background: WARNING_BG, borderRadius: '8px', border: `2px solid ${WARNING}` }}>
-          <h4 style={{ margin: '0 0 0.5rem 0', color: WARNING_DARK, fontSize: '0.9rem' }}>
-            📍 Draw Baseline
-          </h4>
-          <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.5rem 0' }}>
-            Click <strong>two points</strong> to define the first row baseline:
-          </p>
-          <ol style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.82rem', color: TEXT_MUTED }}>
-            <li style={{ marginBottom: '0.2rem' }}>Starting point (SW corner)</li>
-            <li>Ending point (SE corner)</li>
-          </ol>
-          {baseline?.p1 && !baseline.p2 && (
-            <p style={{ fontSize: '0.82rem', color: WARNING, margin: '0.5rem 0 0', fontWeight: '600' }}>
-              ✓ First point set — click the second point.
-            </p>
+      {/* Panel type selector */}
+      <div style={{ marginBottom: '1rem' }}>
+        <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+          Panel Type
+        </div>
+        <select
+          value={panelType ?? ''}
+          onChange={e => setPanelType?.(e.target.value)}
+          style={{ width: '100%', padding: '0.35rem 0.5rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '6px', fontSize: '0.82rem', color: TEXT_DARK, background: 'white', cursor: 'pointer' }}
+        >
+          {panelTypes.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.name} — {t.kw}W ({t.lengthCm}×{t.widthCm} cm)
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Default mounting settings */}
+      {(
+        <div style={{ marginBottom: '1rem', padding: '0.6rem 0.7rem 0.5rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BORDER_FAINT}` }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+            Default Mounting
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
+              <input
+                type="number" min="0" max="200" step="1"
+                value={panelFrontHeight ?? ''}
+                onChange={e => setPanelFrontHeight?.(e.target.value)}
+                style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
+                placeholder="e.g. 35"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
+              <input
+                type="number" min="0" max="30" step="1"
+                value={panelAngle ?? ''}
+                onChange={e => setPanelAngle?.(e.target.value)}
+                style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
+                placeholder="0–30"
+              />
+            </div>
+          </div>
+          {rectAreas.length > 0 && (
+            <button
+              onClick={applyDefaultsToAll}
+              style={{ width: '100%', padding: '0.28rem 0', background: 'white', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600', color: TEXT_DARK }}
+            >
+              Apply to All Areas
+            </button>
           )}
         </div>
       )}
 
-      {/* State: baseline ready, no panels (scratch mode only) */}
-      {projectMode !== 'plan' && baseline?.p2 && panels.length === 0 && (
-        <>
-          <div style={{ padding: '0.75rem', background: SUCCESS_BG, borderRadius: '8px', border: `2px solid ${SUCCESS}`, marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.82rem', color: SUCCESS_DARK, margin: 0, fontWeight: '600' }}>
-              ✓ Baseline drawn!
-            </p>
-          </div>
-          <button
-            onClick={() => { setBaseline(null); setPanels([]) }}
-            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', background: 'white', color: TEXT_MUTED, border: `2px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}
-          >
-            🔄 Redraw Baseline
-          </button>
-          <button
-            onClick={generatePanelLayoutHandler}
-            style={{ width: '100%', padding: '0.75rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem' }}
-          >
-            Generate Panel Layout
-          </button>
-        </>
-      )}
-
-      {/* State: plan mode, panels cleared */}
-      {projectMode === 'plan' && panels.length === 0 && (
-        <div style={{ padding: '1rem', background: WARNING_BG, borderRadius: '8px', border: `2px solid ${WARNING}` }}>
-          <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.75rem 0' }}>
-            Panels were cleared. Regenerate from the baselines defined in Step 2.
-          </p>
-          <button
-            onClick={regeneratePlanPanelsHandler}
-            style={{ width: '100%', padding: '0.75rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem' }}
-          >
-            ↺ Regenerate from Baselines
-          </button>
-        </div>
+      {panels.length === 0 && (
+        <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.5rem', lineHeight: 1.4 }}>
+          Select the <strong>Draw</strong> tool and drag on the canvas to create a panel area.
+        </p>
       )}
 
       {/* State: panels placed */}
       {panels.length > 0 && (
         <>
-          {/* Stats grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
-            <div style={{ padding: '0.65rem', background: '#f8f9fa', borderRadius: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: PRIMARY, lineHeight: 1 }}>{panels.length}</div>
-              <div style={{ fontSize: '0.7rem', color: TEXT_LIGHT, marginTop: '2px' }}>Panels</div>
-            </div>
-            <div style={{ padding: '0.65rem', background: BG_LIGHT, borderRadius: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: PRIMARY, lineHeight: 1 }}>{(panels.length * 0.67).toFixed(1)}</div>
-              <div style={{ fontSize: '0.7rem', color: TEXT_LIGHT, marginTop: '2px' }}>kW</div>
-            </div>
-            <div style={{ padding: '0.5rem', background: BG_LIGHT, borderRadius: '8px', textAlign: 'center', gridColumn: 'span 2' }}>
-              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: TEXT_MUTED }}>{(panels.length * 238.2 * 113.4 / 10000).toFixed(1)} m²</div>
-              <div style={{ fontSize: '0.7rem', color: TEXT_LIGHT }}>Roof Coverage</div>
-            </div>
-          </div>
 
           {/* Area list with trapezoid sub-items */}
           <div style={{ marginBottom: '1rem' }}>
@@ -120,29 +131,89 @@ export default function RowSidebar({
                 return (
                   <div key={i}>
                     <div style={{
-                      display: 'flex', alignItems: 'center',
-                      padding: '0.45rem 0.5rem 0.45rem 0.7rem',
+                      padding: '0.4rem 0.5rem 0.35rem 0.6rem',
                       background: isRowSelected ? PRIMARY_BG_LIGHT : BG_LIGHT,
                       border: `2px solid ${isRowSelected ? PRIMARY : 'transparent'}`,
-                      borderRadius: hasMultiTrap ? '8px 8px 0 0' : '8px',
+                      borderRadius: '8px',
                       transition: 'all 0.12s',
                     }}>
-                      <div
-                        onClick={() => { setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}
-                      >
-                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isRowSelected ? PRIMARY : BORDER_MID }} />
+                      {/* Top row: dot + name + panel count + buttons */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <span
+                          onClick={() => { setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
+                          style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isRowSelected ? PRIMARY : BORDER_MID, cursor: 'pointer' }}
+                        />
                         <input
                           value={areas[areaKey]?.label ?? areaLabel(areaKey, i)}
                           onChange={e => setAreas?.(prev => prev.map((a, idx) => idx === areaKey ? { ...a, label: e.target.value } : a))}
                           onClick={ev => { ev.stopPropagation(); setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
-                          style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isRowSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', width: '80px', cursor: 'text' }}
+                          style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isRowSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', minWidth: 0, flex: 1, cursor: 'text' }}
                         />
-                        {!hasMultiTrap && trapIds.length === 1 && (
+                        <span
+                          onClick={() => { setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
+                          style={{ fontSize: '0.72rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}
+                        >
+                          {row.length}p
+                        </span>
+                        {(() => {
+                          const isLocked = rectAreas[areaKey]?.mode === 'ylocked'
+                          return (
+                            <button
+                              onClick={() => {
+                                setSelectedPanels(row.map(p => p.id))
+                                setRectAreas?.(prev => prev.map((a, idx) =>
+                                  idx === areaKey ? { ...a, mode: isLocked ? 'free' : 'ylocked' } : a
+                                ))
+                              }}
+                              title={isLocked ? 'Y-locked: drag Y to rotate. Click for free mode.' : 'Free mode: drag corners to resize. Click to lock.'}
+                              style={{ padding: '2px 4px', flexShrink: 0, background: isLocked ? BG_MID : 'none', border: `1px solid ${isLocked ? BORDER_MID : BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', lineHeight: 0, display: 'flex', alignItems: 'center' }}
+                            >
+                              {isLocked ? (
+                                <svg width="11" height="13" viewBox="0 0 11 13" fill="none">
+                                  <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={TEXT_DARK} />
+                                  <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0v2" stroke={TEXT_DARK} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                                </svg>
+                              ) : (
+                                <svg width="11" height="13" viewBox="0 0 11 13" fill="none">
+                                  <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={TEXT_VERY_LIGHT} />
+                                  <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0" stroke={TEXT_VERY_LIGHT} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                                </svg>
+                              )}
+                            </button>
+                          )
+                        })()}
+                        <button
+                          onClick={() => {
+                            if (onDeleteArea) {
+                              onDeleteArea(areaKey)
+                            } else {
+                              setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))
+                              setSelectedPanels([])
+                            }
+                          }}
+                          title={`Delete area ${areaLabel(areaKey, i)}`}
+                          style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${ERROR}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: ERROR, lineHeight: 1 }}
+                        >✕</button>
+                        <button
+                          onClick={() => { setSelectedPanels(row.map(p => p.id)); regenerateSingleRowHandler(areaKey) }}
+                          title={`Regenerate ${areaLabel(areaKey, i)}`}
+                          style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
+                        >↺</button>
+                        {typeof areaKey === 'number' && refreshAreaTrapezoids && !rectAreas[areaKey]?.manualTrapezoids && (
+                          <button
+                            onClick={() => refreshAreaTrapezoids(areaKey)}
+                            title="Re-split trapezoids based on current panel layout"
+                            style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
+                          >⟳</button>
+                        )}
+                      </div>
+                      {/* Second row: trapezoid badge(s) */}
+                      {!hasMultiTrap && trapIds.length === 1 && (
+                        <div style={{ marginTop: '0.2rem', paddingLeft: '13px' }}>
                           <span
                             title={sharedTrapIds.has(trapIds[0]) ? 'Shared config — changes affect all areas using this trapezoid' : trapIds[0]}
                             style={{
-                              fontSize: '0.62rem', fontWeight: '700',
+                              fontSize: '0.6rem', fontWeight: '700',
                               padding: '1px 5px', borderRadius: '8px',
                               background: sharedTrapIds.has(trapIds[0]) ? BLUE_BG : BG_MID,
                               color: sharedTrapIds.has(trapIds[0]) ? BLUE : TEXT_PLACEHOLDER,
@@ -152,16 +223,8 @@ export default function RowSidebar({
                           >
                             {trapIds[0]}{sharedTrapIds.has(trapIds[0]) && ' ⇄'}
                           </span>
-                        )}
-                        <span style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginLeft: 'auto' }}>
-                          {row.length} panels
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => regenerateSingleRowHandler(areaKey)}
-                        title={`Regenerate ${areaLabel(areaKey, i)}`}
-                        style={{ marginLeft: '0.4rem', padding: '2px 6px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
-                      >↺</button>
+                        </div>
+                      )}
                     </div>
                     {hasMultiTrap && (
                       <div style={{ borderLeft: `2px solid ${PRIMARY}`, marginLeft: '0.7rem', borderRadius: '0 0 6px 6px', background: BG_FAINT, borderBottom: `1px solid ${BORDER_FAINT}`, borderRight: `1px solid ${BORDER_FAINT}` }}>
@@ -190,24 +253,6 @@ export default function RowSidebar({
             </div>
           </div>
 
-          {/* Layout actions */}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => {
-                if (projectMode === 'plan') { setPanels([]); setSelectedPanels([]) }
-                else { setBaseline(null); setPanels([]); setSelectedPanels([]) }
-              }}
-              style={{ flex: 1, padding: '0.5rem', background: 'white', color: TEXT_PLACEHOLDER, border: `2px solid ${BORDER_FAINT}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}
-            >
-              🔄 Reset
-            </button>
-            <button
-              onClick={projectMode === 'plan' ? regeneratePlanPanelsHandler : generatePanelLayoutHandler}
-              style={{ flex: 1, padding: '0.5rem', background: TEXT_MUTED, color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}
-            >
-              ↺ Regenerate
-            </button>
-          </div>
         </>
       )}
       </>}

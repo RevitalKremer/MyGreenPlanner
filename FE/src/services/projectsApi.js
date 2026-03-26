@@ -34,3 +34,9 @@ export async function getProject(id) {
   if (!res.ok) throw new Error('Project not found')
   return res.json()
 }
+
+export async function fetchPanelTypes() {
+  const res = await mgpRequest('/products/panel-types')
+  if (!res.ok) throw new Error('Failed to load panel types')
+  return res.json()
+}

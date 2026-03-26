@@ -12,6 +12,9 @@ class ProductBase(BaseModel):
     extra: str | None = None
     alt: str | None = None
     alt_group: int | None = None
+    length_cm: float | None = None
+    width_cm: float | None = None
+    kw_peak: int | None = None
     sort_order: int = 0
 
 
@@ -27,6 +30,9 @@ class ProductUpdate(BaseModel):
     extra: str | None = None
     alt: str | None = None
     alt_group: int | None = None
+    length_cm: float | None = None
+    width_cm: float | None = None
+    kw_peak: int | None = None
     sort_order: int | None = None
 
 
