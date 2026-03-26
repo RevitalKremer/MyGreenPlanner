@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -72,10 +72,14 @@ async def delete_user(
 
 @router.get("/products", response_model=list[ProductRead])
 async def list_products(
+    product_type: str | None = Query(None, description="Filter by product_type: 'panel' or 'material'"),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Product).order_by(Product.sort_order, Product.name))
+    q = select(Product)
+    if product_type is not None:
+        q = q.where(Product.product_type == product_type)
+    result = await db.execute(q.order_by(Product.sort_order, Product.name))
     return list(result.scalars().all())
 
 

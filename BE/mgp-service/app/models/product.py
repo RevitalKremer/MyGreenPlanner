@@ -12,6 +12,7 @@ class Product(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     type_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    product_type: Mapped[str] = mapped_column(String(20), nullable=False, default='material')  # 'panel' | 'material'
     part_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     additional_info: Mapped[str | None] = mapped_column(String(500), nullable=True)

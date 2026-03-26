@@ -22,14 +22,12 @@ class PanelTypeRead(BaseModel):
 
 @router.get("/panel-types", response_model=list[PanelTypeRead])
 async def list_panel_types(db: AsyncSession = Depends(get_db)):
-    """Return active products that have panel dimensions set (public endpoint)."""
+    """Return active panel products (public endpoint)."""
     result = await db.execute(
         select(Product)
         .where(
             Product.active == True,
-            Product.length_cm.is_not(None),
-            Product.width_cm.is_not(None),
-            Product.kw_peak.is_not(None),
+            Product.product_type == 'panel',
         )
         .order_by(Product.sort_order, Product.name)
     )

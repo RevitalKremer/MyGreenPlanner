@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class ProductBase(BaseModel):
     type_key: str
+    product_type: str = 'material'  # 'panel' | 'material'
     part_number: str | None = None
     name: str
     additional_info: str | None = None
@@ -12,6 +13,7 @@ class ProductBase(BaseModel):
     extra: str | None = None
     alt: str | None = None
     alt_group: int | None = None
+    # Panel-only fields — only relevant when product_type == 'panel'
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
@@ -23,6 +25,7 @@ class ProductCreate(ProductBase):
 
 
 class ProductUpdate(BaseModel):
+    product_type: str | None = None
     part_number: str | None = None
     name: str | None = None
     additional_info: str | None = None
@@ -30,6 +33,7 @@ class ProductUpdate(BaseModel):
     extra: str | None = None
     alt: str | None = None
     alt_group: int | None = None
+    # Panel-only fields
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
