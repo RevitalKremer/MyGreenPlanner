@@ -133,12 +133,20 @@ export function useProjectState() {
     return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isWhiteboard: true }
   }
 
+  // Default calibration for whiteboard: 0.7 cm/px (100px line = 70cm)
+  const WHITEBOARD_DEFAULT_RATIO_CM_PER_PX = 0.7
+  const applyWhiteboardDefaults = () => {
+    setReferenceLine({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 } })
+    setReferenceLineLengthCm(String(100 * WHITEBOARD_DEFAULT_RATIO_CM_PER_PX))
+  }
+
   const handleCreateProject = (projectInfo) => {
     setCurrentProject(projectInfo)
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
     setUploadedImageMode(true)
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
+    applyWhiteboardDefaults()
     setAppScreen('wizard')
   }
 
@@ -147,6 +155,7 @@ export function useProjectState() {
     setUploadedImageData(data)
     setUploadedImageMode(true)
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
+    applyWhiteboardDefaults()
   }
 
   const handleImportProject = (data, existingCloudId = null) => {
