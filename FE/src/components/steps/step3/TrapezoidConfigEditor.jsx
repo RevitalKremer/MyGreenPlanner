@@ -38,10 +38,12 @@ export default function TrapezoidConfigEditor({
   })
   const derivedRows = [...rowMap.entries()].sort(([a], [b]) => Number(a) - Number(b))
   const derivedOrients = derivedRows.map(([, p]) => (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal')
-  const derivedLPR = Math.max(1, derivedRows.length)
 
-  const effectiveLinesPerRow = derivedLPR
-  const effectiveLineOrientations = derivedOrients
+  // For auto-split trapezoids, use stored lineOrientations which include empty-* ghost rows.
+  // Fall back to derived from actual panels for manual/legacy trapezoids.
+  const storedOrients = trapezoidConfigs?.[selectedTrapezoidId]?.lineOrientations
+  const effectiveLineOrientations = (storedOrients?.length > 0) ? storedOrients : derivedOrients
+  const effectiveLinesPerRow = effectiveLineOrientations.length
 
   const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow)
 
@@ -161,21 +163,26 @@ export default function TrapezoidConfigEditor({
         </div>
       </div>
 
-      {/* Lines — auto-derived display */}
+      {/* Lines — shape display (includes ghost slots for auto-split trapezoids) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem', padding: '0.3rem 0.4rem', background: BG_SUBTLE, borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}` }}>
         <div style={{ display: 'flex', gap: '0.2rem', flex: 1 }}>
-          {derivedOrients.map((o, idx) => (
-            <span key={idx} style={{
-              fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
-              background: isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
-              color: isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
-              border: `1px solid ${isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
-            }}>
-              {isHorizontalOrientation(o) ? '▬' : '|'}
-            </span>
-          ))}
+          {effectiveLineOrientations.map((o, idx) => {
+            const isEmpty = isEmptyOrientation(o)
+            return (
+              <span key={idx} style={{
+                fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
+                opacity: isEmpty ? 0.4 : 1,
+                background: isHorizontalOrientation(o) ? WARNING_BG : BLUE_BG,
+                color: isHorizontalOrientation(o) ? WARNING_DARK : BLUE,
+                border: `1px solid ${isHorizontalOrientation(o) ? WARNING_LIGHT : BLUE_BORDER}`,
+                textDecoration: isEmpty ? 'line-through' : 'none',
+              }}>
+                {isHorizontalOrientation(o) ? '▬' : '|'}
+              </span>
+            )
+          })}
         </div>
-        <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{derivedLPR}×</span>
+        <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{effectiveLinesPerRow}×</span>
       </div>
 
     </div>
