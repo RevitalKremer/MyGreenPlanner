@@ -350,10 +350,10 @@ function App() {
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
-            initialGlobalSettings={s.step4GlobalSettings}
-            initialAreaSettings={s.step4AreaSettings}
-            onSettingsChange={(g, a) => { s.setStep4GlobalSettings(g); s.setStep4AreaSettings(a) }}
-            onBOMDataChange={s.setStep4BOMData}
+            initialGlobalSettings={s.step3GlobalSettings}
+            initialAreaSettings={s.step3AreaSettings}
+            onSettingsChange={(g, a) => { s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
+            onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
           />
         </div>
@@ -364,8 +364,8 @@ function App() {
             refinedArea={s.refinedArea}
             areas={s.areas}
             project={s.currentProject}
-            rowConstructions={s.step4BOMData.rowConstructions}
-            rowLabels={s.step4BOMData.rowLabels}
+            rowConstructions={s.step3BOMData.rowConstructions}
+            rowLabels={s.step3BOMData.rowLabels}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}
