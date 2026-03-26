@@ -6,19 +6,16 @@ import {
   DANGER, ADD_GREEN_BG,
 } from '../../styles/colors'
 
-const emptyForm = { type_key: '', part_number: '', name: '', additional_info: '', active: true, extra: '', alt: '', alt_group: '', length_cm: '', width_cm: '', kw_peak: '', sort_order: 0 }
+const emptyForm = { type_key: '', part_number: '', name: '', additional_info: '', active: true, extra: '', alt: '', alt_group: '', sort_order: 0 }
 
 function EditRow({ product, onSave, onCancel }) {
-  const [form, setForm] = useState({ ...emptyForm, ...product, alt_group: product?.alt_group ?? '', length_cm: product?.length_cm ?? '', width_cm: product?.width_cm ?? '', kw_peak: product?.kw_peak ?? '' })
+  const [form, setForm] = useState({ ...emptyForm, ...product, alt_group: product?.alt_group ?? '' })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
     onSave({
       ...form,
       alt_group: form.alt_group === '' ? null : Number(form.alt_group),
-      length_cm: form.length_cm === '' ? null : Number(form.length_cm),
-      width_cm: form.width_cm === '' ? null : Number(form.width_cm),
-      kw_peak: form.kw_peak === '' ? null : Number(form.kw_peak),
     })
   }
   const inp = (key, placeholder, style = {}) => (
@@ -30,9 +27,6 @@ function EditRow({ product, onSave, onCancel }) {
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'type_key', { fontFamily: 'monospace' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'Product name')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('length_cm', 'L cm', { width: '60px' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('width_cm', 'W cm', { width: '60px' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('kw_peak', 'Wp', { width: '55px' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <select value={String(form.active)} onChange={e => set('active', e.target.value === 'true')}
           style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem' }}>
@@ -52,7 +46,7 @@ export default function ProductsTab() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [editingId, setEditingId] = useState(null) // product id being edited
+  const [editingId, setEditingId] = useState(null)
   const [addingNew, setAddingNew] = useState(false)
   const [filter, setFilter] = useState('')
 
@@ -93,8 +87,10 @@ export default function ProductsTab() {
     } catch { setError('Failed to update') }
   }
 
+  // Exclude panel-type products and apply text filter
   const filtered = products.filter(p =>
-    !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type_key.toLowerCase().includes(filter.toLowerCase())
+    p.product_type !== 'panel' &&
+    (!filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type_key.toLowerCase().includes(filter.toLowerCase()))
   )
 
   const thStyle = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}` }
@@ -127,9 +123,6 @@ export default function ProductsTab() {
               <th style={thStyle}>Key</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>P.N.</th>
-              <th style={thStyle}>L (cm)</th>
-              <th style={thStyle}>W (cm)</th>
-              <th style={thStyle}>Wp</th>
               <th style={thStyle}>Status</th>
               <th style={thStyle}>Actions</th>
             </tr>
@@ -146,9 +139,6 @@ export default function ProductsTab() {
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.type_key}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.part_number || '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.length_cm ?? '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.width_cm ?? '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.kw_peak ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <button onClick={() => handleToggleActive(p)} style={{
                       padding: '0.2rem 0.55rem', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700', border: 'none', cursor: 'pointer',
