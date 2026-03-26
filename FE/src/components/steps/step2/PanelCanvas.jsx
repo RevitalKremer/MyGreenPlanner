@@ -1,5 +1,17 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { PRIMARY, ERROR, BLACK, PANEL_STROKE_MID, GRIDLINE_AREA, WARNING, SUCCESS } from '../../../styles/colors'
+import {
+  PRIMARY, ERROR, BLACK, WARNING, SUCCESS,
+  DRAW_COLOR,
+  PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
+  PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE,
+  PANEL_GHOST_FILL, PANEL_GHOST_BORDER,
+  PANEL_BADGE_DEFAULT, PANEL_BADGE_SELECTED, PANEL_BADGE_SEL_FILL, PANEL_BADGE_SEL_CHV,
+  PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
+  TEXT_VERY_LIGHT,
+  CANVAS_MASK, CANVAS_MINI_BG, CANVAS_AREA_HOVER,
+  CANVAS_SEL_FILL, CANVAS_SEL_STROKE,
+  CANVAS_LABEL_BG, CANVAS_LABEL_TEXT, CANVAS_DELETE_MARK,
+} from '../../../styles/colors'
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from '../../../utils/rectPanelService'
@@ -602,7 +614,7 @@ export default function PanelCanvas({
             {/* Roof polygon overlay */}
             {roofPolygon && (
               <>
-                <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#polygonMask)" />
+                <rect width="100%" height="100%" fill={CANVAS_MASK} mask="url(#polygonMask)" />
                 <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill="none" stroke={PRIMARY} strokeWidth="3" />
               </>
             )}
@@ -610,16 +622,16 @@ export default function PanelCanvas({
             {/* Baseline */}
             {showBaseline && baseline?.p1 && baseline?.p2 && (
               <>
-                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke="#FF00FF" strokeWidth={lineW} strokeDasharray={dashArray} />
-                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill="#FF00FF" />
-                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r={dotR} fill="#FF00FF" />
+                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray} />
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} />
+                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r={dotR} fill={DRAW_COLOR} />
               </>
             )}
             {baseline?.p1 && !baseline?.p2 && (
               <>
-                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill="#FF00FF" />
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} />
                 {mousePos && (
-                  <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={mousePos.x} y2={mousePos.y} stroke="#FF00FF" strokeWidth={lineW} strokeDasharray={dashArray} />
+                  <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={mousePos.x} y2={mousePos.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray} />
                 )}
               </>
             )}
@@ -816,7 +828,7 @@ export default function PanelCanvas({
                   <rect
                     x={cx - Math.abs(dx)/2} y={cy - Math.abs(dy)/2}
                     width={Math.abs(dx)} height={Math.abs(dy)}
-                    fill="rgba(255,200,0,0.06)"
+                    fill={CANVAS_AREA_HOVER}
                     stroke={WARNING}
                     strokeWidth={lineW}
                     strokeDasharray={dashArray}
@@ -831,16 +843,16 @@ export default function PanelCanvas({
                     return (
                       <g key={i} transform={`rotate(${p.rotation || 0} ${p.cx} ${p.cy})`}>
                         <rect x={p.x} y={p.y} width={p.width} height={p.height}
-                          fill="rgba(135,206,235,0.3)" stroke="none" />
+                          fill={PANEL_GHOST_FILL} stroke="none" />
                         <rect x={p.x + ibw/2} y={p.y + ibw/2}
                           width={p.width - ibw} height={p.height - ibw}
-                          fill="none" stroke="#4682B4" strokeWidth={ibw} strokeOpacity={0.7} />
+                          fill="none" stroke={PANEL_MID} strokeWidth={ibw} strokeOpacity={0.7} />
                         <line x1={p.cx} y1={stemFar} x2={p.cx} y2={stemNear}
-                          stroke="rgba(70,130,180,0.75)" strokeWidth={aW * 0.28} strokeLinecap="round"
+                          stroke={PANEL_GHOST_BORDER} strokeWidth={aW * 0.28} strokeLinecap="round"
                           style={{ pointerEvents: 'none' }} />
                         <polygon
                           points={`${p.cx},${tipY} ${p.cx - aW * 0.55},${stemNear} ${p.cx + aW * 0.55},${stemNear}`}
-                          fill="rgba(70,130,180,0.75)" style={{ pointerEvents: 'none' }} />
+                          fill={PANEL_GHOST_BORDER} style={{ pointerEvents: 'none' }} />
                       </g>
                     )
                   })}
@@ -855,7 +867,7 @@ export default function PanelCanvas({
               return (
                 <g key={panel.id} transform={`rotate(${panel.rotation || 0} ${cx} ${cy})`} style={{ pointerEvents: 'none' }}>
                   <rect x={panel.x + ibw / 2} y={panel.y + ibw / 2} width={panel.width - ibw} height={panel.height - ibw}
-                    fill="none" stroke="#aaaaaa" strokeWidth={ibw} strokeDasharray={`${ibw * 6} ${ibw * 3}`} />
+                    fill="none" stroke={TEXT_VERY_LIGHT} strokeWidth={ibw} strokeDasharray={`${ibw * 6} ${ibw * 3}`} />
                 </g>
               )
             })}
@@ -868,9 +880,9 @@ export default function PanelCanvas({
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
               const trapId = panel.trapezoidId || 'A1'
 let fill, borderColor, ibw
-              if (isHovered)       { fill = 'rgba(244, 67, 54, 0.65)'; borderColor = ERROR; ibw = panel.width * 0.012 }
-              else if (isSelected) { fill = 'rgba(0,62,126,0.18)';     borderColor = '#003e7e'; ibw = panel.width * 0.025 }
-              else                 { fill = 'rgba(135, 206, 235, 0.35)'; borderColor = '#4682B4'; ibw = panel.width * 0.012 }
+              if (isHovered)       { fill = PANEL_FILL_HOVER_DELETE; borderColor = ERROR;      ibw = panel.width * 0.012 }
+              else if (isSelected) { fill = PANEL_FILL_SELECTED;     borderColor = PANEL_DARK; ibw = panel.width * 0.025 }
+              else                 { fill = PANEL_FILL;               borderColor = PANEL_MID;  ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
               const bh = Math.min(panel.width, panel.height) * 0.22
               const bw = bh * (trapId.length > 2 ? 2.8 : 1.9)
@@ -912,7 +924,7 @@ let fill, borderColor, ibw
                       <>
                         {/* Badge */}
                         <rect x={cx - bwS / 2} y={cy - bhS / 2} width={bwS} height={bhS} rx={bhS / 2}
-                          fill={isSelected ? 'rgba(0,62,126,0.82)' : 'rgba(15,15,15,0.55)'}
+                          fill={isSelected ? PANEL_BADGE_SEL_FILL : PANEL_BADGE_DEFAULT}
                           style={{ pointerEvents: 'none' }} />
                         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
                           fontSize={fsS} fontWeight="600" fill="white"
@@ -921,7 +933,7 @@ let fill, borderColor, ibw
                         </text>
                         {/* Slope chevron: V below badge (down) or ^ above badge (up) */}
                         {(() => {
-                          const badgeFill = isSelected ? 'rgba(0,62,126,0.9)' : 'rgba(15,15,15,0.62)'
+                          const badgeFill = isSelected ? PANEL_BADGE_SEL_CHV : PANEL_BADGE_SELECTED
                           const pts = down
                             ? `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
                             : `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
@@ -937,7 +949,7 @@ let fill, borderColor, ibw
                   {isHovered && (
                     <>
                       <rect x={cx - bh / 2} y={cy - bh / 2} width={bh} height={bh} rx={bh / 2}
-                        fill="rgba(200,0,0,0.75)" style={{ pointerEvents: 'none' }} />
+                        fill={CANVAS_DELETE_MARK} style={{ pointerEvents: 'none' }} />
                       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
                         fontSize={fs * 1.1} fontWeight="700" fill="white"
                         style={{ pointerEvents: 'none' }}>✕</text>
@@ -973,9 +985,9 @@ let fill, borderColor, ibw
                     markerStart="url(#dist-arrow-start)" markerEnd="url(#dist-arrow-end)" />
                   <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
                   <circle cx={p2[0]} cy={p2[1]} r={dotR} fill={PRIMARY} />
-                  <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill="rgba(15,15,15,0.78)" rx={lh/2} />
+                  <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill={CANVAS_LABEL_BG} rx={lh/2} />
                   <text x={midX} y={midY - fs*0.15} textAnchor="middle" fill="white" fontSize={fs} fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
-                  <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
+                  <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill={CANVAS_LABEL_TEXT} fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
                 </>
               )
             })()}
@@ -988,7 +1000,7 @@ let fill, borderColor, ibw
               const rh = Math.abs(rectSelect.endY - rectSelect.startY)
               return (
                 <rect x={rx} y={ry} width={rw} height={rh}
-                  fill="rgba(100,160,255,0.10)" stroke="#3399FF" strokeWidth="1.5" strokeDasharray="6,3"
+                  fill={CANVAS_SEL_FILL} stroke={CANVAS_SEL_STROKE} strokeWidth="1.5" strokeDasharray="6,3"
                   style={{ pointerEvents: 'none' }} />
               )
             })()}
@@ -1009,7 +1021,7 @@ let fill, borderColor, ibw
           onPanToPoint={panToMinimapPoint}
           viewportRect={getMinimapViewportRect()}
         >
-          <rect width={MM_W} height={MM_H} fill="rgba(0,0,0,0.25)" />
+          <rect width={MM_W} height={MM_H} fill={CANVAS_MINI_BG} />
           {panels.filter(p => !p.isEmpty).map(p => {
             const nw  = Math.max(imageRef.naturalWidth,  1)
             const nh  = Math.max(imageRef.naturalHeight, 1)
@@ -1022,8 +1034,8 @@ let fill, borderColor, ibw
             return (
               <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
                 <rect x={mmX} y={mmY} width={mmW} height={mmH}
-                  fill={isSel ? 'rgba(0,62,126,0.7)' : 'rgba(70,130,180,0.55)'}
-                  stroke={isSel ? '#003e7e' : '#4682B4'} strokeWidth="0.5" />
+                  fill={isSel ? PANEL_MINI_SELECTED : PANEL_MINI_DEFAULT}
+                  stroke={isSel ? PANEL_DARK : PANEL_MID} strokeWidth="0.5" />
               </g>
             )
           })}

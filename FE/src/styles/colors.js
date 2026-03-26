@@ -90,17 +90,40 @@ export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
 export const AREA_PALETTE = ['#5fa8e0', '#5ec89a', '#e09455', '#a855d4', '#d4c832', '#32c8c8', '#e05f8a', '#8ae05f']
 
 // ── Panel layout colors ───────────────────────────────────────────────────
-export const PANEL_LIGHT_BG      = '#cfe3f5'  // unselected panel fill
-export const PANEL_LIGHT_BG_ALT  = '#d1e3f3'  // selected panel fill
-export const PANEL_DARK          = '#003e7e'  // panel dark border (selected)
-export const PANEL_MID           = '#4682B4'  // panel mid border (unselected)
-export const PANEL_STROKE_MID    = '#3a6ea5'  // panel stroke mid (RowsView rect)
-export const PANEL_STROKE_FAINT  = '#9bbcd4'  // panel hatch stroke
-export const GRIDLINE_AREA       = '#a0a0a04d'  // area gridline color (canvas step 3)
+export const PANEL_LIGHT_BG      = '#cfe3f5'           // unselected panel fill
+export const PANEL_LIGHT_BG_ALT  = '#d1e3f3'           // selected panel fill
+export const PANEL_DARK          = '#003e7e'            // panel dark border (selected)
+export const PANEL_MID           = '#4682B4'            // panel mid border (unselected)
+export const PANEL_STROKE_MID    = '#3a6ea5'            // panel stroke mid (RowsView rect)
+export const PANEL_STROKE_FAINT  = '#9bbcd4'            // panel hatch stroke
+export const GRIDLINE_AREA       = '#a0a0a04d'          // area gridline color (canvas step 2)
+// Panel canvas fill states
+export const PANEL_FILL              = 'rgba(135,206,235,0.35)'  // normal panel fill
+export const PANEL_FILL_SELECTED     = 'rgba(0,62,126,0.18)'     // selected panel fill
+export const PANEL_FILL_HOVER_DELETE = 'rgba(244,67,54,0.65)'    // delete-hover panel fill
+export const PANEL_GHOST_FILL        = 'rgba(135,206,235,0.3)'   // draw-preview panel fill
+export const PANEL_GHOST_BORDER      = 'rgba(70,130,180,0.75)'   // draw-preview panel arrow/icon
+// Panel canvas badge states
+export const PANEL_BADGE_DEFAULT  = 'rgba(15,15,15,0.55)'  // trapezoid badge bg (normal)
+export const PANEL_BADGE_SELECTED = 'rgba(15,15,15,0.62)'  // slope chevron bg (normal)
+export const PANEL_BADGE_SEL_FILL = 'rgba(0,62,126,0.82)'  // trapezoid badge bg (selected)
+export const PANEL_BADGE_SEL_CHV  = 'rgba(0,62,126,0.9)'   // slope chevron bg (selected)
+// Panel minimap
+export const PANEL_MINI_DEFAULT  = 'rgba(70,130,180,0.55)' // minimap panel fill (normal)
+export const PANEL_MINI_SELECTED = 'rgba(0,62,126,0.7)'    // minimap panel fill (selected)
 
 // ── Drawing / arrows ──────────────────────────────────────────────────────
-export const DRAW_COLOR  = '#FF00FF'  // freehand draw color
+export const DRAW_COLOR  = '#FF00FF'  // freehand draw color / baseline color
 export const ARROW_COLOR = '#17a9cf'  // dimension arrow color
+// Canvas overlays
+export const CANVAS_MASK        = 'rgba(0,0,0,0.6)'     // dark mask over roof polygon area
+export const CANVAS_MINI_BG     = 'rgba(0,0,0,0.25)'    // minimap dark background
+export const CANVAS_AREA_HOVER  = 'rgba(255,200,0,0.06)' // draw-rect area hover tint
+export const CANVAS_SEL_FILL    = 'rgba(100,160,255,0.10)' // rectangle selection fill
+export const CANVAS_SEL_STROKE  = '#3399FF'              // rectangle selection stroke
+export const CANVAS_LABEL_BG    = 'rgba(15,15,15,0.78)'  // distance ruler label background
+export const CANVAS_LABEL_TEXT  = 'rgba(255,255,255,0.55)' // distance ruler secondary text
+export const CANVAS_DELETE_MARK = 'rgba(200,0,0,0.75)'   // delete cross marker fill
 
 // ── Layers panel ──────────────────────────────────────────────────────────
 export const LAYER_ACCENT = '#2b6a99'  // checkbox accent in LayersPanel
