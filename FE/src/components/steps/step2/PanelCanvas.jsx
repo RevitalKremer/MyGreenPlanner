@@ -33,6 +33,8 @@ export default function PanelCanvas({
   onAddRectArea,
   cmPerPixel,
   panelSpec,
+  rebuildPanelGrid,
+  recordPanelDeletion,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -198,7 +200,10 @@ export default function PanelCanvas({
 
     if (activeTool === 'delete') {
       if (clickedPanel) {
-        setPanels(prev => prev.filter(p => p.id !== clickedPanel.id))
+        const newPanels = panels.filter(p => p.id !== clickedPanel.id)
+        recordPanelDeletion?.(clickedPanel)
+        setPanels(newPanels)
+        rebuildPanelGrid?.(newPanels)
         setSelectedPanels([])
       } else startPan(e)
       return

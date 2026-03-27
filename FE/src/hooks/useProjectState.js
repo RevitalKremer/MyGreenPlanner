@@ -4,6 +4,20 @@ import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
 import { createProject, updateProject, fetchPanelTypes } from '../services/projectsApi'
 import { computePolygonPanels } from '../utils/rectPanelService'
+import { buildPanelGrid } from '../utils/panelGridService'
+
+function logPanelGrid(grid, trigger) {
+  console.group(`[panelGrid] ${trigger}`)
+  Object.entries(grid).forEach(([label, areaGrid]) => {
+    const totalSlots = areaGrid.rows.reduce((sum, r) => sum + r.length, 0)
+    const active = areaGrid.rows.reduce((sum, r) => sum + r.filter(c => c === 'V' || c === 'H').length, 0)
+    const empty = totalSlots - active
+    console.group(`Area "${label}" — startCorner: ${areaGrid.startCorner}, areaAngle: ${areaGrid.areaAngle}°, rows: ${areaGrid.rows.length}, panels: ${active}, empty slots: ${empty}`)
+    areaGrid.rows.forEach((row, i) => console.log(`  row ${i}: [${row.join(', ')}]`))
+    console.groupEnd()
+  })
+  console.groupEnd()
+}
 import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../data/panelTypes'
 
 export function useProjectState() {
@@ -29,8 +43,6 @@ export function useProjectState() {
   const [referenceLine, setReferenceLine] = useState(null)
   const [referenceLineLengthCm, setReferenceLineLengthCm] = useState('')
   const [panelFrontHeight, setPanelFrontHeight] = useState('')
-  const [linesPerRow, setLinesPerRow] = useState(1)
-  const [lineOrientations, setLineOrientations] = useState(['vertical'])
   const [panelAngle, setPanelAngle] = useState('')
   const [isDrawingLine, setIsDrawingLine] = useState(false)
   const [lineStart, setLineStart] = useState(null)
@@ -48,6 +60,10 @@ export function useProjectState() {
   const [rotationState, setRotationState] = useState(null)
   const [viewZoom, setViewZoom] = useState(1)
   const [trapezoidConfigs, setTrapezoidConfigs] = useState({})
+  const [panelGrid, setPanelGrid] = useState({})
+  // Tracks manually deleted panel positions per area so computePanels can skip them.
+  // Shape: { [areaIdx: number]: string[] }  where each string is "row_col".
+  const [deletedPanelKeys, setDeletedPanelKeys] = useState({})
 
   // Step 4: Construction planning settings (persisted for export)
   const [step3GlobalSettings, setStep3GlobalSettings] = useState(null)
@@ -63,9 +79,6 @@ export function useProjectState() {
   // Panel types — fetched from server, falls back to hardcoded list
   const [panelTypes, setPanelTypes] = useState(PANEL_TYPES)
 
-
-  const getComputedBackHeight = () =>
-    computePanelBackHeight(parseFloat(panelFrontHeight) || 0, parseFloat(panelAngle) || 0, lineOrientations, linesPerRow)
 
   // ── Backend ───────────────────────────────────────────────────────────────
 
@@ -109,6 +122,7 @@ export function useProjectState() {
     setDragState(null)
     setRotationState(null)
     setTrapezoidConfigs({})
+    setDeletedPanelKeys({})
     setStep3GlobalSettings(null)
     setStep3AreaSettings(null)
     setStep4BomDeltas(null)
@@ -161,67 +175,174 @@ export function useProjectState() {
   const handleImportProject = (data, existingCloudId = null) => {
     resetWizardState()
     setCurrentProject(data.project)
-    if (data.uploadedImageData) setUploadedImageData(data.uploadedImageData)
-    if (data.roofPolygon) setRoofPolygon(data.roofPolygon)
-    if (data.referenceLine) setReferenceLine(data.referenceLine)
-    if (data.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(data.referenceLineLengthCm))
-    if (data.panelType) setPanelType(data.panelType)
-    if (data.panelFrontHeight !== undefined) setPanelFrontHeight(String(data.panelFrontHeight))
-    if (data.panelAngle !== undefined) setPanelAngle(String(data.panelAngle))
-    if (data.linesPerRow !== undefined) setLinesPerRow(data.linesPerRow)
-    if (data.lineOrientations) setLineOrientations(data.lineOrientations)
-    if (data.refinedArea) setRefinedArea(data.refinedArea)
-    if (data.baseline) setBaseline(data.baseline)
-    if (data.panels) {
-      setPanels(data.panels.map(p => {
-        const area = p.area ?? p.row ?? 0
-        const trapezoidId = p.trapezoidId ?? 'A1'
-        return { ...p, area, trapezoidId }
-      }))
+
+    if (data.version === '2.0') {
+      // ── v2.0 format ────────────────────────────────────────────────────────
+      const layout = data.layout || {}
+      const s2     = data.step2  || {}
+      const s3     = data.step3  || {}
+      const s4     = data.step4  || {}
+
+      if (layout.uploadedImageData)  setUploadedImageData(layout.uploadedImageData)
+      if (layout.roofPolygon)        setRoofPolygon(layout.roofPolygon)
+      if (layout.referenceLine)      setReferenceLine(layout.referenceLine)
+      if (layout.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(layout.referenceLineLengthCm))
+      if (layout.baseline)           setBaseline(layout.baseline)
+      if (layout.panels)             setPanels(layout.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A' })))
+      if (layout.deletedPanelKeys)   setDeletedPanelKeys(layout.deletedPanelKeys)
+
+      if (layout.rectAreas && s2.areas) {
+        setRectAreas(layout.rectAreas.map(ra => {
+          const s2a = s2.areas.find(a => a.id === ra.id) || {}
+          return { ...ra, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+        }))
+      } else if (layout.rectAreas) {
+        setRectAreas(layout.rectAreas)
+      }
+
+      if (s2.panelType)                       setPanelType(s2.panelType)
+      if (s2.defaultFrontHeightCm !== undefined) setPanelFrontHeight(String(s2.defaultFrontHeightCm))
+      if (s2.defaultAngleDeg      !== undefined) setPanelAngle(String(s2.defaultAngleDeg))
+
+      if (s2.trapezoids) {
+        const configs = {}
+        Object.entries(s2.trapezoids).forEach(([id, t]) => {
+          configs[id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, linesPerRow: t.linesPerRow, lineOrientations: t.lineOrientations }
+        })
+        setTrapezoidConfigs(configs)
+      }
+
+      if (s2.areas) {
+        // Reconstruct legacy areas array (used by Step3 for label/config lookups)
+        setAreas(s2.areas.map(a => ({
+          label: a.label ?? a.id,
+          angle: a.angleDeg ?? 0,
+          frontHeight: a.frontHeightCm ?? 0,
+          linesPerRow: a.trapezoids?.[0]?.linesPerRow ?? 1,
+          lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['vertical'],
+        })))
+        // Reconstruct panelGrid from per-area panelGrid fields
+        const grid = {}
+        s2.areas.forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
+        setPanelGrid(grid)
+      }
+
+      // Reconstruct refinedArea (needed by Step3 for pixelToCmRatio + panelConfig)
+      if (layout.pixelToCmRatio) {
+        setRefinedArea({
+          pixelToCmRatio: layout.pixelToCmRatio,
+          polygon: layout.roofPolygon,
+          panelType: s2.panelType,
+          referenceLine: layout.referenceLine,
+          referenceLineLengthCm: layout.referenceLineLengthCm,
+          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+        })
+      }
+
+      if (s3.globalSettings) setStep3GlobalSettings(s3.globalSettings)
+      if (s3.areaSettings)   setStep3AreaSettings(s3.areaSettings)
+      if (s4.bomDeltas)      setStep4BomDeltas(s4.bomDeltas)
+
+    } else {
+      // ── v1.0 legacy format ─────────────────────────────────────────────────
+      if (data.uploadedImageData) setUploadedImageData(data.uploadedImageData)
+      if (data.roofPolygon)       setRoofPolygon(data.roofPolygon)
+      if (data.referenceLine)     setReferenceLine(data.referenceLine)
+      if (data.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(data.referenceLineLengthCm))
+      if (data.panelType)         setPanelType(data.panelType)
+      if (data.panelFrontHeight !== undefined) setPanelFrontHeight(String(data.panelFrontHeight))
+      if (data.panelAngle       !== undefined) setPanelAngle(String(data.panelAngle))
+      if (data.refinedArea)       setRefinedArea(data.refinedArea)
+      if (data.baseline)          setBaseline(data.baseline)
+      if (data.panels)            setPanels(data.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A1' })))
+      if (data.areas)             setAreas(data.areas)
+      else if (data.rowGroups)    setAreas(data.rowGroups)
+      if (data.rectAreas)         setRectAreas(data.rectAreas)
+      if (data.trapezoidConfigs) {
+        setTrapezoidConfigs(data.trapezoidConfigs)
+      } else if (data.rowConfigs) {
+        const first = Object.values(data.rowConfigs)[0]
+        if (first) setTrapezoidConfigs({ 'A1': first })
+      }
+      if (data.step3GlobalSettings ?? data.step4GlobalSettings) setStep3GlobalSettings(data.step3GlobalSettings ?? data.step4GlobalSettings)
+      if (data.step3AreaSettings   ?? data.step4AreaSettings)   setStep3AreaSettings(data.step3AreaSettings ?? data.step4AreaSettings)
+      else if (data.step4RowSettings) setStep3AreaSettings(data.step4RowSettings)
+      if (data.step4BomDeltas) setStep4BomDeltas(data.step4BomDeltas)
     }
-    if (data.areas) setAreas(data.areas)
-    else if (data.rowGroups) setAreas(data.rowGroups)
-    if (data.rectAreas) setRectAreas(data.rectAreas)
-    if (data.trapezoidConfigs) {
-      setTrapezoidConfigs(data.trapezoidConfigs)
-    } else if (data.rowConfigs) {
-      const first = Object.values(data.rowConfigs)[0]
-      if (first) setTrapezoidConfigs({ 'A1': first })
-    }
-    if (data.step3GlobalSettings ?? data.step4GlobalSettings) setStep3GlobalSettings(data.step3GlobalSettings ?? data.step4GlobalSettings)
-    if (data.step3AreaSettings ?? data.step4AreaSettings) setStep3AreaSettings(data.step3AreaSettings ?? data.step4AreaSettings)
-    else if (data.step4RowSettings) setStep3AreaSettings(data.step4RowSettings)
-    if (data.step3BOMData ?? data.step4BOMData) setStep3BOMData(data.step3BOMData ?? data.step4BOMData)
-    if (data.step4BomDeltas) setStep4BomDeltas(data.step4BomDeltas)
+
     if (data.currentStep) setCurrentStep(data.currentStep)
-    if (existingCloudId) setCloudProjectId(existingCloudId)
+    if (existingCloudId)  setCloudProjectId(existingCloudId)
     setAppScreen('wizard')
   }
 
-  const getExportData = () => ({
-    version: '1.0',
-    project: currentProject,
-    currentStep,
-    uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
-    roofPolygon,
-    referenceLine,
-    referenceLineLengthCm,
-    panelType,
-    panelFrontHeight,
-    panelAngle,
-    linesPerRow,
-    lineOrientations,
-    refinedArea,
-    baseline,
-    panels,
-    areas,
-    rectAreas,
-    trapezoidConfigs,
-    step3GlobalSettings,
-    step3AreaSettings,
-    step3BOMData,
-    step4BomDeltas,
-  })
+  const getExportData = () => {
+    // ── layout: pixel-coord rendering state ──────────────────────────────────
+    const layoutRectAreas = rectAreas.map(ra => ({
+      id:                   ra.id,
+      vertices:             ra.vertices,
+      rotation:             ra.rotation,
+      mode:                 ra.mode,
+      color:                ra.color,
+      xDir:                 ra.xDir,
+      yDir:                 ra.yDir,
+      manualTrapezoids:     ra.manualTrapezoids,
+      manualColTrapezoids:  ra.manualColTrapezoids,
+    }))
+
+    // ── step2: physical panel layout ─────────────────────────────────────────
+    const step2Trapezoids = {}
+    Object.entries(trapezoidConfigs).forEach(([id, cfg]) => {
+      step2Trapezoids[id] = {
+        angleDeg:         cfg.angle,
+        frontHeightCm:    cfg.frontHeight,
+        linesPerRow:      cfg.linesPerRow,
+        lineOrientations: cfg.lineOrientations,
+      }
+    })
+
+    const step2Areas = rectAreas.map((ra, idx) => {
+      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
+      return {
+        id:            ra.id,
+        label:         ra.label,
+        frontHeightCm: parseFloat(ra.frontHeight) || 0,
+        angleDeg:      parseFloat(ra.angle) || 0,
+        trapezoidIds:  areaTrapIds,
+        panelGrid:     panelGrid[ra.label] ?? null,
+      }
+    })
+
+    return {
+      version: '2.0',
+      project: currentProject,
+      currentStep,
+      layout: {
+        uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
+        roofPolygon,
+        referenceLine,
+        referenceLineLengthCm,
+        pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
+        baseline,
+        rectAreas: layoutRectAreas,
+        panels,
+        deletedPanelKeys,
+      },
+      step2: {
+        panelType,
+        defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
+        defaultAngleDeg:      parseFloat(panelAngle) || 0,
+        trapezoids: step2Trapezoids,
+        areas: step2Areas,
+      },
+      step3: {
+        globalSettings: step3GlobalSettings,
+        areaSettings:   step3AreaSettings,
+      },
+      step4: {
+        bomDeltas: step4BomDeltas,
+      },
+    }
+  }
 
   const handleExportProject = () => {
     const data = getExportData()
@@ -275,9 +396,13 @@ export function useProjectState() {
         manualColTrapezoids: {},
       })
       setRectAreas(newRectAreas)
+      // Clear deleted-panel memory for this area so all panels are regenerated
+      const newDeletedKeys = { ...deletedPanelKeys }
+      delete newDeletedKeys[areaKey]
+      setDeletedPanelKeys(newDeletedKeys)
       // Call computePanels synchronously with the new data so the restored panels
       // appear immediately without waiting for the async useEffect cycle.
-      computePanels(newRectAreas)
+      computePanels(newRectAreas, newDeletedKeys)
       setSelectedPanels([])
       return
     }
@@ -549,7 +674,7 @@ export function useProjectState() {
   // Compute panels from rectAreas without advancing the step (used by panel-edit tab in Step 2).
   // Accepts an optional _rectAreasOverride so callers can pass fresh data without waiting for
   // a state update to propagate through the useEffect cycle.
-  const computePanels = (_rectAreasOverride) => {
+  const computePanels = (_rectAreasOverride, _deletedKeysOverride) => {
     if (!referenceLine || !referenceLineLengthCm) return
     const dx = referenceLine.end.x - referenceLine.start.x
     const dy = referenceLine.end.y - referenceLine.start.y
@@ -584,6 +709,7 @@ export function useProjectState() {
     }
 
     const effectiveRectAreas = _rectAreasOverride ?? rectAreas
+    const effectiveDeletedKeys = _deletedKeysOverride ?? deletedPanelKeys
 
     // Areas that already had panels before this compute are "existing" — never auto-deleted
     const existingAreaIndices = new Set(panels.map(p => p.area))
@@ -591,6 +717,7 @@ export function useProjectState() {
     const allPanels = []
     const groupTrapConfigs = {}
     const areaLineConfigs = {}
+    const newPanelGrid = {}
     let panelId = 1
     const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
     effectiveRectAreas.forEach((area, areaIdx) => {
@@ -598,10 +725,21 @@ export function useProjectState() {
       const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
       const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
       let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
+      // Remove panels manually deleted by the user
+      const deletedKeys = effectiveDeletedKeys[areaIdx]
+      if (deletedKeys?.length > 0) {
+        const deletedSet = new Set(deletedKeys)
+        filtered = filtered.filter(p => {
+          const col = p.coveredCols?.[0] ?? p.col ?? 0
+          return !deletedSet.has(`${p.row}_${col}`)
+        })
+      }
       // Existing areas always keep at least 1 panel so the area stays visible
       if (filtered.length === 0 && existingAreaIndices.has(areaIdx) && computed.length > 0) {
         filtered = [computed[0]]
       }
+
+      newPanelGrid[area.label] = buildPanelGrid(area, computed, filtered)
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
@@ -692,6 +830,9 @@ export function useProjectState() {
       return // re-triggered by rectAreas change; don't commit partial state
     }
 
+    setPanelGrid(newPanelGrid)
+    logPanelGrid(newPanelGrid, 'panel grid generated')
+
     setPanels(allPanels)
     setAreas(effectiveRectAreas.map((a, idx) => ({
       label: a.label,
@@ -711,6 +852,35 @@ export function useProjectState() {
       pixelToCmRatio,
       panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
     })
+  }
+
+  const recordPanelDeletion = (panel) => {
+    const areaIdx = panel.area
+    const col = panel.coveredCols?.[0] ?? panel.col ?? 0
+    const key = `${panel.row}_${col}`
+    setDeletedPanelKeys(prev => {
+      const existing = prev[areaIdx] ?? []
+      if (existing.includes(key)) return prev
+      return { ...prev, [areaIdx]: [...existing, key] }
+    })
+  }
+
+  const rebuildPanelGrid = (updatedPanels) => {
+    if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return
+    const dx = referenceLine.end.x - referenceLine.start.x
+    const dy = referenceLine.end.y - referenceLine.start.y
+    const pixelLength = Math.sqrt(dx * dx + dy * dy)
+    if (pixelLength <= 0) return
+    const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
+    const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+    const newGrid = {}
+    rectAreas.forEach((area, areaIdx) => {
+      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
+      const areaFiltered = updatedPanels.filter(p => p.area === areaIdx)
+      newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered)
+    })
+    setPanelGrid(newGrid)
+    logPanelGrid(newGrid, 'panel deleted/rotated')
   }
 
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change
@@ -739,11 +909,14 @@ export function useProjectState() {
 
     const nextStep = currentStep === 2 ? 4 : currentStep + 1
 
-    // Refresh trapezoid groupings for all auto-split areas before entering step 4
+    // Finalise panel data before entering step 3 (construction planning)
     if (nextStep === 4) {
+      // Re-split trapezoids from current panel state (step 2 responsibility, last chance)
       rectAreas.forEach((area, idx) => {
         if (!area.manualTrapezoids) refreshAreaTrapezoids(idx)
       })
+      // Snapshot the panel grid — step 3 reads it but never writes it
+      rebuildPanelGrid(panels)
     }
 
     setCurrentStep(nextStep)
@@ -803,8 +976,6 @@ export function useProjectState() {
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,
     panelFrontHeight, setPanelFrontHeight,
-    linesPerRow, setLinesPerRow,
-    lineOrientations, setLineOrientations,
     panelAngle, setPanelAngle,
     isDrawingLine, setIsDrawingLine,
     lineStart, setLineStart,
@@ -821,14 +992,15 @@ export function useProjectState() {
     rotationState, setRotationState,
     viewZoom, setViewZoom,
     trapezoidConfigs, setTrapezoidConfigs,
+    panelGrid,
+    rebuildPanelGrid,
+    recordPanelDeletion,
     // Step 4
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,
     step3BOMData, setStep3BOMData,
     // Step 5
     step4BomDeltas, setStep4BomDeltas,
-    // Derived
-    getComputedBackHeight,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,

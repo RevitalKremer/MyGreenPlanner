@@ -50,6 +50,8 @@ export default function Step2PanelPlacement({
   panelAngle,
   setPanelAngle,
   refreshAreaTrapezoids,
+  rebuildPanelGrid,
+  recordPanelDeletion,
 }) {
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('draw')
@@ -183,14 +185,16 @@ export default function Step2PanelPlacement({
 
   const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
-    setPanels(prev => prev.map(panel => {
+    const newPanels = panels.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
       const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
       const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
-    }))
+    })
+    setPanels(newPanels)
+    rebuildPanelGrid?.(newPanels)
   }
 
   const nudgeRow = (dx, dy) => {
@@ -432,6 +436,8 @@ export default function Step2PanelPlacement({
             onAddRectArea={handleAddRectArea}
             cmPerPixel={cmPerPixel}
             panelSpec={panelSpec}
+            rebuildPanelGrid={rebuildPanelGrid}
+            recordPanelDeletion={recordPanelDeletion}
           />
         ) : (
           <div className="step-content">

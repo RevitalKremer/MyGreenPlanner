@@ -313,6 +313,8 @@ function App() {
             generatePanelLayoutHandler={s.computePanels}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             refreshAreaTrapezoids={s.refreshAreaTrapezoids}
+            rebuildPanelGrid={s.rebuildPanelGrid}
+            recordPanelDeletion={s.recordPanelDeletion}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -325,7 +327,7 @@ function App() {
                 const idx = prev.length
                 return [...prev, {
                   ...rawRect,
-                  id: Date.now(),
+                  id: String.fromCharCode(65 + idx % 26),
                   label: String.fromCharCode(65 + idx % 26),
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
