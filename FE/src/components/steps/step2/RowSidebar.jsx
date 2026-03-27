@@ -40,7 +40,7 @@ export default function RowSidebar({
 
   return (
     <div style={{
-      position: 'absolute', top: '20px', left: '20px',
+      position: 'absolute', top: '20px', right: '20px',
       width: collapsed ? '32px' : '255px', minHeight: '36px',
       overflowX: 'hidden', overflowY: collapsed ? 'hidden' : 'auto',
       maxHeight: 'calc(100% - 40px)',
@@ -50,7 +50,7 @@ export default function RowSidebar({
       border: `2px solid ${PRIMARY}`,
     }}>
       <button onClick={() => setCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: BG_FAINT, border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: TEXT_PLACEHOLDER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {collapsed ? '›' : '‹'}
+        {collapsed ? '‹' : '›'}
       </button>
       {!collapsed && <>
       <h3 style={{ margin: '0 0 1rem 0', color: TEXT_SECONDARY, fontSize: '1rem', fontWeight: '700' }}>

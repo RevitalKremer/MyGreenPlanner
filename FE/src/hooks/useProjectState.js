@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
@@ -13,7 +13,17 @@ function logPanelGrid(grid, trigger) {
     const active = areaGrid.rows.reduce((sum, r) => sum + r.filter(c => c === 'V' || c === 'H').length, 0)
     const empty = totalSlots - active
     console.group(`Area "${label}" — startCorner: ${areaGrid.startCorner}, areaAngle: ${areaGrid.areaAngle}°, rows: ${areaGrid.rows.length}, panels: ${active}, empty slots: ${empty}`)
-    areaGrid.rows.forEach((row, i) => console.log(`  row ${i}: [${row.join(', ')}]`))
+    areaGrid.rows.forEach((row, i) => {
+      const pos = areaGrid.rowPositions?.[i]
+      if (pos) {
+        console.log(`  row ${i}: [${row.join(', ')}]  positions: [${pos.join(', ')}]`)
+      } else {
+        console.log(`  row ${i}: [${row.join(', ')}]`)
+      }
+    })
+    if (areaGrid.rowPositions) {
+      console.log('  rowPositions:', areaGrid.rowPositions)
+    }
     console.groupEnd()
   })
   console.groupEnd()
@@ -64,6 +74,9 @@ export function useProjectState() {
   // Tracks manually deleted panel positions per area so computePanels can skip them.
   // Shape: { [areaIdx: number]: string[] }  where each string is "row_col".
   const [deletedPanelKeys, setDeletedPanelKeys] = useState({})
+  // Set before operations that call setRectAreas but already handle panel state themselves.
+  // 'load' → also run reSyncLoadedPanelCols; 'reset' → just skip the recompute.
+  const skipRecomputeRef = useRef(null)
 
   // Step 4: Construction planning settings (persisted for export)
   const [step3GlobalSettings, setStep3GlobalSettings] = useState(null)
@@ -110,9 +123,7 @@ export function useProjectState() {
     setReferenceLine(null)
     setReferenceLineLengthCm('')
     setPanelFrontHeight('')
-    setLinesPerRow(1)
-    setLineOrientations(['vertical'])
-    setPanelAngle('')
+setPanelAngle('')
     setIsDrawingLine(false)
     setLineStart(null)
     setPanels([])
@@ -192,11 +203,13 @@ export function useProjectState() {
       if (layout.deletedPanelKeys)   setDeletedPanelKeys(layout.deletedPanelKeys)
 
       if (layout.rectAreas && s2.areas) {
+        skipRecomputeRef.current = 'load'
         setRectAreas(layout.rectAreas.map(ra => {
           const s2a = s2.areas.find(a => a.id === ra.id) || {}
           return { ...ra, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
         }))
       } else if (layout.rectAreas) {
+        skipRecomputeRef.current = 'load'
         setRectAreas(layout.rectAreas)
       }
 
@@ -257,7 +270,7 @@ export function useProjectState() {
       if (data.panels)            setPanels(data.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A1' })))
       if (data.areas)             setAreas(data.areas)
       else if (data.rowGroups)    setAreas(data.rowGroups)
-      if (data.rectAreas)         setRectAreas(data.rectAreas)
+      if (data.rectAreas)         { skipRecomputeRef.current = 'load'; setRectAreas(data.rectAreas) }
       if (data.trapezoidConfigs) {
         setTrapezoidConfigs(data.trapezoidConfigs)
       } else if (data.rowConfigs) {
@@ -305,8 +318,8 @@ export function useProjectState() {
       return {
         id:            ra.id,
         label:         ra.label,
-        frontHeightCm: parseFloat(ra.frontHeight) || 0,
-        angleDeg:      parseFloat(ra.angle) || 0,
+        frontHeightCm: ra.frontHeight !== '' ? parseFloat(ra.frontHeight) || 0 : null,
+        angleDeg:      ra.angle !== '' ? parseFloat(ra.angle) || 0 : null,
         trapezoidIds:  areaTrapIds,
         panelGrid:     panelGrid[ra.label] ?? null,
       }
@@ -395,6 +408,7 @@ export function useProjectState() {
         manualTrapezoids: false,
         manualColTrapezoids: {},
       })
+      skipRecomputeRef.current = 'reset'
       setRectAreas(newRectAreas)
       // Clear deleted-panel memory for this area so all panels are regenerated
       const newDeletedKeys = { ...deletedPanelKeys }
@@ -402,7 +416,7 @@ export function useProjectState() {
       setDeletedPanelKeys(newDeletedKeys)
       // Call computePanels synchronously with the new data so the restored panels
       // appear immediately without waiting for the async useEffect cycle.
-      computePanels(newRectAreas, newDeletedKeys)
+      computePanels(newRectAreas, newDeletedKeys, areaKey)
       setSelectedPanels([])
       return
     }
@@ -674,7 +688,7 @@ export function useProjectState() {
   // Compute panels from rectAreas without advancing the step (used by panel-edit tab in Step 2).
   // Accepts an optional _rectAreasOverride so callers can pass fresh data without waiting for
   // a state update to propagate through the useEffect cycle.
-  const computePanels = (_rectAreasOverride, _deletedKeysOverride) => {
+  const computePanels = (_rectAreasOverride, _deletedKeysOverride, _onlyAreaIdx) => {
     if (!referenceLine || !referenceLineLengthCm) return
     const dx = referenceLine.end.x - referenceLine.start.x
     const dy = referenceLine.end.y - referenceLine.start.y
@@ -718,9 +732,36 @@ export function useProjectState() {
     const groupTrapConfigs = {}
     const areaLineConfigs = {}
     const newPanelGrid = {}
-    let panelId = 1
     const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+
+    // When resetting a single area, carry over all other areas' panels/grids/configs unchanged
+    if (_onlyAreaIdx !== undefined) {
+      panels.forEach(p => {
+        if (p.area !== _onlyAreaIdx) allPanels.push(p)
+      })
+      effectiveRectAreas.forEach((area, areaIdx) => {
+        if (areaIdx === _onlyAreaIdx) return
+        if (panelGrid[area.label]) newPanelGrid[area.label] = panelGrid[area.label]
+        const existingPanels = panels.filter(p => p.area === areaIdx)
+        const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
+        areaLineConfigs[areaIdx] = {
+          linesPerRow: Math.max(1, lineRows.length),
+          lineOrientations: lineRows.map(r => {
+            const s = existingPanels.find(p => p.row === r)
+            return (s?.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal'
+          }),
+        }
+        existingPanels.forEach(p => {
+          if (p.trapezoidId && trapezoidConfigs[p.trapezoidId]) {
+            groupTrapConfigs[p.trapezoidId] = trapezoidConfigs[p.trapezoidId]
+          }
+        })
+      })
+    }
+
+    let panelId = allPanels.length > 0 ? Math.max(...allPanels.map(p => p.id)) + 1 : 1
     effectiveRectAreas.forEach((area, areaIdx) => {
+      if (_onlyAreaIdx !== undefined && areaIdx !== _onlyAreaIdx) return
       const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
       const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
       const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
@@ -739,7 +780,7 @@ export function useProjectState() {
         filtered = [computed[0]]
       }
 
-      newPanelGrid[area.label] = buildPanelGrid(area, computed, filtered)
+      newPanelGrid[area.label] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
@@ -865,6 +906,53 @@ export function useProjectState() {
     })
   }
 
+  // After a project load (computePanels skipped), re-derive col/coveredCols/row for each
+  // loaded panel by matching it to the closest computed panel from computePolygonPanels.
+  // This ensures key lookups in buildPanelGrid are consistent with fresh geometry,
+  // without resetting the panel's pixel positions.
+  const reSyncLoadedPanelCols = () => {
+    if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return
+    const dx = referenceLine.end.x - referenceLine.start.x
+    const dy = referenceLine.end.y - referenceLine.start.y
+    const pixelLength = Math.sqrt(dx * dx + dy * dy)
+    if (pixelLength <= 0) return
+    const ratio = parseFloat(referenceLineLengthCm) / pixelLength
+    const spec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+
+    setPanels(prev => {
+      const next = [...prev]
+      rectAreas.forEach((area, areaIdx) => {
+        const computed = computePolygonPanels(area, ratio, spec)
+        if (!computed.length) return
+        const halfW = computed[0].width / 2
+        const threshold = halfW * 3  // generous: covers one full panel-pitch
+        next.forEach((p, i) => {
+          if (p.area !== areaIdx) return
+          const pcx = p.x + p.width / 2
+          const pcy = p.y + p.height / 2
+          let best = null, bestDist = Infinity
+          computed.forEach(cp => {
+            const d = Math.sqrt((pcx - cp.cx) ** 2 + (pcy - cp.cy) ** 2)
+            if (d < bestDist) { bestDist = d; best = cp }
+          })
+          if (best && bestDist < threshold) {
+            next[i] = { ...p, row: best.row, col: best.col, coveredCols: best.coveredCols }
+          }
+        })
+      })
+      // Rebuild panelGrid with the synced panel data
+      const newGrid = {}
+      rectAreas.forEach((area, areaIdx) => {
+        const computed = computePolygonPanels(area, ratio, spec)
+        const areaFiltered = next.filter(p => p.area === areaIdx)
+        newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, ratio)
+      })
+      setPanelGrid(newGrid)
+      logPanelGrid(newGrid, 'loaded (col-synced)')
+      return next
+    })
+  }
+
   const rebuildPanelGrid = (updatedPanels) => {
     if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return
     const dx = referenceLine.end.x - referenceLine.start.x
@@ -877,14 +965,21 @@ export function useProjectState() {
     rectAreas.forEach((area, areaIdx) => {
       const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
       const areaFiltered = updatedPanels.filter(p => p.area === areaIdx)
-      newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered)
+      newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
     })
     setPanelGrid(newGrid)
     logPanelGrid(newGrid, 'panel deleted/rotated')
   }
 
-  // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change
+  // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
+  // Skipped once after a project load so imported panel positions (including moves) are preserved.
   useEffect(() => {
+    if (skipRecomputeRef.current) {
+      const reason = skipRecomputeRef.current
+      skipRecomputeRef.current = null
+      if (reason === 'load') reSyncLoadedPanelCols()
+      return
+    }
     computePanels()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes])

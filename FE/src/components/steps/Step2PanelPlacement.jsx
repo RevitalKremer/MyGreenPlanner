@@ -209,7 +209,17 @@ export default function Step2PanelPlacement({
     rebuildPanelGrid?.(newPanels)
   }
 
-  const nudgeRow = (dx, dy) => {
+  const nudgeRow = (alongCm, acrossCm) => {
+    if (!selectedPanels.length) return
+    const ratio = refinedArea?.pixelToCmRatio
+    if (!ratio || ratio <= 0) return
+    const firstPanel = panels.find(p => selectedPanels.includes(p.id))
+    const areaIdx = firstPanel?.area ?? 0
+    const rotDeg = rectAreas[areaIdx]?.rotation ?? 0
+    const rotRad = rotDeg * Math.PI / 180
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad)
+    const dx = (alongCm * cosR - acrossCm * sinR) / ratio
+    const dy = (alongCm * sinR + acrossCm * cosR) / ratio
     setPanels(prev => prev.map(p =>
       selectedPanels.includes(p.id) ? { ...p, x: p.x + dx, y: p.y + dy } : p
     ))

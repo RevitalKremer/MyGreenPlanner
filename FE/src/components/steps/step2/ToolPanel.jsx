@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
-const NUDGE_PX = 5
+const NUDGE_CM = 2.5
 
 export default function ToolPanel({
   activeTool, handleToolChange,
@@ -54,7 +54,7 @@ export default function ToolPanel({
 
   return (
     <div style={{
-      position: 'absolute', top: '20px', right: '20px',
+      position: 'absolute', top: '20px', left: '20px',
       width: collapsed ? '32px' : '225px', minHeight: '36px', overflow: 'hidden',
       maxHeight: collapsed ? 'none' : 'calc(100vh - 120px)', overflowY: collapsed ? 'hidden' : 'auto',
       padding: '1rem',
@@ -63,7 +63,7 @@ export default function ToolPanel({
       border: `2px solid ${PRIMARY}`,
     }}>
       <button onClick={() => setCollapsed(c => !c)} style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', padding: 0, background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: TEXT_PLACEHOLDER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {collapsed ? '‹' : '›'}
+        {collapsed ? '›' : '‹'}
       </button>
       {!collapsed && <>
 
@@ -176,15 +176,15 @@ export default function ToolPanel({
                         <div style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT, marginBottom: '0.35rem' }}>{t('step2.tool.fineAdjust')}</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 30px)', gap: '0.2rem', justifyContent: 'center' }}>
                           <div />
-                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(0, -NUDGE_PX)}>↑</button>
+                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(0, -NUDGE_CM)}>↑</button>
                           <div />
-                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(-NUDGE_PX, 0)}>←</button>
+                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(-NUDGE_CM, 0)}>←</button>
                           <div style={{ ...nudgeBtnStyle, background: BG_MID, cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: BORDER_MID, display: 'block' }} />
                           </div>
-                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(NUDGE_PX, 0)}>→</button>
+                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(NUDGE_CM, 0)}>→</button>
                           <div />
-                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(0, NUDGE_PX)}>↓</button>
+                          <button style={nudgeBtnStyle} onClick={() => nudgeRow(0, NUDGE_CM)}>↓</button>
                           <div />
                         </div>
                         <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.4rem' }}>
