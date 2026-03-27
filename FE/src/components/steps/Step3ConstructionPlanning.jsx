@@ -7,8 +7,9 @@ import {
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
-import { computeRowRailLayout, countLargeGaps, initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
-import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
+import { initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
+import { computeAreaRailData } from '../../utils/railService'
+import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth, PANEL_DEPTH_HORIZONTAL, PANEL_GAP_CM } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/constants'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -40,7 +41,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
+export default function Step3ConstructionPlanning({ panels = [], panelGrid = {}, refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
   const { t } = useLang()
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
@@ -221,7 +222,13 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   // ─── Construction calculations ────────────────────────────────────────────
 
   const rowConstructions = useMemo(() => {
-    const pixelToCmRatio = refinedArea?.pixelToCmRatio || null
+    const spec = (() => {
+      const p = panels.find(p => p.widthCm && p.heightCm)
+      return p
+        ? { widthCm: Math.min(p.widthCm, p.heightCm), lengthCm: Math.max(p.widthCm, p.heightCm) }
+        : { widthCm: 113.4, lengthCm: 238.2 }
+    })()
+
     const rcs = rowKeys.map((areaKey, i) => {
       const panelCount = rowPanelCounts[areaKey] || 1
       const globalCfg  = refinedArea?.panelConfig || {}
@@ -242,22 +249,15 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const railOffsetCm = lineRails[0]?.[0] ?? 0
       const frontLegH    = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad0) - crossRailH0 * Math.cos(angleRad0))
 
-      let measuredRowLength, measuredLineDepth, numLargeGaps = 0, numRailConnectors = 0
-      if (pixelToCmRatio) {
-        const rowPanels = panels.filter(p => (p.area ?? p.row ?? 'unassigned') === areaKey)
-        const rl = rowPanels.length > 0 ? computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: railOverhang, stockLengths: s.stockLengths }) : null
-        if (rl?.frame?.localBounds) {
-          const { minX, maxX, minY, maxY } = rl.frame.localBounds
-          measuredRowLength = (maxX - minX) * pixelToCmRatio + 2 * railOverhang
-          measuredLineDepth = (maxY - minY) * pixelToCmRatio
-        }
-        if (rl?.panelLocalRects) {
-          numLargeGaps = countLargeGaps(rl.panelLocalRects, pixelToCmRatio)
-        }
-        if (rl?.rails) {
-          numRailConnectors = rl.rails.reduce((sum, r) => sum + Math.max(0, (r.stockSegments?.length ?? 1) - 1), 0)
-        }
-      }
+      const areaLabel = areas[areaKey]?.label
+      const areaGrid  = areaLabel ? panelGrid[areaLabel] : null
+      const { rails, numLargeGaps } = areaGrid
+        ? computeAreaRailData(areaGrid, spec, { lineRails, overhangCm: railOverhang, stockLengths: s.stockLengths })
+        : { rails: [], numLargeGaps: 0 }
+
+      const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.endCm - r.startCm)) : undefined
+      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, lineOrientations.length) : undefined
+      const numRailConnectors  = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegments.length - 1), 0)
 
       const computedBaseLength = computeBaseLengthFromRails(
         lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li])
@@ -278,11 +278,12 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       return { ...rc, numRails, linesPerRow, numLargeGaps, numRailConnectors }
     })
     return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels, areaTrapezoidMap, getTrapBasesSettings])
+  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels, panelGrid, areas, areaTrapezoidMap, getTrapBasesSettings])
 
   useEffect(() => {
     onBOMDataChange?.({ rowConstructions, rowLabels })
   }, [rowConstructions, rowLabels])
+
 
 const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
