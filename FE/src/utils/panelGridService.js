@@ -24,13 +24,13 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
       return inFiltered ? (isPortrait ? 'V' : 'H') : (isPortrait ? 'EV' : 'EH')
     })
   })
-  const xSide = area.xDir === 'rtl' ? 'right' : 'left'
-  const ySide = area.yDir === 'btt' ? 'bottom' : 'top'
+  const xCode = area.xDir === 'rtl' ? 'R' : 'L'
+  const yCode = area.yDir === 'btt' ? 'B' : 'T'
 
   // ── rowPositions: absolute cm from start corner to leading edge of each cell ──
   const rowPositions = buildRowPositions(area, computed, filtered, pixelToCmRatio)
 
-  const result = { startCorner: `${xSide}-${ySide}`, areaAngle: area.rotation ?? 0, rows }
+  const result = { startCorner: `${yCode}${xCode}`, areaAngle: area.rotation ?? 0, rows }
   if (rowPositions) result.rowPositions = rowPositions
   return result
 }
