@@ -26,6 +26,7 @@ export default function RailLayoutTab({
   printMode = false,
   trapSettingsMap = {},
   trapLineRailsMap = {},
+  railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
 }) {
   const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
@@ -52,10 +53,10 @@ export default function RailLayoutTab({
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
-  const railLayouts = useMemo(() =>
-    rowKeys.map(rowKey => computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, railConfig)),
-    [rowKeys, rowGroups, pixelToCmRatio, railConfig]
-  )
+  const railLayouts = useMemo(() => {
+    if (railLayoutsProp) return railLayoutsProp
+    return rowKeys.map(rowKey => computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, railConfig))
+  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverMm, 0) ?? 0), 0)
