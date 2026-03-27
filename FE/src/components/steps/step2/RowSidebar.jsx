@@ -83,16 +83,6 @@ export default function RowSidebar({
           </div>
           <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.frontH')}</div>
-              <input
-                type="number" min="0" max="200" step="1"
-                value={panelFrontHeight ?? ''}
-                onChange={e => setPanelFrontHeight?.(e.target.value)}
-                style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
-                placeholder={t('step2.sidebar.frontHPlaceholder')}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.angle')}</div>
               <input
                 type="number" min="0" max="30" step="1"
@@ -100,6 +90,16 @@ export default function RowSidebar({
                 onChange={e => setPanelAngle?.(e.target.value)}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
                 placeholder={t('step2.sidebar.angleRange')}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.frontH')}</div>
+              <input
+                type="number" min="0" max="200" step="1"
+                value={panelFrontHeight ?? ''}
+                onChange={e => setPanelFrontHeight?.(e.target.value)}
+                style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
+                placeholder={t('step2.sidebar.frontHPlaceholder')}
               />
             </div>
           </div>
