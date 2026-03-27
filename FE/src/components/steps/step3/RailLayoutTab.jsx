@@ -248,7 +248,6 @@ export default function RailLayoutTab({
                       lineRails={lineRails}
                       panelDepthsCm={panelDepthsCm}
                       keepSymmetry={keepSymmetry}
-                      barRightX={PAD_LEFT - 100}
                       toSvg={toSvg}
                       pixelToCmRatio={pixelToCmRatio}
                       sc={sc}

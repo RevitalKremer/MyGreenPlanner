@@ -353,7 +353,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     }))
   }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings, areas, rowKeys])
 
-  // lineRails for the selected row (for RailLayoutTab / sidebar widget)
+  // lineRails for the selected row (for sidebar widgets / spacing display / detail tab)
+  // These depend on effectiveSelectedTrapId so the sidebar reflects the selected trapezoid.
   const selectedLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
     if (areaKey == null) return ['vertical']
@@ -369,6 +370,25 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   const selectedLinePanelDepths = useMemo(() =>
     selectedLineOrientations.map(o => lineSlopeDepth(o)),
     [selectedLineOrientations]
+  )
+
+  // Area-level lineRails for RailLayoutTab (based on the area's first trapezoid, stable
+  // when switching between trapezoids within the same area so rail positions don't jump).
+  const areaLineOrientations = useMemo(() => {
+    const areaKey = rowKeys[selectedRowIdx]
+    if (areaKey == null) return ['vertical']
+    const firstTrapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
+    return getLineOrientations(areaKey, firstTrapId)
+  }, [selectedRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations])
+
+  const areaLineRails = useMemo(() =>
+    getLineRails(selectedRowIdx, areaLineOrientations),
+    [selectedRowIdx, areaLineOrientations, getLineRails]
+  )
+
+  const areaLinePanelDepths = useMemo(() =>
+    areaLineOrientations.map(o => lineSlopeDepth(o)),
+    [areaLineOrientations]
   )
 
   // ─── Per-trapezoid derived maps (for BasesPlanTab) ────────────────────────
@@ -591,9 +611,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 panels={panels} refinedArea={refinedArea}
                 selectedRowIdx={selectedRowIdx}
                 settings={getSettings(selectedRowIdx)}
-                lineRails={selectedLineRails}
-                lineOrientations={selectedLineOrientations}
-                panelDepthsCm={selectedLinePanelDepths}
+                lineRails={areaLineRails}
+                panelDepthsCm={areaLinePanelDepths}
                 keepSymmetry={getSettings(selectedRowIdx).keepSymmetry ?? true}
                 onLineRailsChange={(newRails) => updateLineRails(selectedRowIdx, newRails)}
                 onApplyRailsToAll={() => applySection(selectedRowIdx, ['lineRails'])}

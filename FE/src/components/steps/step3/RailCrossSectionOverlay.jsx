@@ -1,26 +1,30 @@
 import { useRef, useCallback, useState } from 'react'
 import { TEXT_SECONDARY, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID } from '../../../styles/colors'
-const BAR_W      = 14
-const HANDLE_W   = 10
-const HANDLE_H   = 10
+import { localToScreen } from '../../../utils/railLayoutService'
+
+const BAR_W   = 14  // SVG pixels wide
+const BAR_GAP = 6   // SVG pixels gap between panels and bar
+const HANDLE_W = 10
+const HANDLE_H = 10
 
 const snap  = (v) => Math.round(v * 10) / 10
 const clamp = (v, mn, mx) => Math.min(mx, Math.max(mn, v))
 
 // Rendered as <g> elements inside the parent SVG.
-// barRightX: SVG x position of the bar's right edge (placed left of panel area).
-// rl:        result of computeRowRailLayout for the selected row.
-// lineRails: { [lineIdx]: [offsetCm, ...] }
-// panelDepthsCm: [cm, ...] per line
-// pixelToCmRatio, sc: for converting drag deltas to cm
-// zoom: CSS scale applied to the SVG container (for drag conversion)
-// svgRef: ref to the outer <svg> element
+// Bar is drawn along the area's local Y axis (slope direction), adjacent to
+// the left edge of the panels in local X.
+//
+// Units: panelLocalRects.localX/Y are in SCREEN PIXELS (same frame as center).
+// Rail offsets (lineRails) are in cm. Conversions:
+//   screen px → cm:  * pixelToCmRatio
+//   cm → screen px:  / pixelToCmRatio
+//   SVG px → screen px: / sc
+//   screen px → SVG px: * sc
 export default function RailCrossSectionOverlay({
   rl,
   lineRails,
   panelDepthsCm,
   keepSymmetry,
-  barRightX,
   toSvg,
   pixelToCmRatio,
   sc,
@@ -33,74 +37,73 @@ export default function RailCrossSectionOverlay({
   if (!rl) return null
 
   const { frame, panelLocalRects } = rl
-  const { center, angleRad } = frame
+  if (!frame || !panelLocalRects?.length) return null
 
-  // ─── Compute per-line SVG y-extents from panelLocalRects ─────────────────
-  // localToScreen: (lx, ly) → screen (sx, sy)
-  // screen_y = center.y + lx * sin(θ) + ly * cos(θ)
-  const lineYExtents = {}
+  const { center, angleRad } = frame
+  const cosA = Math.cos(angleRad), sinA = Math.sin(angleRad)
+
+  // Bar dimensions in screen pixels (matching the local-frame unit)
+  const barW_sc   = BAR_W   / sc   // SVG px → screen px
+  const barGap_sc = BAR_GAP / sc
+
+  // Convert local-frame (screen px) coords to SVG coords
+  const toSvgLocal = (lx_sc, ly_sc) => {
+    const s = localToScreen({ x: lx_sc, y: ly_sc }, center, angleRad)
+    return toSvg(s.x, s.y)
+  }
+
+  // ─── Per-line local extents (screen pixels) from panelLocalRects ──────────
+  // Convention (from computeRowRailLayout):
+  //   Larger localY = front of panel (lower on slope).
+  //   lineLocalExtents[li].maxY = front edge, .minY = back edge.
+  //   depth = (maxY - minY) * pixelToCmRatio
+  const lineLocalExtents = {}
   for (const pr of panelLocalRects) {
     const li = pr.line
-    // Four corners in local frame
-    const corners = [
-      [pr.localX,            pr.localY],
-      [pr.localX + pr.width, pr.localY],
-      [pr.localX,            pr.localY + pr.height],
-      [pr.localX + pr.width, pr.localY + pr.height],
-    ]
-    for (const [lx, ly] of corners) {
-      const sy = center.y + lx * Math.sin(angleRad) + ly * Math.cos(angleRad)
-      const [, svgY] = toSvg(0, sy)
-      if (!lineYExtents[li]) lineYExtents[li] = { minY: svgY, maxY: svgY }
-      else {
-        lineYExtents[li].minY = Math.min(lineYExtents[li].minY, svgY)
-        lineYExtents[li].maxY = Math.max(lineYExtents[li].maxY, svgY)
+    if (!lineLocalExtents[li]) {
+      lineLocalExtents[li] = {
+        minX: pr.localX,               maxX: pr.localX + pr.width,
+        minY: pr.localY,               maxY: pr.localY + pr.height,
       }
+    } else {
+      lineLocalExtents[li].minX = Math.min(lineLocalExtents[li].minX, pr.localX)
+      lineLocalExtents[li].maxX = Math.max(lineLocalExtents[li].maxX, pr.localX + pr.width)
+      lineLocalExtents[li].minY = Math.min(lineLocalExtents[li].minY, pr.localY)
+      lineLocalExtents[li].maxY = Math.max(lineLocalExtents[li].maxY, pr.localY + pr.height)
     }
   }
 
-  const lineIdxs = Object.keys(lineYExtents).map(Number).sort((a, b) => a - b)
-
-  // ─── Rail SVG y positions (from actual computed rail screen coords) ────────
-  // Group rails by lineIdx, map to SVG y (use midpoint of start/end)
-  const railsByLine = {}
-  for (const rail of rl.rails) {
-    const midY = (rail.screenStart.y + rail.screenEnd.y) / 2
-    const [, svgY] = toSvg(0, midY)
-    if (!railsByLine[rail.lineIdx]) railsByLine[rail.lineIdx] = []
-    railsByLine[rail.lineIdx].push({ ...rail, svgY })
-  }
-
-  const barX = barRightX - BAR_W
+  const lineIdxs = Object.keys(lineLocalExtents).map(Number).sort((a, b) => a - b)
 
   // ─── Drag ─────────────────────────────────────────────────────────────────
   const onMouseDownHandle = useCallback((e, lineIdx, railIdx) => {
     e.preventDefault()
     e.stopPropagation()
-    const svgRect  = svgRef.current.getBoundingClientRect()
-    const ext      = lineYExtents[lineIdx]
-    const depthCm  = panelDepthsCm?.[lineIdx] ?? 238.2
-    const rails    = lineRails?.[lineIdx] ?? []
+    const depthCm = panelDepthsCm?.[lineIdx] ?? 238.2
+    const rails   = lineRails?.[lineIdx] ?? []
 
     dragging.current = {
       lineIdx, railIdx,
+      startClientX: e.clientX,
       startClientY: e.clientY,
       startRails: [...rails],
-      svgRect, ext, depthCm,
+      depthCm,
     }
 
     const onMove = (me) => {
-      const { lineIdx: li, railIdx: ri, startClientY, startRails, svgRect: rect, ext: e2, depthCm: d } = dragging.current
-      // 1 client px = 1/zoom SVG px; 1 SVG px = 1/sc screen px; 1 screen px = pixelToCmRatio cm
-      // bar is flipped: dragging DOWN → offset decreases
-      const deltaCm = -((me.clientY - startClientY) / zoom) * (pixelToCmRatio / sc)
+      const { lineIdx: li, railIdx: ri, startClientX, startClientY, startRails, depthCm: d } = dragging.current
+      // Project mouse movement (client px) onto local Y axis direction (-sinA, cosA).
+      // client px / zoom = SVG px; SVG px / sc = screen px; screen px * pixelToCmRatio = cm.
+      // Moving toward front (+localY) decreases offsetCm → negate.
+      const deltaAlongY_clientPx = (me.clientX - startClientX) * (-sinA) + (me.clientY - startClientY) * cosA
+      const deltaCm = -(deltaAlongY_clientPx / zoom / sc) * pixelToCmRatio
       let newRails  = [...startRails]
       const moved   = snap(clamp(startRails[ri] + deltaCm, 0, d))
       newRails[ri]  = moved
 
       if (keepSymmetry && newRails.length === 2) {
         const offsetFromEdge = ri === 0 ? moved : d - moved
-        newRails[0] = snap(clamp(offsetFromEdge, 0, d / 2))
+        newRails[0] = snap(clamp(offsetFromEdge,     0,   d / 2))
         newRails[1] = snap(clamp(d - offsetFromEdge, d / 2, d))
       }
 
@@ -113,25 +116,33 @@ export default function RailCrossSectionOverlay({
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [rl, lineRails, panelDepthsCm, keepSymmetry, zoom, pixelToCmRatio, sc, svgRef, onLineChange])
+  }, [rl, lineRails, panelDepthsCm, keepSymmetry, zoom, pixelToCmRatio, sc, onLineChange])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Add rail ─────────────────────────────────────────────────────────────
+  // ─── Add rail (click on bar) ──────────────────────────────────────────────
   const onBarClick = useCallback((e, lineIdx) => {
     if (dragging.current) return
     e.stopPropagation()
     const svgRect = svgRef.current.getBoundingClientRect()
-    const ext     = lineYExtents[lineIdx]
+    const ext     = lineLocalExtents[lineIdx]
     const depthCm = panelDepthsCm?.[lineIdx] ?? 238.2
     const rails   = lineRails?.[lineIdx] ?? []
-    // Convert click to cm (flipped: top = max, bottom = 0)
-    const svgY = (e.clientY - svgRect.top) * (rl.frame ? 1 / zoom : 1)
-    const localOffsetCm = snap(clamp(
-      (ext.maxY - svgY) / (ext.maxY - ext.minY) * depthCm,
-      0, depthCm,
-    ))
+
+    // Click in SVG coordinates (account for CSS zoom scale on container)
+    const svgX = (e.clientX - svgRect.left) / zoom
+    const svgY = (e.clientY - svgRect.top)  / zoom
+
+    // Project SVG click onto local Y axis.
+    // Reference: top of bar at (barRight_sc, ext.minY) in local frame.
+    const barRight_sc = ext.minX - barGap_sc
+    const [refX, refY] = toSvgLocal(barRight_sc, ext.minY)
+    const deltaAlongY_svgPx = (svgX - refX) * (-sinA) + (svgY - refY) * cosA
+    // Convert SVG px delta to local screen-pixel delta, then to cm offset
+    const localY_sc = ext.minY + deltaAlongY_svgPx / sc
+    const localOffsetCm = snap(clamp((ext.maxY - localY_sc) * pixelToCmRatio, 0, depthCm))
+
     if (rails.some(r => Math.abs(r - localOffsetCm) < 5)) return
     onLineChange(lineIdx, [...rails, localOffsetCm].sort((a, b) => a - b))
-  }, [rl, lineRails, panelDepthsCm, zoom, svgRef, onLineChange])
+  }, [rl, lineRails, panelDepthsCm, zoom, svgRef, onLineChange])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Remove rail ──────────────────────────────────────────────────────────
   const removeRail = useCallback((lineIdx, railIdx, e) => {
@@ -145,52 +156,64 @@ export default function RailCrossSectionOverlay({
   return (
     <g>
       {lineIdxs.map(li => {
-        const ext     = lineYExtents[li]
-        const barH    = ext.maxY - ext.minY
-        const rails   = railsByLine[li] ?? []
-        const stored  = lineRails?.[li] ?? []
+        const ext    = lineLocalExtents[li]
+        const stored = lineRails?.[li] ?? []
+
+        // Bar: to the left of panels in local X (screen px units)
+        const barRight = ext.minX - barGap_sc
+        const barLeft  = barRight - barW_sc
+        const barMidX  = (barLeft + barRight) / 2
+
+        // Four corners of bar polygon (local screen px → SVG)
+        const [tlx, tly]  = toSvgLocal(barLeft,  ext.minY)   // back-left
+        const [trx, try_] = toSvgLocal(barRight, ext.minY)   // back-right
+        const [brx, bry]  = toSvgLocal(barRight, ext.maxY)   // front-right
+        const [blx, bly]  = toSvgLocal(barLeft,  ext.maxY)   // front-left
+
+        // Rail at offsetCm is at localY = ext.maxY - offsetCm/pixelToCmRatio
+        // (front edge at ext.maxY → offset=0; back edge at ext.minY → offset=depthCm)
+        const labelOffset = 3 / sc   // 3 SVG px in screen px
+        const railPositions = stored.map((offsetCm) => {
+          const localY = ext.maxY - offsetCm / pixelToCmRatio
+          return {
+            offsetCm,
+            left:  toSvgLocal(barLeft,           localY),
+            right: toSvgLocal(barRight,          localY),
+            mid:   toSvgLocal(barMidX,           localY),
+            label: toSvgLocal(barLeft - labelOffset, localY),
+          }
+        })
 
         return (
           <g key={li}>
-            {/* Panel depth bar */}
-            <rect
-              x={barX} y={ext.minY} width={BAR_W} height={barH}
+            {/* Panel depth bar (rotated polygon along area Y axis) */}
+            <polygon
+              points={`${tlx},${tly} ${trx},${try_} ${brx},${bry} ${blx},${bly}`}
               fill={CHART_BG} stroke={CHART_GRID} strokeWidth={0.8}
               style={{ cursor: 'crosshair' }}
               onClick={(e) => onBarClick(e, li)}
             />
 
-            {/* Rails */}
-            {rails.map((rail, ri) => {
-              const y         = rail.svgY
-              const offsetCm  = stored[ri]
+            {/* Rail lines and handles */}
+            {railPositions.map((rp, ri) => {
               const canRemove = stored.length > 2
-
               return (
-                <g key={ri}
-                  onMouseEnter={() => {}}
-                  style={{ cursor: 'ns-resize' }}
-                >
-                  {/* Rail line across bar */}
+                <g key={ri} style={{ cursor: 'ns-resize' }}>
                   <line
-                    x1={barX} y1={y} x2={barX + BAR_W} y2={y}
+                    x1={rp.left[0]} y1={rp.left[1]} x2={rp.right[0]} y2={rp.right[1]}
                     stroke={RAIL_STROKE} strokeWidth={1.5}
                     style={{ pointerEvents: 'none' }}
                   />
-
-                  {/* Offset label */}
                   <text
-                    x={barX - 3} y={y + 3}
+                    x={rp.label[0]} y={rp.label[1] + 3}
                     textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}
                     style={{ pointerEvents: 'none' }}
                   >
-                    {offsetCm?.toFixed(1)}
+                    {rp.offsetCm?.toFixed(1)}
                   </text>
-
-                  {/* Draggable + delete handle group */}
                   <DeleteHandle
-                    x={barX + BAR_W / 2 - HANDLE_W / 2}
-                    y={y - HANDLE_H / 2}
+                    x={rp.mid[0] - HANDLE_W / 2}
+                    y={rp.mid[1] - HANDLE_H / 2}
                     w={HANDLE_W} h={HANDLE_H}
                     canRemove={canRemove}
                     onMouseDown={(e) => onMouseDownHandle(e, li, ri)}
@@ -202,19 +225,27 @@ export default function RailCrossSectionOverlay({
 
             {/* Spacing annotation between outermost rails */}
             {stored.length >= 2 && (() => {
-              const y1      = rails[0]?.svgY
-              const y2      = rails[stored.length - 1]?.svgY
-              if (y1 == null || y2 == null) return null
+              const r0 = railPositions[0]
+              const rN = railPositions[stored.length - 1]
+              if (!r0 || !rN) return null
               const spacing = snap(stored[stored.length - 1] - stored[0])
-              const midY    = (y1 + y2) / 2
-              const annX    = barX - 18
+              const annX    = barLeft - 18 / sc   // 18 SVG px in screen px
+              const tickW   = 3 / sc               // 3 SVG px in screen px
+              const [a0x, a0y] = toSvgLocal(annX, ext.maxY - stored[0]             / pixelToCmRatio)
+              const [aNx, aNy] = toSvgLocal(annX, ext.maxY - stored[stored.length - 1] / pixelToCmRatio)
+              const [t0ax, t0ay] = toSvgLocal(annX - tickW, ext.maxY - stored[0]             / pixelToCmRatio)
+              const [t0bx, t0by] = toSvgLocal(annX + tickW, ext.maxY - stored[0]             / pixelToCmRatio)
+              const [tNax, tNay] = toSvgLocal(annX - tickW, ext.maxY - stored[stored.length - 1] / pixelToCmRatio)
+              const [tNbx, tNby] = toSvgLocal(annX + tickW, ext.maxY - stored[stored.length - 1] / pixelToCmRatio)
+              const midX = (a0x + aNx) / 2
+              const midY = (a0y + aNy) / 2
               return (
                 <g style={{ pointerEvents: 'none' }}>
-                  <line x1={annX + 3} y1={y1} x2={annX + 3} y2={y2} stroke={BORDER_MID} strokeWidth={0.8} />
-                  <line x1={annX}     y1={y1} x2={annX + 6} y2={y1} stroke={BORDER_MID} strokeWidth={0.8} />
-                  <line x1={annX}     y1={y2} x2={annX + 6} y2={y2} stroke={BORDER_MID} strokeWidth={0.8} />
-                  <rect x={annX - 14} y={midY - 7} width={18} height={14} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
-                  <text x={annX - 5} y={midY + 3} textAnchor="middle" fontSize={7} fill={TEXT_SECONDARY} fontWeight="700">
+                  <line x1={a0x} y1={a0y} x2={aNx} y2={aNy} stroke={BORDER_MID} strokeWidth={0.8} />
+                  <line x1={t0ax} y1={t0ay} x2={t0bx} y2={t0by} stroke={BORDER_MID} strokeWidth={0.8} />
+                  <line x1={tNax} y1={tNay} x2={tNbx} y2={tNby} stroke={BORDER_MID} strokeWidth={0.8} />
+                  <rect x={midX - 9} y={midY - 7} width={18} height={14} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
+                  <text x={midX} y={midY + 3} textAnchor="middle" fontSize={7} fill={TEXT_SECONDARY} fontWeight="700">
                     {spacing}
                   </text>
                 </g>
@@ -227,7 +258,7 @@ export default function RailCrossSectionOverlay({
   )
 }
 
-// Handle: drag to move, click (without drag) to delete.
+// ─── Handle: drag to move, click (without drag) to delete ────────────────────
 function DeleteHandle({ x, y, w, h, canRemove, onMouseDown, onDelete }) {
   const [hover, setHover] = useState(false)
   const didDrag = useRef(false)
