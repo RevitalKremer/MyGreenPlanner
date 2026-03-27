@@ -1,16 +1,15 @@
 import { useState } from 'react'
 import { PANEL_TYPES } from '../../../data/panelTypes'
 import { useLang } from '../../../i18n/LangContext'
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR } from '../../../styles/colors'
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
+import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 
 export default function RowSidebar({
-  panels, setPanels,
+  panels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
-  rows, areas, setAreas, areaLabel, getAreaKey,
+  rows, areaLabel, getAreaKey,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
-  regenerateSingleRowHandler,
-  refreshAreaTrapezoids,
   rectAreas = [],
   setRectAreas,
   panelTypes = PANEL_TYPES,
@@ -20,7 +19,13 @@ export default function RowSidebar({
   setPanelFrontHeight,
   panelAngle,
   setPanelAngle,
-  onDeleteArea,
+  selectedRow,
+  selectedTrapezoidId,
+  selectedAreaLabel,
+  selectedAreaTrapIds,
+  refinedArea,
+  resetTrapezoidConfig,
+  reassignToTrapezoid,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -157,57 +162,6 @@ export default function RowSidebar({
                         >
                           {row.length}p
                         </span>
-                        {(() => {
-                          const isLocked = rectAreas[areaKey]?.mode === 'ylocked'
-                          return (
-                            <button
-                              onClick={() => {
-                                setSelectedPanels(row.map(p => p.id))
-                                setRectAreas?.(prev => prev.map((a, idx) =>
-                                  idx === areaKey ? { ...a, mode: isLocked ? 'free' : 'ylocked' } : a
-                                ))
-                              }}
-                              title={isLocked ? 'Y-locked: drag Y to rotate. Click for free mode.' : 'Free mode: drag corners to resize. Click to lock.'}
-                              style={{ padding: '2px 4px', flexShrink: 0, background: isLocked ? BG_MID : 'none', border: `1px solid ${isLocked ? BORDER_MID : BORDER_LIGHT}`, borderRadius: '4px', cursor: 'pointer', lineHeight: 0, display: 'flex', alignItems: 'center' }}
-                            >
-                              {isLocked ? (
-                                <svg width="11" height="13" viewBox="0 0 11 13" fill="none">
-                                  <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={TEXT_DARK} />
-                                  <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0v2" stroke={TEXT_DARK} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
-                                </svg>
-                              ) : (
-                                <svg width="11" height="13" viewBox="0 0 11 13" fill="none">
-                                  <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={TEXT_VERY_LIGHT} />
-                                  <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0" stroke={TEXT_VERY_LIGHT} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
-                                </svg>
-                              )}
-                            </button>
-                          )
-                        })()}
-                        <button
-                          onClick={() => {
-                            if (onDeleteArea) {
-                              onDeleteArea(areaKey)
-                            } else {
-                              setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))
-                              setSelectedPanels([])
-                            }
-                          }}
-                          title={`Delete area ${areaLabel(areaKey, i)}`}
-                          style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${ERROR}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: ERROR, lineHeight: 1 }}
-                        >✕</button>
-                        <button
-                          onClick={() => { setSelectedPanels(row.map(p => p.id)); regenerateSingleRowHandler(areaKey) }}
-                          title={`Regenerate ${areaLabel(areaKey, i)}`}
-                          style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
-                        >↺</button>
-                        {typeof areaKey === 'number' && refreshAreaTrapezoids && !rectAreas[areaKey]?.manualTrapezoids && (
-                          <button
-                            onClick={() => refreshAreaTrapezoids(areaKey)}
-                            title={t('step2.sidebar.reSplit')}
-                            style={{ padding: '1px 5px', flexShrink: 0, background: 'none', border: `1px solid ${BORDER}`, borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: TEXT_VERY_LIGHT, lineHeight: 1 }}
-                          >⟳</button>
-                        )}
                       </div>
                       {/* Second row: trapezoid badge(s) */}
                       {!hasMultiTrap && trapIds.length === 1 && (
@@ -256,6 +210,27 @@ export default function RowSidebar({
           </div>
 
         </>
+      )}
+
+      {/* Trapezoid config — shown below areas when a row/trapezoid is selected */}
+      {selectedRow && (
+        <div style={{ marginTop: '0.75rem', borderTop: `1px solid ${BORDER_FAINT}`, paddingTop: '0.75rem' }}>
+          <TrapezoidConfigEditor
+            selectedRow={selectedRow}
+            selectedTrapezoidId={selectedTrapezoidId}
+            selectedAreaLabel={selectedAreaLabel}
+            refinedArea={refinedArea}
+            trapezoidConfigs={trapezoidConfigs}
+            getAreaKey={getAreaKey}
+            resetTrapezoidConfig={resetTrapezoidConfig}
+            selectedAreaTrapIds={selectedAreaTrapIds}
+            reassignToTrapezoid={reassignToTrapezoid}
+            panelFrontHeight={panelFrontHeight}
+            panelAngle={panelAngle}
+            rectAreas={rectAreas}
+            setRectAreas={setRectAreas}
+          />
+        </div>
       )}
       </>}
     </div>

@@ -31,10 +31,7 @@ export default function Step2PanelPlacement({
   setShowDistances,
   distanceMeasurement,
   setDistanceMeasurement,
-  generatePanelLayoutHandler,
   regenerateSingleRowHandler,
-  areas = [],
-  setAreas,
   addManualPanel,
   trapezoidConfigs,
   setTrapezoidConfigs,
@@ -54,7 +51,7 @@ export default function Step2PanelPlacement({
   recordPanelDeletion,
 }) {
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
-  const [activeTool, setActiveTool] = useState('draw')
+  const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
@@ -72,10 +69,18 @@ export default function Step2PanelPlacement({
   // Stable area index — survives panel ID changes across recomputes
   const selectedAreaIdxRef = useRef(null)
 
+  const allYLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
+
+  const handleToggleYLock = () => {
+    const newLocked = !allYLocked
+    setRectAreas(prev => prev.map(a => ({ ...a, mode: newLocked ? 'ylocked' : 'free' })))
+  }
+
   const handleAddRectArea = useCallback((area) => {
     pendingNewAreaIdxRef.current = rectAreas.length
-    onAddRectArea?.(area)
-  }, [rectAreas.length, onAddRectArea])
+    const isAllLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
+    onAddRectArea?.({ ...area, mode: isAllLocked ? 'ylocked' : 'free' })
+  }, [rectAreas, onAddRectArea])
 
   const handleDeleteArea = useCallback((areaKey) => {
     // After deletion, indices shift: next area lands at same index, or previous if it was last
@@ -170,6 +175,8 @@ export default function Step2PanelPlacement({
     : null
 
   const selectedRow = (selectedRowIndex !== null) ? rows[selectedRowIndex] : null
+  const selectedAreaIdx = selectedRow?.length ? (selectedRow[0].area ?? selectedRow[0].row ?? null) : null
+  const canRecalcTrapezoids = typeof selectedAreaIdx === 'number' && !rectAreas[selectedAreaIdx]?.manualTrapezoids
 
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
@@ -181,6 +188,11 @@ export default function Step2PanelPlacement({
     setPendingAddNextTo(false)
     setAddError(null)
     if (tool === 'measure') setShowDistances(true)
+  }
+
+  const handleSetEditMode = (mode) => {
+    if (mode === 'area') handleToolChange('area')
+    else handleToolChange('move')
   }
 
   const togglePanelOrientation = () => {
@@ -452,16 +464,13 @@ export default function Step2PanelPlacement({
         {uploadedImageData && (
           <RowSidebar
             baseline={baseline} setBaseline={setBaseline}
-            panels={panels} setPanels={setPanels}
+            panels={panels}
             selectedPanels={selectedPanels} setSelectedPanels={setSelectedPanels}
             setTrapIdOverride={setTrapIdOverride}
-            rows={rows} areas={areas} setAreas={setAreas}
+            rows={rows}
             areaLabel={areaLabel} getAreaKey={getAreaKey}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
-            regenerateSingleRowHandler={regenerateSingleRowHandler}
-            refreshAreaTrapezoids={refreshAreaTrapezoids}
-            generatePanelLayoutHandler={generatePanelLayoutHandler}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             panelTypes={panelTypes}
@@ -471,7 +480,13 @@ export default function Step2PanelPlacement({
             setPanelFrontHeight={setPanelFrontHeight}
             panelAngle={panelAngle}
             setPanelAngle={setPanelAngle}
-            onDeleteArea={handleDeleteArea}
+            selectedRow={selectedRow}
+            selectedTrapezoidId={selectedTrapezoidId}
+            selectedAreaLabel={selectedAreaLabel}
+            selectedAreaTrapIds={selectedAreaTrapIds}
+            refinedArea={refinedArea}
+            resetTrapezoidConfig={resetTrapezoidConfig}
+            reassignToTrapezoid={reassignToTrapezoid}
           />
         )}
 
@@ -479,24 +494,22 @@ export default function Step2PanelPlacement({
         {uploadedImageData && (
           <ToolPanel
             activeTool={activeTool} handleToolChange={handleToolChange}
-            selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel}
+            selectedPanels={selectedPanels}
             nudgeRow={nudgeRow} togglePanelOrientation={togglePanelOrientation}
             addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
             pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
             addError={addError} setAddError={setAddError}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
-            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds}
-            selectedTrapezoidId={selectedTrapezoidId}
-            reassignToTrapezoid={reassignToTrapezoid}
-            selectedRow={selectedRow} refinedArea={refinedArea}
-            trapezoidConfigs={trapezoidConfigs}
-            getAreaKey={getAreaKey}
-            resetTrapezoidConfig={resetTrapezoidConfig}
-            panelFrontHeight={panelFrontHeight} panelAngle={panelAngle}
-            rectAreas={rectAreas} setRectAreas={setRectAreas}
             showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
+            yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
+            onSetEditMode={handleSetEditMode}
+            selectedAreaIdx={selectedAreaIdx}
+            onDeleteArea={handleDeleteArea}
+            onResetArea={regenerateSingleRowHandler}
+            onRecalcTrapezoids={refreshAreaTrapezoids}
+            canRecalcTrapezoids={canRecalcTrapezoids}
           />
         )}
       </div>

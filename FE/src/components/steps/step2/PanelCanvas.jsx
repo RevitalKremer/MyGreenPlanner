@@ -123,7 +123,7 @@ export default function PanelCanvas({
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
-      case 'draw': return 'crosshair'
+      case 'area': return 'crosshair'
       default: return 'grab'
     }
   }
@@ -147,8 +147,8 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
-    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (draw mode only)
-    if (activeTool === 'draw') {
+    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (area mode only)
+    if (activeTool === 'area') {
       const selAreaIdx = selectedPanels.length > 0
         ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
         : null
@@ -186,7 +186,7 @@ export default function PanelCanvas({
     }
     const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
 
-    if (activeTool === 'draw') {
+    if (activeTool === 'area') {
       if (clickedPanel) {
         // Select the entire area this panel belongs to
         const areaKey = clickedPanel.area ?? clickedPanel.row
@@ -250,7 +250,7 @@ export default function PanelCanvas({
       setOverYLockArea(rectAreas.some(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices)))
     }
 
-    if (activeTool === 'draw' && drawRectStart) {
+    if (activeTool === 'area' && drawRectStart) {
       setDrawRectEnd({ x, y })
       return
     }
