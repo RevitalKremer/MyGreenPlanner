@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
-import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults } from '../services/projectsApi'
+import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 
@@ -28,7 +28,7 @@ function logPanelGrid(grid, trigger) {
   })
   console.groupEnd()
 }
-import { PANEL_TYPES, DEFAULT_PANEL_TYPE } from '../data/panelTypes'
+const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
 
 export function useProjectState() {
   // App-level screen
@@ -94,10 +94,28 @@ export function useProjectState() {
   const [cloudProjectId, setCloudProjectId] = useState(null)
 
   // Panel types — fetched from server, falls back to hardcoded list
-  const [panelTypes, setPanelTypes] = useState(PANEL_TYPES)
+  const [panelTypes, setPanelTypes] = useState([])
 
   // App defaults — fetched from app_settings table (single source of truth)
   const [appDefaults, setAppDefaults] = useState(null)
+
+  // Products — fetched from server (materials for BOM)
+  const [products, setProducts] = useState([])
+  const productByType = useMemo(() => Object.fromEntries(products.map(p => [p.type, p])), [products])
+  const altsByType = useMemo(() => {
+    const groups = {}
+    products.forEach(p => {
+      if (p.altGroup != null) {
+        if (!groups[p.altGroup]) groups[p.altGroup] = []
+        groups[p.altGroup].push(p)
+      }
+    })
+    return Object.fromEntries(
+      products
+        .filter(p => p.altGroup != null)
+        .map(p => [p.type, groups[p.altGroup].filter(a => a.type !== p.type)])
+    )
+  }, [products])
 
   // Resolved panel spec — always available (falls back to hardcoded list, then DEFAULT_PANEL_TYPE)
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
@@ -113,6 +131,13 @@ export function useProjectState() {
     fetchAppDefaults()
       .then(d => { console.log('[appDefaults] loaded:', d); setAppDefaults(d) })
       .catch(e => { console.error('[appDefaults] FAILED to load:', e) })
+    fetchProducts()
+      .then(items => setProducts(items.map(p => ({
+        type: p.type_key, pn: p.part_number ?? '', name: p.name,
+        extraPct: p.extra ? parseInt(p.extra) || 0 : 0,
+        altGroup: p.alt_group, isDefault: p.is_default,
+      }))))
+      .catch(() => { /* products stay empty */ })
   }, [])
 
   const checkBackend = async () => {
@@ -1126,6 +1151,8 @@ setPanelAngle('')
     panelSpec,
     // App defaults (from app_settings DB table)
     appDefaults,
+    // Products (materials for BOM)
+    products, productByType, altsByType,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,

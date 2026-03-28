@@ -457,6 +457,9 @@ function App() {
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
+            products={s.products}
+            productByType={s.productByType}
+            altsByType={s.altsByType}
           />
         )}
 

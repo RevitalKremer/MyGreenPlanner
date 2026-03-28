@@ -3,7 +3,9 @@ import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
-import { DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
+// panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
+// so this null sentinel should never actually be used at render time.
+const _FALLBACK_PANEL_TYPE = null
 import RowSidebar from './step2/RowSidebar'
 import ToolPanel from './step2/ToolPanel'
 import PanelCanvas from './step2/PanelCanvas'
@@ -51,7 +53,7 @@ export default function Step2PanelPlacement({
   recordPanelDeletion,
   appDefaults,
 }) {
-  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])

@@ -65,6 +65,12 @@ export async function fetchPanelTypes() {
   return res.json()
 }
 
+export async function fetchProducts() {
+  const res = await mgpRequest('/products/materials')
+  if (!res.ok) throw new Error('Failed to load products')
+  return res.json()
+}
+
 export async function fetchAppDefaults() {
   const res = await mgpRequest('/settings/defaults')
   if (!res.ok) throw new Error('Failed to load app defaults')

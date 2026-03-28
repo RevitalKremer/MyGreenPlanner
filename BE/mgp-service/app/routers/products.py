@@ -46,6 +46,28 @@ async def list_panel_types(db: AsyncSession = Depends(get_db)):
     ]
 
 
+class MaterialRead(BaseModel):
+    type_key: str
+    name: str
+    part_number: str | None
+    extra: str | None
+    alt_group: int | None
+    is_default: bool
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/materials", response_model=list[MaterialRead])
+async def list_materials(db: AsyncSession = Depends(get_db)):
+    """Return active material products (public endpoint)."""
+    result = await db.execute(
+        select(Product)
+        .where(Product.active == True, Product.product_type == 'material')
+        .order_by(Product.name)
+    )
+    return list(result.scalars().all())
+
+
 class AltMember(BaseModel):
     type_key: str
     name: str

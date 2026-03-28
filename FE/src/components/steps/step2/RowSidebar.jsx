@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { PANEL_TYPES } from '../../../data/panelTypes'
 import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
@@ -12,7 +11,7 @@ export default function RowSidebar({
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
   rectAreas = [],
   setRectAreas,
-  panelTypes = PANEL_TYPES,
+  panelTypes = [],
   panelType,
   setPanelType,
   panelFrontHeight,
