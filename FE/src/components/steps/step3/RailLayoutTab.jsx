@@ -56,8 +56,26 @@ export default function RailLayoutTab({
 
   const railLayouts = useMemo(() => {
     if (railLayoutsProp) return railLayoutsProp
-    return rowKeys.map(rowKey => computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, railConfig))
-  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig])
+    return rowKeys.map((rowKey, i) => {
+      // Use per-area lineRails from trapLineRailsMap when available (correct for non-selected areas)
+      let areaLineRails = lineRails
+      if (i !== selectedRowIdx) {
+        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
+        if (firstTrapId && trapLineRailsMap[firstTrapId]) {
+          areaLineRails = trapLineRailsMap[firstTrapId]
+        }
+      }
+      const cfg = { lineRails: areaLineRails, overhangCm: railOverhangCm, stockLengths }
+      // Use per-area settings for overhang if available
+      if (i !== selectedRowIdx) {
+        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
+        if (firstTrapId && trapSettingsMap[firstTrapId]) {
+          cfg.overhangCm = trapSettingsMap[firstTrapId].railOverhangCm ?? railOverhangCm
+        }
+      }
+      return computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, cfg)
+    })
+  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverMm, 0) ?? 0), 0)

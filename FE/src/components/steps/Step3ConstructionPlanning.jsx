@@ -682,6 +682,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 onApplyRailsToAll={() => applySection(selectedRowIdx, ['lineRails'])}
                 onResetRails={() => resetLineRails(selectedRowIdx)}
                 highlightGroup={PARAM_GROUP[highlightParam] ?? null}
+                trapLineRailsMap={trapLineRailsMap}
+                trapSettingsMap={trapSettingsMap}
                 railsComputing={railsComputing}
               />
             </div>
