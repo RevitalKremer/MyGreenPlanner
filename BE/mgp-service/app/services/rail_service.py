@@ -8,15 +8,6 @@ project data (cm measurements, no pixel coordinates).
 from __future__ import annotations
 from typing import Optional
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-DEFAULT_RAIL_OVERHANG_CM          = 4.0
-DEFAULT_RAIL_SPACING_VERTICAL_CM  = 140.0   # portrait panels
-DEFAULT_RAIL_SPACING_HORIZONTAL_CM = 70.0   # landscape panels
-DEFAULT_STOCK_LENGTHS_MM: list[int] = [6000, 4200, 3000]
-PANEL_GAP_CM                      = 2.5     # inter-panel gap (matches FE trapezoidGeometry.js)
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _infer_row_orientation(cells: list[str]) -> Optional[str]:
@@ -29,13 +20,13 @@ def _infer_row_orientation(cells: list[str]) -> Optional[str]:
     return None
 
 
-def _default_positions(cells: list[str], panel_along_cm: float) -> list[float]:
+def _default_positions(cells: list[str], panel_along_cm: float, panel_gap_cm: float) -> list[float]:
     """
     Leading-edge positions (cm from area start corner) for real panels,
     assuming uniform spacing — matches rectPanelService layout.
     """
     return [
-        i * (panel_along_cm + PANEL_GAP_CM)
+        i * (panel_along_cm + panel_gap_cm)
         for i, cell in enumerate(cells)
         if cell in ('V', 'H')
     ]
@@ -71,8 +62,11 @@ def compute_area_rails(
     panel_width_cm: float,
     panel_length_cm: float,
     line_rails: dict[str, list[float]],   # str(lineIdx) → [offsetFromLineFrontCm, ...]
-    overhang_cm: float = DEFAULT_RAIL_OVERHANG_CM,
-    stock_lengths: list[int] = None,
+    overhang_cm: float,
+    stock_lengths: list[int],
+    panel_gap_cm: float,
+    rail_spacing_v_cm: float,
+    rail_spacing_h_cm: float,
 ) -> dict:
     """
     Compute rails for one area.
@@ -81,9 +75,6 @@ def compute_area_rails(
     line_rails  — user-configured rail offsets from rear (ridge) edge per line
     Returns     — { rails: list[Rail-dict], num_large_gaps: int }
     """
-    if stock_lengths is None:
-        stock_lengths = DEFAULT_STOCK_LENGTHS_MM
-
     rows: list[list[str]] = panel_grid.get('rows', [])
     row_positions: dict = panel_grid.get('rowPositions') or {}
 
@@ -104,13 +95,13 @@ def compute_area_rails(
 
         # Leading-edge positions of real panels from area start corner
         stored = row_positions.get(str(line_idx))
-        positions = stored if stored else _default_positions(cells, panel_along_cm)
+        positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
         if not positions:
             continue
 
         # Count large gaps (only meaningful when rowPositions is stored)
         if stored:
-            threshold = PANEL_GAP_CM + 0.5
+            threshold = panel_gap_cm + 0.5
             for j in range(1, len(positions)):
                 if positions[j] - (positions[j - 1] + panel_along_cm) > threshold:
                     num_large_gaps += 1
@@ -121,10 +112,7 @@ def compute_area_rails(
         if len(stored_offsets) >= 2:
             offsets_from_front = stored_offsets
         else:
-            spacing = (
-                DEFAULT_RAIL_SPACING_HORIZONTAL_CM if orient == 'H'
-                else DEFAULT_RAIL_SPACING_VERTICAL_CM
-            )
+            spacing = rail_spacing_h_cm if orient == 'H' else rail_spacing_v_cm
             front_offset = _rail_offset_from_spacing(panel_depth_cm, spacing)
             offsets_from_front = [
                 round(front_offset, 4),

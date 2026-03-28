@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.project import Project
+from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 
@@ -63,7 +64,7 @@ def get_project_areas(project: Project) -> list:
     return (project.data or {}).get('step2', {}).get('areas', [])
 
 
-def _build_rail_inputs(data: dict, area: dict, area_idx: int, rs) -> dict:
+def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict) -> dict:
     """Extract rail computation inputs from project data (v2.0 format) for one area."""
     step2           = data.get('step2', {})
     step3           = data.get('step3', {})
@@ -88,18 +89,16 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, rs) -> dict:
                 derived.setdefault(li, []).append(off)
         line_rails = {li: sorted(offs) for li, offs in derived.items()}
 
-    stock_lengths   = global_settings.get('stockLengths', rs.DEFAULT_STOCK_LENGTHS_MM)
-    overhang_cm     = area_settings.get('railOverhangCm', rs.DEFAULT_RAIL_OVERHANG_CM)
-    panel_width_cm  = step2.get('panelWidthCm',  113.4)
-    panel_length_cm = step2.get('panelLengthCm', 238.2)
-
     return {
-        'panel_grid':      area.get('panelGrid') or {},
-        'panel_width_cm':  panel_width_cm,
-        'panel_length_cm': panel_length_cm,
-        'line_rails':      line_rails,
-        'overhang_cm':     overhang_cm,
-        'stock_lengths':   stock_lengths,
+        'panel_grid':        area.get('panelGrid') or {},
+        'panel_width_cm':    step2.get('panelWidthCm'),
+        'panel_length_cm':   step2.get('panelLengthCm'),
+        'line_rails':        line_rails,
+        'overhang_cm':       area_settings.get('railOverhangCm',  app_defaults['railOverhangCm']),
+        'stock_lengths':     global_settings.get('stockLengths',   app_defaults['stockLengths']),
+        'panel_gap_cm':      app_defaults['panelGapCm'],
+        'rail_spacing_v_cm': area_settings.get('railSpacingV',    app_defaults['railSpacingV']),
+        'rail_spacing_h_cm': area_settings.get('railSpacingH',    app_defaults['railSpacingH']),
     }
 
 
@@ -113,8 +112,16 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     areas = data.get('step2', {}).get('areas', [])
     result = []
 
+    # Load defaults from app_settings (single source of truth)
+    rows = (await db.execute(
+        select(AppSetting.key, AppSetting.value_json).where(
+            AppSetting.key.in_(['panelGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH'])
+        )
+    )).all()
+    app_defaults = {r.key: r.value_json for r in rows}
+
     for i, area in enumerate(areas):
-        computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, rs))
+        computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults))
         areas[i]['rails'] = computed['rails']
         result.append({
             'areaLabel':    area.get('label', str(i)),

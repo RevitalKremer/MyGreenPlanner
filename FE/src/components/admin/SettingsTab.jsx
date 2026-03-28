@@ -5,7 +5,7 @@ import {
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
 } from '../../styles/colors'
 
-const SECTION_LABELS = { rails: 'Rails', bases: 'Bases', detail: 'Block & Detail' }
+const SECTION_LABELS = { global: 'Global', rails: 'Rails', bases: 'Bases', detail: 'Block & Detail' }
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState([])

@@ -4,7 +4,10 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
+from sqlalchemy import select
+
 from app.database import get_db
+from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary
 from app.services import projects as project_service
@@ -151,9 +154,11 @@ async def get_rail_materials(
 
     data     = project.data or {}
     settings = data.get('settings', {})
-    stock_lengths = settings.get('globalSettings', {}).get(
-        'stockLengths', rail_service.DEFAULT_STOCK_LENGTHS_MM
-    )
+    # Load stockLengths default from app_settings
+    row = (await db.execute(
+        select(AppSetting.value_json).where(AppSetting.key == 'stockLengths')
+    )).scalar_one()
+    stock_lengths = settings.get('globalSettings', {}).get('stockLengths', row)
     areas_rails = [area.get('rails', []) for area in project_service.get_project_areas(project)]
     return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 
