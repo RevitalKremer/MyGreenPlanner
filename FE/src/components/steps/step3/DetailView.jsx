@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { PANEL_WIDTH_CM } from '../../../utils/constructionCalculator'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { PARAM_GROUP } from './constants'
@@ -33,7 +32,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const blockLengthCm   = settings.blockLengthCm   ?? 50
   const blockPunchCm   = Math.min(settings.blockPunchCm ?? 9, blockLengthCm)
   const crossRailEdgeDistCm = (settings.crossRailEdgeDistMm ?? 40) / 10
-  const panelLengthCm  = settings.panelLengthCm ?? 238.2
+  const panelLengthCm  = settings.panelLengthCm
   const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
   const diagBasePct    = (settings.diagBasePct ?? 90) / 100
   const diagOverrides  = settings.diagOverrides ?? {}
@@ -421,7 +420,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
               {trapId ?? `${rc.typeLetter}${rc.panelsPerSpan}`} — {angle}° · Panel Front {fmt(BLOCK_H_CM + heightRear + crossRailEdgeDistCm * Math.cos(angleRad) - RAIL_CM * Math.sin(angleRad))} cm
               <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
-                · Panel {fmt(panelLengthCm)}×{fmt(PANEL_WIDTH_CM)} cm
+                · Panel {fmt(panelLengthCm)}×{fmt(settings.panelWidthCm)} cm
               </span>
             </div>
 

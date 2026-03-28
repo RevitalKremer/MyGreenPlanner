@@ -17,7 +17,7 @@ export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
 export function initDefaultLineRails(lineOrientations, panelDepthsCm) {
   const result = {}
   lineOrientations.forEach((orientation, i) => {
-    const depth = panelDepthsCm[i] ?? 238.2
+    const depth = panelDepthsCm[i]
     const spacing = orientation === 'horizontal'
       ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM
       : DEFAULT_RAIL_SPACING_VERTICAL_CM
@@ -47,7 +47,7 @@ export function localToScreen(point, center, angleRad) {
 
 // Detect orientation from panel physical dimensions
 export function getPanelOrientation(panel) {
-  return (panel.widthCm ?? 113.4) < (panel.heightCm ?? 238.2) ? 'PORTRAIT' : 'LANDSCAPE'
+  return panel.widthCm < panel.heightCm ? 'PORTRAIT' : 'LANDSCAPE'
 }
 
 // Split a length in mm into stock segments (greedy, largest-first)

@@ -13,6 +13,7 @@ export default function TrapezoidConfigEditor({
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
   panelGapCm,
+  panelSpec,
 }) {
   if (!selectedRow) return null
 
@@ -38,7 +39,7 @@ export default function TrapezoidConfigEditor({
     if (!rowMap.has(r)) rowMap.set(r, p)
   })
   const derivedRows = [...rowMap.entries()].sort(([a], [b]) => Number(a) - Number(b))
-  const derivedOrients = derivedRows.map(([, p]) => (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal')
+  const derivedOrients = derivedRows.map(([, p]) => p.heightCm > 150 ? 'vertical' : 'horizontal')
 
   // For auto-split trapezoids, use stored lineOrientations which include empty-* ghost rows.
   // Fall back to derived from actual panels for manual/legacy trapezoids.
@@ -46,12 +47,12 @@ export default function TrapezoidConfigEditor({
   const effectiveLineOrientations = (storedOrients?.length > 0) ? storedOrients : derivedOrients
   const effectiveLinesPerRow = effectiveLineOrientations.length
 
-  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow, panelGapCm)
+  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow, panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
 
   // Cross-section SVG geometry
   const W = 130, H = 62, groundY = H - 8, fX = 15
   const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
-    .map(o => isHorizontalOrientation(o) ? 113.4 : 238.2)
+    .map(o => isHorizontalOrientation(o) ? panelSpec.widthCm : panelSpec.lengthCm)
   const angleRad = angle * Math.PI / 180
   const totalHoriz = totalSlope * Math.cos(angleRad)
   const scaleW = totalHoriz > 0 ? (W - 30) / totalHoriz : 1

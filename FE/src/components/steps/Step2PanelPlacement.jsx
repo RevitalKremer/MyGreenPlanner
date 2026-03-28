@@ -305,7 +305,7 @@ export default function Step2PanelPlacement({
     if (sortedRows.length === 0) return
 
     const autoOrients = sortedRows.map(([, p]) =>
-      (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal'
+      p.heightCm > 150 ? 'vertical' : 'horizontal'
     )
     const autoLPR = sortedRows.length
 
@@ -425,7 +425,7 @@ export default function Step2PanelPlacement({
     const rowIds = selectedRow.map(p => p.id)
     setPanels(prev => prev.map(p => {
       if (!rowIds.includes(p.id)) return p
-      const depthCm = p.heightCm || 238.2
+      const depthCm = p.heightCm
       const newH = (depthCm * Math.cos(angleRad)) / refinedArea.pixelToCmRatio
       const cy = p.y + p.height / 2
       return { ...p, height: newH, y: cy - newH / 2 }

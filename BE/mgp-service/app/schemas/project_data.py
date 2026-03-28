@@ -41,8 +41,8 @@ class ProjectSettings(BaseModel):
     name: str
     location: Optional[str] = None
     panelType: str = 'AIKO-G670-MCH72Mw'
-    panelWidthCm: float = 113.4     # short side (portrait width / landscape height)
-    panelLengthCm: float = 238.2    # long side  (portrait height / landscape width)
+    panelWidthCm: float              # short side (portrait width / landscape height)
+    panelLengthCm: float             # long side  (portrait height / landscape width)
     globalSettings: GlobalSettings = Field(default_factory=GlobalSettings)
 
 

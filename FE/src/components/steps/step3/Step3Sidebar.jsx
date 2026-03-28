@@ -162,10 +162,11 @@ export default function Step3Sidebar({
         : lineOrientations?.some(o => o !== 'horizontal' && o !== 'empty')
       if (!hasLine) return null
 
+      const s = getSettings(selectedRowIdx)
       const panelDepth = panelDepthsCm?.find((_, i) => {
         const o = lineOrientations?.[i]
         return isH ? o === 'horizontal' : (o !== 'horizontal' && o !== 'empty')
-      }) ?? (isH ? 113.4 : 238.2)
+      }) ?? (isH ? s.panelWidthCm : s.panelLengthCm)
       const maxVal = Math.round(0.9 * panelDepth)
       const value  = (isH ? derivedRailSpacings?.horizontal : derivedRailSpacings?.vertical) ?? param.default
 

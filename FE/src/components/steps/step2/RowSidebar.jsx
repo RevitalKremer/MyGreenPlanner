@@ -231,6 +231,7 @@ export default function RowSidebar({
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             panelGapCm={panelGapCm}
+            panelSpec={panelTypes.find(t => t.id === panelType) ?? panelTypes[0]}
           />
         </div>
       )}

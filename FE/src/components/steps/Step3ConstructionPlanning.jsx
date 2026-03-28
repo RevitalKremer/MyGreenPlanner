@@ -8,7 +8,7 @@ import {
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import { initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
-import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth, PANEL_DEPTH_HORIZONTAL } from '../../utils/trapezoidGeometry'
+import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/constants'
 import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -40,9 +40,11 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null, railsComputing = false, onRailSettingsCommit, appDefaults }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null, railsComputing = false, onRailSettingsCommit, appDefaults, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
+  const panelLengthCm = panelSpec.lengthCm
+  const panelWidthCm  = panelSpec.widthCm
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState('areas')
@@ -65,7 +67,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     onSettingsChange?.(globalSettings, areaSettings)
   }, [globalSettings, areaSettings])
 
-  const getSettings = (areaIdx) => ({ ...globalSettings, ...(areaSettings[areaIdx] || {}) })
+  const getSettings = (areaIdx) => ({ panelLengthCm, panelWidthCm, ...globalSettings, ...(areaSettings[areaIdx] || {}) })
 
   const areaLabel = useCallback((areaKey, i) => {
     const g = areas[areaKey]?.label
@@ -216,7 +218,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     if (stored && Object.keys(stored).length === lineOrientations.length) return stored
     const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
     if (fromBE) return fromBE
-    const depths = lineOrientations.map(o => lineSlopeDepth(o))
+    const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
     return initDefaultLineRails(lineOrientations, depths)
   }, [areaSettings, getLineRailsFromBE])
 
@@ -281,17 +283,19 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const numLargeGaps = beAreaData?.numLargeGaps ?? 0
 
       const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.endCm - r.startCm)) : undefined
-      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, lineOrientations.length, panelGapCm) : undefined
+      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, lineOrientations.length, panelGapCm, panelLengthCm, panelWidthCm) : undefined
       const numRailConnectors  = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegments.length - 1), 0)
 
       const computedBaseLength = computeBaseLengthFromRails(
-        lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li]), panelGapCm
+        lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li], panelLengthCm, panelWidthCm), panelGapCm
       )
 
       const numRails    = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
       const linesPerRow = Object.keys(lineRails).length
       const rc = computeRowConstruction(panelCount, angle, frontLegH, {
         panelGapCm,
+        panelWidthCm,
+        panelLengthCm,
         railOverhang,
         maxSpan,
         railOffsetCm,
@@ -328,7 +332,6 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const trapBases1  = getTrapBasesSettings(trapId)
     const railOverhang = s.railOverhangCm
     const maxSpan      = (trapBases1.spacingMm ?? 2000) / 10
-    const portraitDepthCm = s.panelLengthCm ?? 238.2
     const angleRad1    = angle * Math.PI / 180
     const crossRailH1  = (s.crossRailEdgeDistMm ?? 40) / 10
 
@@ -338,15 +341,17 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const frontLegH        = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad1) - crossRailH1 * Math.cos(angleRad1))
 
     const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
-      sum + (isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm) + (i > 0 ? panelGapCm : 0), 0)
+      sum + (isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm) + (i > 0 ? panelGapCm : 0), 0)
 
     const computedBaseLength = computeBaseLengthFromRails(
       lineOrientations, lineRails, angleRad1,
-      (li) => isHorizontalOrientation(lineOrientations[li]) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm, panelGapCm
+      (li) => lineSlopeDepth(lineOrientations[li], panelLengthCm, panelWidthCm), panelGapCm
     )
 
     const [rc] = assignTypes([computeRowConstruction(1, angle, frontLegH, {
       panelGapCm,
+      panelWidthCm,
+      panelLengthCm,
       railOverhang,
       maxSpan,
       lineDepthCm,
@@ -369,11 +374,9 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const areaGroup2 = areas[areaKey2] || {}
     const linesPerRow = override.linesPerRow ?? areaGroup2.linesPerRow ?? globalCfg.linesPerRow ?? 1
     const lineOrientations = (override.lineOrientations ?? areaGroup2.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
-    const s = getSettings(selectedRowIdx)
-    const portraitDepthCm = s.panelLengthCm ?? 238.2
 
     return lineOrientations.map((o, i) => ({
-      depthCm: isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
+      depthCm: isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
       gapBeforeCm: i === 0 ? 0 : panelGapCm,
       isEmpty: isEmptyOrientation(o),
       isHorizontal: isHorizontalOrientation(o),
@@ -395,7 +398,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   )
 
   const selectedLinePanelDepths = useMemo(() =>
-    selectedLineOrientations.map(o => lineSlopeDepth(o)),
+    selectedLineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm)),
     [selectedLineOrientations]
   )
 
@@ -414,7 +417,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   )
 
   const areaLinePanelDepths = useMemo(() =>
-    areaLineOrientations.map(o => lineSlopeDepth(o)),
+    areaLineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm)),
     [areaLineOrientations]
   )
 
@@ -459,17 +462,15 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
   const trapPanelLinesMap = useMemo(() => {
     const map = {}
     const globalCfg = refinedArea?.panelConfig || {}
-    rowKeys.forEach((areaKey, rowIdx) => {
+    rowKeys.forEach((areaKey) => {
       const trapIdsList = areaTrapezoidMap[areaKey] || []
       const areaGroup   = areas[areaKey] || {}
-      const s           = getSettings(rowIdx)
-      const portraitDepthCm = s.panelLengthCm ?? 238.2
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
         const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
         const lineOrientations = (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
         map[trapId] = lineOrientations.map((o, i) => ({
-          depthCm:     isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : portraitDepthCm,
+          depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : panelGapCm,
           isEmpty:     isEmptyOrientation(o),
           isHorizontal: isHorizontalOrientation(o),
@@ -535,7 +536,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         if (areaIdx === selectedRowIdx) return
         const trapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
         const orientations = getLineOrientations(areaKey, trapId)
-        const depths = orientations.map(o => lineSlopeDepth(o))
+        const depths = orientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
         const newRails = {}
         orientations.forEach((o, li) => {
           const isH = isHorizontalOrientation(o)

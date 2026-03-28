@@ -79,7 +79,7 @@ export default function RailCrossSectionOverlay({
   const onMouseDownHandle = useCallback((e, lineIdx, railIdx) => {
     e.preventDefault()
     e.stopPropagation()
-    const depthCm = panelDepthsCm?.[lineIdx] ?? 238.2
+    const depthCm = panelDepthsCm[lineIdx]
     const rails   = lineRails?.[lineIdx] ?? []
 
     dragging.current = {
@@ -124,7 +124,7 @@ export default function RailCrossSectionOverlay({
     e.stopPropagation()
     const svgRect = svgRef.current.getBoundingClientRect()
     const ext     = lineLocalExtents[lineIdx]
-    const depthCm = panelDepthsCm?.[lineIdx] ?? 238.2
+    const depthCm = panelDepthsCm[lineIdx]
     const rails   = lineRails?.[lineIdx] ?? []
 
     // Click in SVG coordinates (account for CSS zoom scale on container)

@@ -428,6 +428,7 @@ function App() {
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             appDefaults={s.appDefaults}
+            panelSpec={s.panelSpec}
           />
         </div>
 

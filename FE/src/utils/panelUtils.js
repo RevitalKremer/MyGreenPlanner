@@ -7,7 +7,7 @@ import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry
  * @param {Object} baseline - User-drawn baseline with p1 and p2 coordinates
  * @returns {Array} Array of generated panel objects
  */
-export const generatePanelLayout = (refinedArea, baseline, singleRow = false, panelGapCm) => {
+export const generatePanelLayout = (refinedArea, baseline, singleRow = false, panelGapCm, panelSpec) => {
   if (!refinedArea || !refinedArea.polygon || !refinedArea.pixelToCmRatio) {
     console.error('Missing configuration data from Step 2')
     return []
@@ -25,8 +25,8 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false, pa
   const polygonCoords = polygon.coordinates || polygon
   
   // Panel dimensions in cm (from selected panel type)
-  const panelLengthCm = 238.2
-  const panelWidthCm = 113.4
+  const panelLengthCm = panelSpec.lengthCm
+  const panelWidthCm = panelSpec.widthCm
   const rowSpacingCm = backHeight * 1.5
   
   // Convert to pixels
@@ -338,12 +338,12 @@ function findTopmostInRoof(hw, hh, rotation, polygonCoords, existingPanels) {
   return null
 }
 
-export const createManualPanel = (refinedArea, baseline, existingPanels, roofPolygon) => {
+export const createManualPanel = (refinedArea, baseline, existingPanels, roofPolygon, panelSpec) => {
   if (!refinedArea || !refinedArea.pixelToCmRatio) return null
 
   const { pixelToCmRatio, panelConfig } = refinedArea
-  const panelLengthCm = 238.2
-  const panelWidthCm  = 113.4
+  const panelLengthCm = panelSpec.lengthCm
+  const panelWidthCm  = panelSpec.widthCm
   const angle         = panelConfig?.angle || 0
   const angleRad      = angle * (Math.PI / 180)
   const panelHeightPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio

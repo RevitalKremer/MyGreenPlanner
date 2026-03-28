@@ -11,7 +11,7 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
   const SC = 2.2
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
   const blockHeightCm  = settings.blockHeightCm  ?? 30
-  const panelLengthCm  = settings.panelLengthCm  ?? 238.2
+  const panelLengthCm  = settings.panelLengthCm
   const baseOverhangCm = settings.baseOverhangCm ?? 0
   const { heightRear, heightFront, baseLength, angle } = rc
 

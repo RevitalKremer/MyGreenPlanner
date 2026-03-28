@@ -1,7 +1,5 @@
 // Pure panel fill computation for rect/polygon areas.
 
-const DEFAULT_LENGTH_CM = 238.2  // long dimension
-const DEFAULT_WIDTH_CM  = 113.4  // short dimension
 
 /**
  * Compute panels that fill a rectangle in image pixel space.
@@ -19,8 +17,8 @@ const DEFAULT_WIDTH_CM  = 113.4  // short dimension
 export function computeRectPanels(rect, cmPerPixel, panelSpec, panelGapCm) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
   const { cx, cy, width, height, rotation = 0, xDir = 'ltr', yDir = 'ttb' } = rect
-  const pLen = panelSpec?.lengthCm ?? DEFAULT_LENGTH_CM
-  const pWid = panelSpec?.widthCm  ?? DEFAULT_WIDTH_CM
+  const pLen = panelSpec.lengthCm
+  const pWid = panelSpec.widthCm
 
   const gapPx      = panelGapCm / cmPerPixel
   const portraitW  = pWid / cmPerPixel
@@ -137,8 +135,8 @@ function pointInPolygon(px, py, polygon) {
 export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
   const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr' } = area
-  const pLen = panelSpec?.lengthCm ?? DEFAULT_LENGTH_CM
-  const pWid = panelSpec?.widthCm  ?? DEFAULT_WIDTH_CM
+  const pLen = panelSpec.lengthCm
+  const pWid = panelSpec.widthCm
   if (!vertices || vertices.length < 3) return []
 
   const rotRad = (rotation * Math.PI) / 180

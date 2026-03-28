@@ -44,9 +44,6 @@ import {
   DEFAULT_BASE_OVERHANG_CM,
 } from './basePlanService'
 
-// Panel physical dimensions (cm)
-const PANEL_SHORT_CM = 113.4
-const PANEL_LONG_CM  = 238.2
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -100,8 +97,8 @@ export function computeAreaBasesData(
   const panelGapCm     = settings.panelGapCm
   const customOffsets  = settings.customOffsets   // undefined → auto placement
 
-  const shortCm = panelSpec?.widthCm  ?? PANEL_SHORT_CM
-  const longCm  = panelSpec?.lengthCm ?? PANEL_LONG_CM
+  const shortCm = panelSpec.widthCm
+  const longCm  = panelSpec.lengthCm
 
   // ── Frame X extent (from panel positions, not rail overhang) ──────────────
   let autoStart = Infinity, autoEnd = -Infinity
