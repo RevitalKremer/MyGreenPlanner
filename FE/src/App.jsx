@@ -389,7 +389,6 @@ function App() {
         <div style={{ display: s.currentStep === 3 ? undefined : 'none', height: '100%' }}>
           <Step3ConstructionPlanning
             panels={s.panels}
-            panelGrid={s.panelGrid}
             refinedArea={s.refinedArea}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
