@@ -193,9 +193,9 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
  * Returns total count across all lines.
  * @param {object[]} panelLocalRects  - from rl.panelLocalRects
  * @param {number}   pixelToCmRatio
- * @param {number}   defaultGapCm     - expected gap (e.g. PANEL_GAP_CM = 2.5)
+ * @param {number}   defaultGapCm     - expected gap (panelGapCm from app_settings)
  */
-export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm = 2.5) {
+export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm) {
   if (!panelLocalRects || panelLocalRects.length < 2 || !pixelToCmRatio) return 0
 
   const threshold = defaultGapCm + 0.5   // 0.5 cm tolerance for float noise

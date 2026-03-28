@@ -218,6 +218,14 @@ function App() {
             </div>
           </div>
 
+          {/* Server status */}
+          {!s.appDefaults && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'rgba(235,87,87,0.15)', marginRight: '0.5rem' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#eb5757', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#eb5757', whiteSpace: 'nowrap' }}>Server offline</span>
+            </div>
+          )}
+
           {/* RIGHT: Icon actions (e-commerce style) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', flexShrink: 0 }}>
 
@@ -399,6 +407,7 @@ function App() {
             setPanelFrontHeight={s.setPanelFrontHeight}
             panelAngle={s.panelAngle}
             setPanelAngle={s.setPanelAngle}
+            appDefaults={s.appDefaults}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
@@ -418,6 +427,7 @@ function App() {
             onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
+            appDefaults={s.appDefaults}
           />
         </div>
 

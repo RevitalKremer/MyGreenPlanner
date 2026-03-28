@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
-import { createProject, updateProject, fetchPanelTypes } from '../services/projectsApi'
+import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults } from '../services/projectsApi'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 
@@ -96,6 +96,9 @@ export function useProjectState() {
   // Panel types — fetched from server, falls back to hardcoded list
   const [panelTypes, setPanelTypes] = useState(PANEL_TYPES)
 
+  // App defaults — fetched from app_settings table (single source of truth)
+  const [appDefaults, setAppDefaults] = useState(null)
+
 
   // ── Backend ───────────────────────────────────────────────────────────────
 
@@ -105,6 +108,9 @@ export function useProjectState() {
     fetchPanelTypes()
       .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
       .catch(() => { /* keep hardcoded fallback */ })
+    fetchAppDefaults()
+      .then(d => { console.log('[appDefaults] loaded:', d); setAppDefaults(d) })
+      .catch(e => { console.error('[appDefaults] FAILED to load:', e) })
   }, [])
 
   const checkBackend = async () => {
@@ -486,7 +492,7 @@ setPanelAngle('')
     // Fill-grid column geometry
     const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
     const pWid = panelSpec?.widthCm ?? 113.4
-    const gapPx = 2.5 / pixelToCmRatio
+    const gapPx = (appDefaults?.panelGapCm) / pixelToCmRatio
     const portraitW = pWid / pixelToCmRatio
     const portraitPitch = portraitW + gapPx
 
@@ -563,7 +569,7 @@ setPanelAngle('')
       const shape = sig.split('|')
       newTrapConfigs[trapId] = {
         angle: aAngle, frontHeight: aFront,
-        backHeight: computePanelBackHeight(aFront, aAngle, shape, shape.length),
+        backHeight: computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm),
         linesPerRow: shape.length, lineOrientations: shape,
       }
     })
@@ -709,7 +715,7 @@ setPanelAngle('')
   // Accepts an optional _rectAreasOverride so callers can pass fresh data without waiting for
   // a state update to propagate through the useEffect cycle.
   const computePanels = (_rectAreasOverride, _deletedKeysOverride, _onlyAreaIdx) => {
-    if (!referenceLine || !referenceLineLengthCm) return
+    if (!referenceLine || !referenceLineLengthCm || appDefaults?.panelGapCm == null) return
     const dx = referenceLine.end.x - referenceLine.start.x
     const dy = referenceLine.end.y - referenceLine.start.y
     const pixelLength = Math.sqrt(dx * dx + dy * dy)
@@ -784,7 +790,7 @@ setPanelAngle('')
       if (_onlyAreaIdx !== undefined && areaIdx !== _onlyAreaIdx) return
       const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
       const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
-      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
+      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
       let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
       // Remove panels manually deleted by the user
       const deletedKeys = effectiveDeletedKeys[areaIdx]
@@ -852,7 +858,7 @@ setPanelAngle('')
         // Build groupTrapConfigs for each unique trap shape
         sigToTrap.forEach((trapId, sig) => {
           const shape = sig.split('|')
-          const trapBack = computePanelBackHeight(aFront, aAngle, shape, shape.length)
+          const trapBack = computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm)
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: trapBack,
             linesPerRow: shape.length, lineOrientations: shape }
         })
@@ -868,7 +874,7 @@ setPanelAngle('')
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
         const defaultTrap = area.label
-        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, derivedLPR)
+        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, derivedLPR, appDefaults?.panelGapCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack,
@@ -942,7 +948,7 @@ setPanelAngle('')
     setPanels(prev => {
       const next = [...prev]
       rectAreas.forEach((area, areaIdx) => {
-        const computed = computePolygonPanels(area, ratio, spec)
+        const computed = computePolygonPanels(area, ratio, spec, appDefaults?.panelGapCm)
         if (!computed.length) return
         const halfW = computed[0].width / 2
         const threshold = halfW * 3  // generous: covers one full panel-pitch
@@ -963,7 +969,7 @@ setPanelAngle('')
       // Rebuild panelGrid with the synced panel data
       const newGrid = {}
       rectAreas.forEach((area, areaIdx) => {
-        const computed = computePolygonPanels(area, ratio, spec)
+        const computed = computePolygonPanels(area, ratio, spec, appDefaults?.panelGapCm)
         const areaFiltered = next.filter(p => p.area === areaIdx)
         newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, ratio)
       })
@@ -983,7 +989,7 @@ setPanelAngle('')
     const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
     const newGrid = {}
     rectAreas.forEach((area, areaIdx) => {
-      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec)
+      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
       const areaFiltered = updatedPanels.filter(p => p.area === areaIdx)
       newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
     })
@@ -1002,7 +1008,7 @@ setPanelAngle('')
     }
     computePanels()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes])
+  }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults])
 
   const handleNext = (totalSteps) => {
     if (currentStep >= totalSteps) return
@@ -1118,6 +1124,8 @@ setPanelAngle('')
     step4PlanApproval, setStep4PlanApproval,
     // Step 6 (BOM / PDF)
     step5BomDeltas, setStep5BomDeltas,
+    // App defaults (from app_settings DB table)
+    appDefaults,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,

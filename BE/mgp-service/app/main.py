@@ -2,14 +2,17 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("mgp")
 
+from sqlalchemy import select
+
 from app.config import settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db
+from app.models.setting import AppSetting
 from app.models.user import User, UserRole
 from app.routers import auth, projects, admin, products
 from app.services.auth import get_user_by_email, hash_password
@@ -93,3 +96,10 @@ app.include_router(products.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/settings/defaults")
+async def settings_defaults(db=Depends(get_db)):
+    """Public endpoint — returns {key: value_json} for all app_settings."""
+    rows = (await db.execute(select(AppSetting.key, AppSetting.value_json))).all()
+    return {r.key: r.value_json for r in rows}

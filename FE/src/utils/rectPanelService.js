@@ -2,7 +2,6 @@
 
 const DEFAULT_LENGTH_CM = 238.2  // long dimension
 const DEFAULT_WIDTH_CM  = 113.4  // short dimension
-const GAP_CM = 2.5
 
 /**
  * Compute panels that fill a rectangle in image pixel space.
@@ -17,13 +16,13 @@ const GAP_CM = 2.5
  * @param {number} cmPerPixel
  * @returns {Array} panel objects with image-pixel coords
  */
-export function computeRectPanels(rect, cmPerPixel, panelSpec) {
+export function computeRectPanels(rect, cmPerPixel, panelSpec, panelGapCm) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
   const { cx, cy, width, height, rotation = 0, xDir = 'ltr', yDir = 'ttb' } = rect
   const pLen = panelSpec?.lengthCm ?? DEFAULT_LENGTH_CM
   const pWid = panelSpec?.widthCm  ?? DEFAULT_WIDTH_CM
 
-  const gapPx      = GAP_CM / cmPerPixel
+  const gapPx      = panelGapCm / cmPerPixel
   const portraitW  = pWid / cmPerPixel
   const portraitH  = pLen / cmPerPixel
   const landscapeW = pLen / cmPerPixel
@@ -135,7 +134,7 @@ function pointInPolygon(px, py, polygon) {
  * @param {number} cmPerPixel
  * @returns {Array} panel objects with image-pixel coords
  */
-export function computePolygonPanels(area, cmPerPixel, panelSpec) {
+export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
   const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr' } = area
   const pLen = panelSpec?.lengthCm ?? DEFAULT_LENGTH_CM
@@ -161,7 +160,7 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec) {
   const minLY = Math.min(...localVerts.map(v => v.y))
   const maxLY = Math.max(...localVerts.map(v => v.y))
 
-  const gapPx      = GAP_CM / cmPerPixel
+  const gapPx      = panelGapCm / cmPerPixel
   const portraitW  = pWid / cmPerPixel
   const portraitH  = pLen / cmPerPixel
   const landscapeW = pLen / cmPerPixel

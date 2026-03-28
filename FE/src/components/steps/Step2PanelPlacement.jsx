@@ -49,6 +49,7 @@ export default function Step2PanelPlacement({
   refreshAreaTrapezoids,
   rebuildPanelGrid,
   recordPanelDeletion,
+  appDefaults,
 }) {
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
@@ -231,7 +232,8 @@ export default function Step2PanelPlacement({
   const addNextToPanel = (anchor) => {
     const angle = (anchor.rotation || 0) * Math.PI / 180
     const dirX = Math.cos(angle), dirY = Math.sin(angle)
-    const stepPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
+    const gapCm = appDefaults?.panelGapCm
+    const stepPx = refinedArea?.pixelToCmRatio ? gapCm / refinedArea.pixelToCmRatio : 5
     const anchorCx = anchor.x + anchor.width / 2, anchorCy = anchor.y + anchor.height / 2
     const hw = anchor.width / 2, hh = anchor.height / 2
     const polyCoords = roofPolygon?.coordinates || []
@@ -244,7 +246,7 @@ export default function Step2PanelPlacement({
       return dRow >= (hw + p.width / 2) || dPerp >= (hh + p.height / 2)
     })
 
-    // Try right first, then left — exactly 2.5 cm gap each time
+    // Try right first, then left — exact panel gap in each time
     let finalCx = null, finalCy = null
     for (const dir of [1, -1]) {
       const cx = anchorCx + dir * (anchor.width + stepPx) * dirX
@@ -318,7 +320,7 @@ export default function Step2PanelPlacement({
       current.frontHeight === fH
     ) return
 
-    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR).toFixed(1))
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR, appDefaults?.panelGapCm).toFixed(1))
 
     setTrapezoidConfigs(prev => ({
       ...prev,
@@ -460,6 +462,7 @@ export default function Step2PanelPlacement({
             panelSpec={panelSpec}
             rebuildPanelGrid={rebuildPanelGrid}
             recordPanelDeletion={recordPanelDeletion}
+            panelGapCm={appDefaults?.panelGapCm}
           />
         ) : (
           <div className="step-content">
@@ -497,6 +500,7 @@ export default function Step2PanelPlacement({
             refinedArea={refinedArea}
             resetTrapezoidConfig={resetTrapezoidConfig}
             reassignToTrapezoid={reassignToTrapezoid}
+            panelGapCm={appDefaults?.panelGapCm}
           />
         )}
 

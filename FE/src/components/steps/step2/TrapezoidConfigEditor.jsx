@@ -12,6 +12,7 @@ export default function TrapezoidConfigEditor({
   selectedAreaTrapIds, reassignToTrapezoid,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
+  panelGapCm,
 }) {
   if (!selectedRow) return null
 
@@ -45,7 +46,7 @@ export default function TrapezoidConfigEditor({
   const effectiveLineOrientations = (storedOrients?.length > 0) ? storedOrients : derivedOrients
   const effectiveLinesPerRow = effectiveLineOrientations.length
 
-  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow)
+  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow, panelGapCm)
 
   // Cross-section SVG geometry
   const W = 130, H = 62, groundY = H - 8, fX = 15
@@ -60,7 +61,7 @@ export default function TrapezoidConfigEditor({
   let sx = fX, sy = groundY - frontHeight * sc
   for (let li = 0; li < lineDepths.length; li++) {
     const d = lineDepths[li]
-    const gap = li < lineDepths.length - 1 ? 2.5 : 0
+    const gap = li < lineDepths.length - 1 ? panelGapCm : 0
     const sdx = d * Math.cos(angleRad) * sc
     const sdy = d * Math.sin(angleRad) * sc
     const gdx = gap * Math.cos(angleRad) * sc

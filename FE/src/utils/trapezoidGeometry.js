@@ -1,7 +1,6 @@
 // Panel physical dimensions (cm)
 export const PANEL_DEPTH_VERTICAL   = 238.2  // slope depth for portrait orientation
 export const PANEL_DEPTH_HORIZONTAL = 113.4  // slope depth for landscape orientation
-export const PANEL_GAP_CM           = 2.5    // gap between lines
 
 // ─── Orientation predicates ──────────────────────────────────────────────────
 
@@ -38,10 +37,10 @@ export const toggleEmptyOrientation = (o) =>
  * @param {string[]} orientations - array of orientation strings
  * @param {number}   linesPerRow  - how many lines to use (slices the array)
  */
-export const computeTotalSlopeDepth = (orientations, linesPerRow) => {
+export const computeTotalSlopeDepth = (orientations, linesPerRow, panelGapCm) => {
   const orients = (orientations || ['vertical']).slice(0, linesPerRow)
   const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o), 0)
-  return slopeSum + Math.max(0, orients.length - 1) * PANEL_GAP_CM
+  return slopeSum + Math.max(0, orients.length - 1) * panelGapCm
 }
 
 /**
@@ -51,7 +50,7 @@ export const computeTotalSlopeDepth = (orientations, linesPerRow) => {
  * @param {string[]} orientations     - line orientations
  * @param {number}   linesPerRow
  */
-export const computePanelBackHeight = (panelFrontHeight, angle, orientations, linesPerRow) => {
+export const computePanelBackHeight = (panelFrontHeight, angle, orientations, linesPerRow, panelGapCm) => {
   const angleRad = (angle || 0) * Math.PI / 180
-  return panelFrontHeight + computeTotalSlopeDepth(orientations, linesPerRow) * Math.sin(angleRad)
+  return panelFrontHeight + computeTotalSlopeDepth(orientations, linesPerRow, panelGapCm) * Math.sin(angleRad)
 }

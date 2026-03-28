@@ -64,3 +64,9 @@ export async function fetchPanelTypes() {
   if (!res.ok) throw new Error('Failed to load panel types')
   return res.json()
 }
+
+export async function fetchAppDefaults() {
+  const res = await mgpRequest('/settings/defaults')
+  if (!res.ok) throw new Error('Failed to load app defaults')
+  return res.json()
+}

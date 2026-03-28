@@ -2,7 +2,6 @@ import { useRef, useState, useCallback } from 'react'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT, RAIL_STROKE_HOVER } from '../../../styles/colors'
 const BAR_W       = 18
 const HANDLE_SIZE = 12
-const PANEL_GAP_CM = 2.5
 
 const snap = (v) => Math.round(v * 10) / 10
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
@@ -15,6 +14,7 @@ export default function RailCrossSectionWidget({
   barHeightPx = 240,
   keepSymmetry,
   onLineChange,
+  panelGapCm,
 }) {
   const svgRef   = useRef(null)
   const dragging = useRef(null)
@@ -22,11 +22,11 @@ export default function RailCrossSectionWidget({
   const [hoverY,      setHoverY]      = useState(null)   // { svgY, lineIdx }
 
   // Total depth of all lines + gaps
-  const totalDepthCm = lines.reduce((s, l, i) => s + l.depthCm + (i > 0 ? PANEL_GAP_CM : 0), 0)
+  const totalDepthCm = lines.reduce((s, l, i) => s + l.depthCm + (i > 0 ? panelGapCm : 0), 0)
 
   // Start offset (cm) for each line within the combined bar
   const lineStartsCm = lines.map((_, i) =>
-    lines.slice(0, i).reduce((s, l) => s + l.depthCm + PANEL_GAP_CM, 0)
+    lines.slice(0, i).reduce((s, l) => s + l.depthCm + panelGapCm, 0)
   )
 
   const PAD_V = 16

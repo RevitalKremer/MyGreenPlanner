@@ -26,6 +26,7 @@ export default function RowSidebar({
   refinedArea,
   resetTrapezoidConfig,
   reassignToTrapezoid,
+  panelGapCm,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -229,6 +230,7 @@ export default function RowSidebar({
             panelAngle={panelAngle}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
+            panelGapCm={panelGapCm}
           />
         </div>
       )}
