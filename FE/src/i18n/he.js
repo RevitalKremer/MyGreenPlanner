@@ -29,8 +29,23 @@ const he = {
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'תיחום גג',
   'step.2.name': 'פריסת פנלים',
-  'step.4.name': 'תכנון הנדסי',
+  'step.3.name': 'תכנון הנדסי',
+  'step.4.name': 'אישור תכנית',
   'step.5.name': 'סיכום וייצוא',
+
+  // ── שלב 5: אישור תכנית ───────────────────────────────────────────────────
+  'step5.title':           'אישור תכנית',
+  'step5.subtitle':        'מתקין מוסמך חייב לבדוק ולאשר את התכנית לפני הפקת חוברת העבודה והדוחות.',
+  'step5.performedBy':        'הוגש על ידי (משתמש מחובר)',
+  'step5.date':               'תאריך אישור',
+  'step5.consent':            'בדקתי את תכנית ההתקנה ואני לוקח אחריות מלאה על דיוקה.',
+  'step5.approve':            'אשר תכנית',
+  'step5.approved':           'תכנית אושרה',
+  'step5.approvedBy':         'הוגש על ידי {performedByName} בתאריך {date}',
+  'step5.disclaimer':         'תכנית זו הופקה כסיוע לתכנון בלבד. שדות אנרגיה בע"מ אינה נושאת באחריות לדיוק, שלמות, או התאמת התכנית להתקנה ספציפית. המתקין המוסמך המאשר ומבצע את ההתקנה נושא באחריות המקצועית והמשפטית המלאה.',
+  'step5.resetWarning':    'איפוס האישור ידרוש אישור מחדש לפני המשך.',
+  'step5.reset':           'אפס אישור',
+  'step5.blockMsg':        'נדרש אישור תכנית כדי להמשיך לשלב הבא.',
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':             'פרויקט חדש',
@@ -57,7 +72,7 @@ const he = {
   'welcome.required':               '*',
 
   // ── Image uploader ───────────────────────────────────────────────────────
-  'uploader.clickToUpload':    'לחץ להעלאת תמונה אווירית של הגג',
+  'uploader.clickToUpload':    'לחץ להעלאת תמונת מבט-על של הגג',
   'uploader.supported':        'נתמך: JPG, PNG, JPEG',
   'uploader.rotateAlign':      'סובב ליישור צפון כלפי מעלה',
   'uploader.rotateLeft':       '↺ 90°',
@@ -86,6 +101,7 @@ const he = {
   'step1.uploadedRoof':           'גג שהועלה',
   'step1.roofWithPanels':         'גג עם פנלים',
   'step1.addRoofImage':           'הוסף תמונת גג',
+  'step1.uploadImageOptional':    'העלה תמונה (אופציונלי)',
   'step1.source':                 'מקור',
   'step1.image':                  'תמונה',
   'step1.map':                    'מפה',
@@ -169,6 +185,19 @@ const he = {
   'step2.tool.measureHint':     'לחץ על שתי נקודות בקנבס למדידה.',
   'step2.tool.clearMeasurement':'🗑️ נקה מדידה',
   'step2.tool.clearRuler':      '🗑️ נקה סרגל',
+  'step2.tool.yLocked':         '⊟ נעילת Y פעילה',
+  'step2.tool.yFree':           '⊟ נעילת Y כבויה',
+  'step2.tool.modeAreas':       '◫ אזורים',
+  'step2.tool.modePanels':      '⊞ פנלים',
+  'step2.tool.selectedArea':    'אזור {idx} נבחר',
+  'step2.tool.clickAreaToSelect': 'לחץ על אזור בקנבס',
+  'step2.tool.deleteArea':      'מחק',
+  'step2.tool.deleteAreaTitle': 'מחק אזור נבחר',
+  'step2.tool.resetArea':       'איפוס',
+  'step2.tool.resetAreaTitle':  'אפס אזור לפריסה המקורית',
+  'step2.tool.recalc':          '⟳',
+  'step2.tool.recalcTitle':     'חשב מחדש טרפזים לאזור הנבחר',
+  'step2.tool.selectPanelTool': 'בחר כלי פנל למעלה',
 
   // ── Step 3 – Construction Planning sidebar ───────────────────────────────
   'step3.sidebar.default':                 'ברירת מחדל: ',

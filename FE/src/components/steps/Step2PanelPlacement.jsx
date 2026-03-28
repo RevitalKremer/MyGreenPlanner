@@ -3,7 +3,9 @@ import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
-import { DEFAULT_PANEL_TYPE } from '../../data/panelTypes'
+// panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
+// so this null sentinel should never actually be used at render time.
+const _FALLBACK_PANEL_TYPE = null
 import RowSidebar from './step2/RowSidebar'
 import ToolPanel from './step2/ToolPanel'
 import PanelCanvas from './step2/PanelCanvas'
@@ -31,10 +33,7 @@ export default function Step2PanelPlacement({
   setShowDistances,
   distanceMeasurement,
   setDistanceMeasurement,
-  generatePanelLayoutHandler,
   regenerateSingleRowHandler,
-  areas = [],
-  setAreas,
   addManualPanel,
   trapezoidConfigs,
   setTrapezoidConfigs,
@@ -50,9 +49,12 @@ export default function Step2PanelPlacement({
   panelAngle,
   setPanelAngle,
   refreshAreaTrapezoids,
+  rebuildPanelGrid,
+  recordPanelDeletion,
+  appDefaults,
 }) {
-  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
-  const [activeTool, setActiveTool] = useState('draw')
+  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
+  const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
@@ -70,10 +72,18 @@ export default function Step2PanelPlacement({
   // Stable area index — survives panel ID changes across recomputes
   const selectedAreaIdxRef = useRef(null)
 
+  const allYLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
+
+  const handleToggleYLock = () => {
+    const newLocked = !allYLocked
+    setRectAreas(prev => prev.map(a => ({ ...a, mode: newLocked ? 'ylocked' : 'free' })))
+  }
+
   const handleAddRectArea = useCallback((area) => {
     pendingNewAreaIdxRef.current = rectAreas.length
-    onAddRectArea?.(area)
-  }, [rectAreas.length, onAddRectArea])
+    const isAllLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
+    onAddRectArea?.({ ...area, mode: isAllLocked ? 'ylocked' : 'free' })
+  }, [rectAreas, onAddRectArea])
 
   const handleDeleteArea = useCallback((areaKey) => {
     // After deletion, indices shift: next area lands at same index, or previous if it was last
@@ -168,6 +178,8 @@ export default function Step2PanelPlacement({
     : null
 
   const selectedRow = (selectedRowIndex !== null) ? rows[selectedRowIndex] : null
+  const selectedAreaIdx = selectedRow?.length ? (selectedRow[0].area ?? selectedRow[0].row ?? null) : null
+  const canRecalcTrapezoids = typeof selectedAreaIdx === 'number' && !rectAreas[selectedAreaIdx]?.manualTrapezoids
 
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
@@ -181,19 +193,36 @@ export default function Step2PanelPlacement({
     if (tool === 'measure') setShowDistances(true)
   }
 
+  const handleSetEditMode = (mode) => {
+    if (mode === 'area') handleToolChange('area')
+    else handleToolChange('move')
+  }
+
   const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
-    setPanels(prev => prev.map(panel => {
+    const newPanels = panels.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
       const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
       const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
-    }))
+    })
+    setPanels(newPanels)
+    rebuildPanelGrid?.(newPanels)
   }
 
-  const nudgeRow = (dx, dy) => {
+  const nudgeRow = (alongCm, acrossCm) => {
+    if (!selectedPanels.length) return
+    const ratio = refinedArea?.pixelToCmRatio
+    if (!ratio || ratio <= 0) return
+    const firstPanel = panels.find(p => selectedPanels.includes(p.id))
+    const areaIdx = firstPanel?.area ?? 0
+    const rotDeg = rectAreas[areaIdx]?.rotation ?? 0
+    const rotRad = rotDeg * Math.PI / 180
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad)
+    const dx = (alongCm * cosR - acrossCm * sinR) / ratio
+    const dy = (alongCm * sinR + acrossCm * cosR) / ratio
     setPanels(prev => prev.map(p =>
       selectedPanels.includes(p.id) ? { ...p, x: p.x + dx, y: p.y + dy } : p
     ))
@@ -205,7 +234,8 @@ export default function Step2PanelPlacement({
   const addNextToPanel = (anchor) => {
     const angle = (anchor.rotation || 0) * Math.PI / 180
     const dirX = Math.cos(angle), dirY = Math.sin(angle)
-    const stepPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : 5
+    const gapCm = appDefaults?.panelGapCm
+    const stepPx = refinedArea?.pixelToCmRatio ? gapCm / refinedArea.pixelToCmRatio : 5
     const anchorCx = anchor.x + anchor.width / 2, anchorCy = anchor.y + anchor.height / 2
     const hw = anchor.width / 2, hh = anchor.height / 2
     const polyCoords = roofPolygon?.coordinates || []
@@ -218,7 +248,7 @@ export default function Step2PanelPlacement({
       return dRow >= (hw + p.width / 2) || dPerp >= (hh + p.height / 2)
     })
 
-    // Try right first, then left — exactly 2.5 cm gap each time
+    // Try right first, then left — exact panel gap in each time
     let finalCx = null, finalCy = null
     for (const dir of [1, -1]) {
       const cx = anchorCx + dir * (anchor.width + stepPx) * dirX
@@ -246,7 +276,7 @@ export default function Step2PanelPlacement({
   // Auto-derive linesPerRow + lineOrientations from panel rows.
   // Must be after selectedRow and getAreaKey are defined.
   const defaultTrapId = selectedRow
-    ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}1`
+    ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}`
     : null
 
   const selectedTrapezoidId = trapIdOverride ?? (
@@ -277,7 +307,7 @@ export default function Step2PanelPlacement({
     if (sortedRows.length === 0) return
 
     const autoOrients = sortedRows.map(([, p]) =>
-      (p.heightCm ?? 238.2) > 150 ? 'vertical' : 'horizontal'
+      p.heightCm > 150 ? 'vertical' : 'horizontal'
     )
     const autoLPR = sortedRows.length
 
@@ -292,7 +322,7 @@ export default function Step2PanelPlacement({
       current.frontHeight === fH
     ) return
 
-    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR).toFixed(1))
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR, appDefaults?.panelGapCm).toFixed(1))
 
     setTrapezoidConfigs(prev => ({
       ...prev,
@@ -301,7 +331,7 @@ export default function Step2PanelPlacement({
   }, [selectedRow, selectedTrapezoidId, _frontH, _angle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const areaLabel = (areaKey, i) => {
-    const g = areas[areaKey]?.label
+    const g = rectAreas[areaKey]?.label
     return g ? `${g}` : `Area ${i + 1}`
   }
   const selectedAreaLabel = selectedRowIndex !== null ? areaLabel(getAreaKey(selectedRow[0]), selectedRowIndex) : '?'
@@ -313,7 +343,7 @@ export default function Step2PanelPlacement({
     panels.forEach(p => {
       const aKey = p.area ?? p.row
       if (aKey === undefined || aKey === null) return
-      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}1`
+      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}`
       const tId = p.trapezoidId || defaultTrapId
       if (!map[aKey]) map[aKey] = new Set()
       map[aKey].add(tId)
@@ -397,7 +427,7 @@ export default function Step2PanelPlacement({
     const rowIds = selectedRow.map(p => p.id)
     setPanels(prev => prev.map(p => {
       if (!rowIds.includes(p.id)) return p
-      const depthCm = p.heightCm || 238.2
+      const depthCm = p.heightCm
       const newH = (depthCm * Math.cos(angleRad)) / refinedArea.pixelToCmRatio
       const cy = p.y + p.height / 2
       return { ...p, height: newH, y: cy - newH / 2 }
@@ -432,6 +462,9 @@ export default function Step2PanelPlacement({
             onAddRectArea={handleAddRectArea}
             cmPerPixel={cmPerPixel}
             panelSpec={panelSpec}
+            rebuildPanelGrid={rebuildPanelGrid}
+            recordPanelDeletion={recordPanelDeletion}
+            panelGapCm={appDefaults?.panelGapCm}
           />
         ) : (
           <div className="step-content">
@@ -446,16 +479,13 @@ export default function Step2PanelPlacement({
         {uploadedImageData && (
           <RowSidebar
             baseline={baseline} setBaseline={setBaseline}
-            panels={panels} setPanels={setPanels}
+            panels={panels}
             selectedPanels={selectedPanels} setSelectedPanels={setSelectedPanels}
             setTrapIdOverride={setTrapIdOverride}
-            rows={rows} areas={areas} setAreas={setAreas}
+            rows={rows}
             areaLabel={areaLabel} getAreaKey={getAreaKey}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
-            regenerateSingleRowHandler={regenerateSingleRowHandler}
-            refreshAreaTrapezoids={refreshAreaTrapezoids}
-            generatePanelLayoutHandler={generatePanelLayoutHandler}
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             panelTypes={panelTypes}
@@ -465,7 +495,14 @@ export default function Step2PanelPlacement({
             setPanelFrontHeight={setPanelFrontHeight}
             panelAngle={panelAngle}
             setPanelAngle={setPanelAngle}
-            onDeleteArea={handleDeleteArea}
+            selectedRow={selectedRow}
+            selectedTrapezoidId={selectedTrapezoidId}
+            selectedAreaLabel={selectedAreaLabel}
+            selectedAreaTrapIds={selectedAreaTrapIds}
+            refinedArea={refinedArea}
+            resetTrapezoidConfig={resetTrapezoidConfig}
+            reassignToTrapezoid={reassignToTrapezoid}
+            panelGapCm={appDefaults?.panelGapCm}
           />
         )}
 
@@ -473,24 +510,22 @@ export default function Step2PanelPlacement({
         {uploadedImageData && (
           <ToolPanel
             activeTool={activeTool} handleToolChange={handleToolChange}
-            selectedPanels={selectedPanels} selectedAreaLabel={selectedAreaLabel}
+            selectedPanels={selectedPanels}
             nudgeRow={nudgeRow} togglePanelOrientation={togglePanelOrientation}
             addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
             pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
             addError={addError} setAddError={setAddError}
             distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
-            allSelectedSameArea={allSelectedSameArea} selectedAreaTrapIds={selectedAreaTrapIds}
-            selectedTrapezoidId={selectedTrapezoidId}
-            reassignToTrapezoid={reassignToTrapezoid}
-            selectedRow={selectedRow} refinedArea={refinedArea}
-            trapezoidConfigs={trapezoidConfigs}
-            getAreaKey={getAreaKey}
-            resetTrapezoidConfig={resetTrapezoidConfig}
-            panelFrontHeight={panelFrontHeight} panelAngle={panelAngle}
-            rectAreas={rectAreas} setRectAreas={setRectAreas}
             showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
+            yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
+            onSetEditMode={handleSetEditMode}
+            selectedAreaIdx={selectedAreaIdx}
+            onDeleteArea={handleDeleteArea}
+            onResetArea={regenerateSingleRowHandler}
+            onRecalcTrapezoids={refreshAreaTrapezoids}
+            canRecalcTrapezoids={canRecalcTrapezoids}
           />
         )}
       </div>

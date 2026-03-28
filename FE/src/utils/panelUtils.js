@@ -7,7 +7,7 @@ import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry
  * @param {Object} baseline - User-drawn baseline with p1 and p2 coordinates
  * @returns {Array} Array of generated panel objects
  */
-export const generatePanelLayout = (refinedArea, baseline, singleRow = false) => {
+export const generatePanelLayout = (refinedArea, baseline, singleRow = false, panelGapCm, panelSpec) => {
   if (!refinedArea || !refinedArea.polygon || !refinedArea.pixelToCmRatio) {
     console.error('Missing configuration data from Step 2')
     return []
@@ -25,9 +25,8 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false) =>
   const polygonCoords = polygon.coordinates || polygon
   
   // Panel dimensions in cm (from selected panel type)
-  const panelLengthCm = 238.2
-  const panelWidthCm = 113.4
-  const panelGapCm = 2.5
+  const panelLengthCm = panelSpec.lengthCm
+  const panelWidthCm = panelSpec.widthCm
   const rowSpacingCm = backHeight * 1.5
   
   // Convert to pixels
@@ -339,12 +338,12 @@ function findTopmostInRoof(hw, hh, rotation, polygonCoords, existingPanels) {
   return null
 }
 
-export const createManualPanel = (refinedArea, baseline, existingPanels, roofPolygon) => {
+export const createManualPanel = (refinedArea, baseline, existingPanels, roofPolygon, panelSpec) => {
   if (!refinedArea || !refinedArea.pixelToCmRatio) return null
 
   const { pixelToCmRatio, panelConfig } = refinedArea
-  const panelLengthCm = 238.2
-  const panelWidthCm  = 113.4
+  const panelLengthCm = panelSpec.lengthCm
+  const panelWidthCm  = panelSpec.widthCm
   const angle         = panelConfig?.angle || 0
   const angleRad      = angle * (Math.PI / 180)
   const panelHeightPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
@@ -385,10 +384,9 @@ export const createManualPanel = (refinedArea, baseline, existingPanels, roofPol
  * @param {number} pixelToCmRatio - Conversion ratio
  * @returns {Array} Array of rows, where each row is an array of panels
  */
-export const detectRows = (panelList, pixelToCmRatio) => {
+export const detectRows = (panelList, pixelToCmRatio, panelGapCm) => {
   if (!pixelToCmRatio) return []
-  
-  const panelGapCm = 2.5
+
   const panelGapPx = panelGapCm / pixelToCmRatio
   const tolerance = 1
   
@@ -503,17 +501,16 @@ export const autoGroupPanels = (detectedPanels) => {
  * @param {number} pixelToCmRatio - Conversion ratio
  * @returns {Array} Updated panels array with snapped positions
  */
-export const snapPanelsToRows = (allPanels, movedPanelIds, pixelToCmRatio) => {
+export const snapPanelsToRows = (allPanels, movedPanelIds, pixelToCmRatio, panelGapCm) => {
   if (!pixelToCmRatio) return allPanels
-  
-  const panelGapCm = 2.5
+
   const panelGapPx = panelGapCm / pixelToCmRatio
   
   // Get unmoved panels (potential target rows)
   const unmovedPanels = allPanels.filter(p => !movedPanelIds.includes(p.id))
   
   // Detect rows from unmoved panels only
-  const rows = detectRows(unmovedPanels, pixelToCmRatio)
+  const rows = detectRows(unmovedPanels, pixelToCmRatio, panelGapCm)
   
   console.log('Detected rows for snapping:', rows.length)
   

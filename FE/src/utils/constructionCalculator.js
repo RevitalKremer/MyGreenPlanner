@@ -1,8 +1,3 @@
-// Panel physical dimensions (cm)
-export const PANEL_WIDTH_CM = 113.4   // along row baseline (portrait orientation)
-export const PANEL_GAP_CM = 2.5
-export const PANEL_LENGTH_CM = 238.2  // depth along slope
-
 /**
  * Compute full construction geometry for one row.
  * @param {number} panelCount  - number of panels in the row
@@ -15,19 +10,22 @@ export const PANEL_LENGTH_CM = 238.2  // depth along slope
  */
 export function computeRowConstruction(panelCount, angle, frontHeight, config = {}) {
   const angleRad = angle * Math.PI / 180
-  const railOverhang = config.railOverhang ?? 4  // cm — extension beyond outermost panel on each side
-  const maxSpan      = config.maxSpan      ?? 165  // cm max spacing between trapezoids
+  const panelGapCm     = config.panelGapCm
+  const panelWidthCm   = config.panelWidthCm
+  const panelLengthCm  = config.panelLengthCm
+  const railOverhang   = config.railOverhang ?? 4  // cm — extension beyond outermost panel on each side
+  const maxSpan        = config.maxSpan      ?? 165  // cm max spacing between trapezoids
 
   // Rail length (total row width including overhang)
   // config.rowLength can be passed from actual panel placement measurements (preferred)
   const rowLength = config.rowLength
-    ?? (panelCount * PANEL_WIDTH_CM
-    + Math.max(0, panelCount - 1) * PANEL_GAP_CM
+    ?? (panelCount * panelWidthCm
+    + Math.max(0, panelCount - 1) * panelGapCm
     + 2 * railOverhang)
 
   // Trapezoid base (horizontal depth of frame, cm)
   // Use actual measured line depth if provided (multi-line rows), else single panel length
-  const lineDepthCm  = config.lineDepthCm  ?? PANEL_LENGTH_CM
+  const lineDepthCm  = config.lineDepthCm  ?? panelLengthCm
   const railOffsetCm = config.railOffsetCm ?? 0
   const crossRailOffsetCm = config.crossRailOffsetCm ?? 0
   // baseLength = horizontal leg-to-leg span (first rail to last rail, projected)
@@ -55,7 +53,7 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
   const spacing       = rowLength / numSpans  // actual cm between adjacent trapezoid centres
 
   // How many panel widths fit per span (used for type label subscript)
-  const panelsPerSpan = Math.max(1, Math.round(spacing / (PANEL_WIDTH_CM + PANEL_GAP_CM)))
+  const panelsPerSpan = Math.max(1, Math.round(spacing / (panelWidthCm + panelGapCm)))
 
   return {
     rowLength,      // cm

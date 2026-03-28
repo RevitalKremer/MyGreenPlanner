@@ -18,7 +18,7 @@ import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from 
 export default function PanelCanvas({
   uploadedImageData, viewZoom, setViewZoom,
   imageRef, setImageRef,
-  roofPolygon, baseline, setBaseline,
+  roofPolygon, baseline,
   panels, setPanels,
   selectedPanels, setSelectedPanels,
   dragState, setDragState,
@@ -33,6 +33,9 @@ export default function PanelCanvas({
   onAddRectArea,
   cmPerPixel,
   panelSpec,
+  rebuildPanelGrid,
+  recordPanelDeletion,
+  panelGapCm,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -75,7 +78,7 @@ export default function PanelCanvas({
 
   // Live panel preview while drawing a rect
   const drawPreviewPanels = useMemo(() => {
-    if (!drawRectStart || !drawRectEnd || !cmPerPixel) return []
+    if (!drawRectStart || !drawRectEnd || !cmPerPixel || panelGapCm == null) return []
     const dx = drawRectEnd.x - drawRectStart.x
     const dy = drawRectEnd.y - drawRectStart.y
     if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return []
@@ -87,8 +90,8 @@ export default function PanelCanvas({
       rotation: 0,
       xDir: dx >= 0 ? 'ltr' : 'rtl',
       yDir: dy >= 0 ? 'ttb' : 'btt',
-    }, cmPerPixel, panelSpec)
-  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec])
+    }, cmPerPixel, panelSpec, panelGapCm)
+  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec, panelGapCm])
 
   // Space bar for pan-anywhere
   useEffect(() => {
@@ -121,7 +124,7 @@ export default function PanelCanvas({
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
-      case 'draw': return 'crosshair'
+      case 'area': return 'crosshair'
       default: return 'grab'
     }
   }
@@ -145,8 +148,8 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
-    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (draw mode only)
-    if (activeTool === 'draw') {
+    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (area mode only)
+    if (activeTool === 'area') {
       const selAreaIdx = selectedPanels.length > 0
         ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
         : null
@@ -162,13 +165,6 @@ export default function PanelCanvas({
         setYLockDragState({ areaIdx, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices })
         return
       }
-    }
-
-    // Draw tool — creates a new rect area
-    // Baseline drawing
-    if (!baseline || baseline.p2 === null) {
-      if (!baseline) { setBaseline({ p1: [x, y], p2: null }); return }
-      if (baseline.p2 === null) { setBaseline({ ...baseline, p2: [x, y] }); return }
     }
 
     // Measure tool
@@ -191,7 +187,7 @@ export default function PanelCanvas({
     }
     const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
 
-    if (activeTool === 'draw') {
+    if (activeTool === 'area') {
       if (clickedPanel) {
         // Select the entire area this panel belongs to
         const areaKey = clickedPanel.area ?? clickedPanel.row
@@ -205,7 +201,10 @@ export default function PanelCanvas({
 
     if (activeTool === 'delete') {
       if (clickedPanel) {
-        setPanels(prev => prev.filter(p => p.id !== clickedPanel.id))
+        const newPanels = panels.filter(p => p.id !== clickedPanel.id)
+        recordPanelDeletion?.(clickedPanel)
+        setPanels(newPanels)
+        rebuildPanelGrid?.(newPanels)
         setSelectedPanels([])
       } else startPan(e)
       return
@@ -252,7 +251,7 @@ export default function PanelCanvas({
       setOverYLockArea(rectAreas.some(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices)))
     }
 
-    if (activeTool === 'draw' && drawRectStart) {
+    if (activeTool === 'area' && drawRectStart) {
       setDrawRectEnd({ x, y })
       return
     }
@@ -452,8 +451,8 @@ export default function PanelCanvas({
       setMoveDragState(null)
       setRectAreas(prev => {
         const area = prev[areaIdx]
-        if (!area?.vertices?.length || !cmPerPixel) return prev
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
@@ -467,8 +466,8 @@ export default function PanelCanvas({
       setFreeDragState(null)
       setRectAreas(prev => {
         const area = prev[areaIdx]
-        if (!area?.vertices?.length || !cmPerPixel) return prev
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
@@ -483,8 +482,8 @@ export default function PanelCanvas({
       setSnapGuideState(null)
       setRectAreas(prev => {
         const area = prev[areaIdx]
-        if (!area?.vertices?.length || !cmPerPixel) return prev
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec)
+        if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
@@ -649,7 +648,7 @@ export default function PanelCanvas({
                 const r  = (panel.rotation || 0) * Math.PI / 180
                 const cosR = Math.cos(r), sinR = Math.sin(r)
                 const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
-                const gapPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
+                const gapPx = refinedArea?.pixelToCmRatio ? panelGapCm / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
                 const gw  = Math.max(1, gapPx)
                 const gd  = `${gapPx * 2} ${gapPx}`
                 const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
@@ -684,7 +683,7 @@ export default function PanelCanvas({
                 const r  = (panel.rotation || 0) * Math.PI / 180
                 const cosR = Math.cos(r), sinR = Math.sin(r)
                 const ext = Math.max(imageRef.naturalWidth, imageRef.naturalHeight) * 1.5
-                const gapPx = refinedArea?.pixelToCmRatio ? 2.5 / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
+                const gapPx = refinedArea?.pixelToCmRatio ? panelGapCm / refinedArea.pixelToCmRatio : imageRef.naturalWidth * 0.001
                 const gw  = Math.max(1, gapPx) * 1.5
                 const gd  = `${gapPx * 3} ${gapPx * 1.5}`
                 const ux = cosR, uy = sinR, vx = -sinR, vy = cosR

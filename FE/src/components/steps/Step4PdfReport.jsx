@@ -7,7 +7,6 @@ import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups } from './step3/tabUtils'
 import { buildBOM } from '../../utils/constructionCalculator'
-import { productByType } from '../../data/productDict'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -241,6 +240,7 @@ export default function Step4PdfReport({
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
   bomDeltas = {}, onBomDeltasChange,
+  products = [], productByType = {}, altsByType = {},
 }) {
   const page1Ref = useRef(null)
   const page2Ref = useRef(null)
@@ -496,7 +496,7 @@ export default function Step4PdfReport({
       {activeTab === 'bom' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', background: PDF_CANVAS_BG }}>
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} bomDeltas={bomDeltas} onBomDeltasChange={onBomDeltasChange} />
+            <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} bomDeltas={bomDeltas} onBomDeltasChange={onBomDeltasChange} products={products} productByType={productByType} altsByType={altsByType} />
           </div>
         </div>
       )}

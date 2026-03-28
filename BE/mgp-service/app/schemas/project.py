@@ -1,17 +1,19 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProjectCreate(BaseModel):
     name: str
     location: str | None = None
-    data: dict = {}
+    layout: dict = Field(default_factory=dict)
+    data: dict = Field(default_factory=dict)
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
     location: str | None = None
+    layout: dict | None = None
     data: dict | None = None
 
 
@@ -20,6 +22,7 @@ class ProjectRead(BaseModel):
     owner_id: uuid.UUID
     name: str
     location: str | None
+    layout: dict
     data: dict
     created_at: datetime
     updated_at: datetime

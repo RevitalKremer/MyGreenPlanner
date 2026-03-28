@@ -29,8 +29,23 @@ const en = {
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'Allocate Roof',
   'step.2.name': 'Panel Layout',
-  'step.4.name': 'Construction Planning',
+  'step.3.name': 'Construction Planning',
+  'step.4.name': 'Plan Approval',
   'step.5.name': 'Finalize & Export',
+
+  // ── Step 5: Plan Approval ────────────────────────────────────────────────
+  'step5.title':           'Plan Approval',
+  'step5.subtitle':        'A certified constructor must review and approve the plan before generating the BOM and PDF reports.',
+  'step5.performedBy':        'Submitted By (logged-in user)',
+  'step5.date':               'Approval Date',
+  'step5.consent':            'I have reviewed the construction plan and take full responsibility for its accuracy.',
+  'step5.approve':            'Approve Plan',
+  'step5.approved':           'Plan Approved',
+  'step5.approvedBy':         'Submitted by {performedByName} on {date}',
+  'step5.disclaimer':         'This plan was generated as a planning aid only. Sadot Energy Ltd. bears no responsibility for the accuracy, completeness, or suitability of this plan for any specific installation. The certified constructor who approves and executes this plan assumes full professional and legal responsibility for the installation.',
+  'step5.resetWarning':    'Resetting approval will require re-approval before proceeding.',
+  'step5.reset':           'Reset Approval',
+  'step5.blockMsg':        'Plan approval is required to proceed to the next step.',
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':           'New Project',
@@ -86,6 +101,7 @@ const en = {
   'step1.uploadedRoof':           'Uploaded roof',
   'step1.roofWithPanels':         'Roof with panels',
   'step1.addRoofImage':           'Add roof image',
+  'step1.uploadImageOptional':    'Upload image (optional)',
   'step1.source':                 'Source',
   'step1.image':                  'Image',
   'step1.map':                    'Map',
@@ -169,6 +185,19 @@ const en = {
   'step2.tool.measureHint':       'Click two points on the canvas to measure.',
   'step2.tool.clearMeasurement':  '🗑️ Clear Measurement',
   'step2.tool.clearRuler':        '🗑️ Clear Ruler',
+  'step2.tool.yLocked':           '⊟ Y-Lock ON',
+  'step2.tool.yFree':             '⊟ Y-Lock OFF',
+  'step2.tool.modeAreas':         '◫ Areas',
+  'step2.tool.modePanels':        '⊞ Panels',
+  'step2.tool.selectedArea':      'Area {idx} selected',
+  'step2.tool.clickAreaToSelect': 'Click an area on the canvas',
+  'step2.tool.deleteArea':        'Del',
+  'step2.tool.deleteAreaTitle':   'Delete selected area',
+  'step2.tool.resetArea':         'Reset',
+  'step2.tool.resetAreaTitle':    'Reset area to original layout',
+  'step2.tool.recalc':            '⟳',
+  'step2.tool.recalcTitle':       'Recalculate trapezoids for selected area',
+  'step2.tool.selectPanelTool':   'Select a panel tool above',
 
   // ── Step 3 – Construction Planning sidebar ───────────────────────────────
   'step3.sidebar.default':        'Default: ',

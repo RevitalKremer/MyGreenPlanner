@@ -11,15 +11,8 @@ import {
   SECTION_HEADER_BG,
 } from '../../../styles/colors'
 import { buildBOM } from '../../../utils/constructionCalculator'
-import { PRODUCT_DICT, productByType, altsByType } from '../../../data/productDict'
-
-const ALL_ELEMENTS = PRODUCT_DICT.map(p => p.type)
 
 function deltaKey(areaLabel, element) { return `${areaLabel}||${element}` }
-
-function defaultExtras(element, qty) {
-  return Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
-}
 
 // ── Inline editable number ──────────────────────────────────────────────────
 function EditNum({ value, disabled, onCommit, dim = false }) {
@@ -95,8 +88,10 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = {}, onBomDeltasChange }) {
+export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = {}, onBomDeltasChange, products = [], productByType = {}, altsByType = {} }) {
   const { t } = useLang()
+  const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
+  const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
   const baseRows = useMemo(() => buildBOM(rowConstructions, rowLabels), [rowConstructions, rowLabels])
   const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [baseRows])
 

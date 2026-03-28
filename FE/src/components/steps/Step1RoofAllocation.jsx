@@ -47,7 +47,6 @@ export default function Step1RoofAllocation({
   setSelectedPoint,
   setRoofPolygon,
   handlePointSelect,
-  onWhiteboardStart,
   isDrawingLine,
   setIsDrawingLine,
   lineStart,
@@ -58,11 +57,10 @@ export default function Step1RoofAllocation({
   setReferenceLineLengthCm,
 }) {
   const { t } = useLang()
-  const [drawMode, setDrawMode]           = useState('auto')   // 'auto' | 'draw'
+  const [drawMode, setDrawMode]           = useState('draw')   // 'auto' | 'draw'
   const [isDrawing, setIsDrawing]         = useState(false)
   const [drawingPoints, setDrawingPoints] = useState([])
   const [mousePos, setMousePos]           = useState(null)
-  const [addRoofImage, setAddRoofImage]   = useState(false)
   const [viewZoom, setViewZoom]           = useState(1)
 
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
@@ -91,16 +89,10 @@ export default function Step1RoofAllocation({
     ? `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
     : '6,3'
 
-  const handleAddRoofImageToggle = (checked) => {
-    setAddRoofImage(checked)
-    if (checked) {
-      // Clear white canvas so ImageUploader is shown
-      if (uploadedImageData?.isWhiteboard) setUploadedImageData(null)
-      setRoofPolygon(null)
-      setUploadedImageMode(true)
-    } else {
-      onWhiteboardStart()
-    }
+  const handleUploadImageClick = () => {
+    if (uploadedImageData?.isWhiteboard) setUploadedImageData(null)
+    setRoofPolygon(null)
+    setUploadedImageMode(true)
   }
 
   const handleSourceToggle = (imageMode) => {
@@ -193,15 +185,12 @@ export default function Step1RoofAllocation({
     setIsDrawing(true)
   }
 
-  const hint = !addRoofImage
-    ? t('step1.hintWhiteboard')
-    : !uploadedImageMode
-      ? t('step1.hintClickRoof')
-      : drawMode === 'draw'
-        ? isDrawing
-          ? t('step1.hintDrawPolygon')
-          : t('step1.hintStartDrawing')
-        : t('step1.hintClickBoundary')
+  const hasRealImage = uploadedImageData && !uploadedImageData.isWhiteboard
+  const hint = drawMode === 'draw'
+    ? isDrawing ? t('step1.hintDrawPolygon') : t('step1.hintStartDrawing')
+    : !uploadedImageMode ? t('step1.hintClickRoof')
+    : hasRealImage ? t('step1.hintClickBoundary')
+    : t('step1.hintWhiteboard')
 
   return (
     <>
@@ -408,76 +397,62 @@ export default function Step1RoofAllocation({
 
         {/* Unified floating panel */}
         {(() => {
-          const hasRealImage = uploadedImageMode && uploadedImageData && !uploadedImageData.isWhiteboard
-          const showPanel = true || hasRealImage || selectedPoint || (drawMode === 'draw' && roofPolygon) || (roofPolygon && uploadedImageMode && uploadedImageData)
-          if (!showPanel) return null
-
           return (
           <div className="info-panel">
 
-            {/* Add roof image */}
-            {(
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: addRoofImage ? '0.85rem' : 0 }}>
-                  <input
-                    type="checkbox"
-                    id="addRoofImage"
-                    checked={addRoofImage}
-                    onChange={e => handleAddRoofImageToggle(e.target.checked)}
-                    style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: PRIMARY }}
-                  />
-                  <label htmlFor="addRoofImage" style={{ fontSize: '0.85rem', fontWeight: '600', color: '#555', cursor: 'pointer' }}>
-                    {t('step1.addRoofImage')}
-                  </label>
-                </div>
-                {addRoofImage && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <div>
-                      <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.source')}</div>
-                      <div className="seg-control">
-                        <button className={`seg-btn${uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(true)}>
-                          <IconImage /> {t('step1.image')}
-                        </button>
-                        <button className={`seg-btn${!uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(false)}>
-                          <IconMap /> {t('step1.map')}
-                        </button>
-                      </div>
-                    </div>
-                    {uploadedImageMode && uploadedImageData && !uploadedImageData.isWhiteboard && (
-                      <div>
-                        <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.detection')}</div>
-                        <div className="seg-control">
-                          <button className={`seg-btn${drawMode === 'auto' ? ' seg-active' : ''}`} onClick={() => { setDrawMode('auto'); setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}>
-                            <IconAuto /> {t('step1.autoSam2')}
-                          </button>
-                          <button className={`seg-btn${drawMode === 'draw' ? ' seg-active seg-accent' : ''}`} onClick={() => setDrawMode('draw')}>
-                            <IconPen /> {t('step1.drawPolygon')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+            {/* Image source — optional */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {!hasRealImage && (
+                <button
+                  onClick={handleUploadImageClick}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'none', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '7px', padding: '0.45rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: TEXT_SECONDARY }}
+                >
+                  <IconImage /> {t('step1.uploadImageOptional')}
+                </button>
+              )}
+              {hasRealImage && (
+                <div>
+                  <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.source')}</div>
+                  <div className="seg-control">
+                    <button className={`seg-btn${uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(true)}>
+                      <IconImage /> {t('step1.image')}
+                    </button>
+                    <button className={`seg-btn${!uploadedImageMode ? ' seg-active' : ''}`} onClick={() => handleSourceToggle(false)}>
+                      <IconMap /> {t('step1.map')}
+                    </button>
                   </div>
-                )}
-                {addRoofImage && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
-                  <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '0.85rem 0' }} />
-                )}
-              </>
-            )}
+                </div>
+              )}
+              {hasRealImage && (
+                <div>
+                  <div style={{ fontSize: '0.62rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{t('step1.detection')}</div>
+                  <div className="seg-control">
+                    <button className={`seg-btn${drawMode === 'auto' ? ' seg-active' : ''}`} onClick={() => { setDrawMode('auto'); setIsDrawing(false); setDrawingPoints([]); setMousePos(null) }}>
+                      <IconAuto /> {t('step1.autoSam2')}
+                    </button>
+                    <button className={`seg-btn${drawMode === 'draw' ? ' seg-active seg-accent' : ''}`} onClick={() => setDrawMode('draw')}>
+                      <IconPen /> {t('step1.drawPolygon')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
-
-            {addRoofImage && (selectedPoint || (drawMode === 'draw' && roofPolygon)) && (
+            {/* Polygon info — only when auto-detected or manually refined */}
+            {(selectedPoint || (drawMode === 'auto' && roofPolygon)) && (
               <>
+                <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '0.85rem 0' }} />
                 <h3>{drawMode === 'draw' ? t('step1.drawnPolygon') : t('step1.selectedLocation')}</h3>
                 {drawMode === 'auto' && selectedPoint && (
                   uploadedImageMode
                     ? <><p>{t('step1.pixelX')}{selectedPoint.x}</p><p>{t('step1.pixelY')}{selectedPoint.y}</p></>
                     : <><p>{t('step1.latitude')}{selectedPoint.lat?.toFixed(6)}</p><p>{t('step1.longitude')}{selectedPoint.lng?.toFixed(6)}</p></>
                 )}
-                {roofPolygon && (
+                {roofPolygon && roofPolygon.confidence < 1 && (
                   <div>
                     <h4>{t('step1.roofPolygonCreated')}</h4>
                     {roofPolygon.area && <p>{t('step1.area')}{roofPolygon.area.toLocaleString()} {uploadedImageMode ? 'pixels' : 'm²'}</p>}
-                    {roofPolygon.confidence && roofPolygon.confidence < 1 && <p>{t('step1.confidence')}{(roofPolygon.confidence * 100).toFixed(1)}%</p>}
+                    {roofPolygon.confidence && <p>{t('step1.confidence')}{(roofPolygon.confidence * 100).toFixed(1)}%</p>}
                     {roofPolygon.coordinates && <p>{t('step1.points')}{roofPolygon.coordinates.length}</p>}
                     <div style={{ marginTop: '1rem' }}>
                       <button

@@ -17,7 +17,7 @@ export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
 export function initDefaultLineRails(lineOrientations, panelDepthsCm) {
   const result = {}
   lineOrientations.forEach((orientation, i) => {
-    const depth = panelDepthsCm[i] ?? 238.2
+    const depth = panelDepthsCm[i]
     const spacing = orientation === 'horizontal'
       ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM
       : DEFAULT_RAIL_SPACING_VERTICAL_CM
@@ -47,7 +47,7 @@ export function localToScreen(point, center, angleRad) {
 
 // Detect orientation from panel physical dimensions
 export function getPanelOrientation(panel) {
-  return (panel.widthCm ?? 113.4) < (panel.heightCm ?? 238.2) ? 'PORTRAIT' : 'LANDSCAPE'
+  return panel.widthCm < panel.heightCm ? 'PORTRAIT' : 'LANDSCAPE'
 }
 
 // Split a length in mm into stock segments (greedy, largest-first)
@@ -133,7 +133,7 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
     // Rail y-positions: from lineRails config or fall back to default symmetric placement
     let railYPositions
     if (lineRails && lineRails[lineIdx] && lineRails[lineIdx].length >= 2) {
-      railYPositions = lineRails[lineIdx].map(offsetCm => lineMinY + offsetCm / pixelToCmRatio)
+      railYPositions = lineRails[lineIdx].map(offsetCm => lineMaxY - offsetCm / pixelToCmRatio)
     } else {
       const spacing = orientation === 'LANDSCAPE'
         ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM
@@ -193,9 +193,9 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
  * Returns total count across all lines.
  * @param {object[]} panelLocalRects  - from rl.panelLocalRects
  * @param {number}   pixelToCmRatio
- * @param {number}   defaultGapCm     - expected gap (e.g. PANEL_GAP_CM = 2.5)
+ * @param {number}   defaultGapCm     - expected gap (panelGapCm from app_settings)
  */
-export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm = 2.5) {
+export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm) {
   if (!panelLocalRects || panelLocalRects.length < 2 || !pixelToCmRatio) return 0
 
   const threshold = defaultGapCm + 0.5   // 0.5 cm tolerance for float noise

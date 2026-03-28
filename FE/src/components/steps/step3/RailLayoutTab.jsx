@@ -26,6 +26,8 @@ export default function RailLayoutTab({
   printMode = false,
   trapSettingsMap = {},
   trapLineRailsMap = {},
+  railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
+  railsComputing = false,
 }) {
   const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
@@ -52,10 +54,28 @@ export default function RailLayoutTab({
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
-  const railLayouts = useMemo(() =>
-    rowKeys.map(rowKey => computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, railConfig)),
-    [rowKeys, rowGroups, pixelToCmRatio, railConfig]
-  )
+  const railLayouts = useMemo(() => {
+    if (railLayoutsProp) return railLayoutsProp
+    return rowKeys.map((rowKey, i) => {
+      // Use per-area lineRails from trapLineRailsMap when available (correct for non-selected areas)
+      let areaLineRails = lineRails
+      if (i !== selectedRowIdx) {
+        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
+        if (firstTrapId && trapLineRailsMap[firstTrapId]) {
+          areaLineRails = trapLineRailsMap[firstTrapId]
+        }
+      }
+      const cfg = { lineRails: areaLineRails, overhangCm: railOverhangCm, stockLengths }
+      // Use per-area settings for overhang if available
+      if (i !== selectedRowIdx) {
+        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
+        if (firstTrapId && trapSettingsMap[firstTrapId]) {
+          cfg.overhangCm = trapSettingsMap[firstTrapId].railOverhangCm ?? railOverhangCm
+        }
+      }
+      return computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, cfg)
+    })
+  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverMm, 0) ?? 0), 0)
@@ -224,6 +244,11 @@ export default function RailLayoutTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white', position: 'relative' }}>
+      {railsComputing && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'all' }}>
+          <span style={{ fontSize: '0.9rem', color: '#555', fontWeight: 500 }}>Computing rails…</span>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
 
@@ -240,23 +265,6 @@ export default function RailLayoutTab({
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
                   <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
-
-                  {/* Cross-section overlay */}
-                  {showEditBar && (
-                    <RailCrossSectionOverlay
-                      rl={activeCrossSectionRl}
-                      lineRails={lineRails}
-                      panelDepthsCm={panelDepthsCm}
-                      keepSymmetry={keepSymmetry}
-                      barRightX={PAD_LEFT - 100}
-                      toSvg={toSvg}
-                      pixelToCmRatio={pixelToCmRatio}
-                      sc={sc}
-                      zoom={zoom}
-                      svgRef={svgRef}
-                      onLineChange={handleLineRailsChange}
-                    />
-                  )}
 
                   {/* Rails + dimension annotations */}
                   {railLayouts.map((rl, i) => {
@@ -392,6 +400,22 @@ export default function RailLayoutTab({
                       </g>
                     )
                   })}
+
+                  {/* Edit bar — rendered last so it draws on top of all rails */}
+                  {showEditBar && (
+                    <RailCrossSectionOverlay
+                      rl={activeCrossSectionRl}
+                      lineRails={lineRails}
+                      panelDepthsCm={panelDepthsCm}
+                      keepSymmetry={keepSymmetry}
+                      toSvg={toSvg}
+                      pixelToCmRatio={pixelToCmRatio}
+                      sc={sc}
+                      zoom={zoom}
+                      svgRef={svgRef}
+                      onLineChange={handleLineRailsChange}
+                    />
+                  )}
                 </svg>
               </div>
             </div>

@@ -1,8 +1,3 @@
-// Panel physical dimensions (cm)
-export const PANEL_DEPTH_VERTICAL   = 238.2  // slope depth for portrait orientation
-export const PANEL_DEPTH_HORIZONTAL = 113.4  // slope depth for landscape orientation
-export const PANEL_GAP_CM           = 2.5    // gap between lines
-
 // ─── Orientation predicates ──────────────────────────────────────────────────
 
 export const isHorizontalOrientation = (o) =>
@@ -12,8 +7,8 @@ export const isEmptyOrientation = (o) =>
   o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
 
 /** Slope depth (cm) for a single line orientation */
-export const lineSlopeDepth = (o) =>
-  isHorizontalOrientation(o) ? PANEL_DEPTH_HORIZONTAL : PANEL_DEPTH_VERTICAL
+export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
+  isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm
 
 // ─── Orientation toggles ──────────────────────────────────────────────────────
 
@@ -37,11 +32,14 @@ export const toggleEmptyOrientation = (o) =>
  * Total slope depth (cm) across all lines including inter-line gaps.
  * @param {string[]} orientations - array of orientation strings
  * @param {number}   linesPerRow  - how many lines to use (slices the array)
+ * @param {number}   panelGapCm
+ * @param {number}   panelLengthCm
+ * @param {number}   panelWidthCm
  */
-export const computeTotalSlopeDepth = (orientations, linesPerRow) => {
+export const computeTotalSlopeDepth = (orientations, linesPerRow, panelGapCm, panelLengthCm, panelWidthCm) => {
   const orients = (orientations || ['vertical']).slice(0, linesPerRow)
-  const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o), 0)
-  return slopeSum + Math.max(0, orients.length - 1) * PANEL_GAP_CM
+  const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o, panelLengthCm, panelWidthCm), 0)
+  return slopeSum + Math.max(0, orients.length - 1) * panelGapCm
 }
 
 /**
@@ -50,8 +48,11 @@ export const computeTotalSlopeDepth = (orientations, linesPerRow) => {
  * @param {number}   angle            - tilt angle in degrees
  * @param {string[]} orientations     - line orientations
  * @param {number}   linesPerRow
+ * @param {number}   panelGapCm
+ * @param {number}   panelLengthCm
+ * @param {number}   panelWidthCm
  */
-export const computePanelBackHeight = (panelFrontHeight, angle, orientations, linesPerRow) => {
+export const computePanelBackHeight = (panelFrontHeight, angle, orientations, linesPerRow, panelGapCm, panelLengthCm, panelWidthCm) => {
   const angleRad = (angle || 0) * Math.PI / 180
-  return panelFrontHeight + computeTotalSlopeDepth(orientations, linesPerRow) * Math.sin(angleRad)
+  return panelFrontHeight + computeTotalSlopeDepth(orientations, linesPerRow, panelGapCm, panelLengthCm, panelWidthCm) * Math.sin(angleRad)
 }

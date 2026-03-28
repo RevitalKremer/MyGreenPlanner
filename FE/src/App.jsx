@@ -1,23 +1,24 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import { useLang } from './i18n/LangContext'
 import LangToggle from './i18n/LangToggle'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
-import Step4PdfReport from './components/steps/Step4PdfReport'
+import Step4PlanApproval from './components/steps/Step4PlanApproval'
+import Step5PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, computeRails, getRails } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
 
-const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
+const LOGIN_REQUIRED_STEP = 3   // step 3+ (construction planning, approval, export) require login
 
 function App() {
   const s = useProjectState()
@@ -27,6 +28,7 @@ function App() {
   const STEP_NAME = {
     1: t('step.1.name'),
     2: t('step.2.name'),
+    3: t('step.3.name'),
     4: t('step.4.name'),
     5: t('step.5.name'),
   }
@@ -82,16 +84,48 @@ function App() {
     else setCloudProjects([])
   }, [auth.user, fetchCloudProjects])
 
-  const handleCloudSave = async () => {
+  const [beRailsData, setBeRailsData] = useState(null)
+  const [railsComputing, setRailsComputing] = useState(false)
+  // Always-current step3 settings — updated synchronously in onSettingsChange so commit
+  // callbacks never read stale state from the React re-render cycle.
+  const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
+
+  // Trigger rail computation when a (different) project is loaded while on step 3.
+  // Step 2→3 transition is handled explicitly in the Next button after save completes.
+  useEffect(() => {
+    if (s.currentStep === 3 && s.cloudProjectId) {
+      setBeRailsData(null)
+      getRails(s.cloudProjectId)
+        .then(setBeRailsData)
+        .catch(console.error)
+    }
+  }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
+
+  const triggerComputeRails = (id, step3Data = null) => {
+    setRailsComputing(true)
+    computeRails(id, step3Data)
+      .then(data => { setBeRailsData(data) })
+      .catch(console.error)
+      .finally(() => setRailsComputing(false))
+  }
+
+  const handleRailSettingsCommit = useCallback(() => {
+    if (!s.cloudProjectId) return
+    triggerComputeRails(s.cloudProjectId, step3SettingsRef.current)
+  }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCloudSave = async (step = null) => {
     setSaveState('saving')
     try {
-      await s.handleSaveProject()
+      const id = await s.handleSaveProject(step)
       setSaveState('saved')
       fetchCloudProjects()
       setTimeout(() => setSaveState(null), 2500)
+      return id
     } catch {
       setSaveState('error')
       setTimeout(() => setSaveState(null), 3000)
+      return null
     }
   }
 
@@ -108,7 +142,15 @@ function App() {
   const handleLoadCloudProject = async (projectId) => {
     try {
       const cloudProject = await getProject(projectId)
-      s.handleImportProject(cloudProject.data, cloudProject.id)
+      // Merge layout + data columns into the shape handleImportProject expects
+      const layout = cloudProject.layout ?? {}
+      const merged = {
+        project:     { name: cloudProject.name, location: cloudProject.location },
+        currentStep: layout.currentStep,
+        layout,
+        ...(cloudProject.data ?? {}),
+      }
+      s.handleImportProject(merged, cloudProject.id)
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
     }
@@ -176,6 +218,14 @@ function App() {
             </div>
           </div>
 
+          {/* Server status */}
+          {!s.appDefaults && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'rgba(235,87,87,0.15)', marginRight: '0.5rem' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#eb5757', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#eb5757', whiteSpace: 'nowrap' }}>Server offline</span>
+            </div>
+          )}
+
           {/* RIGHT: Icon actions (e-commerce style) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', flexShrink: 0 }}>
 
@@ -203,7 +253,12 @@ function App() {
             {/* Save / Export button */}
             {auth.user ? (
               <button
-                onClick={handleCloudSave}
+                onClick={async () => {
+                  const savedId = await handleCloudSave()
+                  if (savedId && s.currentStep === 3) {
+                    triggerComputeRails(savedId, step3SettingsRef.current)
+                  }
+                }}
                 disabled={saveState === 'saving'}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: saveState === 'saving' ? 'default' : 'pointer', padding: '0.3rem 0.65rem', color: saveState === 'saved' ? '#6fcf97' : saveState === 'error' ? '#eb5757' : 'rgba(255,255,255,0.75)' }}
               >
@@ -274,7 +329,6 @@ function App() {
             setSelectedPoint={s.setSelectedPoint}
             setRoofPolygon={s.setRoofPolygon}
             handlePointSelect={s.handlePointSelect}
-            onWhiteboardStart={s.handleWhiteboardStart}
             setUploadedImageData={s.setUploadedImageData}
             isDrawingLine={s.isDrawingLine}
             setIsDrawingLine={s.setIsDrawingLine}
@@ -314,6 +368,8 @@ function App() {
             generatePanelLayoutHandler={s.computePanels}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             refreshAreaTrapezoids={s.refreshAreaTrapezoids}
+            rebuildPanelGrid={s.rebuildPanelGrid}
+            recordPanelDeletion={s.recordPanelDeletion}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -326,7 +382,7 @@ function App() {
                 const idx = prev.length
                 return [...prev, {
                   ...rawRect,
-                  id: Date.now(),
+                  id: String.fromCharCode(65 + idx % 26),
                   label: String.fromCharCode(65 + idx % 26),
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
@@ -351,27 +407,43 @@ function App() {
             setPanelFrontHeight={s.setPanelFrontHeight}
             panelAngle={s.panelAngle}
             setPanelAngle={s.setPanelAngle}
+            appDefaults={s.appDefaults}
           />
         )}
-        {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
+        {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
-        <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
+        <div style={{ display: s.currentStep === 3 ? undefined : 'none', height: '100%' }}>
           <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
+            railsComputing={railsComputing}
+            onRailSettingsCommit={handleRailSettingsCommit}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
             initialGlobalSettings={s.step3GlobalSettings}
             initialAreaSettings={s.step3AreaSettings}
-            onSettingsChange={(g, a) => { s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
+            onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
+            beRailsData={beRailsData}
+            appDefaults={s.appDefaults}
+            panelSpec={s.panelSpec}
           />
         </div>
 
+        {s.currentStep === 4 && (
+          <Step4PlanApproval
+            user={auth.user}
+            projectId={s.cloudProjectId}
+            onEnsureSaved={s.handleSaveProject}
+            planApproval={s.step4PlanApproval}
+            onApprovalChange={s.setStep4PlanApproval}
+          />
+        )}
+
         {s.currentStep === 5 && (
-          <Step4PdfReport
+          <Step5PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -383,8 +455,11 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
-            bomDeltas={s.step4BomDeltas ?? {}}
-            onBomDeltasChange={s.setStep4BomDeltas}
+            bomDeltas={s.step5BomDeltas ?? {}}
+            onBomDeltasChange={s.setStep5BomDeltas}
+            products={s.products}
+            productByType={s.productByType}
+            altsByType={s.altsByType}
           />
         )}
 
@@ -427,9 +502,9 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {[1, 2, 4, 5].map((step, displayIdx) => (
+          {[1, 2, 3, 4, 5].map((step) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
-              <div className="step-number">{s.currentStep > step ? '✓' : displayIdx + 1}</div>
+              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                 {STEP_NAME[step]}
                 {step >= LOGIN_REQUIRED_STEP && !auth.user && (
@@ -444,9 +519,18 @@ function App() {
 
         <button
           className="btn-nav btn-next"
-          onClick={() => {
+          onClick={async () => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
+            const stepBeforeNext = s.currentStep
             s.handleNext(TOTAL_STEPS)
+            if (auth.user) {
+              const savedId = await handleCloudSave(stepBeforeNext)
+              // Trigger rail computation only after step-2 save commits — avoids the race
+              // where computeRails reads stale DB data and overwrites the just-saved areas.
+              if (stepBeforeNext === LOGIN_REQUIRED_STEP - 1 && savedId) {
+                triggerComputeRails(savedId, step3SettingsRef.current)
+              }
+            }
           }}
           disabled={!s.canProceedToNextStep()}
         >
