@@ -5,18 +5,23 @@ MGP Project Layout Schema
 The `layout` JSONB column on the projects table.
 Stores all UI rendering state — pixel coordinates, canvas state, image data.
 
+IMPORTANT: The backend service must NEVER read from `layout` for any physical
+computation (rail layout, BOM, base placement, etc.). Layout is written and
+consumed exclusively by the frontend to persist canvas drawing state between
+sessions.
+
 Relationship to project_data.py
 --------------------------------
-  `data`   is the source of truth for physical project data.
-  `layout` is synced from `data` for rendering purposes.
+  `data`   is the sole source of truth for physical / structural project data.
+  `layout` is UI-only state synced from `data` for rendering purposes.
 
-  Fields that exist in both (panels, panelGrid) must be treated as derived
-  from `data` — on any conflict, `data` wins.
+  Fields that appear in both (e.g. panel grid address, panel dimensions) are
+  derived from `data` — on any conflict, `data` wins.
 
 Coordinate conventions
 ----------------------
-  Pixel coordinates — raw screen pixels on the uploaded image canvas.
-  pixelToCmRatio   — cm per pixel (= referenceLineLengthCm / referenceLine pixel length).
+  All coordinates are raw screen pixels on the uploaded image canvas.
+  pixelToCmRatio — cm per pixel (= referenceLineLengthCm / referenceLine pixel length).
 """
 
 from __future__ import annotations
@@ -71,17 +76,21 @@ class RectAreaLayout(BaseModel):
 class PanelLayout(BaseModel):
     """
     A single panel as placed on the canvas.
-    Pixel geometry is used for rendering.
-    Logical fields (row, col, trapezoidId, widthCm, heightCm) are synced
-    from ProjectData — data is source of truth on conflict.
+    Pixel geometry is used for rendering only — the service must not read
+    these coordinates for any computation.
+    Logical fields (row, col, area, trapezoidId, widthCm, heightCm) are
+    synced from ProjectData — data is source of truth on conflict.
     """
     id: int
 
-    # Pixel geometry (rendering)
-    x: float
-    y: float
-    width: float
-    height: float
+    # Pixel geometry (rendering only)
+    x: float            # top-left x in canvas pixels
+    y: float            # top-left y in canvas pixels
+    cx: float           # center x in canvas pixels
+    cy: float           # center y in canvas pixels
+    width: float        # pixel width
+    height: float       # pixel height
+    rotation: float = 0 # degrees (clockwise)
 
     # Physical dimensions (cm) — synced from ProjectData.settings
     widthCm: float
@@ -90,11 +99,13 @@ class PanelLayout(BaseModel):
     # Grid address — synced from ProjectData.areas[].panelGrid
     row: int
     col: int
+    line: int = 0       # line index within the area row
     coveredCols: list[int] = Field(default_factory=list)
     area: int           # index into rectAreas[]
     trapezoidId: str    # e.g. 'A', 'A1', 'B2'
 
-    isEmpty: bool = False   # True for ghost/empty slots
+    yDir: Optional[str] = None   # panel stacking direction: 'btt' | 'ttb'
+    isEmpty: bool = False        # True for ghost/empty slots
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -113,8 +124,11 @@ class ProjectLayout(BaseModel):
     referenceLineLengthCm: Optional[float] = None
     pixelToCmRatio: Optional[float] = None
 
-    # Canvas areas and panels (synced from data)
+    # Canvas areas and panels (synced from data — rendering only)
     rectAreas: list[RectAreaLayout] = Field(default_factory=list)
     panels: list[PanelLayout] = Field(default_factory=list)
     deletedPanelKeys: dict[str, list[str]] = Field(default_factory=dict)
     # str(areaIdx) → ["row_col", ...]
+
+    # Step-2 baseline marker (pixel coords, UI state only)
+    baseline: Optional[dict] = None

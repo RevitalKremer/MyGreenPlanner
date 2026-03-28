@@ -105,13 +105,6 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     return (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
   }, [refinedArea, trapezoidConfigs, areas])
 
-  // Get effective lineRails for an area (from settings or defaults)
-  const getLineRails = useCallback((areaIdx, lineOrientations) => {
-    const stored = areaSettings[areaIdx]?.lineRails
-    if (stored && Object.keys(stored).length === lineOrientations.length) return stored
-    const depths = lineOrientations.map(o => lineSlopeDepth(o))
-    return initDefaultLineRails(lineOrientations, depths)
-  }, [areaSettings])
 
   // Update lineRails for an area (called from the cross-section widget)
   const updateLineRails = useCallback((areaIdx, newLineRails) => {
@@ -194,6 +187,37 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     [rowPanelCounts]
   )
   const rowLabels = useMemo(() => rowKeys.map((rk, i) => areaLabel(rk, i)), [rowKeys, areaLabel])
+
+  // Derive lineRails from beRailsData for a given area index.
+  // Groups offsetFromLineFrontCm by lineIdx — substitutes for stored lineRails.
+  // Must be defined after rowKeys.
+  const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
+    if (!beRailsData) return null
+    const areaKey = rowKeys[areaIdx]
+    const label   = areas[areaKey]?.label
+    if (!label) return null
+    const beArea  = beRailsData.find(a => a.areaLabel === label)
+    if (!beArea?.rails?.length) return null
+    const map = {}
+    for (const r of beArea.rails) {
+      if (!map[r.lineIdx]) map[r.lineIdx] = []
+      map[r.lineIdx].push(r.offsetFromLineFrontCm)
+    }
+    for (const li of Object.keys(map)) map[li] = [...map[li]].sort((a, b) => a - b)
+    if (Object.keys(map).length !== lineOrientations.length) return null
+    return map
+  }, [beRailsData, areas, rowKeys])
+
+  // Get effective lineRails: (1) local edit-bar override in areaSettings,
+  // (2) derived from BE rail data, (3) computed defaults.
+  const getLineRails = useCallback((areaIdx, lineOrientations) => {
+    const stored = areaSettings[areaIdx]?.lineRails
+    if (stored && Object.keys(stored).length === lineOrientations.length) return stored
+    const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
+    if (fromBE) return fromBE
+    const depths = lineOrientations.map(o => lineSlopeDepth(o))
+    return initDefaultLineRails(lineOrientations, depths)
+  }, [areaSettings, getLineRailsFromBE])
 
   const areaTrapezoidMap = useMemo(() => {
     const map = {}

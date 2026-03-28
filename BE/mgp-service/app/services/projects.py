@@ -75,8 +75,18 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, rs) -> dict:
     else:
         area_settings = area_settings_raw.get(str(area_idx)) or {}
 
-    # lineRails stored per area in step3.areaSettings[i].lineRails
-    line_rails = area_settings.get('lineRails', {})
+    # lineRails: prefer any transient override from the request body; otherwise derive
+    # from the already-computed step2.areas[i].rails (offsetFromLineFrontCm grouped by lineIdx).
+    # lineRails is never persisted — it is stripped from step3 before the DB save.
+    line_rails = area_settings.get('lineRails') or {}
+    if not line_rails:
+        derived: dict[str, list] = {}
+        for r in area.get('rails', []):
+            li  = str(r.get('lineIdx', 0))
+            off = r.get('offsetFromLineFrontCm')
+            if off is not None:
+                derived.setdefault(li, []).append(off)
+        line_rails = {li: sorted(offs) for li, offs in derived.items()}
 
     stock_lengths   = global_settings.get('stockLengths', rs.DEFAULT_STOCK_LENGTHS_MM)
     overhang_cm     = area_settings.get('railOverhangCm', rs.DEFAULT_RAIL_OVERHANG_CM)
@@ -111,6 +121,18 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
             'rails':        computed['rails'],
             'numLargeGaps': computed['numLargeGaps'],
         })
+
+    # Strip lineRails from step3.areaSettings before persisting — positions are the
+    # authoritative source in step2.areas[i].rails[*].offsetFromLineFrontCm.
+    area_settings_store = data.get('step3', {}).get('areaSettings') or {}
+    if isinstance(area_settings_store, dict):
+        for cfg in area_settings_store.values():
+            if isinstance(cfg, dict):
+                cfg.pop('lineRails', None)
+    elif isinstance(area_settings_store, list):
+        for cfg in area_settings_store:
+            if isinstance(cfg, dict):
+                cfg.pop('lineRails', None)
 
     project.data = data
     flag_modified(project, 'data')
