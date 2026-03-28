@@ -41,7 +41,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], panelGrid = {}, refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange }) {
+export default function Step3ConstructionPlanning({ panels = [], panelGrid = {}, refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null }) {
   const { t } = useLang()
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
@@ -221,13 +221,14 @@ export default function Step3ConstructionPlanning({ panels = [], panelGrid = {},
 
   // ─── Construction calculations ────────────────────────────────────────────
 
+  const spec = useMemo(() => {
+    const p = panels.find(p => p.widthCm && p.heightCm)
+    return p
+      ? { widthCm: Math.min(p.widthCm, p.heightCm), lengthCm: Math.max(p.widthCm, p.heightCm) }
+      : { widthCm: 113.4, lengthCm: 238.2 }
+  }, [panels])
+
   const rowConstructions = useMemo(() => {
-    const spec = (() => {
-      const p = panels.find(p => p.widthCm && p.heightCm)
-      return p
-        ? { widthCm: Math.min(p.widthCm, p.heightCm), lengthCm: Math.max(p.widthCm, p.heightCm) }
-        : { widthCm: 113.4, lengthCm: 238.2 }
-    })()
 
     const rcs = rowKeys.map((areaKey, i) => {
       const panelCount = rowPanelCounts[areaKey] || 1
@@ -278,7 +279,30 @@ export default function Step3ConstructionPlanning({ panels = [], panelGrid = {},
       return { ...rc, numRails, linesPerRow, numLargeGaps, numRailConnectors }
     })
     return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, panels, panelGrid, areas, areaTrapezoidMap, getTrapBasesSettings])
+  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, spec, panelGrid, areas, areaTrapezoidMap, getTrapBasesSettings])
+
+  // ── Debug: FE vs BE rail comparison ─────────────────────────────────────────
+  const feRailsData = useMemo(() =>
+    rowKeys.map(areaKey => {
+      const label    = areas[areaKey]?.label
+      const areaGrid = label ? panelGrid[label] : null
+      const s        = getSettings(areaKey)
+      const lineOrientations = getLineOrientations(areaKey, areaTrapezoidMap[areaKey]?.[0])
+      const lineRails        = getLineRails(areaKey, lineOrientations)
+      const { rails, numLargeGaps } = areaGrid
+        ? computeAreaRailData(areaGrid, spec, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths })
+        : { rails: [], numLargeGaps: 0 }
+      return { areaLabel: label ?? String(areaKey), rails, numLargeGaps }
+    }),
+    [rowKeys, areas, panelGrid, areaSettings, globalSettings, areaTrapezoidMap, spec] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  useEffect(() => {
+    if (!beRailsData) return
+    console.log('FE Rails:', feRailsData)
+    console.log('BE Rails:', beRailsData)
+  }, [beRailsData, feRailsData])
+  // ─────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     onBOMDataChange?.({ rowConstructions, rowLabels })

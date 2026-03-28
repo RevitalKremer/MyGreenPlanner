@@ -36,6 +36,18 @@ export async function getProject(id) {
   return res.json()
 }
 
+export async function computeRails(id) {
+  const res = await mgpRequest(`/projects/${id}/rails`, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to compute rails')
+  return res.json()
+}
+
+export async function getRails(id) {
+  const res = await mgpRequest(`/projects/${id}/rails`)
+  if (!res.ok) throw new Error('Failed to fetch rails')
+  return res.json()
+}
+
 export async function approvePlan(id, strictConsent) {
   const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}`, {
     method: 'PUT',

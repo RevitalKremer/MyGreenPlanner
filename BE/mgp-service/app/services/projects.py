@@ -58,6 +58,61 @@ async def delete_project(db: AsyncSession, project: Project) -> None:
     await db.commit()
 
 
+def get_project_areas(project: Project) -> list:
+    """Return the areas list from the v2.0 project data structure."""
+    return (project.data or {}).get('step2', {}).get('areas', [])
+
+
+def _build_rail_inputs(project: Project, area: dict, area_idx: int, rs) -> dict:
+    """Extract rail computation inputs from project data (v2.0 format) for one area."""
+    data            = project.data or {}
+    step2           = data.get('step2', {})
+    step3           = data.get('step3', {})
+    global_settings = step3.get('globalSettings', {})
+    area_settings_list = step3.get('areaSettings', [])
+    area_settings   = area_settings_list[area_idx] if area_idx < len(area_settings_list) else {}
+
+    # lineRails stored per area in step3.areaSettings[i].lineRails
+    line_rails = area_settings.get('lineRails', {})
+
+    stock_lengths   = global_settings.get('stockLengths', rs.DEFAULT_STOCK_LENGTHS_MM)
+    overhang_cm     = area_settings.get('railOverhangCm', rs.DEFAULT_RAIL_OVERHANG_CM)
+    panel_width_cm  = step2.get('panelWidthCm',  113.4)
+    panel_length_cm = step2.get('panelLengthCm', 238.2)
+
+    return {
+        'panel_grid':      area.get('panelGrid') or {},
+        'panel_width_cm':  panel_width_cm,
+        'panel_length_cm': panel_length_cm,
+        'line_rails':      line_rails,
+        'overhang_cm':     overhang_cm,
+        'stock_lengths':   stock_lengths,
+    }
+
+
+async def compute_and_save_rails(db: AsyncSession, project: Project, rs) -> list:
+    """Compute rails for all areas, persist to step2.areas[i].rails, return per-area results."""
+    # Refresh to get the latest committed DB state — avoids overwriting a concurrent step-2 save.
+    await db.refresh(project)
+    data  = copy.deepcopy(project.data or {})
+    areas = data.get('step2', {}).get('areas', [])
+    result = []
+
+    for i, area in enumerate(areas):
+        computed = rs.compute_area_rails(**_build_rail_inputs(project, area, i, rs))
+        areas[i]['rails'] = computed['rails']
+        result.append({
+            'areaLabel':    area.get('label', str(i)),
+            'rails':        computed['rails'],
+            'numLargeGaps': computed['numLargeGaps'],
+        })
+
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+    return result
+
+
 async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool) -> Project:
     data = copy.deepcopy(project.data or {})
     step4 = data.setdefault('step4', {})

@@ -342,10 +342,13 @@ setPanelAngle('')
         panelGrid:     panelGrid[ra.label] ?? null,
       }
     })
+    const resolvedSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0]
     return {
       version: '2.0',
       step2: {
         panelType,
+        panelWidthCm:  resolvedSpec?.widthCm  ?? 113.4,
+        panelLengthCm: resolvedSpec?.lengthCm ?? 238.2,
         defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
         defaultAngleDeg:      parseFloat(panelAngle) || 0,
         trapezoids: step2Trapezoids,

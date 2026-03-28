@@ -6,7 +6,8 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary
 from app.services import projects as project_service
-from app.routers.deps import get_current_user
+from app.services import rail_service
+from app.routers.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -64,6 +65,87 @@ async def delete_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     await project_service.delete_project(db, project)
+
+
+
+@router.put("/{project_id}/rails")
+async def compute_rails(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute rail layout for all areas, persist to data.areas[i].rails, return rails."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    result = await project_service.compute_and_save_rails(db, project, rail_service)
+    return result
+
+
+@router.get("/{project_id}/rails")
+async def get_rails(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return saved rails for all areas (available to all users)."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    return [
+        {
+            'areaLabel': area.get('label', str(i)),
+            'rails': area.get('rails', []),
+        }
+        for i, area in enumerate(project_service.get_project_areas(project))
+    ]
+
+
+@router.get("/{project_id}/rails/dimensions")
+async def get_rail_dimensions(
+    project_id: uuid.UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return physical rail dimensions per area (admin only)."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    return [
+        {
+            'areaLabel': area.get('label', str(i)),
+            'rails': [
+                {k: r[k] for k in ('railId', 'lineIdx',
+                                    'offsetFromLineFrontCm', 'offsetFromRearEdgeCm',
+                                    'startCm', 'endCm', 'lengthMm')}
+                for r in area.get('rails', [])
+            ],
+        }
+        for i, area in enumerate(project_service.get_project_areas(project))
+    ]
+
+
+@router.get("/{project_id}/rails/materials")
+async def get_rail_materials(
+    project_id: uuid.UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return aggregated rail materials summary (admin only)."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    data     = project.data or {}
+    settings = data.get('settings', {})
+    stock_lengths = settings.get('globalSettings', {}).get(
+        'stockLengths', rail_service.DEFAULT_STOCK_LENGTHS_MM
+    )
+    areas_rails = [area.get('rails', []) for area in project_service.get_project_areas(project)]
+    return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 
 
 @router.put("/{project_id}/approvePlan")

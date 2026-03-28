@@ -13,12 +13,12 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, computeRails } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
 
-const LOGIN_REQUIRED_STEP = 4   // step 4+ (plan approval, export) require login
+const LOGIN_REQUIRED_STEP = 3   // step 3+ (construction planning, approval, export) require login
 
 function App() {
   const s = useProjectState()
@@ -84,16 +84,36 @@ function App() {
     else setCloudProjects([])
   }, [auth.user, fetchCloudProjects])
 
+  const [beRailsData, setBeRailsData] = useState(null)
+
+  // Trigger rail computation when a (different) project is loaded while on step 3.
+  // Step 2→3 transition is handled explicitly in the Next button after save completes.
+  useEffect(() => {
+    if (s.currentStep === 3 && s.cloudProjectId) {
+      setBeRailsData(null)
+      computeRails(s.cloudProjectId)
+        .then(setBeRailsData)
+        .catch(console.error)
+    }
+  }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
+
+  const triggerComputeRails = (id) => {
+    setBeRailsData(null)
+    computeRails(id).then(setBeRailsData).catch(console.error)
+  }
+
   const handleCloudSave = async (step = null) => {
     setSaveState('saving')
     try {
-      await s.handleSaveProject(step)
+      const id = await s.handleSaveProject(step)
       setSaveState('saved')
       fetchCloudProjects()
       setTimeout(() => setSaveState(null), 2500)
+      return id
     } catch {
       setSaveState('error')
       setTimeout(() => setSaveState(null), 3000)
+      return null
     }
   }
 
@@ -379,6 +399,7 @@ function App() {
             onSettingsChange={(g, a) => { s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
+            beRailsData={beRailsData}
           />
         </div>
 
@@ -466,11 +487,18 @@ function App() {
 
         <button
           className="btn-nav btn-next"
-          onClick={() => {
+          onClick={async () => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
             const stepBeforeNext = s.currentStep
             s.handleNext(TOTAL_STEPS)
-            if (auth.user) handleCloudSave(stepBeforeNext)
+            if (auth.user) {
+              const savedId = await handleCloudSave(stepBeforeNext)
+              // Trigger rail computation only after step-2 save commits — avoids the race
+              // where computeRails reads stale DB data and overwrites the just-saved areas.
+              if (stepBeforeNext === LOGIN_REQUIRED_STEP - 1 && savedId) {
+                triggerComputeRails(savedId)
+              }
+            }
           }}
           disabled={!s.canProceedToNextStep()}
         >

@@ -109,6 +109,7 @@ class AreaSettings(BaseModel):
     label: str                          # 'A', 'B', 'C', …
     angleDeg: Optional[float] = None    # default for trapezoids in this area
     frontHeightCm: Optional[float] = None
+    railOverhangCm: float = 4.0         # rail overhang beyond panel extents (cm)
     trapezoidIds: list[str] = Field(default_factory=list)
     # Ordered list of trapezoid IDs belonging to this area
 
@@ -117,13 +118,15 @@ class AreaSettings(BaseModel):
 
 class Rail(BaseModel):
     """
-    One physical rail computed by computeRowRailLayout().
-    Output — derived from lineRails + railOverhangCm + stockLengths.
+    One physical rail computed by rail_service.compute_area_rails().
+    Output — derived from panelGrid + lineRails + railOverhangCm + stockLengths.
     """
     railId: str                                     # 'R1', 'R2', …
     lineIdx: int
-    offsetFromRearEdgeCm: float                     # position within its panel line
+    offsetFromRearEdgeCm: float                     # distance from rear (ridge) edge to rail centre
     orientation: Literal['PORTRAIT', 'LANDSCAPE']
+    startCm: float                                  # leading edge of span (from area start corner)
+    endCm: float                                    # trailing edge of span
     lengthMm: int                                   # total span including overhang
     stockSegments: list[int]                        # cut lengths (mm), greedy largest-first
     leftoverMm: int                                 # total waste mm
