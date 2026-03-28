@@ -1,7 +1,12 @@
+import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("mgp")
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -39,6 +44,35 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MyGreenPlanner Service", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    body = await request.body()
+    body_preview = body[:500].decode("utf-8", errors="replace") if body else ""
+    if len(body) > 500:
+        body_preview += f" … (+{len(body) - 500} bytes)"
+
+    logger.info(
+        "%s %s | body: %s",
+        request.method,
+        request.url.path,
+        body_preview or "(empty)",
+    )
+
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = (time.perf_counter() - start) * 1000
+
+    logger.info(
+        "%s %s → %d (%.0fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed,
+    )
+    return response
+
 
 origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 

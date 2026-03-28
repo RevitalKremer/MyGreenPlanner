@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -44,13 +44,14 @@ async def get_project(
 async def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
+    step: int | None = Query(None, description="If provided, only data.step{n} is merged; other steps are preserved"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return await project_service.update_project(db, project, payload)
+    return await project_service.update_project(db, project, payload, step)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -63,3 +64,17 @@ async def delete_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     await project_service.delete_project(db, project)
+
+
+@router.put("/{project_id}/approvePlan")
+async def approve_plan(
+    project_id: uuid.UUID,
+    strictConsent: bool = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    updated = await project_service.approve_plan(db, project, current_user, strictConsent)
+    return updated.data.get("step4", {}).get("planApproval")

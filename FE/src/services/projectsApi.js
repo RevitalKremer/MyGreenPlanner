@@ -15,8 +15,9 @@ export async function createProject(name, location, layout, data) {
   return res.json()
 }
 
-export async function updateProject(id, payload) {
-  const res = await mgpRequest(`/projects/${id}`, {
+export async function updateProject(id, payload, step = null) {
+  const url = step != null ? `/projects/${id}?step=${step}` : `/projects/${id}`
+  const res = await mgpRequest(url, {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
@@ -32,6 +33,14 @@ export async function deleteProject(id) {
 export async function getProject(id) {
   const res = await mgpRequest(`/projects/${id}`)
   if (!res.ok) throw new Error('Project not found')
+  return res.json()
+}
+
+export async function approvePlan(id, strictConsent) {
+  const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}`, {
+    method: 'PUT',
+  })
+  if (!res.ok) throw new Error('Failed to update plan approval')
   return res.json()
 }
 

@@ -10,7 +10,8 @@ Step locking
 ------------
   locked step 2 → set during panel placement; regenerated if step 1 changes
   locked step 3 → set during construction planning; regenerated if step 2 changes
-  locked step 4 → frozen BOM snapshot; regenerated if step 3 changes
+  locked step 4 → plan approval; unlocked if step 3 changes
+  locked step 5 → frozen BOM snapshot; regenerated if step 3 changes
 
 Coordinate conventions
 ----------------------
@@ -165,7 +166,34 @@ class Area(BaseModel):
     diagonals: list[Diagonal] = Field(default_factory=list)  # locked step 3
 
 
-# ── BOM (locked step 4) ───────────────────────────────────────────────────────
+# ── Plan Approval (locked step 4) ────────────────────────────────────────────
+
+class ApprovalPerformedBy(BaseModel):
+    """The logged-in user who clicked Approve in the UI (auto-captured)."""
+    userId: str             # UUID string of the authenticated user
+    email: str
+    fullName: str
+
+
+class PlanApproval(BaseModel):
+    """
+    Constructor's sign-off before BOM and PDF generation.
+    Two identities are recorded:
+      - constructorName: manually entered by the user (the certified installer)
+      - performedBy: auto-captured from the logged-in account
+    Once set, the app allows proceeding to step 5 (BOM/PDF).
+    """
+    date: str               # ISO date string (YYYY-MM-DD)
+    strictConsent: bool     # "I have reviewed and take full responsibility"
+    performedBy: ApprovalPerformedBy  # logged-in user who submitted the approval
+
+
+class Step4Data(BaseModel):
+    """Plan approval step."""
+    planApproval: Optional[PlanApproval] = None
+
+
+# ── BOM (locked step 5) ───────────────────────────────────────────────────────
 
 class BOMItem(BaseModel):
     itemId: str
@@ -177,12 +205,17 @@ class BOMItem(BaseModel):
 class BOM(BaseModel):
     """
     Frozen BOM snapshot — source of truth for quotation.
-    Regenerated when step 3 changes; frozen when user advances to step 4.
+    Regenerated when step 3 changes; frozen when user advances to step 5.
     bomDeltas store manual quantity adjustments on top of the computed items.
     """
     items: list[BOMItem] = Field(default_factory=list)
     bomDeltas: dict[str, float] = Field(default_factory=dict)
     # itemId → quantity adjustment (positive = add, negative = remove)
+
+
+class Step5Data(BaseModel):
+    """BOM and PDF export step."""
+    bom: Optional[BOM] = None
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -197,4 +230,5 @@ class ProjectData(BaseModel):
     trapezoids: dict[str, Trapezoid] = Field(default_factory=dict)
     # trapezoidId → Trapezoid
     areas: list[Area] = Field(default_factory=list)
-    bom: Optional[BOM] = None
+    step4: Step4Data = Field(default_factory=Step4Data)   # plan approval
+    step5: Step5Data = Field(default_factory=Step5Data)   # BOM / PDF

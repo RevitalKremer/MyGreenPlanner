@@ -5,7 +5,8 @@ import LangToggle from './i18n/LangToggle'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
 import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
-import Step4PdfReport from './components/steps/Step4PdfReport'
+import Step4PlanApproval from './components/steps/Step4PlanApproval'
+import Step5PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import { useProjectState } from './hooks/useProjectState'
@@ -17,7 +18,7 @@ import './App.css'
 
 const TOTAL_STEPS = 5
 
-const LOGIN_REQUIRED_STEP = 4   // step 4+ and export require login
+const LOGIN_REQUIRED_STEP = 4   // step 4+ (plan approval, export) require login
 
 function App() {
   const s = useProjectState()
@@ -27,6 +28,7 @@ function App() {
   const STEP_NAME = {
     1: t('step.1.name'),
     2: t('step.2.name'),
+    3: t('step.3.name'),
     4: t('step.4.name'),
     5: t('step.5.name'),
   }
@@ -82,10 +84,10 @@ function App() {
     else setCloudProjects([])
   }, [auth.user, fetchCloudProjects])
 
-  const handleCloudSave = async () => {
+  const handleCloudSave = async (step = null) => {
     setSaveState('saving')
     try {
-      await s.handleSaveProject()
+      await s.handleSaveProject(step)
       setSaveState('saved')
       fetchCloudProjects()
       setTimeout(() => setSaveState(null), 2500)
@@ -362,9 +364,9 @@ function App() {
             setPanelAngle={s.setPanelAngle}
           />
         )}
-        {/* Step4 stays mounted so onPdfDataChange fires even when on step 5.
+        {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
-        <div style={{ display: s.currentStep === 4 ? undefined : 'none', height: '100%' }}>
+        <div style={{ display: s.currentStep === 3 ? undefined : 'none', height: '100%' }}>
           <Step3ConstructionPlanning
             panels={s.panels}
             panelGrid={s.panelGrid}
@@ -380,8 +382,18 @@ function App() {
           />
         </div>
 
+        {s.currentStep === 4 && (
+          <Step4PlanApproval
+            user={auth.user}
+            projectId={s.cloudProjectId}
+            onEnsureSaved={s.handleSaveProject}
+            planApproval={s.step4PlanApproval}
+            onApprovalChange={s.setStep4PlanApproval}
+          />
+        )}
+
         {s.currentStep === 5 && (
-          <Step4PdfReport
+          <Step5PdfReport
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -393,8 +405,8 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
-            bomDeltas={s.step4BomDeltas ?? {}}
-            onBomDeltasChange={s.setStep4BomDeltas}
+            bomDeltas={s.step5BomDeltas ?? {}}
+            onBomDeltasChange={s.setStep5BomDeltas}
           />
         )}
 
@@ -437,9 +449,9 @@ function App() {
         </button>
 
         <div className="wizard-steps">
-          {[1, 2, 4, 5].map((step, displayIdx) => (
+          {[1, 2, 3, 4, 5].map((step) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
-              <div className="step-number">{s.currentStep > step ? '✓' : displayIdx + 1}</div>
+              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
               <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                 {STEP_NAME[step]}
                 {step >= LOGIN_REQUIRED_STEP && !auth.user && (
@@ -456,7 +468,9 @@ function App() {
           className="btn-nav btn-next"
           onClick={() => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
+            const stepBeforeNext = s.currentStep
             s.handleNext(TOTAL_STEPS)
+            if (auth.user) handleCloudSave(stepBeforeNext)
           }}
           disabled={!s.canProceedToNextStep()}
         >

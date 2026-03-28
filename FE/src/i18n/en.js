@@ -29,8 +29,23 @@ const en = {
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'Allocate Roof',
   'step.2.name': 'Panel Layout',
-  'step.4.name': 'Construction Planning',
+  'step.3.name': 'Construction Planning',
+  'step.4.name': 'Plan Approval',
   'step.5.name': 'Finalize & Export',
+
+  // ── Step 5: Plan Approval ────────────────────────────────────────────────
+  'step5.title':           'Plan Approval',
+  'step5.subtitle':        'A certified constructor must review and approve the plan before generating the BOM and PDF reports.',
+  'step5.performedBy':        'Submitted By (logged-in user)',
+  'step5.date':               'Approval Date',
+  'step5.consent':            'I have reviewed the construction plan and take full responsibility for its accuracy.',
+  'step5.approve':            'Approve Plan',
+  'step5.approved':           'Plan Approved',
+  'step5.approvedBy':         'Submitted by {performedByName} on {date}',
+  'step5.disclaimer':         'This plan was generated as a planning aid only. Sadot Energy Ltd. bears no responsibility for the accuracy, completeness, or suitability of this plan for any specific installation. The certified constructor who approves and executes this plan assumes full professional and legal responsibility for the installation.',
+  'step5.resetWarning':    'Resetting approval will require re-approval before proceeding.',
+  'step5.reset':           'Reset Approval',
+  'step5.blockMsg':        'Plan approval is required to proceed to the next step.',
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':           'New Project',

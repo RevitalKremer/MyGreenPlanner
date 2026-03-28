@@ -83,8 +83,12 @@ export function useProjectState() {
   const [step3AreaSettings,   setStep3AreaSettings]   = useState(null)
   const [step3BOMData,        setStep3BOMData]        = useState({ rowConstructions: [], rowLabels: [] })
 
+  // Step 4: Plan approval
+  const [step4PlanApproval, setStep4PlanApproval] = useState(null)
+  // { name: string, date: string (ISO), strictConsent: bool }
+
   // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
-  const [step4BomDeltas, setStep4BomDeltas] = useState(null)
+  const [step5BomDeltas, setStep5BomDeltas] = useState(null)
 
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
@@ -136,7 +140,8 @@ setPanelAngle('')
     setDeletedPanelKeys({})
     setStep3GlobalSettings(null)
     setStep3AreaSettings(null)
-    setStep4BomDeltas(null)
+    setStep4PlanApproval(null)
+    setStep5BomDeltas(null)
     setCloudProjectId(null)
   }
 
@@ -192,7 +197,8 @@ setPanelAngle('')
       const layout = data.layout || {}
       const s2     = data.step2  || {}
       const s3     = data.step3  || {}
-      const s4     = data.step4  || {}
+      const s4     = data.step4  || {}   // plan approval
+      // step5 read inline below
 
       if (layout.uploadedImageData)  setUploadedImageData(layout.uploadedImageData)
       if (layout.roofPolygon)        setRoofPolygon(layout.roofPolygon)
@@ -252,9 +258,10 @@ setPanelAngle('')
         })
       }
 
-      if (s3.globalSettings) setStep3GlobalSettings(s3.globalSettings)
-      if (s3.areaSettings)   setStep3AreaSettings(s3.areaSettings)
-      if (s4.bomDeltas)      setStep4BomDeltas(s4.bomDeltas)
+      if (s3.globalSettings)    setStep3GlobalSettings(s3.globalSettings)
+      if (s3.areaSettings)      setStep3AreaSettings(s3.areaSettings)
+      if (s4.planApproval)      setStep4PlanApproval(s4.planApproval)
+      if (data.step5?.bomDeltas) setStep5BomDeltas(data.step5.bomDeltas)
 
     } else {
       // ── v1.0 legacy format ─────────────────────────────────────────────────
@@ -280,7 +287,7 @@ setPanelAngle('')
       if (data.step3GlobalSettings ?? data.step4GlobalSettings) setStep3GlobalSettings(data.step3GlobalSettings ?? data.step4GlobalSettings)
       if (data.step3AreaSettings   ?? data.step4AreaSettings)   setStep3AreaSettings(data.step3AreaSettings ?? data.step4AreaSettings)
       else if (data.step4RowSettings) setStep3AreaSettings(data.step4RowSettings)
-      if (data.step4BomDeltas) setStep4BomDeltas(data.step4BomDeltas)
+      if (data.step5BomDeltas) setStep5BomDeltas(data.step5BomDeltas)
     }
 
     if (data.currentStep) setCurrentStep(data.currentStep)
@@ -349,7 +356,10 @@ setPanelAngle('')
         areaSettings:   step3AreaSettings,
       },
       step4: {
-        bomDeltas: step4BomDeltas,
+        planApproval: step4PlanApproval,
+      },
+      step5: {
+        bomDeltas: step5BomDeltas,
       },
     }
   }
@@ -374,16 +384,18 @@ setPanelAngle('')
     URL.revokeObjectURL(url)
   }
 
-  const handleSaveProject = async () => {
+  const handleSaveProject = async (step = null) => {
     const name     = currentProject?.name || 'Untitled'
     const location = currentProject?.location || null
     const layout   = getLayoutData()
     const data     = getProjectData()
     if (cloudProjectId) {
-      await updateProject(cloudProjectId, { name, location, layout, data })
+      await updateProject(cloudProjectId, { name, location, layout, data }, step)
+      return cloudProjectId
     } else {
       const saved = await createProject(name, location, layout, data)
       setCloudProjectId(saved.id)
+      return saved.id
     }
   }
 
@@ -1007,10 +1019,10 @@ setPanelAngle('')
       })
     }
 
-    const nextStep = currentStep === 2 ? 4 : currentStep + 1
+    const nextStep = currentStep + 1
 
     // Finalise panel data before entering step 3 (construction planning)
-    if (nextStep === 4) {
+    if (nextStep === 3) {
       // Re-split trapezoids from current panel state (step 2 responsibility, last chance)
       rectAreas.forEach((area, idx) => {
         if (!area.manualTrapezoids) refreshAreaTrapezoids(idx)
@@ -1024,7 +1036,7 @@ setPanelAngle('')
 
   const handleBack = () => {
     if (currentStep > 1) {
-      setCurrentStep(currentStep === 4 ? 2 : currentStep - 1)
+      setCurrentStep(currentStep - 1)
     }
   }
 
@@ -1049,8 +1061,8 @@ setPanelAngle('')
           })
         )
       }
-      case 3: return panels.length > 0
-      case 4: return true
+      case 3: return true
+      case 4: return !!(step4PlanApproval?.strictConsent)
       case 5: return true
       default: return false
     }
@@ -1095,12 +1107,14 @@ setPanelAngle('')
     panelGrid,
     rebuildPanelGrid,
     recordPanelDeletion,
-    // Step 4
+    // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,
     step3BOMData, setStep3BOMData,
-    // Step 5
-    step4BomDeltas, setStep4BomDeltas,
+    // Step 5 (plan approval)
+    step4PlanApproval, setStep4PlanApproval,
+    // Step 6 (BOM / PDF)
+    step5BomDeltas, setStep5BomDeltas,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,
