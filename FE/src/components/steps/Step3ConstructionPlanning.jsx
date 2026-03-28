@@ -54,6 +54,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const [areaSettings,   setAreaSettings]   = useState(() => initialAreaSettings   ?? {})
   const [highlightParam,  setHighlightParam]  = useState(null)
   const [customBasesMap,  setCustomBasesMap]  = useState({})
+  const [resetAreas,      setResetAreas]      = useState(new Set())  // areas with pending rail reset — skip BE data
 
   const prevTabRef = useRef(activeTab)
   useEffect(() => {
@@ -62,6 +63,11 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear reset flags when fresh BE rail data arrives
+  useEffect(() => {
+    if (beRailsData && resetAreas.size > 0) setResetAreas(new Set())
+  }, [beRailsData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onSettingsChange?.(globalSettings, areaSettings)
@@ -141,7 +147,11 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       railGlobalParams.forEach(p => { copy[p.key] = p.default })
       return copy
     })
-  }, [])
+    // Mark area as reset so getLineRails skips stale BE data until next recomputation
+    setResetAreas(prev => new Set([...prev, areaIdx]))
+    // Clear custom base positions and trap-level bases settings (deferred to avoid TDZ)
+    resetBasesForArea(areaIdx)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Per-trapezoid bases settings ─────────────────────────────────────────
 
@@ -216,11 +226,14 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const getLineRails = useCallback((areaIdx, lineOrientations) => {
     const stored = areaSettings[areaIdx]?.lineRails
     if (stored && Object.keys(stored).length === lineOrientations.length) return stored
-    const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
-    if (fromBE) return fromBE
+    // Skip stale BE data for areas that have been reset to defaults
+    if (!resetAreas.has(areaIdx)) {
+      const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
+      if (fromBE) return fromBE
+    }
     const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
     return initDefaultLineRails(lineOrientations, depths)
-  }, [areaSettings, getLineRailsFromBE])
+  }, [areaSettings, getLineRailsFromBE, resetAreas])
 
   const areaTrapezoidMap = useMemo(() => {
     const map = {}
@@ -252,6 +265,29 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       return next
     })
   }, [getTrapBasesSettings, effectiveSelectedTrapId, areaTrapezoidMap, setTrapezoidConfigs])
+
+  // Clear custom bases for all trapezoids in an area (called from resetLineRails)
+  const resetBasesForArea = useCallback((areaIdx) => {
+    const areaKey = rowKeys[areaIdx]
+    const trapIds = areaTrapezoidMap[areaKey] || []
+    if (trapIds.length === 0) return
+    setCustomBasesMap(prev => {
+      const copy = { ...prev }
+      trapIds.forEach(id => delete copy[id])
+      return copy
+    })
+    setTrapezoidConfigs?.(prev => {
+      const copy = { ...prev }
+      trapIds.forEach(id => {
+        if (copy[id]) {
+          const tc = { ...copy[id] }
+          TRAP_BASES_KEYS.forEach(k => delete tc[k])
+          copy[id] = tc
+        }
+      })
+      return copy
+    })
+  }, [rowKeys, areaTrapezoidMap, setTrapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Construction calculations ────────────────────────────────────────────
 
