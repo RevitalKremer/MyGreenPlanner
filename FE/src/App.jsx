@@ -108,7 +108,15 @@ function App() {
   const handleLoadCloudProject = async (projectId) => {
     try {
       const cloudProject = await getProject(projectId)
-      s.handleImportProject(cloudProject.data, cloudProject.id)
+      // Merge layout + data columns into the shape handleImportProject expects
+      const layout = cloudProject.layout ?? {}
+      const merged = {
+        project:     { name: cloudProject.name, location: cloudProject.location },
+        currentStep: layout.currentStep,
+        layout,
+        ...(cloudProject.data ?? {}),
+      }
+      s.handleImportProject(merged, cloudProject.id)
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
     }

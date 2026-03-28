@@ -288,8 +288,7 @@ setPanelAngle('')
     setAppScreen('wizard')
   }
 
-  const getExportData = () => {
-    // ── layout: pixel-coord rendering state ──────────────────────────────────
+  const getLayoutData = () => {
     const layoutRectAreas = rectAreas.map(ra => ({
       id:                   ra.id,
       vertices:             ra.vertices,
@@ -301,8 +300,21 @@ setPanelAngle('')
       manualTrapezoids:     ra.manualTrapezoids,
       manualColTrapezoids:  ra.manualColTrapezoids,
     }))
+    return {
+      currentStep,
+      uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
+      roofPolygon,
+      referenceLine,
+      referenceLineLengthCm,
+      pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
+      baseline,
+      rectAreas: layoutRectAreas,
+      panels,
+      deletedPanelKeys,
+    }
+  }
 
-    // ── step2: physical panel layout ─────────────────────────────────────────
+  const getProjectData = () => {
     const step2Trapezoids = {}
     Object.entries(trapezoidConfigs).forEach(([id, cfg]) => {
       step2Trapezoids[id] = {
@@ -312,7 +324,6 @@ setPanelAngle('')
         lineOrientations: cfg.lineOrientations,
       }
     })
-
     const step2Areas = rectAreas.map((ra, idx) => {
       const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
       return {
@@ -324,22 +335,8 @@ setPanelAngle('')
         panelGrid:     panelGrid[ra.label] ?? null,
       }
     })
-
     return {
       version: '2.0',
-      project: currentProject,
-      currentStep,
-      layout: {
-        uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
-        roofPolygon,
-        referenceLine,
-        referenceLineLengthCm,
-        pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
-        baseline,
-        rectAreas: layoutRectAreas,
-        panels,
-        deletedPanelKeys,
-      },
       step2: {
         panelType,
         defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
@@ -357,6 +354,13 @@ setPanelAngle('')
     }
   }
 
+  // Keep getExportData for file export (combines both into one portable blob)
+  const getExportData = () => ({
+    project: currentProject,
+    layout:  getLayoutData(),
+    data:    getProjectData(),
+  })
+
   const handleExportProject = () => {
     const data = getExportData()
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -371,13 +375,14 @@ setPanelAngle('')
   }
 
   const handleSaveProject = async () => {
-    const data = getExportData()
-    const name = currentProject?.name || 'Untitled'
+    const name     = currentProject?.name || 'Untitled'
     const location = currentProject?.location || null
+    const layout   = getLayoutData()
+    const data     = getProjectData()
     if (cloudProjectId) {
-      await updateProject(cloudProjectId, { name, location, data })
+      await updateProject(cloudProjectId, { name, location, layout, data })
     } else {
-      const saved = await createProject(name, location, data)
+      const saved = await createProject(name, location, layout, data)
       setCloudProjectId(saved.id)
     }
   }

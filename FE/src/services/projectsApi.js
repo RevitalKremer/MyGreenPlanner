@@ -6,10 +6,10 @@ export async function listProjects() {
   return res.json()
 }
 
-export async function createProject(name, location, data) {
+export async function createProject(name, location, layout, data) {
   const res = await mgpRequest('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, location: location || null, data }),
+    body: JSON.stringify({ name, location: location || null, layout, data }),
   })
   if (!res.ok) throw new Error('Failed to create project')
   return res.json()
