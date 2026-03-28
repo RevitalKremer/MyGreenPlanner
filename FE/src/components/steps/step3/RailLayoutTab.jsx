@@ -27,6 +27,7 @@ export default function RailLayoutTab({
   trapSettingsMap = {},
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
+  railsComputing = false,
 }) {
   const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
@@ -225,6 +226,11 @@ export default function RailLayoutTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'white', position: 'relative' }}>
+      {railsComputing && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'all' }}>
+          <span style={{ fontSize: '0.9rem', color: '#555', fontWeight: 500 }}>Computing rails…</span>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
 
@@ -241,22 +247,6 @@ export default function RailLayoutTab({
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
                   <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
-
-                  {/* Cross-section overlay */}
-                  {showEditBar && (
-                    <RailCrossSectionOverlay
-                      rl={activeCrossSectionRl}
-                      lineRails={lineRails}
-                      panelDepthsCm={panelDepthsCm}
-                      keepSymmetry={keepSymmetry}
-                      toSvg={toSvg}
-                      pixelToCmRatio={pixelToCmRatio}
-                      sc={sc}
-                      zoom={zoom}
-                      svgRef={svgRef}
-                      onLineChange={handleLineRailsChange}
-                    />
-                  )}
 
                   {/* Rails + dimension annotations */}
                   {railLayouts.map((rl, i) => {
@@ -392,6 +382,22 @@ export default function RailLayoutTab({
                       </g>
                     )
                   })}
+
+                  {/* Edit bar — rendered last so it draws on top of all rails */}
+                  {showEditBar && (
+                    <RailCrossSectionOverlay
+                      rl={activeCrossSectionRl}
+                      lineRails={lineRails}
+                      panelDepthsCm={panelDepthsCm}
+                      keepSymmetry={keepSymmetry}
+                      toSvg={toSvg}
+                      pixelToCmRatio={pixelToCmRatio}
+                      sc={sc}
+                      zoom={zoom}
+                      svgRef={svgRef}
+                      onLineChange={handleLineRailsChange}
+                    />
+                  )}
                 </svg>
               </div>
             </div>

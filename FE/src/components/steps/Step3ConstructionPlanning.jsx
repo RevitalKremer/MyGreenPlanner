@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT } from '../../styles/colors'
 import {
@@ -40,7 +40,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null, railsComputing = false, onRailSettingsCommit }) {
   const { t } = useLang()
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
@@ -51,6 +51,14 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const [areaSettings,   setAreaSettings]   = useState(() => initialAreaSettings   ?? {})
   const [highlightParam,  setHighlightParam]  = useState(null)
   const [customBasesMap,  setCustomBasesMap]  = useState({})
+
+  const prevTabRef = useRef(activeTab)
+  useEffect(() => {
+    if (prevTabRef.current === 'rails' && activeTab !== 'rails') {
+      onRailSettingsCommit?.()
+    }
+    prevTabRef.current = activeTab
+  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onSettingsChange?.(globalSettings, areaSettings)
@@ -610,6 +618,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 onApplyRailsToAll={() => applySection(selectedRowIdx, ['lineRails'])}
                 onResetRails={() => resetLineRails(selectedRowIdx)}
                 highlightGroup={PARAM_GROUP[highlightParam] ?? null}
+                railsComputing={railsComputing}
               />
             </div>
           )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
 import { useLang } from './i18n/LangContext'
 import LangToggle from './i18n/LangToggle'
@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, computeRails } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, computeRails, getRails } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -85,22 +85,34 @@ function App() {
   }, [auth.user, fetchCloudProjects])
 
   const [beRailsData, setBeRailsData] = useState(null)
+  const [railsComputing, setRailsComputing] = useState(false)
+  // Always-current step3 settings — updated synchronously in onSettingsChange so commit
+  // callbacks never read stale state from the React re-render cycle.
+  const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
 
   // Trigger rail computation when a (different) project is loaded while on step 3.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
     if (s.currentStep === 3 && s.cloudProjectId) {
       setBeRailsData(null)
-      computeRails(s.cloudProjectId)
+      getRails(s.cloudProjectId)
         .then(setBeRailsData)
         .catch(console.error)
     }
   }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
 
-  const triggerComputeRails = (id) => {
-    setBeRailsData(null)
-    computeRails(id).then(setBeRailsData).catch(console.error)
+  const triggerComputeRails = (id, step3Data = null) => {
+    setRailsComputing(true)
+    computeRails(id, step3Data)
+      .then(data => { setBeRailsData(data) })
+      .catch(console.error)
+      .finally(() => setRailsComputing(false))
   }
+
+  const handleRailSettingsCommit = useCallback(() => {
+    if (!s.cloudProjectId) return
+    triggerComputeRails(s.cloudProjectId, step3SettingsRef.current)
+  }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCloudSave = async (step = null) => {
     setSaveState('saving')
@@ -233,7 +245,12 @@ function App() {
             {/* Save / Export button */}
             {auth.user ? (
               <button
-                onClick={handleCloudSave}
+                onClick={async () => {
+                  const savedId = await handleCloudSave()
+                  if (savedId && s.currentStep === 3) {
+                    triggerComputeRails(savedId, step3SettingsRef.current)
+                  }
+                }}
                 disabled={saveState === 'saving'}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: saveState === 'saving' ? 'default' : 'pointer', padding: '0.3rem 0.65rem', color: saveState === 'saved' ? '#6fcf97' : saveState === 'error' ? '#eb5757' : 'rgba(255,255,255,0.75)' }}
               >
@@ -390,12 +407,14 @@ function App() {
           <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
+            railsComputing={railsComputing}
+            onRailSettingsCommit={handleRailSettingsCommit}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
             initialGlobalSettings={s.step3GlobalSettings}
             initialAreaSettings={s.step3AreaSettings}
-            onSettingsChange={(g, a) => { s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
+            onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
@@ -495,7 +514,7 @@ function App() {
               // Trigger rail computation only after step-2 save commits — avoids the race
               // where computeRails reads stale DB data and overwrites the just-saved areas.
               if (stepBeforeNext === LOGIN_REQUIRED_STEP - 1 && savedId) {
-                triggerComputeRails(savedId)
+                triggerComputeRails(savedId, step3SettingsRef.current)
               }
             }
           }}

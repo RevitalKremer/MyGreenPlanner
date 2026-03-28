@@ -63,14 +63,17 @@ def get_project_areas(project: Project) -> list:
     return (project.data or {}).get('step2', {}).get('areas', [])
 
 
-def _build_rail_inputs(project: Project, area: dict, area_idx: int, rs) -> dict:
+def _build_rail_inputs(data: dict, area: dict, area_idx: int, rs) -> dict:
     """Extract rail computation inputs from project data (v2.0 format) for one area."""
-    data            = project.data or {}
     step2           = data.get('step2', {})
     step3           = data.get('step3', {})
-    global_settings = step3.get('globalSettings', {})
-    area_settings_list = step3.get('areaSettings', [])
-    area_settings   = area_settings_list[area_idx] if area_idx < len(area_settings_list) else {}
+    global_settings = step3.get('globalSettings') or {}
+    area_settings_raw = step3.get('areaSettings') or {}
+    # areaSettings may be a list or a dict keyed by string index (FE serialises JS object keys as strings)
+    if isinstance(area_settings_raw, list):
+        area_settings = area_settings_raw[area_idx] if area_idx < len(area_settings_raw) else {}
+    else:
+        area_settings = area_settings_raw.get(str(area_idx)) or {}
 
     # lineRails stored per area in step3.areaSettings[i].lineRails
     line_rails = area_settings.get('lineRails', {})
@@ -90,16 +93,18 @@ def _build_rail_inputs(project: Project, area: dict, area_idx: int, rs) -> dict:
     }
 
 
-async def compute_and_save_rails(db: AsyncSession, project: Project, rs) -> list:
+async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_data: dict | None = None) -> list:
     """Compute rails for all areas, persist to step2.areas[i].rails, return per-area results."""
     # Refresh to get the latest committed DB state — avoids overwriting a concurrent step-2 save.
     await db.refresh(project)
     data  = copy.deepcopy(project.data or {})
+    if step3_data is not None:
+        data['step3'] = step3_data
     areas = data.get('step2', {}).get('areas', [])
     result = []
 
     for i, area in enumerate(areas):
-        computed = rs.compute_area_rails(**_build_rail_inputs(project, area, i, rs))
+        computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, rs))
         areas[i]['rails'] = computed['rails']
         result.append({
             'areaLabel':    area.get('label', str(i)),

@@ -1,6 +1,8 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.user import User
@@ -8,6 +10,10 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, Proje
 from app.services import projects as project_service
 from app.services import rail_service
 from app.routers.deps import get_current_user, require_admin
+
+class RailComputeRequest(BaseModel):
+    step3: Optional[dict] = None
+
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -71,6 +77,7 @@ async def delete_project(
 @router.put("/{project_id}/rails")
 async def compute_rails(
     project_id: uuid.UUID,
+    payload: Optional[RailComputeRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -79,7 +86,10 @@ async def compute_rails(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    result = await project_service.compute_and_save_rails(db, project, rail_service)
+    result = await project_service.compute_and_save_rails(
+        db, project, rail_service,
+        step3_data=payload.step3 if payload else None,
+    )
     return result
 
 

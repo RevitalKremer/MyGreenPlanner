@@ -133,7 +133,7 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
     // Rail y-positions: from lineRails config or fall back to default symmetric placement
     let railYPositions
     if (lineRails && lineRails[lineIdx] && lineRails[lineIdx].length >= 2) {
-      railYPositions = lineRails[lineIdx].map(offsetCm => lineMinY + offsetCm / pixelToCmRatio)
+      railYPositions = lineRails[lineIdx].map(offsetCm => lineMaxY - offsetCm / pixelToCmRatio)
     } else {
       const spacing = orientation === 'LANDSCAPE'
         ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM

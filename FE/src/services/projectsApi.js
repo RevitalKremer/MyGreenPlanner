@@ -36,8 +36,11 @@ export async function getProject(id) {
   return res.json()
 }
 
-export async function computeRails(id) {
-  const res = await mgpRequest(`/projects/${id}/rails`, { method: 'PUT' })
+export async function computeRails(id, step3Data = null) {
+  const res = await mgpRequest(`/projects/${id}/rails`, {
+    method: 'PUT',
+    ...(step3Data != null ? { body: JSON.stringify({ step3: step3Data }) } : {}),
+  })
   if (!res.ok) throw new Error('Failed to compute rails')
   return res.json()
 }
