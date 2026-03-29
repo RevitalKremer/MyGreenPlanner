@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
-import { computeRowBasePlan, consolidateAreaBases, DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../../utils/basePlanService'
+import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -39,8 +39,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
       const railOverhangCm = s.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
       const lineRails = trapLineRailsMap[trapId] ?? null
       const cfg = {
-        edgeOffsetMm: s.edgeOffsetMm ?? DEFAULT_BASE_EDGE_OFFSET_MM,
-        spacingMm:    s.spacingMm    ?? DEFAULT_BASE_SPACING_MM,
+        edgeOffsetMm: s.edgeOffsetMm,
+        spacingMm:    s.spacingMm   ,
       }
       // customBasesMap is always seeded from BE data — user edits update it directly
       const customOffsets = customBasesMap[trapId]
@@ -148,7 +148,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           const rearLineIdx    = lines && lines.length > 0 ? lines[0].lineIdx : 0
           const railOffsetCm   = trapLRails?.[rearLineIdx]?.[0] ?? 0
           const crossRailOffsetCm = trapS.crossRailOffsetCm ?? 5
-          const baseOverhangCm = trapS.baseOverhangCm ?? DEFAULT_BASE_OVERHANG_CM
+          const baseOverhangCm = trapS.baseOverhangCm
           const crossRailEdgeMm = trapS.crossRailEdgeDistMm ?? 40
           const railOffPx      = railOffsetCm / pixelToCmRatio
           const connOffPx      = crossRailOffsetCm / pixelToCmRatio
@@ -347,7 +347,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const rearLineIdx       = lines && lines.length > 0 ? lines[0].lineIdx : 0
                   const railOffsetCm      = trapLRails?.[rearLineIdx]?.[0] ?? 0
                   const crossRailOffsetCm = trapS.crossRailOffsetCm   ?? 5
-                  const baseOverhangCm    = trapS.baseOverhangCm      ?? DEFAULT_BASE_OVERHANG_CM
+                  const baseOverhangCm    = trapS.baseOverhangCm
                   const crossRailEdgeMm   = trapS.crossRailEdgeDistMm ?? 40
                   const railOffPx         = railOffsetCm    / pixelToCmRatio
                   const connOffPx         = crossRailOffsetCm / pixelToCmRatio
@@ -539,8 +539,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                       bp={bp}
                       zoom={zoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
                       svgRef={svgRef} toSvg={toSvg}
-                      spacingMm={trapS.spacingMm ?? DEFAULT_BASE_SPACING_MM}
-                      edgeOffsetMm={trapS.edgeOffsetMm ?? DEFAULT_BASE_EDGE_OFFSET_MM}
+                      spacingMm={trapS.spacingMm}
+                      edgeOffsetMm={trapS.edgeOffsetMm}
                       isSelected={trapId === effectiveSelectedTrapId}
                       overrideBarLocalY={areaBarLocalY}
                       onBasesChange={onBasesChange ? (offsets) => onBasesChange(trapId, offsets) : null}

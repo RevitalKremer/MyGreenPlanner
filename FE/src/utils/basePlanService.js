@@ -1,8 +1,5 @@
 import { computeRowRailLayout, localToScreen, getPanelOrientation } from './railLayoutService'
 
-export const DEFAULT_BASE_EDGE_OFFSET_MM  = 300   // 30 cm from each end
-export const DEFAULT_BASE_SPACING_MM      = 2000  // max 2 m between bases
-export const DEFAULT_BASE_OVERHANG_CM     = 5     // cm from rail center to base end (both sides)
 export const DEFAULT_RAIL_EDGE_DIST_MM    = 40
 export const DEFAULT_RAIL_MIN_PORTRAIT    = 2
 export const DEFAULT_RAIL_MIN_LANDSCAPE   = 1
@@ -11,9 +8,7 @@ export const DEFAULT_RAIL_MIN_LANDSCAPE   = 1
 // Returns { frame, bases, lines, frameLengthMm, baseCount, edgeOffsetMm, spacingMm, lastGapMm }
 export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, baseConfig = {}) {
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
-
-  const edgeOffsetMm = baseConfig.edgeOffsetMm ?? DEFAULT_BASE_EDGE_OFFSET_MM
-  const spacingMm    = baseConfig.spacingMm    ?? DEFAULT_BASE_SPACING_MM
+  if (!baseConfig.customOffsets || baseConfig.customOffsets.length === 0) return null
 
   const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig)
   if (!rl) return null
@@ -44,14 +39,11 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
   const frameLengthPx = frameXMaxPx - frameXMinPx
   const frameLengthMm = Math.round(frameLengthPx * pixelToCmRatio * 10)
 
-  // Even distribution: first base at edgeOffset, last base at (frameLength - edgeOffset),
-  // number of spans = ceil(innerSpan / maxSpacing), then divide evenly.
-  const innerSpanMm = frameLengthMm - 2 * edgeOffsetMm
-
   // Determine X direction from panels — for RTL areas (BR/TR), offset grows from maxX toward minX
   const xDir = rowPanels[0]?.xDir ?? 'ltr'
   const isRtl = xDir === 'rtl'
 
+  // Convert BE-provided offsets (mm) to pixel coordinates for SVG rendering
   const makeBase = (offsetFromStartMm) => {
     const xPx = isRtl
       ? frameXMaxPx - (offsetFromStartMm / 10) / pixelToCmRatio
@@ -61,23 +53,10 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
     return { localX: xPx, screenTop, screenBottom, offsetFromStartMm }
   }
 
-  let bases, actualSpacingMm
-  if (baseConfig.customOffsets && baseConfig.customOffsets.length > 0) {
-    bases = baseConfig.customOffsets.map(makeBase)
-    actualSpacingMm = bases.length > 1
-      ? Math.max(...bases.slice(1).map((b, i) => b.offsetFromStartMm - bases[i].offsetFromStartMm))
-      : 0
-  } else {
-    const numSpans    = Math.max(1, Math.ceil(innerSpanMm / spacingMm))
-    actualSpacingMm   = innerSpanMm / numSpans
-    const numBases    = numSpans + 1
-    bases = []
-    for (let i = 0; i < numBases; i++) {
-      bases.push(makeBase(Math.round(edgeOffsetMm + i * actualSpacingMm)))
-    }
-  }
-
-  const lastGapMm = edgeOffsetMm
+  const bases = baseConfig.customOffsets.map(makeBase)
+  const actualSpacingMm = bases.length > 1
+    ? Math.max(...bases.slice(1).map((b, i) => b.offsetFromStartMm - bases[i].offsetFromStartMm))
+    : 0
 
   return {
     frame: { center, angleRad, localBounds, frameXMinPx, frameXMaxPx },
@@ -85,9 +64,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
     bases,
     frameLengthMm,
     baseCount: bases.length,
-    edgeOffsetMm,
     spacingMm: Math.round(actualSpacingMm),
-    lastGapMm,
     isRtl,
   }
 }

@@ -10,7 +10,6 @@ import BasesPlanTab  from './step3/BasesPlanTab'
 import { initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth } from '../../utils/trapezoidGeometry'
 import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/constants'
-import { DEFAULT_BASE_EDGE_OFFSET_MM, DEFAULT_BASE_SPACING_MM, DEFAULT_BASE_OVERHANG_CM } from '../../utils/basePlanService'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
 import DetailView from './step3/DetailView'
@@ -187,11 +186,11 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const getTrapBasesSettings = useCallback((trapId) => {
     const cfg = trapezoidConfigs[trapId] || {}
     return {
-      edgeOffsetMm:   cfg.edgeOffsetMm   ?? DEFAULT_BASE_EDGE_OFFSET_MM,
-      spacingMm:      cfg.spacingMm      ?? DEFAULT_BASE_SPACING_MM,
-      baseOverhangCm: cfg.baseOverhangCm ?? DEFAULT_BASE_OVERHANG_CM,
+      edgeOffsetMm:   cfg.edgeOffsetMm   ?? appDefaults?.edgeOffsetMm,
+      spacingMm:      cfg.spacingMm      ?? appDefaults?.spacingMm,
+      baseOverhangCm: cfg.baseOverhangCm ?? appDefaults?.baseOverhangCm,
     }
-  }, [trapezoidConfigs])
+  }, [trapezoidConfigs, appDefaults])
 
   const updateTrapBaseSetting = useCallback((trapId, key, value) => {
     if (!setTrapezoidConfigs) return
