@@ -202,6 +202,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   }, [setTrapezoidConfigs])
 
   const resetTrapBases = useCallback((trapId) => {
+    // Clear custom offsets and trap-level base settings
     setCustomBasesMap(prev => { const c = { ...prev }; delete c[trapId]; return c })
     if (!setTrapezoidConfigs) return
     setTrapezoidConfigs(prev => {
@@ -209,7 +210,10 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       TRAP_BASES_KEYS.forEach(k => delete copy[k])
       return { ...prev, [trapId]: copy }
     })
-  }, [setTrapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Trigger immediate BE recomputation — pass empty customOffsets to clear stored offsets
+    // Can't rely on refs (async state updates haven't committed yet), so call directly
+    onBaseSettingsCommit?.({ resetTrapId: trapId })
+  }, [setTrapezoidConfigs, onBaseSettingsCommit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Row data ─────────────────────────────────────────────────────────────
 

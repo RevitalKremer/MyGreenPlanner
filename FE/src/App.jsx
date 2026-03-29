@@ -137,9 +137,14 @@ function App() {
       .finally(() => setBasesComputing(false))
   }
 
-  const handleBaseSettingsCommit = useCallback(() => {
+  const handleBaseSettingsCommit = useCallback((opts) => {
     if (!s.cloudProjectId) return
-    triggerComputeBases(s.cloudProjectId, step3SettingsRef.current, trapConfigsRef.current, customBasesRef.current)
+    const customBases = { ...customBasesRef.current }
+    // If resetting a specific trap, send empty offsets to clear stored data on BE
+    if (opts?.resetTrapId) {
+      customBases[opts.resetTrapId] = []
+    }
+    triggerComputeBases(s.cloudProjectId, step3SettingsRef.current, trapConfigsRef.current, customBases)
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRailSettingsCommit = useCallback(() => {
