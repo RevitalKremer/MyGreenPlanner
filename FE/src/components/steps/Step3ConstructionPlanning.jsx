@@ -39,14 +39,14 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, railsComputing = false, onRailSettingsCommit, onBaseSettingsCommit, appDefaults, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, railsComputing = false, onTabSave, appDefaults, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
-  const [activeTab, setActiveTab] = useState('areas')
+  const [activeTab, setActiveTab] = useState(initialTab || 'areas')
   const [globalSettings, setGlobalSettings] = useState(() =>
     initialGlobalSettings ? { ...SETTINGS_DEFAULTS, ...initialGlobalSettings } : SETTINGS_DEFAULTS
   )
@@ -59,10 +59,10 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const prevTabRef = useRef(activeTab)
   useEffect(() => {
     if (prevTabRef.current === 'rails' && activeTab !== 'rails') {
-      onRailSettingsCommit?.()
+      onTabSave?.('rails')
     }
     if (prevTabRef.current === 'bases' && activeTab !== 'bases') {
-      onBaseSettingsCommit?.()
+      onTabSave?.('bases')
     }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -222,8 +222,8 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     })
     // Trigger immediate BE recomputation — pass empty customOffsets to clear stored offsets
     // Can't rely on refs (async state updates haven't committed yet), so call directly
-    onBaseSettingsCommit?.({ resetTrapId: trapId })
-  }, [setTrapezoidConfigs, onBaseSettingsCommit]) // eslint-disable-line react-hooks/exhaustive-deps
+    onTabSave?.('bases', { resetTrapId: trapId })
+  }, [setTrapezoidConfigs, onTabSave]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Row data ─────────────────────────────────────────────────────────────
 

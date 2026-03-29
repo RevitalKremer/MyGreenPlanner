@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, computeRails, getRails, computeBases, getBases } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, getRails, getBases, updateStep, saveTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -86,8 +86,9 @@ function App() {
 
   const [beRailsData, setBeRailsData] = useState(null)
   const [beBasesData, setBeBasesData] = useState(null)
-  const [railsComputing, setRailsComputing] = useState(false)
-  const [basesComputing, setBasesComputing] = useState(false)
+  const [savedActiveTab, setSavedActiveTab] = useState(null)
+  const [railsComputing] = useState(false)
+  const [basesComputing] = useState(false)
   // Always-current step3 settings — updated synchronously in onSettingsChange so commit
   // callbacks never read stale state from the React re-render cycle.
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
@@ -109,47 +110,28 @@ function App() {
     }
   }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
 
-  const triggerComputeRails = (id, step3Data = null) => {
-    setRailsComputing(true)
-    computeRails(id, step3Data)
-      .then(data => {
-        setBeRailsData(data)
-        // Bases depend on rails — recompute after rails are saved
-        triggerComputeBases(id, step3Data, trapConfigsRef.current, customBasesRef.current)
-      })
-      .catch(console.error)
-      .finally(() => setRailsComputing(false))
-  }
-
-  const triggerComputeBases = (id, step3Data = null, trapConfigs = null, customBases = null) => {
-    // Merge custom base offsets into trapezoidConfigs so BE receives them.
-    // For each trap: present with offsets → custom, present with [] → reset, absent → use stored.
-    const merged = { ...(trapConfigs || {}) }
-    if (customBases != null) {
-      for (const [trapId, offsets] of Object.entries(customBases)) {
-        merged[trapId] = { ...(merged[trapId] || {}), customOffsets: offsets }
+  const handleTabSave = useCallback(async (tabName, opts) => {
+    if (!s.cloudProjectId) return
+    try {
+      // Build trapezoid configs with custom base offsets for bases tab
+      let trapConfigs = trapConfigsRef.current
+      if (tabName === 'bases') {
+        const customBases = { ...customBasesRef.current }
+        if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
+        trapConfigs = { ...(trapConfigs || {}) }
+        for (const [trapId, offsets] of Object.entries(customBases)) {
+          trapConfigs[trapId] = { ...(trapConfigs[trapId] || {}), customOffsets: offsets }
+        }
       }
-    }
-    setBasesComputing(true)
-    computeBases(id, step3Data, Object.keys(merged).length > 0 ? merged : null)
-      .then(data => { setBeBasesData(data) })
-      .catch(console.error)
-      .finally(() => setBasesComputing(false))
-  }
 
-  const handleBaseSettingsCommit = useCallback((opts) => {
-    if (!s.cloudProjectId) return
-    const customBases = { ...customBasesRef.current }
-    // If resetting a specific trap, send empty offsets to clear stored data on BE
-    if (opts?.resetTrapId) {
-      customBases[opts.resetTrapId] = []
-    }
-    triggerComputeBases(s.cloudProjectId, step3SettingsRef.current, trapConfigsRef.current, customBases)
-  }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRailSettingsCommit = useCallback(() => {
-    if (!s.cloudProjectId) return
-    triggerComputeRails(s.cloudProjectId, step3SettingsRef.current)
+      const result = await saveTab(
+        s.cloudProjectId, tabName,
+        step3SettingsRef.current,
+        tabName === 'bases' ? trapConfigs : null,
+      )
+      if (result.rails) setBeRailsData(result.rails)
+      if (result.bases) setBeBasesData(result.bases)
+    } catch (e) { console.error(e) }
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCloudSave = async (step = null) => {
@@ -184,10 +166,12 @@ function App() {
       const layout = cloudProject.layout ?? {}
       const merged = {
         project:     { name: cloudProject.name, location: cloudProject.location },
-        currentStep: layout.currentStep,
+        currentStep: cloudProject.navigation?.step ?? layout.currentStep ?? 1,
+        activeTab:   cloudProject.navigation?.tab ?? null,
         layout,
         ...(cloudProject.data ?? {}),
       }
+      setSavedActiveTab(merged.activeTab)
       s.handleImportProject(merged, cloudProject.id)
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
@@ -455,12 +439,13 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             railsComputing={railsComputing}
-            onRailSettingsCommit={handleRailSettingsCommit}
+            onTabSave={handleTabSave}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
             initialGlobalSettings={s.step3GlobalSettings}
             initialAreaSettings={s.step3AreaSettings}
+            initialTab={savedActiveTab}
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
@@ -469,7 +454,6 @@ function App() {
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             basesComputing={basesComputing}
-            onBaseSettingsCommit={handleBaseSettingsCommit}
             appDefaults={s.appDefaults}
             panelSpec={s.panelSpec}
           />
@@ -540,7 +524,13 @@ function App() {
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
-        <button className="btn-nav btn-back" onClick={s.handleBack} disabled={s.currentStep === 1}>
+        <button className="btn-nav btn-back" onClick={async () => {
+          if (s.currentStep > 1 && s.cloudProjectId) {
+            if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
+            await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+          }
+          s.handleBack()
+        }} disabled={s.currentStep === 1}>
           {t('nav.back')}
         </button>
 
@@ -568,10 +558,14 @@ function App() {
             s.handleNext(TOTAL_STEPS)
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
-              // Trigger rail computation only after step-2 save commits — avoids the race
-              // where computeRails reads stale DB data and overwrites the just-saved areas.
-              if (stepBeforeNext === LOGIN_REQUIRED_STEP - 1 && savedId) {
-                triggerComputeRails(savedId, step3SettingsRef.current)
+              if (savedId) {
+                // Tell the BE about the step transition — it resets dependent data
+                // and computes rails+bases on 2→3 (returned in response)
+                try {
+                  const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+                  if (stepResult.rails) setBeRailsData(stepResult.rails)
+                  if (stepResult.bases) setBeBasesData(stepResult.bases)
+                } catch (e) { console.error(e) }
               }
             }
           }}

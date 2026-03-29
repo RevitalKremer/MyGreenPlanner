@@ -22,6 +22,7 @@ class ProjectRead(BaseModel):
     owner_id: uuid.UUID
     name: str
     location: str | None
+    navigation: dict
     layout: dict
     data: dict
     created_at: datetime
@@ -34,6 +35,7 @@ class ProjectSummary(BaseModel):
     id: uuid.UUID
     name: str
     location: str | None
+    navigation: dict
     created_at: datetime
     updated_at: datetime
 

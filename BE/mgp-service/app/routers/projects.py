@@ -22,6 +22,13 @@ class BaseComputeRequest(BaseModel):
     step3: Optional[dict] = None
     trapezoidConfigs: Optional[dict] = None
 
+class SaveRailsTabRequest(BaseModel):
+    step3: Optional[dict] = None
+
+class SaveBasesTabRequest(BaseModel):
+    step3: Optional[dict] = None
+    trapezoidConfigs: Optional[dict] = None
+
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -82,6 +89,67 @@ async def delete_project(
 
 
 
+@router.put("/{project_id}/step")
+async def update_step(
+    project_id: uuid.UUID,
+    new_step: int = Query(..., description="Target step number (1-5)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transition project to a new step with server-side data cleanup."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if new_step < 1 or new_step > 5:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Step must be 1-5")
+
+    result = await project_service.update_project_step(
+        db, project, new_step, rs=rail_service, bs=base_service,
+    )
+    return result
+
+
+@router.put("/{project_id}/saveTab/rails")
+async def save_tab_rails(
+    project_id: uuid.UUID,
+    payload: Optional[SaveRailsTabRequest] = Body(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save rails tab data, recompute rails + bases, return all step 3 data."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 3:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
+
+    return await project_service.save_tab(
+        db, project, 'rails', rail_service, base_service,
+        step3_data=payload.step3 if payload else None,
+    )
+
+
+@router.put("/{project_id}/saveTab/bases")
+async def save_tab_bases(
+    project_id: uuid.UUID,
+    payload: Optional[SaveBasesTabRequest] = Body(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save bases tab data, recompute bases, return all step 3 data."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 3:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
+
+    return await project_service.save_tab(
+        db, project, 'bases', rail_service, base_service,
+        step3_data=payload.step3 if payload else None,
+        trapezoid_configs=payload.trapezoidConfigs if payload else None,
+    )
+
+
 @router.put("/{project_id}/rails")
 async def compute_rails(
     project_id: uuid.UUID,
@@ -93,6 +161,8 @@ async def compute_rails(
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 3:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute rails")
 
     result = await project_service.compute_and_save_rails(
         db, project, rail_service,
@@ -132,6 +202,8 @@ async def compute_bases(
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 3:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute bases")
 
     result = await project_service.compute_and_save_bases(
         db, project, base_service,
@@ -218,5 +290,7 @@ async def approve_plan(
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 4:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 4+ to approve plan")
     updated = await project_service.approve_plan(db, project, current_user, strictConsent)
     return updated.data.get("step4", {}).get("planApproval")

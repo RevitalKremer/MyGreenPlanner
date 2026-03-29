@@ -22,6 +22,7 @@ const en = {
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← Back',
+  'nav.backWarning': 'Going back to step {to} will reset all changes made in later steps. Continue?',
   'nav.next':   'Next →',
   'nav.finish': 'Finish',
   'nav.signIn': 'Sign In to Continue →',

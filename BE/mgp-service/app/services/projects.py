@@ -151,7 +151,7 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     # ── Log ──
     total_rails = sum(len(r.get('rails', [])) for r in result)
     area_summary = ', '.join(f"{r['areaLabel']}:{len(r.get('rails',[]))}r" for r in result)
-    stored_step = (project.layout or {}).get('currentStep', '?')
+    stored_step = (project.navigation or {}).get('step', '?')
     logger.info(f"*** RAILS UPDATED *** project={project.id} step={stored_step} areas={len(result)} total_rails={total_rails} [{area_summary}]")
 
     return result
@@ -518,17 +518,143 @@ async def compute_and_save_bases(
                 trap_counts[tid] = trap_counts.get(tid, 0) + 1
             trap_str = '+'.join(f"{tid}:{n}b" for tid, n in trap_counts.items())
             area_parts.append(f"{r['areaLabel']}:[{trap_str}]")
-        stored_step = (project.layout or {}).get('currentStep', '?')
+        stored_step = (project.navigation or {}).get('step', '?')
         logger.info(
             f"*** BASES UPDATED *** project={project.id} step={stored_step} areas={len(result)} "
             f"total_bases={total_bases} custom_from_FE={has_custom} "
             f"[{', '.join(area_parts)}]"
         )
     else:
-        stored_step = (project.layout or {}).get('currentStep', '?')
+        stored_step = (project.navigation or {}).get('step', '?')
         logger.info(f"BASES unchanged project={project.id} step={stored_step}")
 
     return result
+
+
+async def update_project_step(
+    db: AsyncSession, project: Project, new_step: int,
+    rs=None, bs=None,
+) -> dict:
+    """
+    Transition project to a new step with server-side data cleanup.
+    Forward: resets dependent data and recomputes (e.g., rails+bases on 2→3).
+    Backward: clears data from steps being navigated away from.
+    Returns all relevant data so the FE doesn't need separate GET/PUT calls.
+    """
+    old_step = (project.navigation or {}).get('step', 1)
+    if new_step == old_step:
+        return {'currentStep': old_step, 'clearedSteps': []}
+    if new_step < 1 or new_step > 5:
+        raise ValueError(f"Invalid step: {new_step}")
+
+    data = copy.deepcopy(project.data or {})
+    cleared = []
+    rails_result = None
+    bases_result = None
+
+    if new_step > old_step:
+        # ── Forward transitions ──
+        for s in range(old_step + 1, new_step + 1):
+            if s == 3:
+                # Entering step 3: clear computed data
+                areas = data.get('step2', {}).get('areas', [])
+                for area in areas:
+                    area.pop('bases', None)
+                    area.pop('rails', None)
+                step3 = data.get('step3', {})
+                step3.pop('basesCustomOffsets', None)
+                cleared.append('step3')
+            elif s == 4:
+                data.get('step4', {}).pop('planApproval', None)
+                cleared.append('step4')
+    else:
+        # ── Backward transitions ──
+        for s in range(old_step, new_step, -1):
+            if s == 3:
+                data.pop('step3', None)
+                areas = data.get('step2', {}).get('areas', [])
+                for area in areas:
+                    area.pop('rails', None)
+                    area.pop('bases', None)
+                cleared.append('step3')
+            elif s == 4:
+                data.get('step4', {}).pop('planApproval', None)
+                cleared.append('step4')
+            elif s == 5:
+                data.get('step5', {}).pop('bomDeltas', None)
+                cleared.append('step5')
+
+    project.data = data
+    nav = dict(project.navigation or {})
+    nav['step'] = new_step
+    nav['tab'] = None
+    project.navigation = nav
+    flag_modified(project, 'navigation')
+    flag_modified(project, 'data')
+    await db.commit()
+
+    # ── Compute rails + bases on entering step 3 ──
+    if new_step >= 3 and 'step3' in cleared and rs and bs:
+        rails_result = await compute_and_save_rails(db, project, rs)
+        bases_result = await compute_and_save_bases(db, project, bs)
+
+    logger.info(
+        f"*** STEP CHANGED *** project={project.id} {old_step}→{new_step} "
+        f"cleared=[{','.join(cleared)}] "
+        f"computed_rails={'yes' if rails_result else 'no'} "
+        f"computed_bases={'yes' if bases_result else 'no'}"
+    )
+
+    result = {'currentStep': new_step, 'clearedSteps': cleared}
+    if rails_result:
+        result['rails'] = rails_result
+    if bases_result:
+        result['bases'] = bases_result
+    return result
+
+
+async def save_tab(
+    db: AsyncSession, project: Project, tab: str,
+    rs, bs,
+    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+) -> dict:
+    """
+    Save data from the active tab, recompute dependents, and return all step 3 data.
+    Tab dependency: rails → bases (→ trapezoids in future).
+    """
+    # Update navigation.tab
+    nav = dict(project.navigation or {'step': 1})
+    nav['tab'] = tab
+    project.navigation = nav
+    flag_modified(project, 'navigation')
+    await db.commit()
+
+    rails_result = None
+    bases_result = None
+
+    if tab == 'rails':
+        # Save rail settings + recompute rails + recompute bases (dependent)
+        rails_result = await compute_and_save_rails(db, project, rs, step3_data)
+        bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
+    elif tab == 'bases':
+        # Save base settings + recompute bases only (rails unchanged)
+        bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
+        # Also return current rails (unchanged) so FE has full state
+        rails_result = [
+            {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
+            for i, area in enumerate(get_project_areas(project))
+        ]
+
+    logger.info(
+        f"*** TAB SAVED *** project={project.id} tab={tab} "
+        f"rails={'yes' if rails_result else 'no'} bases={'yes' if bases_result else 'no'}"
+    )
+
+    return {
+        'tab': tab,
+        'rails': rails_result,
+        'bases': bases_result,
+    }
 
 
 async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool) -> Project:

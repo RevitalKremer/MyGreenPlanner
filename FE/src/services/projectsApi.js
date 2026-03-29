@@ -69,6 +69,24 @@ export async function getBases(id) {
   return res.json()
 }
 
+export async function saveTab(id, tabName, step3Data = null, trapezoidConfigs = null) {
+  const body = {}
+  if (step3Data) body.step3 = step3Data
+  if (trapezoidConfigs) body.trapezoidConfigs = trapezoidConfigs
+  const res = await mgpRequest(`/projects/${id}/saveTab/${tabName}`, {
+    method: 'PUT',
+    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
+  })
+  if (!res.ok) throw new Error(`Failed to save tab ${tabName}`)
+  return res.json()
+}
+
+export async function updateStep(id, newStep) {
+  const res = await mgpRequest(`/projects/${id}/step?new_step=${newStep}`, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to update step')
+  return res.json()
+}
+
 export async function approvePlan(id, strictConsent) {
   const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}`, {
     method: 'PUT',
