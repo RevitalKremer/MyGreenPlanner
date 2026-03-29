@@ -7,7 +7,7 @@ import { PARAM_GROUP } from './constants'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, onReset = null, onUpdateSetting = null, printMode = false }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, onReset = null, onUpdateSetting = null, printMode = false }) {
   const { t } = useLang()
   const [showAnnotations,  setShowAnnotations]  = useState(true)
   const [showPunches,      setShowPunches]      = useState(true)
