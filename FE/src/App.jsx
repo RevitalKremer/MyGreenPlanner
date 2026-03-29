@@ -115,16 +115,17 @@ function App() {
       .then(data => {
         setBeRailsData(data)
         // Bases depend on rails — recompute after rails are saved
-        triggerComputeBases(id, step3Data, trapConfigsRef.current)
+        triggerComputeBases(id, step3Data, trapConfigsRef.current, customBasesRef.current)
       })
       .catch(console.error)
       .finally(() => setRailsComputing(false))
   }
 
   const triggerComputeBases = (id, step3Data = null, trapConfigs = null, customBases = null) => {
-    // Merge custom base offsets into trapezoidConfigs so BE receives them
+    // Merge custom base offsets into trapezoidConfigs so BE receives them.
+    // For each trap: present with offsets → custom, present with [] → reset, absent → use stored.
     const merged = { ...(trapConfigs || {}) }
-    if (customBases) {
+    if (customBases != null) {
       for (const [trapId, offsets] of Object.entries(customBases)) {
         merged[trapId] = { ...(merged[trapId] || {}), customOffsets: offsets }
       }

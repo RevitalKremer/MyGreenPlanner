@@ -215,6 +215,22 @@ async def compute_and_save_bases(
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}
 
+    # Persist custom offsets so they survive project reloads.
+    # Stored in step3.basesCustomOffsets: { trapId: [mm, ...] }
+    step3 = data.setdefault('step3', {})
+    stored_custom = step3.get('basesCustomOffsets') or {}
+
+    # Merge incoming custom offsets into stored ones
+    if trapezoid_configs:
+        for trap_id, cfg in trapezoid_configs.items():
+            co = cfg.get('customOffsets')
+            if co is not None:
+                if len(co) > 0:
+                    stored_custom[trap_id] = co       # save custom positions
+                else:
+                    stored_custom.pop(trap_id, None)   # empty array = reset to defaults
+    step3['basesCustomOffsets'] = stored_custom
+
     for i, area in enumerate(areas):
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
@@ -224,7 +240,14 @@ async def compute_and_save_bases(
         # Compute bases per trapezoid
         bases_data_map: dict[str, dict | None] = {}
         for trap_id in trap_ids:
-            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, trapezoid_configs)
+            # Merge stored custom offsets into trapezoid_configs if not already present
+            effective_configs = dict(trapezoid_configs or {})
+            if trap_id not in effective_configs:
+                effective_configs[trap_id] = {}
+            if 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
+                effective_configs[trap_id]['customOffsets'] = stored_custom[trap_id]
+
+            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
         # Consolidate multi-trapezoid areas
