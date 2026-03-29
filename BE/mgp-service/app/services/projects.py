@@ -158,9 +158,148 @@ def _derive_line_rails(area: dict) -> dict[str, list[float]]:
     return {li: sorted(offs) for li, offs in derived.items()}
 
 
+def _compute_trap_x_range(
+    panel_grid: dict, trapezoid_id: str, trap_ids: list[str],
+    trapezoids: dict, panel_width_cm: float, panel_length_cm: float, panel_gap_cm: float,
+) -> tuple[float | None, float | None]:
+    """
+    Compute the X extent (start, end cm) for one trapezoid within an area.
+    For single-trap areas returns (None, None) — use full area frame.
+    For multi-trap areas, uses the shorter rows (lines with fewer panels)
+    to determine where each trap's X range begins and ends.
+    """
+    if len(trap_ids) <= 1:
+        return None, None
+
+    rows = panel_grid.get('rows', [])
+    if not rows:
+        return None, None
+
+    row_positions = panel_grid.get('rowPositions') or {}
+    short_cm = panel_width_cm
+    long_cm = panel_length_cm
+
+    # Get positions for main row (row with most active cells — typically line 0)
+    main_row = max(rows, key=lambda r: sum(1 for c in r if c in ('V', 'H')))
+    orient = None
+    for c in main_row:
+        if c in ('V', 'EV'):
+            orient = 'V'; break
+        if c in ('H', 'EH'):
+            orient = 'H'; break
+    if not orient:
+        return None, None
+
+    panel_along_cm = short_cm if orient == 'V' else long_cm
+    main_idx = rows.index(main_row)
+    stored = row_positions.get(str(main_idx))
+    if stored:
+        positions = stored
+    else:
+        positions = [
+            i * (panel_along_cm + panel_gap_cm)
+            for i, cell in enumerate(main_row)
+            if cell in ('V', 'H')
+        ]
+
+    if not positions:
+        return None, None
+
+    total_cols = len(positions)
+
+    # Determine how many main-row columns each shorter row covers.
+    # A shorter row with N active cells covers N * (long_side / short_side_pitch) columns.
+    # Use this to find the split point between traps.
+    trap_cfg = trapezoids.get(trapezoid_id, {})
+    line_orients = trap_cfg.get('lineOrientations', [])
+
+    # Count how many lines have active (non-empty) panels for this trap
+    active_lines = [o for o in line_orients if 'empty' not in o]
+    all_active = len(active_lines) == len(line_orients)
+
+    # Find the row with the FEWEST active cells (the "short" row that defines the split)
+    row_active_counts = []
+    for line_idx, cells in enumerate(rows):
+        count = sum(1 for c in cells if c in ('V', 'H'))
+        if count > 0:
+            row_active_counts.append((line_idx, count))
+
+    if len(row_active_counts) <= 1:
+        # Single row — split evenly
+        cols_per_trap = total_cols // len(trap_ids)
+        remainder = total_cols % len(trap_ids)
+    else:
+        # Multi-row: the short row defines how many columns belong to
+        # traps with all lines active vs traps with empty lines
+        row_active_counts.sort(key=lambda x: x[1])
+        short_count = row_active_counts[0][1]  # fewest active cells
+        short_line_idx = row_active_counts[0][0]
+        short_row = rows[short_line_idx]
+
+        # Each short-row panel covers multiple main-row columns
+        short_orient = None
+        for c in short_row:
+            if c in ('V', 'EV'):
+                short_orient = 'V'; break
+            if c in ('H', 'EH'):
+                short_orient = 'H'; break
+        short_panel_width = short_cm if short_orient == 'V' else long_cm
+        main_panel_pitch = panel_along_cm + panel_gap_cm
+
+        # Columns covered by the short row = short_count * ceil(short_panel_width / main_panel_pitch)
+        cols_per_short_panel = max(1, round(short_panel_width / main_panel_pitch)) if main_panel_pitch > 0 else 1
+        cols_covered_by_short = short_count * cols_per_short_panel
+
+        # Traps with all lines active get the short-row columns
+        # Traps with empty lines get the remaining columns
+        if all_active:
+            cols_per_trap = cols_covered_by_short
+            remainder = 0
+        else:
+            cols_per_trap = total_cols - cols_covered_by_short
+            remainder = 0
+
+    trap_idx = trap_ids.index(trapezoid_id) if trapezoid_id in trap_ids else 0
+
+    # Compute start/end column for this trap
+    if len(row_active_counts) > 1:
+        # Multi-row: first trap(s) with all-active get cols_covered_by_short,
+        # remaining traps get the rest
+        start_col = 0
+        for t_idx, t_id in enumerate(trap_ids):
+            t_cfg = trapezoids.get(t_id, {})
+            t_orients = t_cfg.get('lineOrientations', [])
+            t_all_active = all(('empty' not in o) for o in t_orients)
+
+            if t_idx == trap_idx:
+                break
+
+            if t_all_active:
+                start_col += cols_covered_by_short
+            else:
+                start_col += total_cols - cols_covered_by_short
+
+        end_col = start_col + cols_per_trap - 1
+    else:
+        # Single row — split evenly
+        start_col = 0
+        for t in range(trap_idx):
+            start_col += cols_per_trap + (1 if t < remainder else 0)
+        end_col = start_col + cols_per_trap + (1 if trap_idx < remainder else 0) - 1
+
+    if start_col >= len(positions) or end_col >= len(positions):
+        return None, None
+
+    trap_start = positions[start_col]
+    trap_end = positions[end_col] + panel_along_cm
+
+    return trap_start, trap_end
+
+
 def _build_base_inputs(
     data: dict, area: dict, area_idx: int, app_defaults: dict,
     trapezoid_id: str, trapezoid_configs: dict | None = None,
+    trap_start_cm: float | None = None, trap_end_cm: float | None = None,
 ) -> dict:
     """Extract base computation inputs for one trapezoid within an area."""
     step2 = data.get('step2', {})
@@ -186,6 +325,8 @@ def _build_base_inputs(
         'cross_rail_offset_cm': app_defaults.get('crossRailEdgeDistMm', 40) / 10,
         'panel_gap_cm':        app_defaults['panelGapCm'],
         'trapezoid_id':        trapezoid_id,
+        'trap_start_cm':       trap_start_cm,
+        'trap_end_cm':         trap_end_cm,
         'custom_offsets':      custom_offsets,
     }
 
@@ -303,7 +444,15 @@ async def compute_and_save_bases(
                 else:
                     stored_custom.pop(trap_id, None)  # stale — clear
 
-            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs)
+            # Compute per-trap X range for multi-trap areas
+            trap_start, trap_end = _compute_trap_x_range(
+                area.get('panelGrid') or {}, trap_id, trap_ids,
+                trapezoids,
+                step2.get('panelWidthCm', 113.4), step2.get('panelLengthCm', 238.2),
+                app_defaults.get('panelGapCm', 2.5),
+            )
+
+            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
         # Consolidate multi-trapezoid areas

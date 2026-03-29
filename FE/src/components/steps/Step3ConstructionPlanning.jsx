@@ -73,14 +73,18 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   }, [beRailsData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Seed customBasesMap from BE bases data (on project load / after BE recomputation)
+  // Offsets must be frame-relative (mm from trap frame start) for computeRowBasePlan
   useEffect(() => {
     if (!beBasesData) return
     const map = {}
     for (const areaData of beBasesData) {
+      // Get per-trap frame start from basesDataMap
+      const bdMap = areaData.basesDataMap || {}
       for (const base of (areaData.bases || [])) {
         const tid = base.trapezoidId
+        const frameStart = bdMap[tid]?.frameStartCm ?? 0
         if (!map[tid]) map[tid] = []
-        map[tid].push(Math.round(base.offsetFromStartCm * 10))
+        map[tid].push(Math.round((base.offsetFromStartCm - frameStart) * 10))
       }
     }
     for (const tid of Object.keys(map)) map[tid].sort((a, b) => a - b)
