@@ -50,11 +50,19 @@ export default function BasePlanOverlay({
     return toSvg(s.x, s.y)
   }
 
-  const [barX0, barY0] = lxToSvg(frameXMinPx)
-  const [barX1, barY1] = lxToSvg(frameXMaxPx)
+  // Detect RTL direction from the base plan (set by computeRowBasePlan)
+  const isRtl = bp.isRtl ?? false
+
+  // Bar endpoints: for RTL, offset 0 is at frameXMaxPx (start corner = right side)
+  const startPx = isRtl ? frameXMaxPx : frameXMinPx
+  const endPx   = isRtl ? frameXMinPx : frameXMaxPx
+  const [barX0, barY0] = lxToSvg(startPx)
+  const [barX1, barY1] = lxToSvg(endPx)
 
   const offsetToLocalX = (offsetMm) =>
-    frameXMinPx + (offsetMm / 10) / pixelToCmRatio
+    isRtl
+      ? frameXMaxPx - (offsetMm / 10) / pixelToCmRatio
+      : frameXMinPx + (offsetMm / 10) / pixelToCmRatio
 
   // Project SVG position onto bar → offsetMm
   const svgPosToOffset = (svgX, svgY) => {
@@ -66,8 +74,9 @@ export default function BasePlanOverlay({
   }
 
   // Client drag delta → delta offsetMm along frame X
+  const dirSign = isRtl ? -1 : 1
   const dClientToOffsetMm = (dClientX, dClientY) =>
-    ((dClientX * cosA + dClientY * sinA) / (sc * zoom)) * pixelToCmRatio * 10
+    dirSign * ((dClientX * cosA + dClientY * sinA) / (sc * zoom)) * pixelToCmRatio * 10
 
   // Clamp a moved offset: respect edges, min 100mm gap between bases, max = spacingMm
   const clampOffset = (raw, idx, refs) => {

@@ -48,8 +48,14 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
   // number of spans = ceil(innerSpan / maxSpacing), then divide evenly.
   const innerSpanMm = frameLengthMm - 2 * edgeOffsetMm
 
+  // Determine X direction from panels — for RTL areas (BR/TR), offset grows from maxX toward minX
+  const xDir = rowPanels[0]?.xDir ?? 'ltr'
+  const isRtl = xDir === 'rtl'
+
   const makeBase = (offsetFromStartMm) => {
-    const xPx = frameXMinPx + (offsetFromStartMm / 10) / pixelToCmRatio
+    const xPx = isRtl
+      ? frameXMaxPx - (offsetFromStartMm / 10) / pixelToCmRatio
+      : frameXMinPx + (offsetFromStartMm / 10) / pixelToCmRatio
     const screenTop    = localToScreen({ x: xPx, y: localBounds.minY }, center, angleRad)
     const screenBottom = localToScreen({ x: xPx, y: localBounds.maxY }, center, angleRad)
     return { localX: xPx, screenTop, screenBottom, offsetFromStartMm }
@@ -82,6 +88,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
     edgeOffsetMm,
     spacingMm: Math.round(actualSpacingMm),
     lastGapMm,
+    isRtl,
   }
 }
 

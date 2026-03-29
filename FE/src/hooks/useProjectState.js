@@ -892,7 +892,7 @@ setPanelAngle('')
           const sig = colSig(physCol)
           allPanels.push({ ...p, id: panelId++, area: areaIdx,
             trapezoidId: sigToTrap.get(sig) || area.label,
-            yDir: area.yDir ?? 'ttb' })
+            xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
         })
       } else {
         // ── Manual mode: use stored column→trapId assignments ────────────────────
@@ -906,7 +906,7 @@ setPanelAngle('')
         })
         filtered.forEach(p => {
           const trapId = colToTrap[String(p.col ?? 0)] ?? defaultTrap
-          allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId: trapId, yDir: area.yDir ?? 'ttb' })
+          allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId: trapId, xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
         })
       }
     })
