@@ -40,7 +40,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, railsComputing = false, basesComputing = false, onRailSettingsCommit, onBaseSettingsCommit, appDefaults, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, railsComputing = false, onRailSettingsCommit, onBaseSettingsCommit, appDefaults, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
@@ -71,6 +71,21 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   useEffect(() => {
     if (beRailsData && resetAreas.size > 0) setResetAreas(new Set())
   }, [beRailsData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Seed customBasesMap from BE bases data (on project load / after BE recomputation)
+  useEffect(() => {
+    if (!beBasesData) return
+    const map = {}
+    for (const areaData of beBasesData) {
+      for (const base of (areaData.bases || [])) {
+        const tid = base.trapezoidId
+        if (!map[tid]) map[tid] = []
+        map[tid].push(Math.round(base.offsetFromStartCm * 10))
+      }
+    }
+    for (const tid of Object.keys(map)) map[tid].sort((a, b) => a - b)
+    setCustomBasesMap(map)
+  }, [beBasesData])
 
   // Notify parent when trapezoid configs or custom bases change (for base computation ref)
   useEffect(() => {
@@ -709,8 +724,6 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               trapRCMap={trapRCMap}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              beBasesData={beBasesData}
-              basesComputing={basesComputing}
               onBasesChange={(trapId, offsets) =>
                 setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
               }
