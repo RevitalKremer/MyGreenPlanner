@@ -477,7 +477,7 @@ async def compute_and_save_bases(
 
 async def update_project_step(
     db: AsyncSession, project: Project, new_step: int,
-    rs=None, bs=None,
+    rs=None, bs=None, tds=None,
 ) -> dict:
     """
     Transition project to a new step with server-side data cleanup.
@@ -507,6 +507,8 @@ async def update_project_step(
                     area.pop('rails', None)
                 step3 = data.get('step3', {})
                 step3.pop('basesCustomOffsets', None)
+                step3.pop('trapezoidDetails', None)
+                step3.pop('customDiagonals', None)
                 cleared.append('step3')
             elif s == 4:
                 data.get('step4', {}).pop('planApproval', None)
@@ -537,22 +539,155 @@ async def update_project_step(
     flag_modified(project, 'data')
     await db.commit()
 
-    # ── Compute rails + bases on entering step 3 ──
+    # ── Compute rails + bases + trapezoid details on entering step 3 ──
+    trapezoid_details = None
     if new_step >= 3 and 'step3' in cleared and rs and bs:
         rails_result = await compute_and_save_rails(db, project, rs)
         bases_result = await compute_and_save_bases(db, project, bs)
+        if tds:
+            trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
 
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
         result['rails'] = rails_result
     if bases_result:
         result['bases'] = bases_result
+    if trapezoid_details:
+        result['trapezoidDetails'] = trapezoid_details
+    return result
+
+
+async def compute_and_save_trapezoid_details(
+    db: AsyncSession, project: Project, tds,
+    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+) -> dict:
+    """Compute trapezoid details for all traps, persist to step3.trapezoidDetails, return results."""
+    await db.refresh(project)
+    data = copy.deepcopy(project.data or {})
+    if step3_data is not None:
+        data['step3'] = step3_data
+    step2 = data.get('step2', {})
+    step3 = data.setdefault('step3', {})
+    trapezoids = step2.get('trapezoids', {})
+    areas = step2.get('areas', [])
+    global_settings = step3.get('globalSettings', {})
+
+    # Load defaults from app_settings
+    rows = (await db.execute(
+        select(AppSetting.key, AppSetting.value_json).where(
+            AppSetting.key.in_([
+                'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
+                'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
+                'crossRailEdgeDistMm',
+            ])
+        )
+    )).all()
+    app_defaults = {r.key: r.value_json for r in rows}
+
+    # Stored custom diagonals (same pattern as basesCustomOffsets)
+    stored_custom_diags = step3.get('customDiagonals', {})
+    if trapezoid_configs:
+        for trap_id, cfg in trapezoid_configs.items():
+            cd = cfg.get('customDiagonals')
+            if cd is not None:
+                if cd:
+                    stored_custom_diags[trap_id] = cd
+                else:
+                    stored_custom_diags.pop(trap_id, None)
+    step3['customDiagonals'] = stored_custom_diags
+
+    result = {}
+    for trap_id, trap_cfg in trapezoids.items():
+        # Find the area this trap belongs to
+        area = None
+        for a in areas:
+            if trap_id in a.get('trapezoidIds', []):
+                area = a
+                break
+        if not area:
+            continue
+
+        # Derive line rails from stored area rails
+        line_rails = _derive_line_rails(area)
+
+        # Build panel lines from trap's lineOrientations
+        line_orients = trap_cfg.get('lineOrientations', ['vertical'])
+        panel_lines = []
+        for li, orient in enumerate(line_orients):
+            is_h = orient in ('horizontal', 'empty-horizontal')
+            is_empty = 'empty' in orient
+            depth = step2.get('panelWidthCm', 113.4) if not is_h else step2.get('panelLengthCm', 238.2)
+            # For portrait (V): depth = panelLengthCm; for horizontal (H): depth = panelWidthCm
+            if orient in ('vertical', 'empty-vertical'):
+                depth = step2.get('panelLengthCm', 238.2)
+            else:
+                depth = step2.get('panelWidthCm', 113.4)
+            gap = app_defaults.get('panelGapCm', 2.5) if li > 0 else 0
+            panel_lines.append({
+                'depthCm': depth,
+                'gapBeforeCm': gap,
+                'isEmpty': is_empty,
+                'isHorizontal': is_h,
+            })
+
+        # Get per-trap settings from trapezoidConfigs or app_defaults
+        t_cfg = (trapezoid_configs or {}).get(trap_id, {})
+        angle = trap_cfg.get('angleDeg', 0)
+        front_height = trap_cfg.get('frontHeightCm', 0)
+
+        # Get bases data for this trap
+        bases_data = None
+        for b_area in areas:
+            if trap_id in b_area.get('trapezoidIds', []):
+                # Find basesDataMap from the last computation if available
+                # For simplicity, derive from the area's base data
+                bases = [b for b in b_area.get('bases', []) if b.get('trapezoidId') == trap_id]
+                if bases:
+                    offsets = [b['offsetFromStartCm'] for b in bases]
+                    bases_data = {
+                        'baseLengthCm': bases[0].get('lengthCm', 0),
+                        'rearLegDepthCm': bases[0].get('topDepthCm', 0) + (t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))),
+                        'frontLegDepthCm': bases[0].get('bottomDepthCm', 0) - (t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))),
+                    }
+                break
+
+        rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
+
+        custom_diags = stored_custom_diags.get(trap_id)
+
+        detail = tds.compute_trapezoid_details(
+            bases_data=bases_data,
+            line_rails=line_rails,
+            panel_lines=panel_lines,
+            angle_deg=angle,
+            front_height_cm=front_height,
+            block_height_cm=t_cfg.get('blockHeightCm', app_defaults.get('blockHeightCm', 15)),
+            block_length_cm=t_cfg.get('blockLengthCm', app_defaults.get('blockLengthCm', 50)),
+            block_width_cm=t_cfg.get('blockWidthCm', app_defaults.get('blockWidthCm', 24)),
+            block_punch_cm=t_cfg.get('blockPunchCm', app_defaults.get('blockPunchCm', 9)),
+            diag_top_pct=t_cfg.get('diagTopPct', app_defaults.get('diagTopPct', 25)),
+            diag_base_pct=t_cfg.get('diagBasePct', app_defaults.get('diagBasePct', 90)),
+            base_overhang_cm=t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5)),
+            cross_rail_edge_dist_mm=global_settings.get('crossRailEdgeDistMm', app_defaults.get('crossRailEdgeDistMm', 40)),
+            rail_offset_cm=rail_offset_cm,
+            custom_diagonals=custom_diags,
+        )
+
+        if detail:
+            result[trap_id] = detail
+
+    # Persist to step3.trapezoidDetails
+    step3['trapezoidDetails'] = result
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+
     return result
 
 
 async def save_tab(
     db: AsyncSession, project: Project, tab: str,
-    rs, bs,
+    rs, bs, tds=None,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
 ) -> dict:
     """
@@ -570,27 +705,47 @@ async def save_tab(
     bases_result = None
 
     if tab == 'rails':
-        # Save rail settings + recompute rails only (bases untouched)
+        # Save rail settings + recompute rails only
         rails_result = await compute_and_save_rails(db, project, rs, step3_data)
-        # Return current bases (unchanged) so FE has full state
+        # Return current bases + trapezoid details (unchanged) so FE has full state
         await db.refresh(project)
         bases_result = [
             {'areaLabel': area.get('label', str(i)), 'bases': area.get('bases', [])}
             for i, area in enumerate(get_project_areas(project))
         ]
+        trapezoid_details = (project.data or {}).get('step3', {}).get('trapezoidDetails', {})
     elif tab == 'bases':
-        # Save base settings + recompute bases only (rails unchanged)
+        # Save base settings + recompute bases only
         bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
-        # Return current rails (unchanged) so FE has full state
+        # Return current rails + trapezoid details (unchanged) so FE has full state
         rails_result = [
             {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
             for i, area in enumerate(get_project_areas(project))
         ]
+        trapezoid_details = (project.data or {}).get('step3', {}).get('trapezoidDetails', {})
+    elif tab == 'trapezoids':
+        # Save detail settings + recompute trapezoid details
+        trapezoid_details = await compute_and_save_trapezoid_details(
+            db, project, tds, step3_data, trapezoid_configs,
+        )
+        # Return current rails + bases (unchanged) so FE has full state
+        await db.refresh(project)
+        rails_result = [
+            {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
+            for i, area in enumerate(get_project_areas(project))
+        ]
+        bases_result = [
+            {'areaLabel': area.get('label', str(i)), 'bases': area.get('bases', [])}
+            for i, area in enumerate(get_project_areas(project))
+        ]
+    else:
+        trapezoid_details = {}
 
     return {
         'tab': tab,
         'rails': rails_result,
         'bases': bases_result,
+        'trapezoidDetails': trapezoid_details,
     }
 
 

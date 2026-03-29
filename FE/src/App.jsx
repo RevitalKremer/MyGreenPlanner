@@ -86,6 +86,7 @@ function App() {
 
   const [beRailsData, setBeRailsData] = useState(null)
   const [beBasesData, setBeBasesData] = useState(null)
+  const [beTrapezoidsData, setBeTrapezoidsData] = useState(null)
   const [savedActiveTab, setSavedActiveTab] = useState(null)
   const [railsComputing] = useState(false)
   const [basesComputing] = useState(false)
@@ -113,7 +114,7 @@ function App() {
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
     try {
-      // Build trapezoid configs with custom base offsets for bases tab
+      // Build trapezoid configs with custom offsets for bases/trapezoids tabs
       let trapConfigs = trapConfigsRef.current
       if (tabName === 'bases') {
         const customBases = { ...customBasesRef.current }
@@ -127,10 +128,11 @@ function App() {
       const result = await saveTab(
         s.cloudProjectId, tabName,
         step3SettingsRef.current,
-        tabName === 'bases' ? trapConfigs : null,
+        (tabName === 'bases' || tabName === 'trapezoids') ? trapConfigs : null,
       )
       if (result.rails) setBeRailsData(result.rails)
       if (result.bases) setBeBasesData(result.bases)
+      if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
     } catch (e) { console.error(e) }
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -453,6 +455,7 @@ function App() {
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             beBasesData={beBasesData}
+            beTrapezoidsData={beTrapezoidsData}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
             panelSpec={s.panelSpec}
@@ -565,6 +568,7 @@ function App() {
                   const stepResult = await updateStep(savedId, stepBeforeNext + 1)
                   if (stepResult.rails) setBeRailsData(stepResult.rails)
                   if (stepResult.bases) setBeBasesData(stepResult.bases)
+                  if (stepResult.trapezoidDetails) setBeTrapezoidsData(stepResult.trapezoidDetails)
                 } catch (e) { console.error(e) }
               }
             }

@@ -81,6 +81,38 @@ class Trapezoid(BaseModel):
     punches: list[Punch] = Field(default_factory=list)  # locked step 3
 
 
+# ── Trapezoid detail (step 3) ─────────────────────────────────────────────────
+
+class TrapezoidDetail(BaseModel):
+    """
+    Computed structural details for one trapezoid.
+    Stored in step3.trapezoidDetails[trapId].
+    Separate from step2.trapezoids (initial geometry from panel placement).
+    On reset, simply delete the entry — step2 data stays untouched.
+    """
+    # Settings (user-configurable)
+    blockHeightCm: float = 15
+    blockLengthCm: float = 50
+    blockWidthCm: float = 24
+    blockPunchCm: float = 9
+    diagTopPct: float = 25
+    diagBasePct: float = 90
+    customDiagonals: dict = Field(default_factory=dict)
+    # customDiagonals: { "spanIdx": { disabled?, topPct, botPct } }
+
+    # Computed data (persisted to DB)
+    geometry: dict = Field(default_factory=dict)
+    # { heightRear, heightFront, topBeamLength, baseBeamLength, baseLength, diagonalLength, angle, frontHeight }
+    legs: list[dict] = Field(default_factory=list)
+    # [{ positionCm, heightCm, isInner, side: 'left'|'right'|'outer' }]
+    blocks: list[dict] = Field(default_factory=list)
+    # [{ positionCm, isEnd }]
+    punches: list[dict] = Field(default_factory=list)
+    # [{ beamType: 'base'|'slope', positionCm }]
+    diagonals: list[dict] = Field(default_factory=list)
+    # [{ spanIdx, topPct, botPct, lengthCm, isDouble, disabled }]
+
+
 # ── Panel grid (locked step 2) ────────────────────────────────────────────────
 
 class PanelGrid(BaseModel):

@@ -13,6 +13,7 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, Proje
 from app.services import projects as project_service
 from app.services import rail_service
 from app.services import base_service
+from app.services import trapezoid_detail_service
 from app.routers.deps import get_current_user, require_admin
 
 class RailComputeRequest(BaseModel):
@@ -24,6 +25,10 @@ class BaseComputeRequest(BaseModel):
 
 class SaveRailsTabRequest(BaseModel):
     step3: Optional[dict] = None
+
+class SaveTrapezoidsTabRequest(BaseModel):
+    step3: Optional[dict] = None
+    trapezoidConfigs: Optional[dict] = None
 
 class SaveBasesTabRequest(BaseModel):
     step3: Optional[dict] = None
@@ -104,7 +109,8 @@ async def update_step(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Step must be 1-5")
 
     result = await project_service.update_project_step(
-        db, project, new_step, rs=rail_service, bs=base_service,
+        db, project, new_step,
+        rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
     )
     return result
 
@@ -124,7 +130,7 @@ async def save_tab_rails(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     return await project_service.save_tab(
-        db, project, 'rails', rail_service, base_service,
+        db, project, 'rails', rail_service, base_service, trapezoid_detail_service,
         step3_data=payload.step3 if payload else None,
     )
 
@@ -144,7 +150,28 @@ async def save_tab_bases(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     return await project_service.save_tab(
-        db, project, 'bases', rail_service, base_service,
+        db, project, 'bases', rail_service, base_service, trapezoid_detail_service,
+        step3_data=payload.step3 if payload else None,
+        trapezoid_configs=payload.trapezoidConfigs if payload else None,
+    )
+
+
+@router.put("/{project_id}/saveTab/trapezoids")
+async def save_tab_trapezoids(
+    project_id: uuid.UUID,
+    payload: Optional[SaveTrapezoidsTabRequest] = Body(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save trapezoid details tab data, recompute details, return all step 3 data."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.navigation or {}).get('step', 1) < 3:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
+
+    return await project_service.save_tab(
+        db, project, 'trapezoids', rail_service, base_service, trapezoid_detail_service,
         step3_data=payload.step3 if payload else None,
         trapezoid_configs=payload.trapezoidConfigs if payload else None,
     )
