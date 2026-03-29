@@ -53,6 +53,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const [areaSettings,   setAreaSettings]   = useState(() => initialAreaSettings   ?? {})
   const [highlightParam,  setHighlightParam]  = useState(null)
   const [customBasesMap,  setCustomBasesMap]  = useState({})
+  const [userEditedBases, setUserEditedBases] = useState(new Set())  // traps where user explicitly changed bases
   const [resetAreas,      setResetAreas]      = useState(new Set())  // areas with pending rail reset — skip BE data
 
   const prevTabRef = useRef(activeTab)
@@ -92,7 +93,12 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   }, [trapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    onCustomBasesChange?.(customBasesMap)
+    // Only send user-edited custom offsets to parent (not BE-seeded values)
+    const userEdited = {}
+    for (const tid of userEditedBases) {
+      if (customBasesMap[tid]) userEdited[tid] = customBasesMap[tid]
+    }
+    onCustomBasesChange?.(userEdited)
   }, [customBasesMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -201,8 +207,9 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   }, [setTrapezoidConfigs])
 
   const resetTrapBases = useCallback((trapId) => {
-    // Clear custom offsets and trap-level base settings
+    // Clear custom offsets, user-edited flag, and trap-level base settings
     setCustomBasesMap(prev => { const c = { ...prev }; delete c[trapId]; return c })
+    setUserEditedBases(prev => { const s = new Set(prev); s.delete(trapId); return s })
     if (!setTrapezoidConfigs) return
     setTrapezoidConfigs(prev => {
       const copy = { ...(prev[trapId] || {}) }
@@ -727,9 +734,10 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               trapRCMap={trapRCMap}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              onBasesChange={(trapId, offsets) =>
+              onBasesChange={(trapId, offsets) => {
                 setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
-              }
+                setUserEditedBases(prev => new Set([...prev, trapId]))
+              }}
               onResetBases={() => resetTrapBases(effectiveSelectedTrapId)}
             />
           </div>

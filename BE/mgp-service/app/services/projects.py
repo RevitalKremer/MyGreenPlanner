@@ -190,6 +190,45 @@ def _build_base_inputs(
     }
 
 
+def _compute_area_frame_mm(area: dict, step2: dict, panel_gap_cm: float) -> int | None:
+    """Compute the frame length (mm) for an area from its panel grid."""
+    panel_grid = area.get('panelGrid') or {}
+    rows = panel_grid.get('rows', [])
+    row_positions = panel_grid.get('rowPositions') or {}
+    short_cm = step2.get('panelWidthCm', 113.4)
+    long_cm = step2.get('panelLengthCm', 238.2)
+
+    auto_start = float('inf')
+    auto_end = float('-inf')
+    for line_idx, cells in enumerate(rows):
+        orient = None
+        for c in cells:
+            if c in ('V', 'EV'):
+                orient = 'V'; break
+            if c in ('H', 'EH'):
+                orient = 'H'; break
+        if not orient:
+            continue
+        panel_along_cm = short_cm if orient == 'V' else long_cm
+        stored = row_positions.get(str(line_idx))
+        if stored:
+            positions = stored
+        else:
+            positions = [
+                i * (panel_along_cm + panel_gap_cm)
+                for i, cell in enumerate(cells)
+                if cell in ('V', 'H')
+            ]
+        if not positions:
+            continue
+        auto_start = min(auto_start, positions[0])
+        auto_end = max(auto_end, positions[-1] + panel_along_cm)
+
+    if auto_start == float('inf'):
+        return None
+    return round((auto_end - auto_start) * 10)
+
+
 async def compute_and_save_bases(
     db: AsyncSession, project: Project, bs,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
@@ -237,15 +276,32 @@ async def compute_and_save_bases(
             label = area.get('label', str(i))
             trap_ids = [label]
 
+        # First-time computation: no existing bases → ignore all custom offsets
+        has_existing_bases = len(area.get('bases', [])) > 0
+
+        # Compute frame length to validate stored custom offsets
+        area_frame_mm = _compute_area_frame_mm(area, data.get('step2', {}), app_defaults.get('panelGapCm', 2.5))
+
         # Compute bases per trapezoid
         bases_data_map: dict[str, dict | None] = {}
         for trap_id in trap_ids:
-            # Merge stored custom offsets into trapezoid_configs if not already present
             effective_configs = dict(trapezoid_configs or {})
             if trap_id not in effective_configs:
                 effective_configs[trap_id] = {}
-            if 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
-                effective_configs[trap_id]['customOffsets'] = stored_custom[trap_id]
+
+            if not has_existing_bases:
+                # First computation — always use defaults, ignore any custom offsets
+                effective_configs[trap_id].pop('customOffsets', None)
+                stored_custom.pop(trap_id, None)
+            elif 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
+                stored = stored_custom[trap_id]
+                # Validate: discard stale offsets if they don't span the current frame
+                if (area_frame_mm and stored and len(stored) >= 2
+                        and max(stored) <= area_frame_mm
+                        and (max(stored) - min(stored)) >= area_frame_mm * 0.7):
+                    effective_configs[trap_id]['customOffsets'] = stored
+                else:
+                    stored_custom.pop(trap_id, None)  # stale — clear
 
             inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
