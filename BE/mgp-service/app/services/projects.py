@@ -436,12 +436,20 @@ async def compute_and_save_bases(
         # First-time computation: no existing bases → ignore all custom offsets
         has_existing_bases = len(area.get('bases', [])) > 0
 
-        # Compute frame length to validate stored custom offsets
-        area_frame_mm = _compute_area_frame_mm(area, data.get('step2', {}), app_defaults.get('panelGapCm', 2.5))
-
         # Compute bases per trapezoid
         bases_data_map: dict[str, dict | None] = {}
         for trap_id in trap_ids:
+            # Compute per-trap X range first (needed for validation)
+            trap_start, trap_end = _compute_trap_x_range(
+                area.get('panelGrid') or {}, trap_id, trap_ids,
+                trapezoids,
+                step2.get('panelWidthCm', 113.4), step2.get('panelLengthCm', 238.2),
+                app_defaults.get('panelGapCm', 2.5),
+            )
+
+            # Per-trap frame length for validating stored custom offsets
+            trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
+
             effective_configs = dict(trapezoid_configs or {})
             if trap_id not in effective_configs:
                 effective_configs[trap_id] = {}
@@ -452,21 +460,12 @@ async def compute_and_save_bases(
                 stored_custom.pop(trap_id, None)
             elif 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
                 stored = stored_custom[trap_id]
-                # Validate: discard stale offsets if they don't span the current frame
-                if (area_frame_mm and stored and len(stored) >= 2
-                        and max(stored) <= area_frame_mm
-                        and (max(stored) - min(stored)) >= area_frame_mm * 0.7):
+                # Validate against per-trap frame (not full area frame)
+                frame_check = trap_frame_mm or round((trap_end - trap_start) * 10) if trap_start is not None else None
+                if stored and len(stored) >= 2 and frame_check and max(stored) <= frame_check:
                     effective_configs[trap_id]['customOffsets'] = stored
                 else:
                     stored_custom.pop(trap_id, None)  # stale — clear
-
-            # Compute per-trap X range for multi-trap areas
-            trap_start, trap_end = _compute_trap_x_range(
-                area.get('panelGrid') or {}, trap_id, trap_ids,
-                trapezoids,
-                step2.get('panelWidthCm', 113.4), step2.get('panelLengthCm', 238.2),
-                app_defaults.get('panelGapCm', 2.5),
-            )
 
             inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
@@ -633,13 +632,18 @@ async def save_tab(
     bases_result = None
 
     if tab == 'rails':
-        # Save rail settings + recompute rails + recompute bases (dependent)
+        # Save rail settings + recompute rails only (bases untouched)
         rails_result = await compute_and_save_rails(db, project, rs, step3_data)
-        bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
+        # Return current bases (unchanged) so FE has full state
+        await db.refresh(project)
+        bases_result = [
+            {'areaLabel': area.get('label', str(i)), 'bases': area.get('bases', [])}
+            for i, area in enumerate(get_project_areas(project))
+        ]
     elif tab == 'bases':
         # Save base settings + recompute bases only (rails unchanged)
         bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
-        # Also return current rails (unchanged) so FE has full state
+        # Return current rails (unchanged) so FE has full state
         rails_result = [
             {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
             for i, area in enumerate(get_project_areas(project))
