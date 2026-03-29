@@ -136,7 +136,7 @@ class Rail(BaseModel):
 
 class Base(BaseModel):
     """
-    One base beam position computed by computeAreaBasesData().
+    One base beam position computed by base_service.compute_area_bases().
     offsetFromStartCm is measured from the area's start corner.
     topDepthCm / bottomDepthCm are measured from the rear edge.
     """
@@ -146,6 +146,7 @@ class Base(BaseModel):
     topDepthCm: float               # depth of base top edge (rear side)
     bottomDepthCm: float            # depth of base bottom edge (front side)
     lengthCm: float                 # physical beam length = bottomDepth − topDepth
+    blockDepthOffsetsCm: list[float] = Field(default_factory=list)  # depth positions for mounting blocks
 
 
 # ── Diagonals (locked step 3) ─────────────────────────────────────────────────

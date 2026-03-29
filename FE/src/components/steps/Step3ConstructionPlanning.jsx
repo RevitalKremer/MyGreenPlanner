@@ -40,7 +40,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onBOMDataChange, onPdfDataChange, beRailsData = null, railsComputing = false, onRailSettingsCommit, appDefaults, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, railsComputing = false, basesComputing = false, onRailSettingsCommit, onBaseSettingsCommit, appDefaults, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
@@ -61,6 +61,9 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     if (prevTabRef.current === 'rails' && activeTab !== 'rails') {
       onRailSettingsCommit?.()
     }
+    if (prevTabRef.current === 'bases' && activeTab !== 'bases') {
+      onBaseSettingsCommit?.()
+    }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -68,6 +71,15 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   useEffect(() => {
     if (beRailsData && resetAreas.size > 0) setResetAreas(new Set())
   }, [beRailsData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Notify parent when trapezoid configs or custom bases change (for base computation ref)
+  useEffect(() => {
+    onTrapConfigsChange?.(trapezoidConfigs)
+  }, [trapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    onCustomBasesChange?.(customBasesMap)
+  }, [customBasesMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onSettingsChange?.(globalSettings, areaSettings)
@@ -697,6 +709,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               trapRCMap={trapRCMap}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
+              beBasesData={beBasesData}
+              basesComputing={basesComputing}
               onBasesChange={(trapId, offsets) =>
                 setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
               }

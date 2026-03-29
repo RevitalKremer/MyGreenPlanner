@@ -51,6 +51,24 @@ export async function getRails(id) {
   return res.json()
 }
 
+export async function computeBases(id, step3Data = null, trapezoidConfigs = null) {
+  const body = {}
+  if (step3Data) body.step3 = step3Data
+  if (trapezoidConfigs) body.trapezoidConfigs = trapezoidConfigs
+  const res = await mgpRequest(`/projects/${id}/bases`, {
+    method: 'PUT',
+    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
+  })
+  if (!res.ok) throw new Error('Failed to compute bases')
+  return res.json()
+}
+
+export async function getBases(id) {
+  const res = await mgpRequest(`/projects/${id}/bases`)
+  if (!res.ok) throw new Error('Failed to fetch bases')
+  return res.json()
+}
+
 export async function approvePlan(id, strictConsent) {
   const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}`, {
     method: 'PUT',

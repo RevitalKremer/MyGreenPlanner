@@ -343,18 +343,22 @@ export function consolidateAreaBasesData(areaTrapsMap, basesDataMap) {
     }).filter(Boolean)
 
     // For each trap, remove bases that fall strictly within a "winning" trap's x-range.
-    // The winning trap is deeper (or same depth but wider x-extent).
+    // The winning trap is deeper, or wider at same depth, or earlier in list at same depth+width.
+    const trapOrder = Object.fromEntries(trapIds.map((id, i) => [id, i]))
+    const bWins = (a, b) => {
+      if (b.depth > a.depth) return true
+      if (b.depth < a.depth) return false
+      const wA = a.xMax - a.xMin, wB = b.xMax - b.xMin
+      if (wB > wA) return true
+      if (wB < wA) return false
+      return (trapOrder[b.trapId] ?? 999) < (trapOrder[a.trapId] ?? 999)
+    }
     for (const infoA of trapInfos) {
       result[infoA.trapId] = result[infoA.trapId].filter(base => {
         const x = base.offsetFromStartCm
         for (const infoB of trapInfos) {
           if (infoB.trapId === infoA.trapId) continue
-          if (x > infoB.xMin && x < infoB.xMax) {
-            if (infoB.depth > infoA.depth ||
-               (infoB.depth === infoA.depth && (infoB.xMax - infoB.xMin) >= (infoA.xMax - infoA.xMin))) {
-              return false
-            }
-          }
+          if (x > infoB.xMin && x < infoB.xMax && bWins(infoA, infoB)) return false
         }
         return true
       })

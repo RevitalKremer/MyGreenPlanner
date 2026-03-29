@@ -147,6 +147,107 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     return result
 
 
+def _derive_line_rails(area: dict) -> dict[str, list[float]]:
+    """Group stored rails by lineIdx → sorted offsets (reused by rail and base inputs)."""
+    derived: dict[str, list] = {}
+    for r in area.get('rails', []):
+        li = str(r.get('lineIdx', 0))
+        off = r.get('offsetFromLineFrontCm')
+        if off is not None:
+            derived.setdefault(li, []).append(off)
+    return {li: sorted(offs) for li, offs in derived.items()}
+
+
+def _build_base_inputs(
+    data: dict, area: dict, area_idx: int, app_defaults: dict,
+    trapezoid_id: str, trapezoid_configs: dict | None = None,
+) -> dict:
+    """Extract base computation inputs for one trapezoid within an area."""
+    step2 = data.get('step2', {})
+
+    # Line rails from stored area rails
+    line_rails = _derive_line_rails(area)
+
+    # Per-trapezoid settings: from request body trapezoidConfigs, then app_settings defaults
+    trap_cfg = (trapezoid_configs or {}).get(trapezoid_id, {})
+
+    # Custom base offsets (user-dragged positions)
+    custom_offsets = trap_cfg.get('customOffsets')
+
+    return {
+        'panel_grid':          area.get('panelGrid') or {},
+        'panel_width_cm':      step2.get('panelWidthCm'),
+        'panel_length_cm':     step2.get('panelLengthCm'),
+        'line_rails':          line_rails,
+        'edge_offset_mm':      trap_cfg.get('edgeOffsetMm',      app_defaults['edgeOffsetMm']),
+        'spacing_mm':          trap_cfg.get('spacingMm',          app_defaults['spacingMm']),
+        'base_overhang_cm':    trap_cfg.get('baseOverhangCm',     app_defaults['baseOverhangCm']),
+        'block_length_cm':     app_defaults.get('blockLengthCm',  50),
+        'cross_rail_offset_cm': app_defaults.get('crossRailEdgeDistMm', 40) / 10,
+        'panel_gap_cm':        app_defaults['panelGapCm'],
+        'trapezoid_id':        trapezoid_id,
+        'custom_offsets':      custom_offsets,
+    }
+
+
+async def compute_and_save_bases(
+    db: AsyncSession, project: Project, bs,
+    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+) -> list:
+    """Compute bases for all areas, persist to step2.areas[i].bases, return per-area results."""
+    await db.refresh(project)
+    data = copy.deepcopy(project.data or {})
+    if step3_data is not None:
+        data['step3'] = step3_data
+    areas = data.get('step2', {}).get('areas', [])
+    step2 = data.get('step2', {})
+    trapezoids = step2.get('trapezoids', {})
+    result = []
+
+    # Load defaults from app_settings
+    rows = (await db.execute(
+        select(AppSetting.key, AppSetting.value_json).where(
+            AppSetting.key.in_([
+                'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
+                'blockLengthCm', 'crossRailEdgeDistMm',
+            ])
+        )
+    )).all()
+    app_defaults = {r.key: r.value_json for r in rows}
+
+    for i, area in enumerate(areas):
+        trap_ids = area.get('trapezoidIds', [])
+        if not trap_ids:
+            label = area.get('label', str(i))
+            trap_ids = [label]
+
+        # Compute bases per trapezoid
+        bases_data_map: dict[str, dict | None] = {}
+        for trap_id in trap_ids:
+            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, trapezoid_configs)
+            bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
+
+        # Consolidate multi-trapezoid areas
+        consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
+
+        # Flatten all bases for this area
+        all_bases = []
+        for trap_id in trap_ids:
+            all_bases.extend(consolidated.get(trap_id, []))
+
+        areas[i]['bases'] = all_bases
+        result.append({
+            'areaLabel': area.get('label', str(i)),
+            'bases': all_bases,
+            'basesDataMap': {k: v for k, v in bases_data_map.items() if v},
+        })
+
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+    return result
+
+
 async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool) -> Project:
     data = copy.deepcopy(project.data or {})
     step4 = data.setdefault('step4', {})

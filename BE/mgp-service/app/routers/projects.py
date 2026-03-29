@@ -12,10 +12,15 @@ from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary
 from app.services import projects as project_service
 from app.services import rail_service
+from app.services import base_service
 from app.routers.deps import get_current_user, require_admin
 
 class RailComputeRequest(BaseModel):
     step3: Optional[dict] = None
+
+class BaseComputeRequest(BaseModel):
+    step3: Optional[dict] = None
+    trapezoidConfigs: Optional[dict] = None
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -111,6 +116,46 @@ async def get_rails(
         {
             'areaLabel': area.get('label', str(i)),
             'rails': area.get('rails', []),
+        }
+        for i, area in enumerate(project_service.get_project_areas(project))
+    ]
+
+
+@router.put("/{project_id}/bases")
+async def compute_bases(
+    project_id: uuid.UUID,
+    payload: Optional[BaseComputeRequest] = Body(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute base layout for all areas, persist to data.areas[i].bases, return bases."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    result = await project_service.compute_and_save_bases(
+        db, project, base_service,
+        step3_data=payload.step3 if payload else None,
+        trapezoid_configs=payload.trapezoidConfigs if payload else None,
+    )
+    return result
+
+
+@router.get("/{project_id}/bases")
+async def get_bases(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return saved bases for all areas."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    return [
+        {
+            'areaLabel': area.get('label', str(i)),
+            'bases': area.get('bases', []),
         }
         for i, area in enumerate(project_service.get_project_areas(project))
     ]

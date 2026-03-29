@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, computeRails, getRails } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, computeRails, getRails, computeBases, getBases } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -85,18 +85,26 @@ function App() {
   }, [auth.user, fetchCloudProjects])
 
   const [beRailsData, setBeRailsData] = useState(null)
+  const [beBasesData, setBeBasesData] = useState(null)
   const [railsComputing, setRailsComputing] = useState(false)
+  const [basesComputing, setBasesComputing] = useState(false)
   // Always-current step3 settings — updated synchronously in onSettingsChange so commit
   // callbacks never read stale state from the React re-render cycle.
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
+  const trapConfigsRef = useRef(s.trapezoidConfigs)
+  const customBasesRef = useRef({})
 
   // Trigger rail computation when a (different) project is loaded while on step 3.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
     if (s.currentStep === 3 && s.cloudProjectId) {
       setBeRailsData(null)
+      setBeBasesData(null)
       getRails(s.cloudProjectId)
         .then(setBeRailsData)
+        .catch(console.error)
+      getBases(s.cloudProjectId)
+        .then(setBeBasesData)
         .catch(console.error)
     }
   }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
@@ -104,10 +112,34 @@ function App() {
   const triggerComputeRails = (id, step3Data = null) => {
     setRailsComputing(true)
     computeRails(id, step3Data)
-      .then(data => { setBeRailsData(data) })
+      .then(data => {
+        setBeRailsData(data)
+        // Bases depend on rails — recompute after rails are saved
+        triggerComputeBases(id, step3Data, trapConfigsRef.current)
+      })
       .catch(console.error)
       .finally(() => setRailsComputing(false))
   }
+
+  const triggerComputeBases = (id, step3Data = null, trapConfigs = null, customBases = null) => {
+    // Merge custom base offsets into trapezoidConfigs so BE receives them
+    const merged = { ...(trapConfigs || {}) }
+    if (customBases) {
+      for (const [trapId, offsets] of Object.entries(customBases)) {
+        merged[trapId] = { ...(merged[trapId] || {}), customOffsets: offsets }
+      }
+    }
+    setBasesComputing(true)
+    computeBases(id, step3Data, Object.keys(merged).length > 0 ? merged : null)
+      .then(data => { setBeBasesData(data) })
+      .catch(console.error)
+      .finally(() => setBasesComputing(false))
+  }
+
+  const handleBaseSettingsCommit = useCallback(() => {
+    if (!s.cloudProjectId) return
+    triggerComputeBases(s.cloudProjectId, step3SettingsRef.current, trapConfigsRef.current, customBasesRef.current)
+  }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRailSettingsCommit = useCallback(() => {
     if (!s.cloudProjectId) return
@@ -424,9 +456,14 @@ function App() {
             initialGlobalSettings={s.step3GlobalSettings}
             initialAreaSettings={s.step3AreaSettings}
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
+            onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
+            onCustomBasesChange={(map) => { customBasesRef.current = map }}
             onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
+            beBasesData={beBasesData}
+            basesComputing={basesComputing}
+            onBaseSettingsCommit={handleBaseSettingsCommit}
             appDefaults={s.appDefaults}
             panelSpec={s.panelSpec}
           />
