@@ -41,10 +41,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
   const hl = (group) => hlGroup === group
 
-  if (!rc) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
+  // Use BE-computed geometry when available, fall back to FE rc
+  const geom = beDetailData?.geometry ?? rc
+  if (!geom) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
 
   const baseOverhangCm = settings.baseOverhangCm ?? 0
-  const { heightRear, heightFront, baseLength, angle, topBeamLength } = rc
+  const { heightRear, heightFront, baseLength, angle, topBeamLength } = geom
 
   const SC         = 2.2
   const RAIL_CM    = railOffsetCm
@@ -153,6 +155,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     return (N > 1 && pos > Math.floor((N - 1) / 2)) ? r.cx + offset : r.cx - offset
   })
   const allLegXs = [legX0, ...innerLegXs, legX1]
+  // Build diagonal data: use BE decisions (topPct, botPct, isDouble, disabled) when available,
+  // but always compute pixel positions (topX, botX, topY, botY) from leg positions.
+  const beDiags = beDetailData?.diagonals ?? null
   const diagonals = (() => {
     const SKIP_BELOW = 60, DOUBLE_ABOVE = 200
     const numSpans = allLegXs.length - 1
@@ -161,35 +166,51 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const hA       = legHeightAtX(xA)
       const hB       = legHeightAtX(xB)
       const spanW    = xB - xA
-      const isDouble = hA >= DOUBLE_ABOVE || hB >= DOUBLE_ABOVE
-      const ov       = diagOverrides[i] ?? {}
-      // Skip rule, then apply explicit user override
-      let   skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
-      if (ov.disabled === true)  skip = true
-      if (ov.disabled === false) skip = false
-      const reversed  = numSpans > 1 && i === 0
-      const defTopPct = reversed ? (isDouble ? 0.90 : 1 - diagTopPct) : (isDouble ? 0.10 : diagTopPct)
-      const defBotPct = reversed ? (1 - diagBasePct) : diagBasePct
-      const topPct    = ov.topPct !== undefined ? ov.topPct : defTopPct
-      const botPct    = ov.botPct !== undefined ? ov.botPct : defBotPct
+
+      // Use BE data for decisions when available, otherwise compute FE-side
+      const beDiag = beDiags?.find(d => d.spanIdx === i)
+      let isDouble, skip, topPct, botPct
+
+      if (beDiag) {
+        isDouble = beDiag.isDouble
+        skip     = beDiag.disabled
+        topPct   = beDiag.topPct
+        botPct   = beDiag.botPct
+      } else {
+        isDouble = hA >= DOUBLE_ABOVE || hB >= DOUBLE_ABOVE
+        const ov = diagOverrides[i] ?? {}
+        skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
+        if (ov.disabled === true)  skip = true
+        if (ov.disabled === false) skip = false
+        const reversed  = numSpans > 1 && i === 0
+        const defTopPct = reversed ? (isDouble ? 0.90 : 1 - diagTopPct) : (isDouble ? 0.10 : diagTopPct)
+        const defBotPct = reversed ? (1 - diagBasePct) : diagBasePct
+        topPct   = ov.topPct !== undefined ? ov.topPct : defTopPct
+        botPct   = ov.botPct !== undefined ? ov.botPct : defBotPct
+      }
+
+      // Pixel positions (always computed FE-side from leg positions)
       const topX      = xA + topPct * spanW
       const botX      = xA + botPct * spanW
-      const topY      = beamY(topX)   // punch through center of slope beam
-      const botY      = baseY + BEAM_THICK_PX / 2   // punch through center of base beam
+      const topY      = beamY(topX)
+      const botY      = baseY + BEAM_THICK_PX / 2
       const _dx = botX - topX, _dy = botY - topY
       const _len = Math.sqrt(_dx * _dx + _dy * _dy)
       const ux = _len > 0 ? _dx / _len : 0, uy = _len > 0 ? _dy / _len : 0
-      const halfCap = BEAM_THICK_PX * 0.75 / 2   // strokeLinecap="square" extends profile by this
-      const lenCm   = (_len + BEAM_THICK_PX * 0.75) / SC  // full profile length: punch-to-punch + both caps
+      const halfCap = BEAM_THICK_PX * 0.75 / 2
+      const lenCm   = beDiag?.lengthCm ?? ((_len + BEAM_THICK_PX * 0.75) / SC)
+      const reversed = numSpans > 1 && i === 0
       return { xA, xB, hA, hB, spanW, topX, botX, topY, botY, ux, uy, halfCap, lenCm, isDouble, reversed, skip, spanIndex: i }
     })
-    // Safety: if all skip, force-show the rightmost span not explicitly disabled by user
-    const anyVisible = raw.some(s => !s.skip)
-    if (!anyVisible) {
-      for (let i = raw.length - 1; i >= 0; i--) {
-        if ((diagOverrides[raw[i].spanIndex] ?? {}).disabled !== true) {
-          raw[i] = { ...raw[i], skip: false }
-          break
+    // Safety: if all skip and no BE data, force-show rightmost
+    if (!beDiags) {
+      const anyVisible = raw.some(s => !s.skip)
+      if (!anyVisible) {
+        for (let i = raw.length - 1; i >= 0; i--) {
+          if ((diagOverrides[raw[i].spanIndex] ?? {}).disabled !== true) {
+            raw[i] = { ...raw[i], skip: false }
+            break
+          }
         }
       }
     }
