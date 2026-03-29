@@ -129,8 +129,8 @@ export function useProjectState() {
       .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
       .catch(() => { /* keep hardcoded fallback */ })
     fetchAppDefaults()
-      .then(d => { console.log('[appDefaults] loaded:', d); setAppDefaults(d) })
-      .catch(e => { console.error('[appDefaults] FAILED to load:', e) })
+      .then(setAppDefaults)
+      .catch(() => { /* keep null — callers must handle */ })
     fetchProducts()
       .then(items => setProducts(items.map(p => ({
         type: p.type_key, pn: p.part_number ?? '', name: p.name,

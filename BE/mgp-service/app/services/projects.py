@@ -1,12 +1,9 @@
 import copy
-import logging
 import uuid
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
-
-logger = logging.getLogger("mgp")
 
 from app.models.project import Project
 from app.models.setting import AppSetting
@@ -147,13 +144,6 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     project.data = data
     flag_modified(project, 'data')
     await db.commit()
-
-    # ── Log ──
-    total_rails = sum(len(r.get('rails', [])) for r in result)
-    area_summary = ', '.join(f"{r['areaLabel']}:{len(r.get('rails',[]))}r" for r in result)
-    stored_step = (project.navigation or {}).get('step', '?')
-    logger.info(f"*** RAILS UPDATED *** project={project.id} step={stored_step} areas={len(result)} total_rails={total_rails} [{area_summary}]")
-
     return result
 
 
@@ -421,12 +411,6 @@ async def compute_and_save_bases(
                     stored_custom.pop(trap_id, None)   # empty array = reset to defaults
     step3['basesCustomOffsets'] = stored_custom
 
-    # Snapshot old bases for change detection
-    old_bases_by_area = {
-        area.get('label', str(i)): area.get('bases', [])
-        for i, area in enumerate(areas)
-    }
-
     for i, area in enumerate(areas):
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
@@ -485,48 +469,9 @@ async def compute_and_save_bases(
             'basesDataMap': {k: v for k, v in bases_data_map.items() if v},
         })
 
-    # Check if bases actually changed
-    changed = False
-    for r in result:
-        label = r['areaLabel']
-        old = old_bases_by_area.get(label, [])
-        new = r.get('bases', [])
-        if len(old) != len(new):
-            changed = True; break
-        for ob, nb in zip(old, new):
-            if (ob.get('offsetFromStartCm') != nb.get('offsetFromStartCm')
-                    or ob.get('trapezoidId') != nb.get('trapezoidId')
-                    or ob.get('lengthCm') != nb.get('lengthCm')):
-                changed = True; break
-        if changed:
-            break
-
-    if changed:
-        project.data = data
-        flag_modified(project, 'data')
-        await db.commit()
-
-        # ── Log ──
-        total_bases = sum(len(r.get('bases', [])) for r in result)
-        has_custom = bool(trapezoid_configs and any(cfg.get('customOffsets') for cfg in trapezoid_configs.values()))
-        area_parts = []
-        for r in result:
-            trap_counts = {}
-            for b in r.get('bases', []):
-                tid = b.get('trapezoidId', '?')
-                trap_counts[tid] = trap_counts.get(tid, 0) + 1
-            trap_str = '+'.join(f"{tid}:{n}b" for tid, n in trap_counts.items())
-            area_parts.append(f"{r['areaLabel']}:[{trap_str}]")
-        stored_step = (project.navigation or {}).get('step', '?')
-        logger.info(
-            f"*** BASES UPDATED *** project={project.id} step={stored_step} areas={len(result)} "
-            f"total_bases={total_bases} custom_from_FE={has_custom} "
-            f"[{', '.join(area_parts)}]"
-        )
-    else:
-        stored_step = (project.navigation or {}).get('step', '?')
-        logger.info(f"BASES unchanged project={project.id} step={stored_step}")
-
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
     return result
 
 
@@ -597,13 +542,6 @@ async def update_project_step(
         rails_result = await compute_and_save_rails(db, project, rs)
         bases_result = await compute_and_save_bases(db, project, bs)
 
-    logger.info(
-        f"*** STEP CHANGED *** project={project.id} {old_step}→{new_step} "
-        f"cleared=[{','.join(cleared)}] "
-        f"computed_rails={'yes' if rails_result else 'no'} "
-        f"computed_bases={'yes' if bases_result else 'no'}"
-    )
-
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
         result['rails'] = rails_result
@@ -648,11 +586,6 @@ async def save_tab(
             {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
             for i, area in enumerate(get_project_areas(project))
         ]
-
-    logger.info(
-        f"*** TAB SAVED *** project={project.id} tab={tab} "
-        f"rails={'yes' if rails_result else 'no'} bases={'yes' if bases_result else 'no'}"
-    )
 
     return {
         'tab': tab,
