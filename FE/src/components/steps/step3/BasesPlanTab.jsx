@@ -14,7 +14,7 @@ import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, beBasesData = null, basesComputing = false, onBasesChange = null, onResetBases = null, printMode = false }) {
   const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
@@ -33,6 +33,22 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
   const { map: trapGroups, keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
+  // Build a lookup: trapId → [offsetMm, ...] from BE bases data
+  const beBaseOffsets = useMemo(() => {
+    if (!beBasesData) return {}
+    const map = {}
+    for (const areaData of beBasesData) {
+      for (const base of (areaData.bases || [])) {
+        const tid = base.trapezoidId
+        if (!map[tid]) map[tid] = []
+        map[tid].push(Math.round(base.offsetFromStartCm * 10))
+      }
+    }
+    // Sort each trap's offsets
+    for (const tid of Object.keys(map)) map[tid].sort((a, b) => a - b)
+    return map
+  }, [beBasesData])
+
   const basePlans = useMemo(() =>
     trapIds.map(trapId => {
       const s = trapSettingsMap[trapId] ?? {}
@@ -42,11 +58,16 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
         edgeOffsetMm: s.edgeOffsetMm ?? DEFAULT_BASE_EDGE_OFFSET_MM,
         spacingMm:    s.spacingMm    ?? DEFAULT_BASE_SPACING_MM,
       }
+      // Priority: FE custom edits > BE stored positions > auto-compute defaults
       const customOffsets = customBasesMap[trapId]
-      if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
+      if (customOffsets?.length > 0) {
+        cfg.customOffsets = customOffsets
+      } else if (beBaseOffsets[trapId]?.length > 0) {
+        cfg.customOffsets = beBaseOffsets[trapId]
+      }
       return computeRowBasePlan(trapGroups[trapId], pixelToCmRatio, { overhangCm: railOverhangCm, lineRails }, cfg)
     }),
-    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap]
+    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beBaseOffsets]
   )
 
   const railLayouts = useMemo(() =>
