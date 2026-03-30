@@ -1,10 +1,20 @@
 """
-MGP Project Data Schema — format version 2.0
+MGP Project Data Schema — format version 3.0
 =============================================
 
 The `data` JSONB column on the projects table.
 Source of truth for all physical project data.
 No pixel coordinates — physical measurements only (cm, mm, degrees).
+
+Data ownership
+--------------
+  Each step writes ONLY to its own node (data.stepN).
+  step2 — FE-owned: panel placement, area/trapezoid basic config
+  step3 — mixed: FE-owned user settings + server-computed results
+    FE-owned keys:   globalSettings, areaSettings, basesCustomOffsets, customDiagonals
+    Server-computed: computedAreas, computedTrapezoids
+  step4 — server-owned: plan approval
+  step5 — FE-owned: BOM user adjustments (bomDeltas)
 
 Step locking
 ------------
@@ -26,94 +36,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# ── Global settings ───────────────────────────────────────────────────────────
-
-class GlobalSettings(BaseModel):
-    stockLengths: list[int] = Field(default_factory=lambda: [6000, 4200, 3000])
-    # Available rail stock lengths (mm), longest first
-    crossRailEdgeDistMm: float = 40
-    # Rail profile thickness used for rendering (mm)
-
-
-# ── Project settings ──────────────────────────────────────────────────────────
-
-class ProjectSettings(BaseModel):
-    name: str
-    location: Optional[str] = None
-    panelType: str = 'AIKO-G670-MCH72Mw'
-    panelWidthCm: float              # short side (portrait width / landscape height)
-    panelLengthCm: float             # long side  (portrait height / landscape width)
-    globalSettings: GlobalSettings = Field(default_factory=GlobalSettings)
-
-
-# ── Trapezoids (locked step 2) ────────────────────────────────────────────────
-
-class TrapezoidSettings(BaseModel):
-    angleDeg: float = 0             # panel tilt from horizontal
-    frontHeightCm: float = 0        # eave-edge mounting height (cm)
-    edgeOffsetMm: float = 300       # distance from frame edge to first/last base (mm)
-    spacingMm: float = 2000         # max spacing between bases (mm)
-    baseOverhangCm: float = 15      # base extension beyond rear/front rail (cm)
-    lineRails: dict[str, list[float]] = Field(default_factory=dict)
-    # str(lineIdx) → [offsetFromRearEdgeCm, ...]
-    # Input: user-configured rail positions within each panel line
-
-
-class Block(BaseModel):
-    """Mounting block position along a base beam. Same for all bases in the trapezoid."""
-    depthCm: float          # distance from rear edge to block centre
-
-
-class Punch(BaseModel):
-    """Punch hole position along a base beam. Same for all bases in the trapezoid."""
-    depthCm: float          # distance from rear edge to punch centre
-    punchOffsetCm: float    # offset from block edge to punch hole centre
-
-
-class Trapezoid(BaseModel):
-    """
-    One trapezoid shape. Keyed by trapezoid ID (e.g. 'A', 'A1', 'B2').
-    May be referenced by multiple areas (shared config).
-    """
-    id: str
-    settings: TrapezoidSettings = Field(default_factory=TrapezoidSettings)
-    blocks: list[Block] = Field(default_factory=list)   # locked step 3
-    punches: list[Punch] = Field(default_factory=list)  # locked step 3
-
-
-# ── Trapezoid detail (step 3) ─────────────────────────────────────────────────
-
-class TrapezoidDetail(BaseModel):
-    """
-    Computed structural details for one trapezoid.
-    Stored in step3.trapezoidDetails[trapId].
-    Separate from step2.trapezoids (initial geometry from panel placement).
-    On reset, simply delete the entry — step2 data stays untouched.
-    """
-    # Settings (user-configurable)
-    blockHeightCm: float = 15
-    blockLengthCm: float = 50
-    blockWidthCm: float = 24
-    blockPunchCm: float = 9
-    diagTopPct: float = 25
-    diagBasePct: float = 90
-    customDiagonals: dict = Field(default_factory=dict)
-    # customDiagonals: { "spanIdx": { disabled?, topPct, botPct } }
-
-    # Computed data (persisted to DB)
-    geometry: dict = Field(default_factory=dict)
-    # { heightRear, heightFront, topBeamLength, baseBeamLength, baseLength, diagonalLength, angle, frontHeight }
-    legs: list[dict] = Field(default_factory=list)
-    # [{ positionCm, heightCm, isInner, side: 'left'|'right'|'outer' }]
-    blocks: list[dict] = Field(default_factory=list)
-    # [{ positionCm, isEnd }]
-    punches: list[dict] = Field(default_factory=list)
-    # [{ beamType: 'base'|'slope', positionCm }]
-    diagonals: list[dict] = Field(default_factory=list)
-    # [{ spanIdx, topPct, botPct, lengthCm, isDouble, disabled }]
-
-
-# ── Panel grid (locked step 2) ────────────────────────────────────────────────
+# ── Step 2: Panel placement (FE-owned) ──────────────────────────────────────
 
 class PanelGrid(BaseModel):
     """
@@ -132,96 +55,118 @@ class PanelGrid(BaseModel):
     areaAngle: float = 0
     rows: list[list[str]]
     rowPositions: Optional[dict[str, list[float]]] = None
-    # str(lineIdx) → [offsetCm, ...]
 
 
-# ── Area settings (locked step 2) ─────────────────────────────────────────────
-
-class AreaSettings(BaseModel):
+class Step2Area(BaseModel):
+    """Basic area config set during panel placement. No computed data."""
     label: str                          # 'A', 'B', 'C', …
-    angleDeg: Optional[float] = None    # default for trapezoids in this area
+    angleDeg: Optional[float] = None
     frontHeightCm: Optional[float] = None
-    railOverhangCm: float = 4.0         # rail overhang beyond panel extents (cm)
     trapezoidIds: list[str] = Field(default_factory=list)
-    # Ordered list of trapezoid IDs belonging to this area
+    panelGrid: Optional[PanelGrid] = None
 
 
-# ── Rails (locked step 3) ─────────────────────────────────────────────────────
+class Step2Trapezoid(BaseModel):
+    """Basic trapezoid config detected during panel placement."""
+    angleDeg: float = 0
+    frontHeightCm: float = 0
+    linesPerRow: int = 1
+    lineOrientations: list[str] = Field(default_factory=lambda: ['vertical'])
+
+
+class Step2Data(BaseModel):
+    """Panel placement — FE-owned, locked after step 2."""
+    panelType: str = 'AIKO-G670-MCH72Mw'
+    panelWidthCm: float = 113.4
+    panelLengthCm: float = 238.2
+    defaultAngleDeg: float = 0
+    defaultFrontHeightCm: float = 0
+    trapezoids: dict[str, Step2Trapezoid] = Field(default_factory=dict)
+    areas: list[Step2Area] = Field(default_factory=list)
+
+
+# ── Step 3: Construction planning ────────────────────────────────────────────
+
+# Server-computed models (stored in step3.computedAreas / step3.computedTrapezoids)
 
 class Rail(BaseModel):
-    """
-    One physical rail computed by rail_service.compute_area_rails().
-    Output — derived from panelGrid + lineRails + railOverhangCm + stockLengths.
-    """
-    railId: str                                     # 'R1', 'R2', …
+    """One physical rail computed by rail_service."""
+    railId: str
     lineIdx: int
-    offsetFromRearEdgeCm: float                     # distance from rear (ridge) edge to rail centre
+    offsetFromRearEdgeCm: float
+    offsetFromLineFrontCm: float = 0
     orientation: Literal['PORTRAIT', 'LANDSCAPE']
-    startCm: float                                  # leading edge of span (from area start corner)
-    endCm: float                                    # trailing edge of span
-    lengthMm: int                                   # total span including overhang
-    stockSegments: list[int]                        # cut lengths (mm), greedy largest-first
-    leftoverMm: int                                 # total waste mm
+    startCm: float
+    endCm: float
+    lengthMm: int
+    stockSegments: list[int]
+    leftoverMm: int
 
-
-# ── Bases (locked step 3) ─────────────────────────────────────────────────────
 
 class Base(BaseModel):
-    """
-    One base beam position computed by base_service.compute_area_bases().
-    offsetFromStartCm is measured from the area's start corner.
-    topDepthCm / bottomDepthCm are measured from the rear edge.
-    """
-    baseId: str                     # 'B1', 'B2', …
-    trapezoidId: str                # which trapezoid this base belongs to
-    offsetFromStartCm: float        # horizontal position from area start corner
-    topDepthCm: float               # depth of base top edge (rear side)
-    bottomDepthCm: float            # depth of base bottom edge (front side)
-    lengthCm: float                 # physical beam length = bottomDepth − topDepth
-    blockDepthOffsetsCm: list[float] = Field(default_factory=list)  # depth positions for mounting blocks
+    """One base beam position computed by base_service."""
+    baseId: str
+    trapezoidId: str
+    offsetFromStartCm: float
+    topDepthCm: float
+    bottomDepthCm: float
+    lengthCm: float
+    blockDepthOffsetsCm: list[float] = Field(default_factory=list)
 
-
-# ── Diagonals (locked step 3) ─────────────────────────────────────────────────
 
 class Diagonal(BaseModel):
     """Cross-brace connecting two adjacent base beams within an area."""
     fromBaseId: str
     toBaseId: str
-    horizMm: int        # horizontal distance between the two bases
-    vertMm: int         # vertical height difference (from RC heights)
-    diagLengthMm: int   # 3D length = sqrt(horiz² + vert²)
+    horizMm: int
+    vertMm: int
+    diagLengthMm: int
 
 
-# ── Area ──────────────────────────────────────────────────────────────────────
+class ComputedArea(BaseModel):
+    """Server-computed construction data for one area."""
+    label: str                      # matches step2.areas[].label
+    rails: list[Rail] = Field(default_factory=list)
+    bases: list[Base] = Field(default_factory=list)
+    diagonals: list[Diagonal] = Field(default_factory=list)
+    numLargeGaps: int = 0
 
-class Area(BaseModel):
-    settings: AreaSettings                              # locked step 2
-    panelGrid: Optional[PanelGrid] = None               # locked step 2
-    rails: list[Rail] = Field(default_factory=list)     # locked step 3
-    bases: list[Base] = Field(default_factory=list)     # locked step 3
-    diagonals: list[Diagonal] = Field(default_factory=list)  # locked step 3
+
+class ComputedTrapezoid(BaseModel):
+    """Server-computed structural details for one trapezoid."""
+    trapId: str                     # matches step2.trapezoids key
+    geometry: dict = Field(default_factory=dict)
+    # { heightRear, heightFront, topBeamLength, baseBeamLength, baseLength, diagonalLength, angle, frontHeight }
+    legs: list[dict] = Field(default_factory=list)
+    blocks: list[dict] = Field(default_factory=list)
+    punches: list[dict] = Field(default_factory=list)
+    diagonals: list[dict] = Field(default_factory=list)
 
 
-# ── Plan Approval (locked step 4) ────────────────────────────────────────────
+class Step3Data(BaseModel):
+    """Construction planning — mixed FE-owned settings + server-computed results."""
+    # FE-owned (user settings)
+    globalSettings: Optional[dict] = None
+    areaSettings: Optional[dict] = None
+    basesCustomOffsets: Optional[dict] = None
+    customDiagonals: Optional[dict] = None
+    # Server-computed (never sent by FE, preserved during merge)
+    computedAreas: list[ComputedArea] = Field(default_factory=list)
+    computedTrapezoids: list[ComputedTrapezoid] = Field(default_factory=list)
+
+
+# ── Step 4: Plan approval (server-owned) ─────────────────────────────────────
 
 class ApprovalPerformedBy(BaseModel):
-    """The logged-in user who clicked Approve in the UI (auto-captured)."""
-    userId: str             # UUID string of the authenticated user
+    userId: str
     email: str
     fullName: str
 
 
 class PlanApproval(BaseModel):
-    """
-    Constructor's sign-off before BOM and PDF generation.
-    Two identities are recorded:
-      - constructorName: manually entered by the user (the certified installer)
-      - performedBy: auto-captured from the logged-in account
-    Once set, the app allows proceeding to step 5 (BOM/PDF).
-    """
     date: str               # ISO date string (YYYY-MM-DD)
-    strictConsent: bool     # "I have reviewed and take full responsibility"
-    performedBy: ApprovalPerformedBy  # logged-in user who submitted the approval
+    strictConsent: bool
+    performedBy: ApprovalPerformedBy
 
 
 class Step4Data(BaseModel):
@@ -229,17 +174,14 @@ class Step4Data(BaseModel):
     planApproval: Optional[PlanApproval] = None
 
 
-# ── BOM deltas (step 5) ───────────────────────────────────────────────────────
+# ── Step 5: BOM deltas (FE-owned) ───────────────────────────────────────────
 #
 # The computed BOM lives in its own table (project_bom) — not in the JSONB.
 # Only user-made adjustments (bomDeltas) are stored here as lightweight data.
 
-
 class Step5Data(BaseModel):
     """BOM and PDF export step."""
     bomDeltas: Optional[dict] = None
-    # { overrides: { "areaLabel||element": { qty, extras, removed } },
-    #   additions: [...], alternatives: { element: altElement } }
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -249,10 +191,8 @@ class ProjectData(BaseModel):
     Root schema for the `data` JSONB column.
     Source of truth for all physical project data.
     """
-    version: Literal['2.0'] = '2.0'
-    settings: ProjectSettings = Field(default_factory=ProjectSettings)
-    trapezoids: dict[str, Trapezoid] = Field(default_factory=dict)
-    # trapezoidId → Trapezoid
-    areas: list[Area] = Field(default_factory=list)
-    step4: Step4Data = Field(default_factory=Step4Data)   # plan approval
-    step5: Step5Data = Field(default_factory=Step5Data)   # BOM / PDF
+    version: Literal['3.0'] = '3.0'
+    step2: Step2Data = Field(default_factory=Step2Data)
+    step3: Step3Data = Field(default_factory=Step3Data)
+    step4: Step4Data = Field(default_factory=Step4Data)
+    step5: Step5Data = Field(default_factory=Step5Data)

@@ -208,17 +208,15 @@ async def get_rails(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return saved rails for all areas (available to all users)."""
+    """Return saved rails for all areas."""
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {
-            'areaLabel': area.get('label', str(i)),
-            'rails': area.get('rails', []),
-        }
-        for i, area in enumerate(project_service.get_project_areas(project))
+        {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', [])}
+        for ca in computed_areas
     ]
 
 
@@ -229,7 +227,7 @@ async def compute_bases(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Compute base layout for all areas, persist to data.areas[i].bases, return bases."""
+    """Compute base layout for all areas, persist to step3.computedAreas, return bases."""
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -255,12 +253,10 @@ async def get_bases(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {
-            'areaLabel': area.get('label', str(i)),
-            'bases': area.get('bases', []),
-        }
-        for i, area in enumerate(project_service.get_project_areas(project))
+        {'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', [])}
+        for ca in computed_areas
     ]
 
 
@@ -275,17 +271,19 @@ async def get_rail_dimensions(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
         {
-            'areaLabel': area.get('label', str(i)),
+            'areaLabel': ca.get('label', ''),
             'rails': [
                 {k: r[k] for k in ('railId', 'lineIdx',
                                     'offsetFromLineFrontCm', 'offsetFromRearEdgeCm',
-                                    'startCm', 'endCm', 'lengthMm')}
-                for r in area.get('rails', [])
+                                    'startCm', 'endCm', 'lengthMm')
+                 if k in r}
+                for r in ca.get('rails', [])
             ],
         }
-        for i, area in enumerate(project_service.get_project_areas(project))
+        for ca in computed_areas
     ]
 
 
@@ -301,13 +299,13 @@ async def get_rail_materials(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     data     = project.data or {}
-    settings = data.get('settings', {})
+    step3    = data.get('step3', {})
     # Load stockLengths default from app_settings
     row = (await db.execute(
         select(AppSetting.value_json).where(AppSetting.key == 'stockLengths')
     )).scalar_one()
-    stock_lengths = settings.get('globalSettings', {}).get('stockLengths', row)
-    areas_rails = [area.get('rails', []) for area in project_service.get_project_areas(project)]
+    stock_lengths = (step3.get('globalSettings') or {}).get('stockLengths', row)
+    areas_rails = [ca.get('rails', []) for ca in step3.get('computedAreas', [])]
     return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 
 

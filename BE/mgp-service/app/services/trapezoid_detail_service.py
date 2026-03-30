@@ -81,6 +81,8 @@ def compute_trapezoid_details(
     }
 
     # ── Rail items (from lineRails + panelLines) ───────────────────────────
+    # Build ALL rail items including from empty lines — must match FE's railItems
+    # array so spanIdx values for diagonals align with FE rendering.
     rail_items = []
     d_cm = 0.0
     for si, seg in enumerate(panel_lines):

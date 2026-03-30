@@ -32,13 +32,14 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
     return project
 
 
+# ── Server-computed keys in step3 — never sent by FE, always preserved during merge ──
+_SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids'}
+
+
 async def update_project(db: AsyncSession, project: Project, payload: ProjectUpdate, step: int | None = None) -> Project:
     fields = payload.model_dump(exclude_none=True)
 
     if 'data' in fields:
-        # Deep-merge each step key so FE-owned keys are updated but
-        # server-computed keys (e.g. step3.trapezoidDetails, basesCustomOffsets,
-        # customDiagonals, step2.areas[].rails/bases) are preserved.
         incoming_data = fields['data']
         merged = copy.deepcopy(project.data or {})
 
@@ -49,26 +50,30 @@ async def update_project(db: AsyncSession, project: Project, payload: ProjectUpd
             if incoming_step is not None:
                 existing_step = merged.get(step_key)
                 if isinstance(existing_step, dict) and isinstance(incoming_step, dict):
+                    # Preserve server-computed keys in step3
+                    if step_key == 'step3':
+                        for k in _SERVER_COMPUTED_STEP3_KEYS:
+                            if k in existing_step and k not in incoming_step:
+                                incoming_step[k] = existing_step[k]
                     existing_step.update(incoming_step)
                     merged[step_key] = existing_step
                 else:
                     merged[step_key] = incoming_step
         else:
-            # Full save: merge step keys that contain server-computed data.
-            # step3 has trapezoidDetails, basesCustomOffsets, customDiagonals (server-owned).
-            # step2 has areas[].rails/bases (server-owned) — don't overwrite from FE.
-            # For step2: only update FE-owned keys (trapezoids, panelType, etc.), keep areas from DB.
-            _SERVER_OWNED_STEP2_KEYS = {'areas'}
+            # Full save: merge each step key.
+            # step2 is fully FE-owned (no computed data) — safe to overwrite.
+            # step3 has server-computed keys that must be preserved.
             for key, incoming_val in incoming_data.items():
                 existing_val = merged.get(key)
-                if isinstance(existing_val, dict) and isinstance(incoming_val, dict):
-                    if key == 'step2':
-                        # Preserve server-owned keys in step2
-                        for k, v in incoming_val.items():
-                            if k not in _SERVER_OWNED_STEP2_KEYS:
-                                existing_val[k] = v
-                    else:
-                        existing_val.update(incoming_val)
+                if key == 'step3' and isinstance(existing_val, dict) and isinstance(incoming_val, dict):
+                    # Preserve server-computed keys
+                    for k in _SERVER_COMPUTED_STEP3_KEYS:
+                        if k in existing_val and k not in incoming_val:
+                            incoming_val[k] = existing_val[k]
+                    existing_val.update(incoming_val)
+                    merged[key] = existing_val
+                elif isinstance(existing_val, dict) and isinstance(incoming_val, dict):
+                    existing_val.update(incoming_val)
                     merged[key] = existing_val
                 else:
                     merged[key] = incoming_val
@@ -92,34 +97,83 @@ async def delete_project(db: AsyncSession, project: Project) -> None:
 
 
 def get_project_areas(project: Project) -> list:
-    """Return the areas list from the v2.0 project data structure."""
+    """Return the step2 areas list."""
     return (project.data or {}).get('step2', {}).get('areas', [])
 
 
+def _get_computed_areas(data: dict) -> list:
+    """Return step3.computedAreas list."""
+    return data.get('step3', {}).get('computedAreas', [])
+
+
+def _get_computed_area(data: dict, label: str) -> dict | None:
+    """Find a computed area by label."""
+    for ca in _get_computed_areas(data):
+        if ca.get('label') == label:
+            return ca
+    return None
+
+
+def _get_computed_trapezoids(data: dict) -> list:
+    """Return step3.computedTrapezoids list."""
+    return data.get('step3', {}).get('computedTrapezoids', [])
+
+
+def _get_computed_trapezoid(data: dict, trap_id: str) -> dict | None:
+    """Find a computed trapezoid by trapId."""
+    for ct in _get_computed_trapezoids(data):
+        if ct.get('trapId') == trap_id:
+            return ct
+    return None
+
+
+def _upsert_computed_area(step3: dict, label: str, updates: dict) -> None:
+    """Insert or update a computed area entry by label."""
+    computed = step3.setdefault('computedAreas', [])
+    for ca in computed:
+        if ca.get('label') == label:
+            ca.update(updates)
+            return
+    computed.append({'label': label, **updates})
+
+
+def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
+    """Insert or update a computed trapezoid entry by trapId."""
+    computed = step3.setdefault('computedTrapezoids', [])
+    for ct in computed:
+        if ct.get('trapId') == trap_id:
+            ct.update(detail)
+            return
+    computed.append({'trapId': trap_id, **detail})
+
+
+def _derive_line_rails(computed_area: dict | None) -> dict[str, list[float]]:
+    """Group computed rails by lineIdx → sorted offsets."""
+    if not computed_area:
+        return {}
+    derived: dict[str, list] = {}
+    for r in computed_area.get('rails', []):
+        li = str(r.get('lineIdx', 0))
+        off = r.get('offsetFromLineFrontCm')
+        if off is not None:
+            derived.setdefault(li, []).append(off)
+    return {li: sorted(offs) for li, offs in derived.items()}
+
+
 def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict) -> dict:
-    """Extract rail computation inputs from project data (v2.0 format) for one area."""
+    """Extract rail computation inputs from project data for one area."""
     step2           = data.get('step2', {})
     step3           = data.get('step3', {})
     global_settings = step3.get('globalSettings') or {}
     area_settings_raw = step3.get('areaSettings') or {}
-    # areaSettings may be a list or a dict keyed by string index (FE serialises JS object keys as strings)
     if isinstance(area_settings_raw, list):
         area_settings = area_settings_raw[area_idx] if area_idx < len(area_settings_raw) else {}
     else:
         area_settings = area_settings_raw.get(str(area_idx)) or {}
 
-    # lineRails: prefer any transient override from the request body; otherwise derive
-    # from the already-computed step2.areas[i].rails (offsetFromLineFrontCm grouped by lineIdx).
-    # lineRails is never persisted — it is stripped from step3 before the DB save.
+    # lineRails: use transient override from FE if provided; otherwise let
+    # rail_service compute from default spacing (no re-derivation from old rails)
     line_rails = area_settings.get('lineRails') or {}
-    if not line_rails:
-        derived: dict[str, list] = {}
-        for r in area.get('rails', []):
-            li  = str(r.get('lineIdx', 0))
-            off = r.get('offsetFromLineFrontCm')
-            if off is not None:
-                derived.setdefault(li, []).append(off)
-        line_rails = {li: sorted(offs) for li, offs in derived.items()}
 
     return {
         'panel_grid':        area.get('panelGrid') or {},
@@ -135,16 +189,21 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
 
 
 async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_data: dict | None = None) -> list:
-    """Compute rails for all areas, persist to step2.areas[i].rails, return per-area results."""
-    # Refresh to get the latest committed DB state — avoids overwriting a concurrent step-2 save.
+    """Compute rails for all areas, persist to step3.computedAreas, return per-area results."""
     await db.refresh(project)
     data  = copy.deepcopy(project.data or {})
     if step3_data is not None:
-        data['step3'] = step3_data
+        # Merge FE settings into step3, preserving server-computed keys
+        existing_step3 = data.get('step3', {})
+        for k in _SERVER_COMPUTED_STEP3_KEYS:
+            if k in existing_step3 and k not in step3_data:
+                step3_data[k] = existing_step3[k]
+        existing_step3.update(step3_data)
+        data['step3'] = existing_step3
+    step3 = data.setdefault('step3', {})
     areas = data.get('step2', {}).get('areas', [])
     result = []
 
-    # Load defaults from app_settings (single source of truth)
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_(['panelGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH'])
@@ -153,17 +212,20 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     app_defaults = {r.key: r.value_json for r in rows}
 
     for i, area in enumerate(areas):
+        label = area.get('label', str(i))
         computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults))
-        areas[i]['rails'] = computed['rails']
+        _upsert_computed_area(step3, label, {
+            'rails': computed['rails'],
+            'numLargeGaps': computed['numLargeGaps'],
+        })
         result.append({
-            'areaLabel':    area.get('label', str(i)),
+            'areaLabel':    label,
             'rails':        computed['rails'],
             'numLargeGaps': computed['numLargeGaps'],
         })
 
-    # Strip lineRails from step3.areaSettings before persisting — positions are the
-    # authoritative source in step2.areas[i].rails[*].offsetFromLineFrontCm.
-    area_settings_store = data.get('step3', {}).get('areaSettings') or {}
+    # Strip lineRails from step3.areaSettings before persisting
+    area_settings_store = step3.get('areaSettings') or {}
     if isinstance(area_settings_store, dict):
         for cfg in area_settings_store.values():
             if isinstance(cfg, dict):
@@ -177,17 +239,6 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     flag_modified(project, 'data')
     await db.commit()
     return result
-
-
-def _derive_line_rails(area: dict) -> dict[str, list[float]]:
-    """Group stored rails by lineIdx → sorted offsets (reused by rail and base inputs)."""
-    derived: dict[str, list] = {}
-    for r in area.get('rails', []):
-        li = str(r.get('lineIdx', 0))
-        off = r.get('offsetFromLineFrontCm')
-        if off is not None:
-            derived.setdefault(li, []).append(off)
-    return {li: sorted(offs) for li, offs in derived.items()}
 
 
 def _compute_trap_x_range(
@@ -211,7 +262,6 @@ def _compute_trap_x_range(
     short_cm = panel_width_cm
     long_cm = panel_length_cm
 
-    # Get positions for main row (row with most active cells — typically line 0)
     main_row = max(rows, key=lambda r: sum(1 for c in r if c in ('V', 'H')))
     orient = None
     for c in main_row:
@@ -239,17 +289,11 @@ def _compute_trap_x_range(
 
     total_cols = len(positions)
 
-    # Determine how many main-row columns each shorter row covers.
-    # A shorter row with N active cells covers N * (long_side / short_side_pitch) columns.
-    # Use this to find the split point between traps.
     trap_cfg = trapezoids.get(trapezoid_id, {})
     line_orients = trap_cfg.get('lineOrientations', [])
-
-    # Count how many lines have active (non-empty) panels for this trap
     active_lines = [o for o in line_orients if 'empty' not in o]
     all_active = len(active_lines) == len(line_orients)
 
-    # Find the row with the FEWEST active cells (the "short" row that defines the split)
     row_active_counts = []
     for line_idx, cells in enumerate(rows):
         count = sum(1 for c in cells if c in ('V', 'H'))
@@ -257,18 +301,14 @@ def _compute_trap_x_range(
             row_active_counts.append((line_idx, count))
 
     if len(row_active_counts) <= 1:
-        # Single row — split evenly
         cols_per_trap = total_cols // len(trap_ids)
         remainder = total_cols % len(trap_ids)
     else:
-        # Multi-row: the short row defines how many columns belong to
-        # traps with all lines active vs traps with empty lines
         row_active_counts.sort(key=lambda x: x[1])
-        short_count = row_active_counts[0][1]  # fewest active cells
+        short_count = row_active_counts[0][1]
         short_line_idx = row_active_counts[0][0]
         short_row = rows[short_line_idx]
 
-        # Each short-row panel covers multiple main-row columns
         short_orient = None
         for c in short_row:
             if c in ('V', 'EV'):
@@ -278,12 +318,9 @@ def _compute_trap_x_range(
         short_panel_width = short_cm if short_orient == 'V' else long_cm
         main_panel_pitch = panel_along_cm + panel_gap_cm
 
-        # Columns covered by the short row = short_count * ceil(short_panel_width / main_panel_pitch)
         cols_per_short_panel = max(1, round(short_panel_width / main_panel_pitch)) if main_panel_pitch > 0 else 1
         cols_covered_by_short = short_count * cols_per_short_panel
 
-        # Traps with all lines active get the short-row columns
-        # Traps with empty lines get the remaining columns
         if all_active:
             cols_per_trap = cols_covered_by_short
             remainder = 0
@@ -293,10 +330,7 @@ def _compute_trap_x_range(
 
     trap_idx = trap_ids.index(trapezoid_id) if trapezoid_id in trap_ids else 0
 
-    # Compute start/end column for this trap
     if len(row_active_counts) > 1:
-        # Multi-row: first trap(s) with all-active get cols_covered_by_short,
-        # remaining traps get the rest
         start_col = 0
         for t_idx, t_id in enumerate(trap_ids):
             t_cfg = trapezoids.get(t_id, {})
@@ -313,7 +347,6 @@ def _compute_trap_x_range(
 
         end_col = start_col + cols_per_trap - 1
     else:
-        # Single row — split evenly
         start_col = 0
         for t in range(trap_idx):
             start_col += cols_per_trap + (1 if t < remainder else 0)
@@ -335,14 +368,13 @@ def _build_base_inputs(
 ) -> dict:
     """Extract base computation inputs for one trapezoid within an area."""
     step2 = data.get('step2', {})
+    label = area.get('label', str(area_idx))
 
-    # Line rails from stored area rails
-    line_rails = _derive_line_rails(area)
+    # Line rails from computed area data
+    computed_area = _get_computed_area(data, label)
+    line_rails = _derive_line_rails(computed_area)
 
-    # Per-trapezoid settings: from request body trapezoidConfigs, then app_settings defaults
     trap_cfg = (trapezoid_configs or {}).get(trapezoid_id, {})
-
-    # Custom base offsets (user-dragged positions)
     custom_offsets = trap_cfg.get('customOffsets')
 
     return {
@@ -406,17 +438,22 @@ async def compute_and_save_bases(
     db: AsyncSession, project: Project, bs,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
 ) -> list:
-    """Compute bases for all areas, persist to step2.areas[i].bases, return per-area results."""
+    """Compute bases for all areas, persist to step3.computedAreas, return per-area results."""
     await db.refresh(project)
     data = copy.deepcopy(project.data or {})
     if step3_data is not None:
-        data['step3'] = step3_data
+        existing_step3 = data.get('step3', {})
+        for k in _SERVER_COMPUTED_STEP3_KEYS:
+            if k in existing_step3 and k not in step3_data:
+                step3_data[k] = existing_step3[k]
+        existing_step3.update(step3_data)
+        data['step3'] = existing_step3
+    step3 = data.setdefault('step3', {})
     areas = data.get('step2', {}).get('areas', [])
     step2 = data.get('step2', {})
     trapezoids = step2.get('trapezoids', {})
     result = []
 
-    # Load defaults from app_settings
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_([
@@ -427,35 +464,30 @@ async def compute_and_save_bases(
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}
 
-    # Persist custom offsets so they survive project reloads.
-    # Stored in step3.basesCustomOffsets: { trapId: [mm, ...] }
-    step3 = data.setdefault('step3', {})
+    # Persist custom offsets
     stored_custom = step3.get('basesCustomOffsets') or {}
-
-    # Merge incoming custom offsets into stored ones
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
             co = cfg.get('customOffsets')
             if co is not None:
                 if len(co) > 0:
-                    stored_custom[trap_id] = co       # save custom positions
+                    stored_custom[trap_id] = co
                 else:
-                    stored_custom.pop(trap_id, None)   # empty array = reset to defaults
+                    stored_custom.pop(trap_id, None)
     step3['basesCustomOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
+        label = area.get('label', str(i))
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
-            label = area.get('label', str(i))
             trap_ids = [label]
 
-        # First-time computation: no existing bases → ignore all custom offsets
-        has_existing_bases = len(area.get('bases', [])) > 0
+        # Check if this area already has computed bases
+        computed_area = _get_computed_area(data, label)
+        has_existing_bases = computed_area is not None and len(computed_area.get('bases', [])) > 0
 
-        # Compute bases per trapezoid
         bases_data_map: dict[str, dict | None] = {}
         for trap_id in trap_ids:
-            # Compute per-trap X range first (needed for validation)
             trap_start, trap_end = _compute_trap_x_range(
                 area.get('panelGrid') or {}, trap_id, trap_ids,
                 trapezoids,
@@ -463,7 +495,6 @@ async def compute_and_save_bases(
                 app_defaults.get('panelGapCm', 2.5),
             )
 
-            # Per-trap frame length for validating stored custom offsets
             trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
 
             effective_configs = dict(trapezoid_configs or {})
@@ -471,32 +502,28 @@ async def compute_and_save_bases(
                 effective_configs[trap_id] = {}
 
             if not has_existing_bases:
-                # First computation — always use defaults, ignore any custom offsets
                 effective_configs[trap_id].pop('customOffsets', None)
                 stored_custom.pop(trap_id, None)
             elif 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
                 stored = stored_custom[trap_id]
-                # Validate against per-trap frame (not full area frame)
                 frame_check = trap_frame_mm or round((trap_end - trap_start) * 10) if trap_start is not None else None
                 if stored and len(stored) >= 2 and frame_check and max(stored) <= frame_check:
                     effective_configs[trap_id]['customOffsets'] = stored
                 else:
-                    stored_custom.pop(trap_id, None)  # stale — clear
+                    stored_custom.pop(trap_id, None)
 
             inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
-        # Consolidate multi-trapezoid areas
         consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
 
-        # Flatten all bases for this area
         all_bases = []
         for trap_id in trap_ids:
             all_bases.extend(consolidated.get(trap_id, []))
 
-        areas[i]['bases'] = all_bases
+        _upsert_computed_area(step3, label, {'bases': all_bases})
         result.append({
-            'areaLabel': area.get('label', str(i)),
+            'areaLabel': label,
             'bases': all_bases,
             'basesDataMap': {k: v for k, v in bases_data_map.items() if v},
         })
@@ -515,7 +542,6 @@ async def update_project_step(
     Transition project to a new step with server-side data cleanup.
     Forward: resets dependent data and recomputes (e.g., rails+bases on 2→3).
     Backward: clears data from steps being navigated away from.
-    Returns all relevant data so the FE doesn't need separate GET/PUT calls.
     """
     old_step = (project.navigation or {}).get('step', 1)
     if new_step == old_step:
@@ -529,38 +555,15 @@ async def update_project_step(
     bases_result = None
 
     if new_step > old_step:
-        # ── Forward transitions ──
+        # ── Forward transitions: wipe all data from each step being entered ──
         for s in range(old_step + 1, new_step + 1):
-            if s == 3:
-                # Entering step 3: clear computed data
-                areas = data.get('step2', {}).get('areas', [])
-                for area in areas:
-                    area.pop('bases', None)
-                    area.pop('rails', None)
-                step3 = data.get('step3', {})
-                step3.pop('basesCustomOffsets', None)
-                step3.pop('trapezoidDetails', None)
-                step3.pop('customDiagonals', None)
-                cleared.append('step3')
-            elif s == 4:
-                data.get('step4', {}).pop('planApproval', None)
-                cleared.append('step4')
+            data[f'step{s}'] = {}
+            cleared.append(f'step{s}')
     else:
-        # ── Backward transitions ──
+        # ── Backward transitions: wipe all data from each step being left ──
         for s in range(old_step, new_step, -1):
-            if s == 3:
-                data.pop('step3', None)
-                areas = data.get('step2', {}).get('areas', [])
-                for area in areas:
-                    area.pop('rails', None)
-                    area.pop('bases', None)
-                cleared.append('step3')
-            elif s == 4:
-                data.get('step4', {}).pop('planApproval', None)
-                cleared.append('step4')
-            elif s == 5:
-                data.get('step5', {}).pop('bomDeltas', None)
-                cleared.append('step5')
+            data[f'step{s}'] = {}
+            cleared.append(f'step{s}')
 
     project.data = data
     nav = dict(project.navigation or {})
@@ -604,18 +607,22 @@ async def compute_and_save_trapezoid_details(
     db: AsyncSession, project: Project, tds,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
 ) -> dict:
-    """Compute trapezoid details for all traps, persist to step3.trapezoidDetails, return results."""
+    """Compute trapezoid details for all traps, persist to step3.computedTrapezoids, return results."""
     await db.refresh(project)
     data = copy.deepcopy(project.data or {})
     if step3_data is not None:
-        data['step3'] = step3_data
+        existing_step3 = data.get('step3', {})
+        for k in _SERVER_COMPUTED_STEP3_KEYS:
+            if k in existing_step3 and k not in step3_data:
+                step3_data[k] = existing_step3[k]
+        existing_step3.update(step3_data)
+        data['step3'] = existing_step3
     step2 = data.get('step2', {})
     step3 = data.setdefault('step3', {})
     trapezoids = step2.get('trapezoids', {})
     areas = step2.get('areas', [])
     global_settings = step3.get('globalSettings', {})
 
-    # Load defaults from app_settings
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_([
@@ -627,7 +634,7 @@ async def compute_and_save_trapezoid_details(
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}
 
-    # Stored custom diagonals (same pattern as basesCustomOffsets)
+    # Stored custom diagonals
     stored_custom_diags = step3.get('customDiagonals', {})
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
@@ -650,8 +657,11 @@ async def compute_and_save_trapezoid_details(
         if not area:
             continue
 
-        # Derive line rails from stored area rails
-        line_rails = _derive_line_rails(area)
+        label = area.get('label', '')
+
+        # Derive line rails from computed area data (all lines, including empty — FE needs them for ghost rendering)
+        computed_area = _get_computed_area(data, label)
+        line_rails = _derive_line_rails(computed_area)
 
         # Build panel lines from trap's lineOrientations
         line_orients = trap_cfg.get('lineOrientations', ['vertical'])
@@ -659,8 +669,6 @@ async def compute_and_save_trapezoid_details(
         for li, orient in enumerate(line_orients):
             is_h = orient in ('horizontal', 'empty-horizontal')
             is_empty = 'empty' in orient
-            depth = step2.get('panelWidthCm', 113.4) if not is_h else step2.get('panelLengthCm', 238.2)
-            # For portrait (V): depth = panelLengthCm; for horizontal (H): depth = panelWidthCm
             if orient in ('vertical', 'empty-vertical'):
                 depth = step2.get('panelLengthCm', 238.2)
             else:
@@ -673,26 +681,26 @@ async def compute_and_save_trapezoid_details(
                 'isHorizontal': is_h,
             })
 
-        # Get per-trap settings from trapezoidConfigs or app_defaults
         t_cfg = (trapezoid_configs or {}).get(trap_id, {})
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
 
-        # Get bases data for this trap
+        # Get bases data from computed area.
+        # baseLengthCm must span the full panel depth (including empty lines)
+        # so the frame geometry matches A1's — ghost elements are just dashed, not absent.
         bases_data = None
-        for b_area in areas:
-            if trap_id in b_area.get('trapezoidIds', []):
-                # Find basesDataMap from the last computation if available
-                # For simplicity, derive from the area's base data
-                bases = [b for b in b_area.get('bases', []) if b.get('trapezoidId') == trap_id]
-                if bases:
-                    offsets = [b['offsetFromStartCm'] for b in bases]
-                    bases_data = {
-                        'baseLengthCm': bases[0].get('lengthCm', 0),
-                        'rearLegDepthCm': bases[0].get('topDepthCm', 0) + (t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))),
-                        'frontLegDepthCm': bases[0].get('bottomDepthCm', 0) - (t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))),
-                    }
-                break
+        if computed_area:
+            bases = [b for b in computed_area.get('bases', []) if b.get('trapezoidId') == trap_id]
+            if bases:
+                # Find the matching full-active trapezoid's base length (the longest base in the area)
+                all_area_bases = computed_area.get('bases', [])
+                full_base_length = max((b.get('lengthCm', 0) for b in all_area_bases), default=0)
+                base_overhang = t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))
+                bases_data = {
+                    'baseLengthCm': full_base_length,
+                    'rearLegDepthCm': bases[0].get('topDepthCm', 0) + base_overhang,
+                    'frontLegDepthCm': bases[0].get('topDepthCm', 0) + full_base_length - base_overhang,
+                }
 
         rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
 
@@ -717,10 +725,9 @@ async def compute_and_save_trapezoid_details(
         )
 
         if detail:
+            _upsert_computed_trapezoid(step3, trap_id, detail)
             result[trap_id] = detail
 
-    # Persist to step3.trapezoidDetails
-    step3['trapezoidDetails'] = result
     project.data = data
     flag_modified(project, 'data')
     await db.commit()
@@ -735,7 +742,7 @@ async def save_tab(
 ) -> dict:
     """
     Save data from the active tab, recompute dependents, and return all step 3 data.
-    Tab dependency: rails → bases (→ trapezoids in future).
+    Tab dependency: rails → bases → trapezoids.
     """
     # Update navigation.tab
     nav = dict(project.navigation or {'step': 1})
@@ -744,45 +751,14 @@ async def save_tab(
     flag_modified(project, 'navigation')
     await db.commit()
 
-    rails_result = None
-    bases_result = None
-
-    if tab == 'rails':
-        # Save rail settings + recompute rails only
-        rails_result = await compute_and_save_rails(db, project, rs, step3_data)
-        # Return current bases + trapezoid details (unchanged) so FE has full state
-        await db.refresh(project)
-        bases_result = [
-            {'areaLabel': area.get('label', str(i)), 'bases': area.get('bases', [])}
-            for i, area in enumerate(get_project_areas(project))
-        ]
-        trapezoid_details = (project.data or {}).get('step3', {}).get('trapezoidDetails', {})
-    elif tab == 'bases':
-        # Save base settings + recompute bases only
-        bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
-        # Return current rails + trapezoid details (unchanged) so FE has full state
-        rails_result = [
-            {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
-            for i, area in enumerate(get_project_areas(project))
-        ]
-        trapezoid_details = (project.data or {}).get('step3', {}).get('trapezoidDetails', {})
-    elif tab == 'trapezoids':
-        # Save detail settings + recompute trapezoid details
+    # Any tab change recomputes the full chain: rails → bases → trapezoid details
+    rails_result = await compute_and_save_rails(db, project, rs, step3_data)
+    bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
+    trapezoid_details = {}
+    if tds:
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
-        # Return current rails + bases (unchanged) so FE has full state
-        await db.refresh(project)
-        rails_result = [
-            {'areaLabel': area.get('label', str(i)), 'rails': area.get('rails', [])}
-            for i, area in enumerate(get_project_areas(project))
-        ]
-        bases_result = [
-            {'areaLabel': area.get('label', str(i)), 'bases': area.get('bases', [])}
-            for i, area in enumerate(get_project_areas(project))
-        ]
-    else:
-        trapezoid_details = {}
 
     return {
         'tab': tab,

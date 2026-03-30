@@ -156,6 +156,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const allLegXs = [legX0, ...innerLegXs, legX1]
   // Build diagonal data: use BE decisions (topPct, botPct, isDouble, disabled) when available,
   // but always compute pixel positions (topX, botX, topY, botY) from leg positions.
+  // ── Active zone: leading/trailing empty segments (needed before diagonals) ──
+  const firstActiveSegIdx = segments.findIndex(s => !s.isEmpty)
+  const lastActiveSegIdx  = segments.length - 1 - [...segments].reverse().findIndex(s => !s.isEmpty)
+  const innerRailItems  = railItems.slice(1, -1)
+  const innerLegIsGhost = innerRailItems.map(r => r.segIdx < firstActiveSegIdx || r.segIdx > lastActiveSegIdx)
+  const legIsGhostFull = allLegXs.map((_, i) => {
+    if (i === 0)                   return firstActiveSegIdx > 0
+    if (i === allLegXs.length - 1) return lastActiveSegIdx < segments.length - 1
+    return innerLegIsGhost[i - 1] ?? false
+  })
+
   const beDiags = beDetailData?.diagonals ?? null
   const diagonals = (() => {
     const SKIP_BELOW = 60, DOUBLE_ABOVE = 200
@@ -215,21 +226,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     }
     return raw.filter(s => !s.skip)
   })()
-
-  // ── Active zone: leading/trailing empty segments ──────────────────────────
-  const firstActiveSegIdx = segments.findIndex(s => !s.isEmpty)
-  const lastActiveSegIdx  = segments.length - 1 - [...segments].reverse().findIndex(s => !s.isEmpty)
-
-  // Per inner-leg ghost flag: ghost if its rail's segment is outside the active range
-  const innerRailItems  = railItems.slice(1, -1)
-  const innerLegIsGhost = innerRailItems.map(r => r.segIdx < firstActiveSegIdx || r.segIdx > lastActiveSegIdx)
-
-  // Full ghost map: rear leg ghost if leading empty zone; front leg ghost if trailing empty zone
-  const legIsGhostFull = allLegXs.map((_, i) => {
-    if (i === 0)                   return firstActiveSegIdx > 0
-    if (i === allLegXs.length - 1) return lastActiveSegIdx < segments.length - 1
-    return innerLegIsGhost[i - 1] ?? false
-  })
 
   // Active beam boundary: first and last non-ghost leg indices
   const _fali = legIsGhostFull.findIndex(g => !g)

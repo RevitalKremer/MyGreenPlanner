@@ -58,30 +58,38 @@ def _get_area_field(area: dict, key: str, default=None):
     return default
 
 
-def _derive_row_construction(area: dict, trapezoid_details: dict) -> dict | None:
+def _derive_row_construction(
+    area: dict,
+    computed_area: dict | None,
+    computed_trapezoids: list[dict],
+) -> dict | None:
     """
-    Derive per-area row-construction data from persisted step2/step3 fields.
-    Reads geometry from step3.trapezoidDetails (computed and saved by the server
-    during step 3). Returns dict with keys matching FE rowConstructions,
-    or None if data is incomplete.
+    Derive per-area row-construction data from step2 area + step3 computed data.
+    Returns dict with keys matching FE rowConstructions, or None if data is incomplete.
     """
+    if not computed_area:
+        return None
+
     panel_grid = area.get('panelGrid') or {}
-    rails = area.get('rails') or []
-    bases = area.get('bases') or []
+    rails = computed_area.get('rails') or []
+    bases = computed_area.get('bases') or []
     trap_ids = _get_area_field(area, 'trapezoidIds') or []
 
     if not trap_ids:
         return None
 
-    # Use first trapezoid's detail for geometry (all traps in an area share geometry)
+    # Find geometry from first trapezoid's computed detail
     first_trap_id = trap_ids[0]
-    detail = trapezoid_details.get(first_trap_id) or {}
-    geom = detail.get('geometry') or {}
+    detail = None
+    for ct in computed_trapezoids:
+        if ct.get('trapId') == first_trap_id:
+            detail = ct
+            break
+    geom = (detail or {}).get('geometry') or {}
 
     if not geom:
         return None
 
-    # Core geometry from step3.trapezoidDetails
     angle = geom.get('angle', 0)
     front_height = geom.get('frontHeight', 0)
     height_rear = geom.get('heightRear', 0)
@@ -250,24 +258,11 @@ def enrich_bom_with_products(
 
 
 def compute_input_hash(data: dict) -> str:
-    """SHA-256 hash of the step2/step3 fields relevant to BOM computation."""
-    step2 = data.get('step2', {})
+    """SHA-256 hash of step3 computed data relevant to BOM computation."""
     step3 = data.get('step3', {})
     relevant = {
-        'areas': [
-            {
-                'panelGrid': a.get('panelGrid'),
-                'rails': a.get('rails'),
-                'bases': a.get('bases'),
-                'trapezoidIds': _get_area_field(a, 'trapezoidIds'),
-                'label': _get_area_field(a, 'label'),
-                'numLargeGaps': a.get('numLargeGaps', 0),
-            }
-            for a in step2.get('areas', [])
-        ],
-        'trapezoids': step2.get('trapezoids', {}),
-        'globalSettings': step3.get('globalSettings', {}),
-        'trapezoidDetails': step3.get('trapezoidDetails', {}),
+        'computedAreas': step3.get('computedAreas', []),
+        'computedTrapezoids': step3.get('computedTrapezoids', []),
     }
     raw = json.dumps(relevant, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -323,17 +318,23 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     step2 = data.get('step2', {})
     step3 = data.get('step3', {})
     areas = step2.get('areas', [])
-    trapezoid_details = step3.get('trapezoidDetails') or {}
+    computed_areas = step3.get('computedAreas', [])
+    computed_trapezoids = step3.get('computedTrapezoids', [])
+
+    # Build label → computedArea lookup
+    ca_by_label = {ca.get('label'): ca for ca in computed_areas}
 
     # Derive row constructions for each area
     row_constructions = []
     row_labels = []
     for area in areas:
-        rc = _derive_row_construction(area, trapezoid_details)
+        label = _get_area_field(area, 'label', f'Area {len(row_labels) + 1}')
+        ca = ca_by_label.get(label)
+        rc = _derive_row_construction(area, ca, computed_trapezoids)
         if rc is None:
             continue
         row_constructions.append(rc)
-        row_labels.append(_get_area_field(area, 'label', f'Area {len(row_labels) + 1}'))
+        row_labels.append(label)
 
     # Build BOM
     bom_items = build_bom(row_constructions, row_labels)

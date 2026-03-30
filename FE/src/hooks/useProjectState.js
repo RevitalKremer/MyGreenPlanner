@@ -241,7 +241,7 @@ setPanelAngle('')
     resetWizardState()
     setCurrentProject(data.project)
 
-    if (data.version === '2.0') {
+    if (data.version === '2.0' || data.version === '3.0') {
       // ── v2.0 format ────────────────────────────────────────────────────────
       const layout = data.layout || {}
       const s2     = data.step2  || {}
@@ -392,7 +392,7 @@ setPanelAngle('')
       }
     })
     return {
-      version: '2.0',
+      version: '3.0',
       step2: {
         panelType,
         panelWidthCm:  panelSpec.widthCm,
