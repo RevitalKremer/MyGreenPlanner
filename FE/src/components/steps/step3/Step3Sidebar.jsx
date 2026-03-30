@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
-import { ACCENT, PARAM_SCHEMA, PARAM_GROUP } from './constants'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -112,6 +111,8 @@ export default function Step3Sidebar({
   getTrapBasesSettings,
   updateTrapBaseSetting,
   applyBasesToAll,
+  paramSchema: PARAM_SCHEMA = [],
+  paramGroup: PARAM_GROUP = {},
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -193,7 +194,7 @@ export default function Step3Sidebar({
             <input type="checkbox" checked={val}
               onChange={e => updateSetting(selectedRowIdx, key, e.target.checked)}
               style={{ opacity: 0, width: 0, height: 0 }} />
-            <span style={{ position: 'absolute', inset: 0, borderRadius: '18px', transition: '0.2s', background: val ? ACCENT : BORDER_MID }} />
+            <span style={{ position: 'absolute', inset: 0, borderRadius: '18px', transition: '0.2s', background: val ? PRIMARY : BORDER_MID }} />
             <span style={{ position: 'absolute', top: '2px', left: val ? '16px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: '0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
           </label>
         </div>
@@ -306,7 +307,7 @@ export default function Step3Sidebar({
             <div key={i}>
               <div
                 onClick={() => { setSelectedRowIdx(i); setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null) }}
-                style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? ACCENT : 'transparent'}`, transition: 'all 0.12s' }}
+                style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
@@ -334,7 +335,7 @@ export default function Step3Sidebar({
                       <div
                         key={trapId}
                         onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? ACCENT : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
                       >
                         <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
                           {trapId}

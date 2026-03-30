@@ -1,5 +1,4 @@
-import { TEXT, TEXT_SECONDARY, TEXT_MUTED } from '../../../styles/colors'
-import { ACCENT } from './constants'
+import { TEXT, TEXT_SECONDARY, TEXT_MUTED, PRIMARY } from '../../../styles/colors'
 
 export default function TrapProfile({ rc, sc = 1.2, showLabel = true, selected = false }) {
   const { heightRear, heightFront, baseLength, typeLetter, panelsPerSpan, diagonalLength } = rc
@@ -18,10 +17,10 @@ export default function TrapProfile({ rc, sc = 1.2, showLabel = true, selected =
   return (
     <svg width={W} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
       {/* Frame */}
-      <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke={selected ? ACCENT : TEXT} strokeWidth="2.5" />
-      <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke={selected ? ACCENT : TEXT} strokeWidth="2.5" />
-      <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke={selected ? ACCENT : TEXT} strokeWidth="2.5" />
-      <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke={selected ? ACCENT : TEXT} strokeWidth="2" />
+      <line x1={x0} y1={baseY} x2={x1} y2={baseY} stroke={selected ? PRIMARY : TEXT} strokeWidth="2.5" />
+      <line x1={x0} y1={topY0} x2={x0} y2={baseY} stroke={selected ? PRIMARY : TEXT} strokeWidth="2.5" />
+      <line x1={x1} y1={topY1} x2={x1} y2={baseY} stroke={selected ? PRIMARY : TEXT} strokeWidth="2.5" />
+      <line x1={x0} y1={topY0} x2={x1} y2={topY1} stroke={selected ? PRIMARY : TEXT} strokeWidth="2" />
       {/* Diagonal brace */}
       <line x1={x0} y1={topY0} x2={x1} y2={baseY} stroke={TEXT_MUTED} strokeWidth="1.5" />
       {/* Diagonal length label */}
@@ -43,7 +42,7 @@ export default function TrapProfile({ rc, sc = 1.2, showLabel = true, selected =
       {/* Type label */}
       {showLabel && typeLetter && (
         <text x={(x0 + x1) / 2} y={topY1 + (topY0 - topY1) / 2 + (hF - hR) * sc / 4 + 4}
-          fontSize="9" fill={selected ? ACCENT : TEXT_SECONDARY} fontWeight="800" textAnchor="middle"
+          fontSize="9" fill={selected ? PRIMARY : TEXT_SECONDARY} fontWeight="800" textAnchor="middle"
         >{typeLetter}{panelsPerSpan}</text>
       )}
     </svg>

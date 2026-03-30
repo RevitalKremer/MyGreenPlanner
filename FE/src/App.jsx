@@ -458,6 +458,9 @@ function App() {
             beTrapezoidsData={beTrapezoidsData}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
+            paramSchema={s.paramSchema}
+            settingsDefaults={s.settingsDefaults}
+            paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}
           />
         </div>

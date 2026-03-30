@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '../../i18n/LangContext'
-import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT } from '../../styles/colors'
+import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
 import {
   computeRowConstruction,
   assignTypes,
@@ -9,7 +9,6 @@ import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import { initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth } from '../../utils/trapezoidGeometry'
-import { ACCENT, PARAM_GROUP, SETTINGS_DEFAULTS, PARAM_SCHEMA } from './step3/constants'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
 import DetailView from './step3/DetailView'
@@ -39,7 +38,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, appDefaults, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
@@ -648,6 +647,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         getTrapBasesSettings={getTrapBasesSettings}
         updateTrapBaseSetting={updateTrapBaseSetting}
         applyBasesToAll={applyBasesToAll}
+        paramSchema={PARAM_SCHEMA}
+        paramGroup={PARAM_GROUP}
       />
 
       {/* ── Main content ── */}
@@ -667,7 +668,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 fontSize: '0.8rem', fontWeight: '600',
                 background: activeTab === tab.key ? 'white' : 'transparent',
                 color: activeTab === tab.key ? TEXT : TEXT_PLACEHOLDER,
-                borderBottom: activeTab === tab.key ? `2px solid ${ACCENT}` : '2px solid transparent',
+                borderBottom: activeTab === tab.key ? `2px solid ${PRIMARY}` : '2px solid transparent',
                 marginBottom: '-2px', transition: 'all 0.15s'
               }}
             >{tab.label}</button>
@@ -677,7 +678,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'areas'  && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={areaLabel} />}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]} onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
+          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]} paramGroup={PARAM_GROUP} onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
 
           {activeTab === 'rails'  && (
             <div style={{ height: '100%', overflow: 'hidden' }}>

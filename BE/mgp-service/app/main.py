@@ -100,6 +100,7 @@ async def health():
 
 @app.get("/settings/defaults")
 async def settings_defaults(db=Depends(get_db)):
-    """Public endpoint — returns {key: value_json} for all app_settings."""
-    rows = (await db.execute(select(AppSetting.key, AppSetting.value_json))).all()
-    return {r.key: r.value_json for r in rows}
+    """Public endpoint — returns full param schema for all app_settings."""
+    from app.schemas.setting import SettingRead
+    rows = (await db.execute(select(AppSetting).order_by(AppSetting.section, AppSetting.key))).scalars().all()
+    return [SettingRead.model_validate(r) for r in rows]

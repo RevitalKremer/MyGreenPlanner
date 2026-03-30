@@ -96,8 +96,47 @@ export function useProjectState() {
   // Panel types — fetched from server, falls back to hardcoded list
   const [panelTypes, setPanelTypes] = useState([])
 
-  // App defaults — fetched from app_settings table (single source of truth)
-  const [appDefaults, setAppDefaults] = useState(null)
+  // App settings — full param schema fetched from app_settings table (single source of truth)
+  const [appSettingsRaw, setAppSettingsRaw] = useState(null)
+
+  // Derived: {key: value} map for backward compat (used by appDefaults?.panelGapCm etc.)
+  const appDefaults = useMemo(() => {
+    if (!appSettingsRaw) return null
+    return Object.fromEntries(appSettingsRaw.map(s => [s.key, s.value_json]))
+  }, [appSettingsRaw])
+
+  // Derived: param schema array for sidebar rendering
+  const paramSchema = useMemo(() => {
+    if (!appSettingsRaw) return []
+    return appSettingsRaw.map(s => ({
+      key: s.key,
+      label: s.label,
+      section: s.section,
+      scope: s.scope,
+      type: s.param_type,
+      default: s.value_json,
+      min: s.min_val,
+      max: s.max_val,
+      step: s.step_val,
+      highlightGroup: s.highlight_group,
+      orientation: s.key === 'railSpacingV' ? 'vertical' : s.key === 'railSpacingH' ? 'horizontal' : undefined,
+    }))
+  }, [appSettingsRaw])
+
+  // Derived: settings defaults {key: default_value} for seeding globalSettings
+  const settingsDefaults = useMemo(() => {
+    if (!paramSchema.length) return {}
+    return Object.fromEntries(
+      paramSchema.filter(p => p.type !== 'rail-spacing').map(p => [p.key, p.default])
+    )
+  }, [paramSchema])
+
+  // Derived: param key → highlight group mapping
+  const paramGroup = useMemo(() => {
+    return Object.fromEntries(
+      paramSchema.filter(p => p.highlightGroup != null).map(p => [p.key, p.highlightGroup])
+    )
+  }, [paramSchema])
 
   // Products — fetched from server (materials for BOM)
   const [products, setProducts] = useState([])
@@ -129,7 +168,7 @@ export function useProjectState() {
       .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
       .catch(() => { /* keep hardcoded fallback */ })
     fetchAppDefaults()
-      .then(setAppDefaults)
+      .then(setAppSettingsRaw)
       .catch(() => { /* keep null — callers must handle */ })
     fetchProducts()
       .then(items => setProducts(items.map(p => ({
@@ -1151,6 +1190,9 @@ setPanelAngle('')
     panelSpec,
     // App defaults (from app_settings DB table)
     appDefaults,
+    paramSchema,
+    settingsDefaults,
+    paramGroup,
     // Products (materials for BOM)
     products, productByType, altsByType,
     // Cloud
