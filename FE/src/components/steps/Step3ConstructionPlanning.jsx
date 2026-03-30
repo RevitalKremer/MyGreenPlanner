@@ -7,7 +7,7 @@ import {
 } from '../../utils/constructionCalculator'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
-import { initDefaultLineRails, railOffsetFromSpacing, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../utils/railLayoutService'
+import { initDefaultLineRails, railOffsetFromSpacing } from '../../utils/railLayoutService'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth } from '../../utils/trapezoidGeometry'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
@@ -43,6 +43,12 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
+  const railSpacingVParam = PARAM_SCHEMA.find(p => p.key === 'railSpacingV') || {}
+  const railSpacingHParam = PARAM_SCHEMA.find(p => p.key === 'railSpacingH') || {}
+  const railSpacingV      = railSpacingVParam.default
+  const railSpacingH      = railSpacingHParam.default
+  const minRailSpacingV   = railSpacingVParam.min
+  const minRailSpacingH   = railSpacingHParam.min
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [activeTab, setActiveTab] = useState(initialTab || 'areas')
@@ -262,8 +268,8 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
     if (fromBE) return fromBE
     const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
-    return initDefaultLineRails(lineOrientations, depths)
-  }, [areaSettings, getLineRailsFromBE])
+    return initDefaultLineRails(lineOrientations, depths, railSpacingV, railSpacingH)
+  }, [areaSettings, getLineRailsFromBE, railSpacingV, railSpacingH])
 
   const areaTrapezoidMap = useMemo(() => {
     const map = {}
@@ -536,15 +542,15 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       }
     })
     return {
-      vertical:   vertical   ?? 140,
-      horizontal: horizontal ?? 70,
+      vertical:   vertical   ?? railSpacingV,
+      horizontal: horizontal ?? railSpacingH,
     }
   }, [selectedLineRails, selectedLineOrientations])
 
   // Change spacing → recompute lineRails symmetrically for all lines of that orientation
   const onRailSpacingChange = useCallback((orientation, newSpacingCm) => {
     const isH = orientation === 'horizontal'
-    const minSpacing = isH ? MIN_RAIL_SPACING_HORIZONTAL_CM : MIN_RAIL_SPACING_VERTICAL_CM
+    const minSpacing = isH ? minRailSpacingH : minRailSpacingV
     const newRails = { ...selectedLineRails }
     selectedLineOrientations.forEach((o, li) => {
       if (isHorizontalOrientation(o) !== isH) return
@@ -580,7 +586,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
           const isH = isHorizontalOrientation(o)
           const spacing = isH ? spacings.horizontal : spacings.vertical
           const depth = depths[li]
-          const minSpacing = isH ? MIN_RAIL_SPACING_HORIZONTAL_CM : MIN_RAIL_SPACING_VERTICAL_CM
+          const minSpacing = isH ? minRailSpacingH : minRailSpacingV
           const clamped = Math.min(Math.max(spacing, minSpacing), depth * 0.9)
           const offset = railOffsetFromSpacing(depth, clamped)
           newRails[li] = [snap(offset), snap(depth - offset)]

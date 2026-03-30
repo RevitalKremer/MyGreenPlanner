@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, RAIL_STROKE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildRowGroups, buildTrapezoidGroups } from './tabUtils'
@@ -30,9 +30,9 @@ export default function RailLayoutTab({
   railsComputing = false,
 }) {
   const { t } = useLang()
-  const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
-  const stockLengths        = settings.stockLengths        ?? DEFAULT_STOCK_LENGTHS_MM
-  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
+  const railOverhangCm      = settings.railOverhangCm
+  const stockLengths        = settings.stockLengths
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm
 
   const svgRef = useRef(null)
 
@@ -143,8 +143,8 @@ export default function RailLayoutTab({
       const s = trapSettingsMap[trapId] ?? {}
       return computeRowRailLayout(trapGroups[trapId], pixelToCmRatio, {
         lineRails:    trapLineRailsMap[trapId] ?? null,
-        overhangCm:   s.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM,
-        stockLengths: s.stockLengths   ?? DEFAULT_STOCK_LENGTHS_MM,
+        overhangCm:   s.railOverhangCm ?? settings.railOverhangCm,
+        stockLengths: s.stockLengths ?? settings.stockLengths,
       })
     })
     // Reduced left pad — no cross-section bar

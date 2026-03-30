@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
-import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildTrapezoidGroups } from './tabUtils'
@@ -33,10 +33,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
   const { map: trapGroups, keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
-  const basePlans = useMemo(() =>
-    trapIds.map(trapId => {
+  const basePlans = useMemo(() => {
+    return trapIds.map(trapId => {
       const s = trapSettingsMap[trapId] ?? {}
-      const railOverhangCm = s.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM
+      const railOverhangCm = s.railOverhangCm
       const lineRails = trapLineRailsMap[trapId] ?? null
       const cfg = {
         edgeOffsetMm: s.edgeOffsetMm,
@@ -45,21 +45,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
       // customBasesMap is always seeded from BE data — user edits update it directly
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
-      return computeRowBasePlan(trapGroups[trapId], pixelToCmRatio, { overhangCm: railOverhangCm, lineRails }, cfg)
-    }),
+      return computeRowBasePlan(trapGroups[trapId], pixelToCmRatio, { overhangCm: railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg)
+    })
+  },
     [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap]
   )
 
-  const railLayouts = useMemo(() =>
-    trapIds.map(trapId => {
+  const railLayouts = useMemo(() => {
+    return trapIds.map(trapId => {
       const s = trapSettingsMap[trapId] ?? {}
       const lineRails = trapLineRailsMap[trapId] ?? null
       return computeRowRailLayout(trapGroups[trapId], pixelToCmRatio, {
         lineRails,
-        overhangCm:   s.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM,
-        stockLengths: s.stockLengths   ?? DEFAULT_STOCK_LENGTHS_MM,
+        overhangCm:   s.railOverhangCm,
+        stockLengths: s.stockLengths,
       })
-    }),
+    })
+  },
     [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap]
   )
 

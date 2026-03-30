@@ -6,28 +6,7 @@ import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchP
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 
-function logPanelGrid(grid, trigger) {
-  console.group(`[panelGrid] ${trigger}`)
-  Object.entries(grid).forEach(([label, areaGrid]) => {
-    const totalSlots = areaGrid.rows.reduce((sum, r) => sum + r.length, 0)
-    const active = areaGrid.rows.reduce((sum, r) => sum + r.filter(c => c === 'V' || c === 'H').length, 0)
-    const empty = totalSlots - active
-    console.group(`Area "${label}" — startCorner: ${areaGrid.startCorner}, areaAngle: ${areaGrid.areaAngle}°, rows: ${areaGrid.rows.length}, panels: ${active}, empty slots: ${empty}`)
-    areaGrid.rows.forEach((row, i) => {
-      const pos = areaGrid.rowPositions?.[i]
-      if (pos) {
-        console.log(`  row ${i}: [${row.join(', ')}]  positions: [${pos.join(', ')}]`)
-      } else {
-        console.log(`  row ${i}: [${row.join(', ')}]`)
-      }
-    })
-    if (areaGrid.rowPositions) {
-      console.log('  rowPositions:', areaGrid.rowPositions)
-    }
-    console.groupEnd()
-  })
-  console.groupEnd()
-}
+
 const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
 
 export function useProjectState() {
@@ -959,7 +938,6 @@ setPanelAngle('')
     }
 
     setPanelGrid(newPanelGrid)
-    logPanelGrid(newPanelGrid, 'panel grid generated')
 
     setPanels(allPanels)
     setAreas(effectiveRectAreas.map((a, idx) => ({
@@ -1035,7 +1013,6 @@ setPanelAngle('')
         newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, ratio)
       })
       setPanelGrid(newGrid)
-      logPanelGrid(newGrid, 'loaded (col-synced)')
       return next
     })
   }
@@ -1054,7 +1031,6 @@ setPanelAngle('')
       newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
     })
     setPanelGrid(newGrid)
-    logPanelGrid(newGrid, 'panel deleted/rotated')
   }
 
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.

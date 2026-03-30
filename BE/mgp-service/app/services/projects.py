@@ -559,15 +559,11 @@ async def update_project_step(
     # ── Auto-compute BOM on entering step 5 ──
     bom_result = None
     if new_step >= 5:
-        try:
-            await db.refresh(project)
-            existing_bom = await bom_service.get_bom(db, project.id)
-            if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
-                bom_obj = await bom_service.compute_and_save_bom(db, project)
-                bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"BOM auto-compute failed on step transition: {e}")
+        await db.refresh(project)
+        existing_bom = await bom_service.get_bom(db, project.id)
+        if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
+            bom_obj = await bom_service.compute_and_save_bom(db, project)
+            bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
 
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
