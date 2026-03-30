@@ -57,6 +57,7 @@ const en = {
   'welcome.locationPlaceholder':  'e.g. Tel Aviv, Israel',
   'welcome.date':                 'Date',
   'welcome.startPlanning':        'Start Planning →',
+  'welcome.loadingSettings':      'Loading settings…',
   'welcome.importProject':        'Import Project',
   'welcome.importProjectDesc':    'Resume from a saved .mgp file',
   'welcome.importInstruction':    'Select a .mgp project file exported from a previous session.',

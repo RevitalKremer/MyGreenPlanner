@@ -207,6 +207,7 @@ function App() {
         onDeleteCloudProject={handleDeleteCloudProject}
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
+        appDefaultsReady={!!s.appDefaults}
       />
     )
   }

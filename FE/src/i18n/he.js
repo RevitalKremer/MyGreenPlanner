@@ -57,6 +57,7 @@ const he = {
   'welcome.locationPlaceholder':    'לדוגמה: תל אביב',
   'welcome.date':                   'תאריך',
   'welcome.startPlanning':          'התחל תכנון →',
+  'welcome.loadingSettings':        'טוען הגדרות…',
   'welcome.importProject':          'ייבוא פרויקט',
   'welcome.importProjectDesc':      'המשך מקובץ .mgp שמור',
   'welcome.importInstruction':      'בחר קובץ .mgp שיוצא מסשן קודם.',
