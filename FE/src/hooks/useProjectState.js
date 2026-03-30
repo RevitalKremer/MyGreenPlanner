@@ -81,8 +81,6 @@ export function useProjectState() {
   // Step 4: Construction planning settings (persisted for export)
   const [step3GlobalSettings, setStep3GlobalSettings] = useState(null)
   const [step3AreaSettings,   setStep3AreaSettings]   = useState(null)
-  const [step3BOMData,        setStep3BOMData]        = useState({ rowConstructions: [], rowLabels: [] })
-
   // Step 4: Plan approval
   const [step4PlanApproval, setStep4PlanApproval] = useState(null)
   // { name: string, date: string (ISO), strictConsent: bool }
@@ -1181,7 +1179,6 @@ setPanelAngle('')
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,
-    step3BOMData, setStep3BOMData,
     // Step 5 (plan approval)
     step4PlanApproval, setStep4PlanApproval,
     // Step 6 (BOM / PDF)

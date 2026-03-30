@@ -452,7 +452,6 @@ function App() {
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
-            onBOMDataChange={s.setStep3BOMData}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             beBasesData={beBasesData}
@@ -482,8 +481,7 @@ function App() {
             refinedArea={s.refinedArea}
             areas={s.areas}
             project={s.currentProject}
-            rowConstructions={s.step3BOMData.rowConstructions}
-            rowLabels={s.step3BOMData.rowLabels}
+            projectId={s.cloudProjectId}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}

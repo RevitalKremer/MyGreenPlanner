@@ -20,6 +20,7 @@ class UserRead(BaseModel):
     is_active: bool
     is_verified: bool
     is_sysadmin: bool
+    lang: str = 'en'
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -34,3 +35,4 @@ class UserUpdate(BaseModel):
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     phone_number: str | None = None
+    lang: str | None = None

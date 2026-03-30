@@ -1,7 +1,9 @@
+import copy
 import uuid
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel
 
 from sqlalchemy import select
@@ -10,10 +12,12 @@ from app.database import get_db
 from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary
+from app.schemas.bom import BOMRead, BOMItemRead, BOMDeltasUpdate, BOMEffectiveRead
 from app.services import projects as project_service
 from app.services import rail_service
 from app.services import base_service
 from app.services import trapezoid_detail_service
+from app.services import bom_service
 from app.routers.deps import get_current_user, require_admin
 
 class RailComputeRequest(BaseModel):
@@ -321,3 +325,141 @@ async def approve_plan(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 4+ to approve plan")
     updated = await project_service.approve_plan(db, project, current_user, strictConsent)
     return updated.data.get("step4", {}).get("planApproval")
+
+
+# ── BOM endpoints ──────────────────────────────────────────────────────────
+
+
+def _resolve_lang(lang_param: str | None, user: User) -> str:
+    """Resolve language: explicit param → user preference → 'en'."""
+    return lang_param or getattr(user, 'lang', None) or 'en'
+
+
+def _localize_bom_items(items: list[dict], lang: str) -> list[dict]:
+    """Pick the correct name field based on language."""
+    localized = []
+    for item in items:
+        entry = {**item}
+        if lang == 'he':
+            entry['name'] = item.get('nameHe') or item.get('name')
+        else:
+            entry['name'] = item.get('name')
+        entry.pop('nameHe', None)
+        localized.append(entry)
+    return localized
+
+
+@router.get("/{project_id}/bom", response_model=BOMRead)
+async def get_bom(
+    project_id: uuid.UUID,
+    lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current BOM with product enrichment and staleness flag."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    bom = await bom_service.get_bom(db, project.id)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
+
+    resolved_lang = _resolve_lang(lang, current_user)
+    return BOMRead(
+        id=bom.id,
+        projectId=bom.project_id,
+        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        isStale=bom_service.is_bom_stale(project.data or {}, bom),
+        createdAt=bom.created_at,
+        updatedAt=bom.updated_at,
+    )
+
+
+@router.put("/{project_id}/bom/compute", response_model=BOMRead)
+async def compute_bom(
+    project_id: uuid.UUID,
+    lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute (or recompute) BOM from current step3 data and save."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    bom = await bom_service.compute_and_save_bom(db, project)
+    resolved_lang = _resolve_lang(lang, current_user)
+    return BOMRead(
+        id=bom.id,
+        projectId=bom.project_id,
+        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        isStale=False,
+        createdAt=bom.created_at,
+        updatedAt=bom.updated_at,
+    )
+
+
+@router.get("/{project_id}/bom/deltas")
+async def get_bom_deltas(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return current bomDeltas from project data."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    step5 = (project.data or {}).get('step5', {})
+    return step5.get('bomDeltas') or {'overrides': {}, 'additions': [], 'alternatives': {}}
+
+
+@router.put("/{project_id}/bom/deltas")
+async def save_bom_deltas(
+    project_id: uuid.UUID,
+    payload: BOMDeltasUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save bomDeltas to project.data.step5.bomDeltas."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    data = copy.deepcopy(project.data or {})
+    if 'step5' not in data:
+        data['step5'] = {}
+    data['step5']['bomDeltas'] = payload.model_dump()
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+    return data['step5']['bomDeltas']
+
+
+@router.get("/{project_id}/bom/effective", response_model=BOMEffectiveRead)
+async def get_effective_bom(
+    project_id: uuid.UUID,
+    lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return BOM items with bomDeltas applied (merged view for PQ/export)."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    bom = await bom_service.get_bom(db, project.id)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
+
+    step5 = (project.data or {}).get('step5', {})
+    deltas = step5.get('bomDeltas') or {}
+    effective_items = bom_service.apply_bom_deltas(bom.items, deltas)
+    resolved_lang = _resolve_lang(lang, current_user)
+
+    return BOMEffectiveRead(
+        items=_localize_bom_items(effective_items, resolved_lang),
+        createdAt=bom.created_at,
+        updatedAt=bom.updated_at,
+    )

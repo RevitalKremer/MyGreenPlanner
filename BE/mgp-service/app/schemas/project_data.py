@@ -229,29 +229,17 @@ class Step4Data(BaseModel):
     planApproval: Optional[PlanApproval] = None
 
 
-# ── BOM (locked step 5) ───────────────────────────────────────────────────────
-
-class BOMItem(BaseModel):
-    itemId: str
-    description: str
-    unit: str           # 'pcs', 'm', 'kg', …
-    quantity: float
-
-
-class BOM(BaseModel):
-    """
-    Frozen BOM snapshot — source of truth for quotation.
-    Regenerated when step 3 changes; frozen when user advances to step 5.
-    bomDeltas store manual quantity adjustments on top of the computed items.
-    """
-    items: list[BOMItem] = Field(default_factory=list)
-    bomDeltas: dict[str, float] = Field(default_factory=dict)
-    # itemId → quantity adjustment (positive = add, negative = remove)
+# ── BOM deltas (step 5) ───────────────────────────────────────────────────────
+#
+# The computed BOM lives in its own table (project_bom) — not in the JSONB.
+# Only user-made adjustments (bomDeltas) are stored here as lightweight data.
 
 
 class Step5Data(BaseModel):
     """BOM and PDF export step."""
-    bom: Optional[BOM] = None
+    bomDeltas: Optional[dict] = None
+    # { overrides: { "areaLabel||element": { qty, extras, removed } },
+    #   additions: [...], alternatives: { element: altElement } }
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────

@@ -112,3 +112,41 @@ export async function fetchAppDefaults() {
   if (!res.ok) throw new Error('Failed to load app defaults')
   return res.json()
 }
+
+// ── BOM ─────────────────────────────────────────────────────────────────────
+
+export async function getBOM(id, lang = null) {
+  const url = lang ? `/projects/${id}/bom?lang=${lang}` : `/projects/${id}/bom`
+  const res = await mgpRequest(url)
+  if (!res.ok) throw new Error('BOM not yet computed')
+  return res.json()
+}
+
+export async function computeBOM(id, lang = null) {
+  const url = lang ? `/projects/${id}/bom/compute?lang=${lang}` : `/projects/${id}/bom/compute`
+  const res = await mgpRequest(url, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to compute BOM')
+  return res.json()
+}
+
+export async function getBomDeltas(id) {
+  const res = await mgpRequest(`/projects/${id}/bom/deltas`)
+  if (!res.ok) throw new Error('Failed to fetch BOM deltas')
+  return res.json()
+}
+
+export async function saveBomDeltas(id, deltas) {
+  const res = await mgpRequest(`/projects/${id}/bom/deltas`, {
+    method: 'PUT',
+    body: JSON.stringify(deltas),
+  })
+  if (!res.ok) throw new Error('Failed to save BOM deltas')
+  return res.json()
+}
+
+export async function getEffectiveBOM(id, lang = null) {
+  const url = lang ? `/projects/${id}/bom/effective?lang=${lang}` : `/projects/${id}/bom/effective`
+  const res = await mgpRequest(url)
+  if (!res.ok) throw new Error('Failed to fetch effective BOM')
+  return res.json()
+}

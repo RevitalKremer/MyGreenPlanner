@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.services import bom_service
 
 
 async def list_projects(db: AsyncSession, owner_id: uuid.UUID) -> list[Project]:
@@ -40,7 +41,15 @@ async def update_project(db: AsyncSession, project: Project, payload: ProjectUpd
         incoming_step = fields['data'].get(step_key)
         merged = copy.deepcopy(project.data or {})
         if incoming_step is not None:
-            merged[step_key] = incoming_step
+            # Deep-merge into existing step data so FE-owned keys are updated
+            # but server-computed keys (e.g. trapezoidDetails, basesCustomOffsets,
+            # customDiagonals in step3) are preserved.
+            existing_step = merged.get(step_key)
+            if isinstance(existing_step, dict) and isinstance(incoming_step, dict):
+                existing_step.update(incoming_step)
+                merged[step_key] = existing_step
+            else:
+                merged[step_key] = incoming_step
         fields['data'] = merged
 
     for field, value in fields.items():
@@ -547,6 +556,19 @@ async def update_project_step(
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
 
+    # ── Auto-compute BOM on entering step 5 ──
+    bom_result = None
+    if new_step >= 5:
+        try:
+            await db.refresh(project)
+            existing_bom = await bom_service.get_bom(db, project.id)
+            if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
+                bom_obj = await bom_service.compute_and_save_bom(db, project)
+                bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"BOM auto-compute failed on step transition: {e}")
+
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
         result['rails'] = rails_result
@@ -554,6 +576,8 @@ async def update_project_step(
         result['bases'] = bases_result
     if trapezoid_details:
         result['trapezoidDetails'] = trapezoid_details
+    if bom_result:
+        result['bom'] = bom_result
     return result
 
 

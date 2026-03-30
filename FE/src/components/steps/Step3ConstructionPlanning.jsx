@@ -38,7 +38,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onBOMDataChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
@@ -234,8 +234,6 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     Object.keys(rowPanelCounts).filter(k => k !== 'unassigned').map(Number).sort((a, b) => a - b),
     [rowPanelCounts]
   )
-  const rowLabels = useMemo(() => rowKeys.map((rk, i) => areaLabel(rk, i)), [rowKeys, areaLabel])
-
   // Derive lineRails from beRailsData for a given area index.
   // Groups offsetFromLineFrontCm by lineIdx — substitutes for stored lineRails.
   // Must be defined after rowKeys.
@@ -354,11 +352,6 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     })
     return assignTypes(rcs)
   }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, areas, areaTrapezoidMap, getTrapBasesSettings])
-
-  useEffect(() => {
-    onBOMDataChange?.({ rowConstructions, rowLabels })
-  }, [rowConstructions, rowLabels])
-
 
 const selectedRC = rowConstructions[selectedRowIdx] ?? null
 

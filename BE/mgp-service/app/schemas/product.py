@@ -8,6 +8,7 @@ class ProductBase(BaseModel):
     product_type: str = 'material'  # 'panel' | 'material'
     part_number: str | None = None
     name: str
+    name_he: str | None = None
     additional_info: str | None = None
     active: bool = True
     extra: str | None = None
@@ -27,6 +28,7 @@ class ProductUpdate(BaseModel):
     product_type: str | None = None
     part_number: str | None = None
     name: str | None = None
+    name_he: str | None = None
     additional_info: str | None = None
     active: bool | None = None
     extra: str | None = None

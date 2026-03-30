@@ -10,7 +10,6 @@ import {
   DANGER, WHITE, BLACK, WHITE_10, WHITE_50,
   SECTION_HEADER_BG,
 } from '../../../styles/colors'
-import { buildBOM } from '../../../utils/constructionCalculator'
 
 function deltaKey(areaLabel, element) { return `${areaLabel}||${element}` }
 
@@ -88,12 +87,12 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = {}, onBomDeltasChange, products = [], productByType = {}, altsByType = {} }) {
+export default function BOMView({ bomItems = [], bomDeltas = {}, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
   const { t } = useLang()
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
-  const baseRows = useMemo(() => buildBOM(rowConstructions, rowLabels), [rowConstructions, rowLabels])
-  const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [baseRows])
+  const baseRows = bomItems
+  const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [bomItems])
 
   // ── Filter / sort state ─────────────────────────────────────────────────
   const [filterArea,   setFilterArea]   = useState('')
@@ -140,7 +139,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
   function setAdditionField(id, field, value) {
     patch({ additions: additions.map(a => a.id === id ? { ...a, [field]: value } : a) })
   }
-  function resetToDefaults() { onBomDeltasChange?.({}) }
+  function resetToDefaults() { onResetDefaults ? onResetDefaults() : onBomDeltasChange?.({}) }
 
   // ── Build display rows ──────────────────────────────────────────────────
   const displayRows = useMemo(() => {
@@ -178,7 +177,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
         return (
           r.areaLabel.toLowerCase().includes(q) ||
           r.element.toLowerCase().includes(q) ||
-          (product?.name ?? '').toLowerCase().includes(q) ||
+          (r.name ?? product?.name ?? '').toLowerCase().includes(q) ||
           (product?.pn  ?? '').toLowerCase().includes(q)
         )
       })
@@ -189,8 +188,8 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
       switch (sortKey) {
         case 'area':    return dir * a.areaLabel.localeCompare(b.areaLabel)
         case 'element': {
-          const na = productByType[a.element]?.name ?? a.element
-          const nb = productByType[b.element]?.name ?? b.element
+          const na = a.name ?? productByType[a.element]?.name ?? a.element
+          const nb = b.name ?? productByType[b.element]?.name ?? b.element
           return dir * na.localeCompare(nb)
         }
         case 'length':  return dir * ((a.totalLengthM ?? -1) - (b.totalLengthM ?? -1))
@@ -382,7 +381,7 @@ export default function BOMView({ rowConstructions, rowLabels = [], bomDeltas = 
                             <div style={{ fontSize: '0.85rem', fontWeight: '600',
                               color: row.removed ? TEXT_LIGHT : TEXT,
                               textDecoration: row.removed ? 'line-through' : 'none' }}>
-                              {effectProduct?.name ?? chosenType}
+                              {row.name ?? effectProduct?.name ?? chosenType}
                             </div>
                             {effectProduct?.pn && (
                               <div style={{ fontFamily: 'monospace', fontSize: '0.72rem',
