@@ -1,5 +1,4 @@
 import { DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM, MIN_RAIL_SPACING_VERTICAL_CM, MIN_RAIL_SPACING_HORIZONTAL_CM } from '../../../utils/railLayoutService'
-import { DEFAULT_RAIL_EDGE_DIST_MM } from '../../../utils/basePlanService'
 
 import { PRIMARY } from '../../../styles/colors'
 export const ACCENT = PRIMARY
@@ -13,7 +12,7 @@ export const PARAM_SCHEMA = [
   { key: 'keepSymmetry',        label: 'Keep Symmetry',           section: 'rails',  scope: 'area',   type: 'boolean',                                 default: true                                                           },
   { key: 'railOverhangCm',      label: 'Rail Overhang (cm)',      section: 'rails',  scope: 'area',   type: 'number',   step: 0.5, min: 0,   max: 30,   default: DEFAULT_RAIL_OVERHANG_CM,  highlightGroup: 'rail-ends'     },
   // ── rails · global ────────────────────────────────────────────────────────
-  { key: 'crossRailEdgeDistMm', label: 'Rail Profile Size (mm)',  section: 'rails',  scope: 'global', type: 'number',   step: 5,   min: 20,  max: 100,  default: DEFAULT_RAIL_EDGE_DIST_MM, highlightGroup: 'cross-rails'   },
+  { key: 'crossRailEdgeDistMm', label: 'Rail Profile Size (mm)',  section: 'rails',  scope: 'global', type: 'number',   step: 5,   min: 20,  max: 100,  default: 40,                      highlightGroup: 'cross-rails'   },
   { key: 'stockLengths',        label: 'Stock Lengths (mm)',      section: 'rails',  scope: 'global', type: 'array',                                   default: DEFAULT_STOCK_LENGTHS_MM,  highlightGroup: 'rail-cuts'     },
   // ── bases · area ─────────────────────────────────────────────────────────
   { key: 'edgeOffsetMm',        label: 'Edge Offset (mm)',        section: 'bases',  scope: 'trapezoid', type: 'number',   step: 10,  min: 0,   max: 1000, default: 300,  highlightGroup: 'base-edges'   },

@@ -1,8 +1,5 @@
 import { computeRowRailLayout, localToScreen, getPanelOrientation } from './railLayoutService'
 
-export const DEFAULT_RAIL_EDGE_DIST_MM    = 40
-export const DEFAULT_RAIL_MIN_PORTRAIT    = 2
-export const DEFAULT_RAIL_MIN_LANDSCAPE   = 1
 
 // Compute base placement for one row
 // Returns { frame, bases, lines, frameLengthMm, baseCount, edgeOffsetMm, spacingMm, lastGapMm }
