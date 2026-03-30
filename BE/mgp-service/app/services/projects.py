@@ -35,21 +35,44 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
 async def update_project(db: AsyncSession, project: Project, payload: ProjectUpdate, step: int | None = None) -> Project:
     fields = payload.model_dump(exclude_none=True)
 
-    if step is not None and 'data' in fields:
-        # Merge only data.step{n} — leave all other steps (incl. planApproval) untouched
-        step_key = f'step{step}'
-        incoming_step = fields['data'].get(step_key)
+    if 'data' in fields:
+        # Deep-merge each step key so FE-owned keys are updated but
+        # server-computed keys (e.g. step3.trapezoidDetails, basesCustomOffsets,
+        # customDiagonals, step2.areas[].rails/bases) are preserved.
+        incoming_data = fields['data']
         merged = copy.deepcopy(project.data or {})
-        if incoming_step is not None:
-            # Deep-merge into existing step data so FE-owned keys are updated
-            # but server-computed keys (e.g. trapezoidDetails, basesCustomOffsets,
-            # customDiagonals in step3) are preserved.
-            existing_step = merged.get(step_key)
-            if isinstance(existing_step, dict) and isinstance(incoming_step, dict):
-                existing_step.update(incoming_step)
-                merged[step_key] = existing_step
-            else:
-                merged[step_key] = incoming_step
+
+        if step is not None:
+            # Scoped merge: only touch data.step{n}
+            step_key = f'step{step}'
+            incoming_step = incoming_data.get(step_key)
+            if incoming_step is not None:
+                existing_step = merged.get(step_key)
+                if isinstance(existing_step, dict) and isinstance(incoming_step, dict):
+                    existing_step.update(incoming_step)
+                    merged[step_key] = existing_step
+                else:
+                    merged[step_key] = incoming_step
+        else:
+            # Full save: merge step keys that contain server-computed data.
+            # step3 has trapezoidDetails, basesCustomOffsets, customDiagonals (server-owned).
+            # step2 has areas[].rails/bases (server-owned) — don't overwrite from FE.
+            # For step2: only update FE-owned keys (trapezoids, panelType, etc.), keep areas from DB.
+            _SERVER_OWNED_STEP2_KEYS = {'areas'}
+            for key, incoming_val in incoming_data.items():
+                existing_val = merged.get(key)
+                if isinstance(existing_val, dict) and isinstance(incoming_val, dict):
+                    if key == 'step2':
+                        # Preserve server-owned keys in step2
+                        for k, v in incoming_val.items():
+                            if k not in _SERVER_OWNED_STEP2_KEYS:
+                                existing_val[k] = v
+                    else:
+                        existing_val.update(incoming_val)
+                    merged[key] = existing_val
+                else:
+                    merged[key] = incoming_val
+
         fields['data'] = merged
 
     for field, value in fields.items():
@@ -556,9 +579,9 @@ async def update_project_step(
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
 
-    # ── Auto-compute BOM on entering step 5 ──
+    # ── Auto-compute BOM on entering step 4 ──
     bom_result = None
-    if new_step >= 5:
+    if new_step >= 4:
         await db.refresh(project)
         existing_bom = await bom_service.get_bom(db, project.id)
         if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
