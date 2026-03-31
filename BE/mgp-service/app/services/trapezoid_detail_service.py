@@ -18,6 +18,13 @@ SKIP_BELOW_CM = 60       # skip diagonal if both adjacent legs < this
 DOUBLE_ABOVE_CM = 200    # mark diagonal ×2 if either leg ≥ this
 
 
+def _s(settings: dict, overrides: dict, key: str) -> float | int | list:
+    """Read a setting: per-trapezoid override > app default. KeyError if missing from both."""
+    if key in overrides:
+        return overrides[key]
+    return settings[key]
+
+
 # ── Main computation ──────────────────────────────────────────────────────────
 
 def compute_trapezoid_details(
@@ -26,26 +33,38 @@ def compute_trapezoid_details(
     panel_lines: list[dict],
     angle_deg: float,
     front_height_cm: float,
-    block_height_cm: float = 15,
-    block_length_cm: float = 50,
-    block_width_cm: float = 24,
-    block_punch_cm: float = 9,
-    diag_top_pct: float = 25,
-    diag_base_pct: float = 90,
-    base_overhang_cm: float = 5,
-    cross_rail_edge_dist_mm: float = 40,
-    rail_offset_cm: float = 0,
+    rail_offset_cm: float,
+    settings: dict,
+    overrides: dict | None = None,
     custom_diagonals: dict | None = None,
+    global_settings: dict | None = None,
 ) -> dict | None:
     """
     Compute structural details for one trapezoid.
 
-    bases_data — output from base_service.compute_area_bases() for this trap
-    line_rails — { str(lineIdx): [offsetFromLineFrontCm, ...] }
-    panel_lines — [{ depthCm, gapBeforeCm, isEmpty, isHorizontal }]
+    bases_data     — output from base_service.compute_area_bases() for this trap
+    line_rails     — { str(lineIdx): [offsetFromLineFrontCm, ...] }
+    panel_lines    — [{ depthCm, gapBeforeCm, isEmpty, isHorizontal }]
+    settings       — app_defaults dict (from app_settings table, single source of truth)
+    overrides      — per-trapezoid config overrides (from trapezoidConfigs[trapId])
+    global_settings — step3.globalSettings (for global-scope params like crossRailEdgeDistMm)
     """
     if not bases_data or not panel_lines:
         return None
+
+    ov = overrides or {}
+    gs = global_settings or {}
+
+    # Read all settings — no hardcoded fallbacks
+    block_height_cm      = _s(settings, ov, 'blockHeightCm')
+    block_length_cm      = _s(settings, ov, 'blockLengthCm')
+    block_punch_cm       = _s(settings, ov, 'blockPunchCm')
+    diag_top_pct         = _s(settings, ov, 'diagTopPct')
+    diag_base_pct        = _s(settings, ov, 'diagBasePct')
+    base_overhang_cm     = _s(settings, ov, 'baseOverhangCm')
+    cross_rail_edge_dist_mm = gs.get('crossRailEdgeDistMm', settings['crossRailEdgeDistMm'])
+    beam_thick_cm        = settings['angleProfileSizeMm'] / 10
+    panel_thick_cm       = settings['panelThickCm']
 
     angle_rad = angle_deg * math.pi / 180
     cross_rail_cm = cross_rail_edge_dist_mm / 10
@@ -55,16 +74,28 @@ def compute_trapezoid_details(
     rear_leg_depth = bases_data.get('rearLegDepthCm', 0)
     front_leg_depth = bases_data.get('frontLegDepthCm', 0)
 
-    # Beam lengths
-    top_beam_length = base_length_cm / math.cos(angle_rad) + 2 * base_overhang_cm if math.cos(angle_rad) > 0 else 0
-    base_beam_length = top_beam_length * math.cos(angle_rad)
+    # Coordinate origin: rear outer leg in global panel coords
+    # All positionCm values are relative to this origin (rear outer leg = 0).
+    origin = rear_leg_depth - base_overhang_cm
 
-    # Leg heights (from constructionCalculator logic)
-    # frontHeight = panelFrontHeight - blockHeightCm + railOffsetCm*sin(angle) - crossRailCm*cos(angle)
-    # Here we receive the already-derived frontHeight (front leg height above block)
-    base_length_horiz = base_length_cm  # horizontal leg-to-leg span
-    height_rear = front_height_cm
-    height_front = front_height_cm + base_length_horiz * math.tan(angle_rad)
+    # Beam lengths: base_length_cm is along the slope (panel surface).
+    # The slope beam follows the panel tilt; the base beam is horizontal.
+    cos_a = math.cos(angle_rad)
+    top_beam_length = base_length_cm                      # along slope
+    base_beam_length = base_length_cm * cos_a             # horizontal projection
+
+    # Derive structural leg height from panelFrontHeight (front_height_cm).
+    # The rear outer leg is at (railOffset - overhang) from the panel front edge
+    # along the slope. The cross rail is perpendicular to the slope (not vertical),
+    # so its base on the slope beam is shifted by crossRail*tan(angle) along the
+    # slope relative to the panel edge directly above.
+    sin_a = math.sin(angle_rad)
+    tan_a = math.tan(angle_rad)
+    slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
+    height_rear = front_height_cm - block_height_cm + slope_offset * sin_a - cross_rail_cm / cos_a
+
+    base_length_horiz = base_beam_length  # horizontal leg-to-leg span
+    height_front = height_rear + base_length_horiz * math.tan(angle_rad)
 
     # Simplified diagonal length (single diagonal, beam-to-beam)
     diagonal_length = math.sqrt(base_length_horiz ** 2 + height_front ** 2)
@@ -77,7 +108,14 @@ def compute_trapezoid_details(
         'baseLength': _r(base_length_horiz),
         'diagonalLength': _r(diagonal_length),
         'angle': angle_deg,
-        'frontHeight': _r(front_height_cm),
+        'panelFrontHeight': _r(front_height_cm),
+        'originCm': _r(origin),
+        # Rendering dimensions (from settings, for FE to convert cm→px)
+        'beamThickCm': _r(beam_thick_cm),
+        'panelThickCm': _r(panel_thick_cm),
+        'blockHeightCm': _r(block_height_cm),
+        'blockLengthCm': _r(block_length_cm),
+        'crossRailHeightCm': _r(cross_rail_cm),
     }
 
     # ── Rail items (from lineRails + panelLines) ───────────────────────────
@@ -96,6 +134,16 @@ def compute_trapezoid_details(
             })
         d_cm += seg.get('depthCm', 0)
 
+    # ── Slope distance annotations (added to geometry) ──────────────────
+    total_panel_depth = d_cm
+    first_rail_global = rail_items[0]['globalOffsetCm'] if rail_items else 0
+    last_rail_global = rail_items[-1]['globalOffsetCm'] if rail_items else total_panel_depth
+    geometry['panelEdgeToFirstRailCm'] = _r(first_rail_global)
+    geometry['panelEdgeToLastRailCm'] = _r(total_panel_depth - last_rail_global)
+    geometry['railToRailCm'] = _r(last_rail_global - first_rail_global)
+    geometry['overhangCm'] = _r(base_overhang_cm)
+    geometry['panelRearHeightCm'] = _r(front_height_cm + total_panel_depth * sin_a)
+
     # ── Leg positions ──────────────────────────────────────────────────────
     # Per-segment rail ordering for inner leg side logic
     seg_sorted = {}
@@ -109,30 +157,36 @@ def compute_trapezoid_details(
         for pos, global_idx in enumerate(arr):
             rail_pos_in_seg[global_idx] = {'pos': pos, 'N': len(arr)}
 
+    # Outer leg positions (relative to origin, so rear = 0)
+    rear_outer_pos = 0
+    front_outer_pos = base_length_cm  # = baseLengthCm
+
     # Inner leg side: left half of segment → 'left'; right half → 'right'; single → 'left'
+    # Each inner leg is offset from its cross rail by cross_rail_cm (direction based on side).
     inner_legs = []
     for ci, r in enumerate(rail_items[1:-1], start=1):
         info = rail_pos_in_seg.get(ci, {'pos': 0, 'N': 1})
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
-        # Leg height interpolated between rear and front
-        if base_length_horiz > 0:
-            # globalOffsetCm gives position along the slope
-            slope_pos = (r['globalOffsetCm'] - rail_offset_cm + base_overhang_cm) * math.cos(angle_rad)
-            frac = min(1.0, max(0.0, slope_pos / base_length_horiz)) if base_length_horiz > 0 else 0
-        else:
-            frac = 0
+        # Rail position relative to origin
+        rail_pos = r['globalOffsetCm'] - origin
+        # Leg position: offset from rail by cross_rail_cm
+        leg_offset = cross_rail_cm if side == 'right' else -cross_rail_cm
+        leg_pos = rail_pos + leg_offset
+        # Height interpolated between outer legs
+        frac = max(0.0, min(1.0, leg_pos / front_outer_pos)) if front_outer_pos > 0 else 0
         leg_height = height_rear + frac * (height_front - height_rear)
         inner_legs.append({
-            'positionCm': _r(r['globalOffsetCm']),
+            'positionCm': _r(leg_pos),
             'heightCm': _r(leg_height),
             'isInner': True,
             'side': side,
+            'railPositionCm': _r(rail_pos),
         })
 
     legs = [
-        {'positionCm': 0, 'heightCm': _r(height_rear), 'isInner': False, 'side': 'outer'},
+        {'positionCm': _r(rear_outer_pos), 'heightCm': _r(height_rear), 'isInner': False, 'side': 'outer'},
         *inner_legs,
-        {'positionCm': _r(d_cm), 'heightCm': _r(height_front), 'isInner': False, 'side': 'outer'},
+        {'positionCm': _r(front_outer_pos), 'heightCm': _r(height_front), 'isInner': False, 'side': 'outer'},
     ]
 
     # ── Active zone ────────────────────────────────────────────────────────
@@ -152,19 +206,19 @@ def compute_trapezoid_details(
         h_b = legs[i + 1]['heightCm']
         is_double = h_a >= DOUBLE_ABOVE_CM or h_b >= DOUBLE_ABOVE_CM
 
-        ov = custom.get(str(i), {})
+        ov_d = custom.get(str(i), {})
         skip = h_a < SKIP_BELOW_CM and h_b < SKIP_BELOW_CM
-        if ov.get('disabled') is True:
+        if ov_d.get('disabled') is True:
             skip = True
-        elif ov.get('disabled') is False:
+        elif ov_d.get('disabled') is False:
             skip = False
 
         reversed_span = num_spans > 1 and i == 0
         def_top = (0.90 if is_double else 1 - diag_top_frac) if reversed_span else (0.10 if is_double else diag_top_frac)
         def_bot = (1 - diag_base_frac) if reversed_span else diag_base_frac
 
-        top_pct = ov.get('topPct', def_top)
-        bot_pct = ov.get('botPct', def_bot)
+        top_pct = ov_d.get('topPct', def_top)
+        bot_pct = ov_d.get('botPct', def_bot)
 
         # Approximate length (simplified: horizontal span between legs * Pythagorean)
         span_width_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionCm']) * math.cos(angle_rad)
@@ -204,12 +258,12 @@ def compute_trapezoid_details(
     block_punch_clamped = min(block_punch_cm, block_length_cm)
 
     blocks = [
-        # Rear end block
-        {'positionCm': _r(rear_leg_depth - base_overhang_cm), 'isEnd': True},
-        # Center blocks
-        *[{'positionCm': _r(r['globalOffsetCm']), 'isEnd': False} for r in center_blocks],
+        # Rear end block (at origin = 0)
+        {'positionCm': 0, 'isEnd': True},
+        # Center blocks (shifted to origin)
+        *[{'positionCm': _r(r['globalOffsetCm'] - origin), 'isEnd': False} for r in center_blocks],
         # Front end block
-        {'positionCm': _r(front_leg_depth + base_overhang_cm - block_length_cm), 'isEnd': True},
+        {'positionCm': _r(base_length_cm - block_length_cm), 'isEnd': True},
     ]
 
     # ── Punches ────────────────────────────────────────────────────────────

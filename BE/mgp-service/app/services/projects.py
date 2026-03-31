@@ -628,7 +628,7 @@ async def compute_and_save_trapezoid_details(
             AppSetting.key.in_([
                 'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
                 'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
-                'crossRailEdgeDistMm',
+                'crossRailEdgeDistMm', 'angleProfileSizeMm', 'panelThickCm',
             ])
         )
     )).all()
@@ -704,7 +704,7 @@ async def compute_and_save_trapezoid_details(
         if computed_area:
             bases = [b for b in computed_area.get('bases', []) if b.get('trapezoidId') == trap_id]
             if bases:
-                base_overhang = t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))
+                base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
                 bases_data = {
                     'baseLengthCm': bases[0].get('lengthCm', 0),
                     'rearLegDepthCm': bases[0].get('topDepthCm', 0) + base_overhang,
@@ -721,16 +721,11 @@ async def compute_and_save_trapezoid_details(
             panel_lines=panel_lines,
             angle_deg=angle,
             front_height_cm=front_height,
-            block_height_cm=t_cfg.get('blockHeightCm', app_defaults.get('blockHeightCm', 15)),
-            block_length_cm=t_cfg.get('blockLengthCm', app_defaults.get('blockLengthCm', 50)),
-            block_width_cm=t_cfg.get('blockWidthCm', app_defaults.get('blockWidthCm', 24)),
-            block_punch_cm=t_cfg.get('blockPunchCm', app_defaults.get('blockPunchCm', 9)),
-            diag_top_pct=t_cfg.get('diagTopPct', app_defaults.get('diagTopPct', 25)),
-            diag_base_pct=t_cfg.get('diagBasePct', app_defaults.get('diagBasePct', 90)),
-            base_overhang_cm=t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5)),
-            cross_rail_edge_dist_mm=global_settings.get('crossRailEdgeDistMm', app_defaults.get('crossRailEdgeDistMm', 40)),
             rail_offset_cm=rail_offset_cm,
+            settings=app_defaults,
+            overrides=t_cfg,
             custom_diagonals=custom_diags,
+            global_settings=global_settings,
         )
 
         if detail:
@@ -749,6 +744,9 @@ async def compute_and_save_trapezoid_details(
             break
 
     if full_trap_detail:
+        full_origin = full_trap_detail.get('geometry', {}).get('originCm', 0)
+        full_base_overhang = app_defaults.get('baseOverhangCm', 5)
+
         for tid, detail in result.items():
             if detail.get('isFullTrap'):
                 continue
@@ -763,45 +761,54 @@ async def compute_and_save_trapezoid_details(
             trap_label = trap_area.get('label', '') if trap_area else ''
             trap_computed_area = _get_computed_area(data, trap_label)
             trap_all_line_rails = _derive_line_rails(trap_computed_area)
-            # Get the active rail offsets for this trimmed trap
-            active_offsets = set()
-            for li, orient in enumerate(local_orients):
-                if 'empty' in orient:
-                    continue
-                for off in trap_all_line_rails.get(str(li), []):
-                    active_offsets.add(round(off, 1))
 
-            # Filter full trap's legs: keep outer rear + legs at active rail positions
+            # Build active rail positions in the full trap's coordinate system
+            # (globalOffsetCm - origin) so they match railPositionCm in full trap legs.
+            active_rail_positions = set()
+            d_cm = 0.0
+            for li, orient in enumerate(local_orients):
+                is_h = orient == 'horizontal'
+                depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
+                gap = app_defaults.get('panelGapCm', 2.5) if li > 0 else 0
+                d_cm += gap
+                if 'empty' not in orient:
+                    for off in trap_all_line_rails.get(str(li), []):
+                        active_rail_positions.add(round(d_cm + off - full_origin, 1))
+                d_cm += depth
+
+            # Filter full trap's legs: keep outer rear + inner legs at active rail positions
             full_legs = full_trap_detail.get('legs', [])
             filtered_legs = []
             for leg in full_legs:
-                pos = round(leg['positionCm'], 1)
                 if not leg['isInner']:
                     # Outer rear leg (position 0): always keep
-                    if pos == 0:
+                    if round(leg['positionCm'], 1) == 0:
                         filtered_legs.append(leg)
-                    # Outer front leg: replace with the last active inner leg position
-                    # (or keep if it matches an active rail)
-                    else:
-                        continue  # skip — will add the correct front outer below
+                    # Skip outer front leg — will add correct one below
                 else:
-                    # Inner leg: keep only if its position matches an active rail offset
-                    if pos in active_offsets:
+                    # Inner leg: match on railPositionCm (position before cross-rail offset)
+                    rail_pos = round(leg.get('railPositionCm', leg['positionCm']), 1)
+                    if rail_pos in active_rail_positions:
                         filtered_legs.append(leg)
 
-            # Add front outer leg at the last active position
-            if filtered_legs:
-                last_active_leg = filtered_legs[-1]
-                # Convert the last inner leg to an outer leg
+            # Add front outer leg at last active rail + base overhang
+            if filtered_legs and active_rail_positions:
+                t_cfg_local = (trapezoid_configs or {}).get(tid, {})
+                trap_overhang = t_cfg_local.get('baseOverhangCm', full_base_overhang)
+                last_rail = max(active_rail_positions)
+                front_pos = last_rail + trap_overhang
+                # Interpolate height from full trap
+                full_front = full_trap_detail['legs'][-1]
+                full_rear = full_trap_detail['legs'][0]
+                full_span = full_front['positionCm']
+                frac = front_pos / full_span if full_span > 0 else 1
+                front_height = full_rear['heightCm'] + frac * (full_front['heightCm'] - full_rear['heightCm'])
                 filtered_legs.append({
-                    'positionCm': last_active_leg['positionCm'],
-                    'heightCm': last_active_leg['heightCm'],
+                    'positionCm': round(front_pos * 10) / 10,
+                    'heightCm': round(front_height * 10) / 10,
                     'isInner': False,
                     'side': 'outer',
                 })
-                # Remove it from inner if it was inner
-                if last_active_leg['isInner'] and len(filtered_legs) >= 2:
-                    filtered_legs.pop(-2)
 
             detail['legs'] = filtered_legs
 
