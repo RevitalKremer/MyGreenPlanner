@@ -57,9 +57,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
   const angleRad = angle * Math.PI / 180
   const bW      = baseLength   * SC   // leg-to-leg horizontal span
-  // Overhang is along the slope; decompose into horizontal (OHx) and vertical (OHy) SVG components
   const OHx     = baseOverhangCm * Math.cos(angleRad) * SC
-  const OHy     = baseOverhangCm * Math.sin(angleRad) * SC
   const hR      = heightRear   * SC
   const hF      = heightFront  * SC
   const railOffH = RAIL_CM * Math.cos(angleRad) * SC
@@ -91,11 +89,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
   const slope   = bW > 0 ? (topY1 - topY0) / bW : 0
   // Slope beam extended endpoints: overhang is along the slope → decompose into OHx/OHy
-  const topExtX0 = x0 - OHx, topExtY0 = topY0 + OHy
-  const topExtX1 = x1 + OHx, topExtY1 = topY1 - OHy
   // Leg positions at trapezoid ends — will be overridden by BE data below
-  let legX0 = topExtX0
-  let legX1 = topExtX1
+  let legX0 = x0 - OHx
+  let legX1 = x1 + OHx
   let legBW = bW + 2 * OHx
   const panelX1 = x0 - railOffH
   const panelY1 = topY0 + railOffV
@@ -720,28 +716,18 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Punches on base beam ── */}
-              {showPunches && [legX0 + 2 * SC, ...diagonals.map(d => d.botX), ...innerLegXs.filter((_, ci) => !innerLegIsGhost[ci]), legX1 - 2 * SC].map((px, i) => (
-                <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
-                  fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
-              ))}
-
-              {/* ── Punches on top (slope) beam ── */}
-              {showPunches && (() => {
-                const dx = topExtX1 - topExtX0, dy = topExtY1 - topExtY0
-                const beamLenPx = Math.sqrt(dx * dx + dy * dy)
-                const ux = dx / beamLenPx, uy = dy / beamLenPx
-                const pts = [
-                  { x: topExtX0 + 2 * SC * ux, y: topExtY0 + 2 * SC * uy },
-                  ...diagonals.map(d => ({ x: d.topX, y: d.topY })),
-                  ...innerLegXs.filter((_, ci) => !innerLegIsGhost[ci]).map(sx => ({ x: sx, y: beamY(sx) })),
-                  { x: topExtX1 - 2 * SC * ux, y: topExtY1 - 2 * SC * uy },
-                ]
-                return pts.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={2}
+              {/* ── Punches — rendered from BE data ── */}
+              {showPunches && (beDetailData?.punches ?? []).map((p, i) => {
+                const px = atSlope(p.positionCm).x
+                if (p.beamType === 'base') {
+                  return <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                     fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
-                ))
-              })()}
+                }
+                // slope beam: Y at this X along the slope from first to last leg
+                const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
+                return <circle key={i} cx={px} cy={slopeY} r={2}
+                  fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+              })}
 
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
