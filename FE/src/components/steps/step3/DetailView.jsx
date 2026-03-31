@@ -229,8 +229,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
   // Diagonals with both legs in the active zone (used for punch sketches + annotations)
   const activeDiags          = diagonals
-  const activeSlopeBeamLenCm = (activeBoundR - activeBoundL) / legBW * topBeamLength
-  const activeBaseBeamLenCm  = (activeBoundR - activeBoundL) / SC
+  const activeSlopeBeamLenCm = topBeamLength
+  const activeBaseBeamLenCm  = legBW / SC
 
   // Panel start/end positions along the slope
   const activePanelStart = atSlope(segments[0]?.gapBeforeCm ?? 0)
@@ -729,14 +729,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const ry    = blockBotY + 130
                 const barH  = 12
                 const barCy = ry + barH / 2
-                const activeBeamLenCm   = (activeBoundR - activeBoundL) / SC
-                const activeInnerLegXs = innerLegXs
-                const baseMiddle = [
-                  ...activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - activeBoundL) / SC) })),
-                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / SC) })),
-                ].sort((a, b) => a.x - b.x)
-                const punches       = [activeBoundL + 2 * SC, ...baseMiddle.map(e => e.x), activeBoundR - 2 * SC]
-                const punchLabelsCm = ['2', ...baseMiddle.map(e => e.label), fmt(activeBeamLenCm - 2)]
+                const basePunches = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'base')
+                  .map(p => ({ x: atSlope(p.positionCm).x, label: fmt(p.positionCm) }))
+                  .sort((a, b) => a.x - b.x)
+                const punches       = basePunches.map(e => e.x)
+                const punchLabelsCm = basePunches.map(e => e.label)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'bot') return null
                   const span = findSpan(barHover.svgX)
@@ -786,7 +784,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                         <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
                       </g>
                     )}
-                    <Dim ax1={activeBoundL} ay1={ry + barH + 22} ax2={activeBoundR} ay2={ry + barH + 22} label={fmt(activeBeamLenCm)} off={10} />
+                    <Dim ax1={legX0} ay1={ry + barH + 22} ax2={legX1} ay2={ry + barH + 22} label={fmt(legBW / SC)} off={10} />
                   </g>
                 )
               })()}
@@ -796,17 +794,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const ry    = blockBotY + 52
                 const barH  = 12
                 const barCy = ry + barH / 2
-                const activeSlopeBeamLenCm = (activeBoundR - activeBoundL) / legBW * topBeamLength
-                // End punches: 2cm from active beam ends, using same x-scale as full slope beam
-                const leftEndX  = activeBoundL + (2 / topBeamLength) * legBW
-                const rightEndX = activeBoundR - (2 / topBeamLength) * legBW
-                const activeInnerLegXs = innerLegXs
-                const slopeMiddle = [
-                  ...activeDiags.map(d => ({ x: d.topX, label: fmt((d.topX - activeBoundL) / legBW * topBeamLength) })),
-                  ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / legBW * topBeamLength) })),
-                ].sort((a, b) => a.x - b.x)
-                const punches       = [leftEndX, ...slopeMiddle.map(e => e.x), rightEndX]
-                const punchLabelsCm = ['2', ...slopeMiddle.map(e => e.label), fmt(activeSlopeBeamLenCm - 2)]
+                const activeSlopeBeamLenCm = topBeamLength
+                const slopePunches = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'slope')
+                  .map(p => ({ x: atSlope(p.positionCm).x, label: fmt(p.positionCm) }))
+                  .sort((a, b) => a.x - b.x)
+                const punches       = slopePunches.map(e => e.x)
+                const punchLabelsCm = slopePunches.map(e => e.label)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'top') return null
                   const span = findSpan(barHover.svgX)
