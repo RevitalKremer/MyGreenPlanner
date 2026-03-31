@@ -307,29 +307,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     }).filter(i => i >= 0)
   )
 
-  const lb_x = activeBoundL,           lb_w = blockW  // left end block aligns with first active leg outer edge
-  const rb_x = activeBoundR - blockW,  rb_w = blockW  // right end block aligns with last active leg outer edge
-
-  // Center blocks: 2 per vertical line, 1 per horizontal, min 2 total → numCenterBlocks = numBlocks - 2
-  // Prefer rails with larger globalOffsetCm (closer to high/rear leg)
-  const numBlocks = Math.max(2, segments.reduce((sum, seg) => {
-    if (seg.isEmpty) return sum
-    return sum + (seg.isHorizontal ? 1 : 2)
-  }, 0))
-  const numCenterBlocks = numBlocks - 2
-  // Inner rails = exclude outermost first and last; prefer rails with larger globalOffsetCm (higher elevation = closer to high leg)
-  const centerBlocks = (() => {
-    if (numCenterBlocks === 0) return []
-    return innerRailItems
-      .map((r, innerIdx) => ({ ...r, innerIdx }))
-      .sort((a, b) => a.globalOffsetCm - b.globalOffsetCm)
-      .slice(-numCenterBlocks)             // highest globalOffsetCm = closest to high leg
-      .sort((a, b) => a.cx - b.cx)        // re-sort left→right for rendering
-      .map(r => ({
-        bx: legX0 + (r.globalOffsetCm - RAIL_CM + baseOverhangCm) * Math.cos(angleRad) * SC - blockW / 2,
-        innerIdx: r.innerIdx,
-      }))
-  })()
+  // Block computation removed — blocks now rendered from beDetailData.blocks
 
   // ── Diagonal handle helpers ───────────────────────────────────────────────
   const toSvgX = (clientX) => {
@@ -560,30 +538,24 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
-              {/* ── Blocks ── */}
+              {/* ── Blocks — rendered from BE data ── */}
               {(() => {
-                const PUNCH_CM = blockPunchCm
-                const punchOff = PUNCH_CM * SC
+                const beBlocks = beDetailData?.blocks ?? []
+                const punchOff = blockPunchCm * SC
                 const baseCm = (svgX) => fmt((svgX - legX0) / SC)
-                // end blocks: punch 9 cm from outer (base-aligned) edge; center blocks: 9 cm from left edge
-                const lbPunchX = lb_x + punchOff           // 9 cm from base start
-                const rbPunchX = rb_x + rb_w - punchOff    // 9 cm from base end
                 return (<>
-                  {/* End blocks always shown — rear and front legs are always active */}
-                  <rect x={lb_x} y={blockTopY} width={lb_w} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
-                  {showPunches && <text x={lbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(lbPunchX)}</text>}
-                  {centerBlocks.map(({ bx, innerIdx }, i) => {
-                    if (innerLegIsGhost[innerIdx]) return null
-                    const px = bx + punchOff
+                  {beBlocks.map((blk, bi) => {
+                    const bx = atSlope(blk.positionCm).x - blockW / 2
+                    const px = blk.isEnd
+                      ? (bi === 0 ? bx + punchOff : bx + blockW - punchOff)  // end blocks: punch from outer edge
+                      : bx + punchOff                                          // center blocks: punch from left edge
                     return (
-                      <g key={i}>
+                      <g key={bi}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
                         {showPunches && <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(px)}</text>}
                       </g>
                     )
                   })}
-                  <rect x={rb_x} y={blockTopY} width={rb_w} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
-                  {showPunches && <text x={rbPunchX} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{baseCm(rbPunchX)}</text>}
                 </>)
               })()}
 
@@ -773,14 +745,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                  <rect x={lb_x - 5} y={blockTopY - 5} width={lb_w + 10} height={blockH + 10}
-                    fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
-                  {centerBlocks.filter(b => !innerLegIsGhost[b.innerIdx]).map(({ bx }, i) => (
-                    <rect key={i} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
+                  {(beDetailData?.blocks ?? []).map((blk, bi) => {
+                    const bx = atSlope(blk.positionCm).x - blockW / 2
+                    return <rect key={bi} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
-                  ))}
-                  <rect x={rb_x - 5} y={blockTopY - 5} width={rb_w + 10} height={blockH + 10}
-                    fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
+                  })}
                 </g>
               )}
 
@@ -826,7 +795,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   label={fmt((blockBotY - activePanelStart.y - panOffY - Math.cos(angleRad) * PANEL_THICK_PX / 2) / SC)}
                   off={-22} />
 
-                <Dim ax1={lb_x} ay1={blockTopY} ax2={lb_x} ay2={blockBotY}
+                <Dim ax1={legX0} ay1={blockTopY} ax2={legX0} ay2={blockBotY}
                   label={fmt(BLOCK_H_CM)} off={-14} />
 
                 {/* Right leg height: only when main front leg is active (not ghosted to an inner leg) */}
