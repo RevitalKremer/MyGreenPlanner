@@ -181,63 +181,32 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const firstActiveSegIdx = 0
   const lastActiveSegIdx  = segments.length - 1
 
-  const beDiags = beDetailData?.diagonals ?? null
+  // Diagonals — always from BE data, FE only computes pixel positions
   const diagonals = (() => {
-    const SKIP_BELOW = 60, DOUBLE_ABOVE = 200
+    const beDiags = beDetailData?.diagonals ?? []
     const numSpans = allLegXs.length - 1
-    const raw = allLegXs.slice(0, -1).map((xA, i) => {
-      const xB       = allLegXs[i + 1]
-      const hA       = legHeightAtX(xA)
-      const hB       = legHeightAtX(xB)
-      const spanW    = xB - xA
-
-      // Use BE data for decisions when available, otherwise compute FE-side
-      const beDiag = beDiags?.find(d => d.spanIdx === i)
-      let isDouble, skip, topPct, botPct
-
-      if (beDiag) {
-        isDouble = beDiag.isDouble
-        skip     = beDiag.disabled
-        topPct   = beDiag.topPct
-        botPct   = beDiag.botPct
-      } else {
-        isDouble = hA >= DOUBLE_ABOVE || hB >= DOUBLE_ABOVE
-        const ov = diagOverrides[i] ?? {}
-        skip     = hA < SKIP_BELOW && hB < SKIP_BELOW
-        if (ov.disabled === true)  skip = true
-        if (ov.disabled === false) skip = false
-        const reversed  = numSpans > 1 && i === 0
-        const defTopPct = reversed ? (isDouble ? 0.90 : 1 - diagTopPct) : (isDouble ? 0.10 : diagTopPct)
-        const defBotPct = reversed ? (1 - diagBasePct) : diagBasePct
-        topPct   = ov.topPct !== undefined ? ov.topPct : defTopPct
-        botPct   = ov.botPct !== undefined ? ov.botPct : defBotPct
-      }
-
-      // Pixel positions (always computed FE-side from leg positions)
-      const topX      = xA + topPct * spanW
-      const botX      = xA + botPct * spanW
-      const topY      = beamY(topX)
-      const botY      = baseY + BEAM_THICK_PX / 2
+    const raw = beDiags.map(d => {
+      if (d.spanIdx >= numSpans) return null
+      const xA = allLegXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
+      const spanW = xB - xA
+      const topX = xA + d.topPct * spanW
+      const botX = xA + d.botPct * spanW
+      // Interpolate slope Y from leg heights at span endpoints
+      const hATopY = allLegTopYs[d.spanIdx], hBTopY = allLegTopYs[d.spanIdx + 1]
+      const topY = hATopY + d.topPct * (hBTopY - hATopY)
+      const botY = baseY + BEAM_THICK_PX / 2
       const _dx = botX - topX, _dy = botY - topY
       const _len = Math.sqrt(_dx * _dx + _dy * _dy)
       const ux = _len > 0 ? _dx / _len : 0, uy = _len > 0 ? _dy / _len : 0
       const halfCap = BEAM_THICK_PX * 0.75 / 2
-      const lenCm   = beDiag?.lengthCm ?? ((_len + BEAM_THICK_PX * 0.75) / SC)
-      const reversed = numSpans > 1 && i === 0
-      return { xA, xB, hA, hB, spanW, topX, botX, topY, botY, ux, uy, halfCap, lenCm, isDouble, reversed, skip, spanIndex: i }
-    })
-    // Safety: if all skip and no BE data, force-show rightmost
-    if (!beDiags) {
-      const anyVisible = raw.some(s => !s.skip)
-      if (!anyVisible) {
-        for (let i = raw.length - 1; i >= 0; i--) {
-          if ((diagOverrides[raw[i].spanIndex] ?? {}).disabled !== true) {
-            raw[i] = { ...raw[i], skip: false }
-            break
-          }
-        }
+      const reversed = numSpans > 1 && d.spanIdx === 0
+      return {
+        xA, xB, spanW, topX, botX, topY, botY, ux, uy, halfCap,
+        lenCm: d.lengthCm, isDouble: d.isDouble, reversed, skip: d.disabled,
+        spanIndex: d.spanIdx,
+        hA: allLegHeights[d.spanIdx] / SC, hB: allLegHeights[d.spanIdx + 1] / SC,
       }
-    }
+    }).filter(Boolean)
     return raw.filter(s => !s.skip)
   })()
 
