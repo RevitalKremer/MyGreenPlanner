@@ -659,47 +659,56 @@ async def compute_and_save_trapezoid_details(
 
         label = area.get('label', '')
 
-        # Derive line rails from computed area data (all lines, including empty — FE needs them for ghost rendering)
-        computed_area = _get_computed_area(data, label)
-        line_rails = _derive_line_rails(computed_area)
-
         # Build panel lines from trap's lineOrientations
         line_orients = trap_cfg.get('lineOrientations', ['vertical'])
+
+        # Derive line rails — only for active (non-empty) lines of this trapezoid.
+        # Ghost rendering is handled by the FE overlaying the full trap's DetailView.
+        computed_area = _get_computed_area(data, label)
+        all_line_rails = _derive_line_rails(computed_area)
+        line_rails = {
+            li: offs for li, offs in all_line_rails.items()
+            if int(li) < len(line_orients) and 'empty' not in line_orients[int(li)]
+        }
+        # Build panel_lines only for active (non-empty) lines.
+        # Remap line_rails keys to match the filtered panel_lines indices.
         panel_lines = []
+        remapped_line_rails = {}
+        active_idx = 0
         for li, orient in enumerate(line_orients):
-            is_h = orient in ('horizontal', 'empty-horizontal')
-            is_empty = 'empty' in orient
-            if orient in ('vertical', 'empty-vertical'):
-                depth = step2.get('panelLengthCm', 238.2)
-            else:
-                depth = step2.get('panelWidthCm', 113.4)
-            gap = app_defaults.get('panelGapCm', 2.5) if li > 0 else 0
+            if 'empty' in orient:
+                continue  # skip empty lines — ghost handled by FE overlay
+            is_h = orient == 'horizontal'
+            depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
+            gap = app_defaults.get('panelGapCm', 2.5) if active_idx > 0 else 0
+            # Remap: original line index li → new active index active_idx
+            if str(li) in line_rails:
+                remapped_line_rails[str(active_idx)] = line_rails[str(li)]
             panel_lines.append({
                 'depthCm': depth,
                 'gapBeforeCm': gap,
-                'isEmpty': is_empty,
+                'isEmpty': False,
                 'isHorizontal': is_h,
             })
+            active_idx += 1
+
+        # Use remapped line_rails (keys match filtered panel_lines indices)
+        line_rails = remapped_line_rails
 
         t_cfg = (trapezoid_configs or {}).get(trap_id, {})
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
 
-        # Get bases data from computed area.
-        # baseLengthCm must span the full panel depth (including empty lines)
-        # so the frame geometry matches A1's — ghost elements are just dashed, not absent.
+        # Get bases data from computed area — use the trap's own actual base data
         bases_data = None
         if computed_area:
             bases = [b for b in computed_area.get('bases', []) if b.get('trapezoidId') == trap_id]
             if bases:
-                # Find the matching full-active trapezoid's base length (the longest base in the area)
-                all_area_bases = computed_area.get('bases', [])
-                full_base_length = max((b.get('lengthCm', 0) for b in all_area_bases), default=0)
                 base_overhang = t_cfg.get('baseOverhangCm', app_defaults.get('baseOverhangCm', 5))
                 bases_data = {
-                    'baseLengthCm': full_base_length,
+                    'baseLengthCm': bases[0].get('lengthCm', 0),
                     'rearLegDepthCm': bases[0].get('topDepthCm', 0) + base_overhang,
-                    'frontLegDepthCm': bases[0].get('topDepthCm', 0) + full_base_length - base_overhang,
+                    'frontLegDepthCm': bases[0].get('bottomDepthCm', 0) - base_overhang,
                 }
 
         rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
@@ -725,8 +734,86 @@ async def compute_and_save_trapezoid_details(
         )
 
         if detail:
+            is_full = all('empty' not in o for o in line_orients)
+            detail['isFullTrap'] = is_full
             _upsert_computed_trapezoid(step3, trap_id, detail)
             result[trap_id] = detail
+
+    # ── Second pass: for trimmed traps, derive legs from the full trap ────
+    # All traps in an area share the same rail positions. Trimmed traps
+    # keep only the legs whose positions match their active rail offsets.
+    full_trap_detail = None
+    for tid, detail in result.items():
+        if detail.get('isFullTrap'):
+            full_trap_detail = detail
+            break
+
+    if full_trap_detail:
+        for tid, detail in result.items():
+            if detail.get('isFullTrap'):
+                continue
+            trap_cfg_local = trapezoids.get(tid, {})
+            local_orients = trap_cfg_local.get('lineOrientations', ['vertical'])
+            # Find the area this trap belongs to and get all line rails
+            trap_area = None
+            for a in areas:
+                if tid in a.get('trapezoidIds', []):
+                    trap_area = a
+                    break
+            trap_label = trap_area.get('label', '') if trap_area else ''
+            trap_computed_area = _get_computed_area(data, trap_label)
+            trap_all_line_rails = _derive_line_rails(trap_computed_area)
+            # Get the active rail offsets for this trimmed trap
+            active_offsets = set()
+            for li, orient in enumerate(local_orients):
+                if 'empty' in orient:
+                    continue
+                for off in trap_all_line_rails.get(str(li), []):
+                    active_offsets.add(round(off, 1))
+
+            # Filter full trap's legs: keep outer rear + legs at active rail positions
+            full_legs = full_trap_detail.get('legs', [])
+            filtered_legs = []
+            for leg in full_legs:
+                pos = round(leg['positionCm'], 1)
+                if not leg['isInner']:
+                    # Outer rear leg (position 0): always keep
+                    if pos == 0:
+                        filtered_legs.append(leg)
+                    # Outer front leg: replace with the last active inner leg position
+                    # (or keep if it matches an active rail)
+                    else:
+                        continue  # skip — will add the correct front outer below
+                else:
+                    # Inner leg: keep only if its position matches an active rail offset
+                    if pos in active_offsets:
+                        filtered_legs.append(leg)
+
+            # Add front outer leg at the last active position
+            if filtered_legs:
+                last_active_leg = filtered_legs[-1]
+                # Convert the last inner leg to an outer leg
+                filtered_legs.append({
+                    'positionCm': last_active_leg['positionCm'],
+                    'heightCm': last_active_leg['heightCm'],
+                    'isInner': False,
+                    'side': 'outer',
+                })
+                # Remove it from inner if it was inner
+                if last_active_leg['isInner'] and len(filtered_legs) >= 2:
+                    filtered_legs.pop(-2)
+
+            detail['legs'] = filtered_legs
+
+            # Filter diagonals: keep only spans within the filtered leg range
+            num_filtered_spans = len(filtered_legs) - 1
+            detail['diagonals'] = [
+                d for d in detail.get('diagonals', [])
+                if d['spanIdx'] < num_filtered_spans
+            ]
+
+            _upsert_computed_trapezoid(step3, tid, detail)
+            result[tid] = detail
 
     project.data = data
     flag_modified(project, 'data')

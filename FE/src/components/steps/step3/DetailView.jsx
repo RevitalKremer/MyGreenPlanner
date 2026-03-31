@@ -6,11 +6,15 @@ import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, paramGroup: PARAM_GROUP = {}, onReset = null, onUpdateSetting = null, printMode = false }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, onReset = null, onUpdateSetting = null, printMode = false }) {
   const { t } = useLang()
-  const [showAnnotations,  setShowAnnotations]  = useState(true)
-  const [showPunches,      setShowPunches]      = useState(true)
-  const [showDiagHandles,  setShowDiagHandles]  = useState(true)
+  const [_showAnnotations, setShowAnnotations]  = useState(true)
+  const [_showPunches,     setShowPunches]      = useState(true)
+  const [_showDiagHandles, setShowDiagHandles]  = useState(true)
+  const [showGhost,        setShowGhost]        = useState(true)
+  const showAnnotations = _showAnnotations
+  const showPunches     = _showPunches
+  const showDiagHandles = _showDiagHandles
   const [rulerActive,      setRulerActive]      = useState(false)
   const [barHover,         setBarHover]         = useState(null) // { which: 'top'|'bot', svgX } | null
   const [hoverHandle,      setHoverHandle]      = useState(null) // { which, spanIndex } | null
@@ -64,8 +68,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
   const segments = (panelLines && panelLines.length > 0)
     ? panelLines
-    : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
-  const totalPanelDepthCm = segments.reduce((s, seg) => s + seg.gapBeforeCm + seg.depthCm, 0)
+    : [{ depthCm: panelLengthCm ?? 0, gapBeforeCm: 0 }]
+  const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
   const padL = Math.max(120, railOffH + OHx + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
@@ -112,12 +116,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     let dCm = 0
     for (let si = 0; si < segments.length; si++) {
       const seg = segments[si]
-      dCm += seg.gapBeforeCm
+      dCm += (seg.gapBeforeCm ?? 0)
       const segRails = lineRails?.[si] ?? []
       for (const offsetCm of segRails) {
         items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm, globalOffsetCm: dCm + offsetCm })
       }
-      dCm += seg.depthCm
+      dCm += (seg.depthCm ?? 0)
     }
     return items
   })()
@@ -147,25 +151,33 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   Object.values(segSortedIndices).forEach(arr =>
     arr.forEach((globalIdx, pos) => railPosInSeg.set(globalIdx, { pos, N: arr.length }))
   )
-  // Inner legs: left half of segment → shift left; right half → shift right; single rail → left
-  const innerLegXs = railItems.slice(1, -1).map((r, ci) => {
-    const offset = crossRailEdgeDistCm * Math.cos(angleRad) * SC
-    const { pos, N } = railPosInSeg.get(ci + 1) ?? { pos: 0, N: 1 }
-    return (N > 1 && pos > Math.floor((N - 1) / 2)) ? r.cx + offset : r.cx - offset
-  })
-  const allLegXs = [legX0, ...innerLegXs, legX1]
+  // Leg X positions: use BE data when available, otherwise compute from rail items
+  const allLegXs = (() => {
+    const beLegs = beDetailData?.legs
+    if (beLegs && beLegs.length >= 2) {
+      // Convert BE leg positionCm to SVG x using atSlope
+      return beLegs.map(leg => atSlope(leg.positionCm).x)
+    }
+    // Fallback: compute from rail items (same as before)
+    const innerLegXsFallback = railItems.slice(1, -1).map((r, ci) => {
+      const offset = crossRailEdgeDistCm * Math.cos(angleRad) * SC
+      const { pos, N } = railPosInSeg.get(ci + 1) ?? { pos: 0, N: 1 }
+      return (N > 1 && pos > Math.floor((N - 1) / 2)) ? r.cx + offset : r.cx - offset
+    })
+    return [legX0, ...innerLegXsFallback, legX1]
+  })()
+  const innerLegXs = allLegXs.slice(1, -1)
+  // Override beam-end leg positions from BE data
+  const actualLegX0 = allLegXs[0]
+  const actualLegX1 = allLegXs[allLegXs.length - 1]
   // Build diagonal data: use BE decisions (topPct, botPct, isDouble, disabled) when available,
   // but always compute pixel positions (topX, botX, topY, botY) from leg positions.
-  // ── Active zone: leading/trailing empty segments (needed before diagonals) ──
-  const firstActiveSegIdx = segments.findIndex(s => !s.isEmpty)
-  const lastActiveSegIdx  = segments.length - 1 - [...segments].reverse().findIndex(s => !s.isEmpty)
+  // No per-element ghost flags — ghost is rendered as a separate SVG overlay
   const innerRailItems  = railItems.slice(1, -1)
-  const innerLegIsGhost = innerRailItems.map(r => r.segIdx < firstActiveSegIdx || r.segIdx > lastActiveSegIdx)
-  const legIsGhostFull = allLegXs.map((_, i) => {
-    if (i === 0)                   return firstActiveSegIdx > 0
-    if (i === allLegXs.length - 1) return lastActiveSegIdx < segments.length - 1
-    return innerLegIsGhost[i - 1] ?? false
-  })
+  const innerLegIsGhost = innerRailItems.map(() => false)
+  const legIsGhostFull  = allLegXs.map(() => false)
+  const firstActiveSegIdx = 0
+  const lastActiveSegIdx  = segments.length - 1
 
   const beDiags = beDetailData?.diagonals ?? null
   const diagonals = (() => {
@@ -232,11 +244,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const firstActiveLegIdx = _fali < 0 ? 0 : _fali
   const _laliRev = [...legIsGhostFull].reverse().findIndex(g => !g)
   const lastActiveLegIdx  = _laliRev < 0 ? legIsGhostFull.length - 1 : (legIsGhostFull.length - 1 - _laliRev)
-  const activeBeamL = allLegXs[firstActiveLegIdx]   // left active boundary x
-  const activeBeamR = allLegXs[lastActiveLegIdx]    // right active boundary x
+  const hasActiveZone = firstActiveLegIdx <= lastActiveLegIdx
+  const activeBeamL = hasActiveZone ? allLegXs[firstActiveLegIdx] : legX0
+  const activeBeamR = hasActiveZone ? allLegXs[lastActiveLegIdx]  : legX0
   // Outer edges of active beam ends: outer legs already at edge; inner legs are center-based so offset by half thickness
-  const activeBoundL = firstActiveLegIdx === 0                    ? activeBeamL : activeBeamL - BEAM_THICK_PX / 2
-  const activeBoundR = lastActiveLegIdx  === allLegXs.length - 1 ? activeBeamR : activeBeamR + BEAM_THICK_PX / 2
+  const activeBoundL = hasActiveZone ? (firstActiveLegIdx === 0 ? activeBeamL : activeBeamL - BEAM_THICK_PX / 2) : legX0
+  const activeBoundR = hasActiveZone ? (lastActiveLegIdx === allLegXs.length - 1 ? activeBeamR : activeBeamR + BEAM_THICK_PX / 2) : legX0
 
   // Ghost style: all rendered as rects using centralized ghost colors
   const ghostRect = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
@@ -266,16 +279,16 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
   // Slope positions at the edges of the active panel area
   const activePanelStart = (() => {
-    if (firstActiveSegIdx < 0) return { x: panelX1, y: panelY1 }
+    if (firstActiveSegIdx < 0 || firstActiveSegIdx >= segments.length) return { x: panelX1, y: panelY1 }
     let d = 0
-    for (let i = 0; i < firstActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + segments[i].depthCm
+    for (let i = 0; i < firstActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + (segments[i].depthCm ?? 0)
     d += segments[firstActiveSegIdx].gapBeforeCm ?? 0
     return atSlope(d)
   })()
   const activePanelEnd = (() => {
-    if (lastActiveSegIdx < 0) return { x: panelX2, y: panelY2 }
+    if (lastActiveSegIdx < 0 || lastActiveSegIdx >= segments.length) return { x: panelX2, y: panelY2 }
     let d = 0
-    for (let i = 0; i <= lastActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + segments[i].depthCm
+    for (let i = 0; i <= lastActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + (segments[i].depthCm ?? 0)
     return atSlope(d)
   })()
 
@@ -440,7 +453,103 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               </span>
             </div>
 
-            <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
+            <svg ref={svgRef} width={svgW} height={svgH}
+              style={{ display: 'block', overflow: 'visible' }}>
+
+              {/* ── Ghost layer: full trap structural outline drawn in ghost style ── */}
+              {showGhost && fullTrapGhost?.beDetailData?.geometry && (() => {
+                const gGeom = fullTrapGhost.beDetailData.geometry
+                const gAngleRad = gGeom.angle * Math.PI / 180
+                const gBW = gGeom.baseLength * SC
+                const gOHx = baseOverhangCm * Math.cos(gAngleRad) * SC
+                const gOHy = baseOverhangCm * Math.sin(gAngleRad) * SC
+                const gHR = gGeom.heightRear * SC
+                const gHF = gGeom.heightFront * SC
+                // Align at panel start (rear edge): same x0, shift y so rear leg tops match
+                const gBaseY = baseY + (hR - gHR)
+                const gTopY0 = gBaseY - gHR
+                const gTopY1 = gBaseY - gHF
+                const gX0 = x0
+                const gX1 = x0 + gBW
+                const gLegX0 = gX0 - gOHx
+                const gLegX1 = gX1 + gOHx
+                const gTopExtX0 = gLegX0, gTopExtY0 = gTopY0 + gOHy
+                const gTopExtX1 = gLegX1, gTopExtY1 = gTopY1 - gOHy
+                const gSlope = gBW > 0 ? (gTopY1 - gTopY0) / gBW : 0
+                const gBeamY = (gx) => gTopY0 + gSlope * (gx - gX0)
+                const gBlockTopY = gBaseY + BEAM_THICK_PX
+
+                // Ghost style helpers — same as original ghost rendering (filled rects with dashed stroke)
+                const GR = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
+                const GL = ({ x1: lx1, y1: ly1, x2: lx2, y2: ly2, sw }) => {
+                  const dx = lx2 - lx1, dy = ly2 - ly1
+                  const len = Math.sqrt(dx * dx + dy * dy)
+                  const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
+                  const ang = Math.atan2(dy, dx) * 180 / Math.PI
+                  return GR({ x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
+                }
+
+                const gDiags = (fullTrapGhost.beDetailData.diagonals ?? []).filter(d => !d.disabled)
+                const gLegs = fullTrapGhost.beDetailData.legs ?? []
+                const gAllLegXs = gLegs.map((leg, i) => {
+                  if (i === 0) return gLegX0
+                  if (i === gLegs.length - 1) return gLegX1
+                  const frac = gGeom.baseLength > 0 ? Math.min(1, Math.max(0, leg.positionCm / (gGeom.baseLength + 2 * baseOverhangCm))) : 0
+                  return gLegX0 + frac * (gLegX1 - gLegX0)
+                })
+
+                return (
+                  <g pointerEvents="none">
+                    {/* Ghost base beam */}
+                    {GR({ x: gLegX0, y: gBaseY, width: gLegX1 - gLegX0, height: BEAM_THICK_PX })}
+                    {/* Ghost slope beam */}
+                    {GL({ x1: gTopExtX0, y1: gTopExtY0, x2: gTopExtX1, y2: gTopExtY1, sw: BEAM_THICK_PX })}
+                    {/* Ghost rear leg */}
+                    {GL({ x1: gLegX0 + BEAM_THICK_PX / 2, y1: gTopY0, x2: gLegX0 + BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
+                    {/* Ghost front leg */}
+                    {GL({ x1: gLegX1 - BEAM_THICK_PX / 2, y1: gTopY1, x2: gLegX1 - BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
+                    {/* Ghost inner legs */}
+                    {gAllLegXs.slice(1, -1).map((lx, ci) => {
+                      const ly = gBeamY(lx)
+                      return GL({ key: `gl${ci}`, x1: lx, y1: ly, x2: lx, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX * 0.6 })
+                    })}
+                    {/* Ghost diagonals */}
+                    {gDiags.map((d, di) => {
+                      if (d.spanIdx >= gAllLegXs.length - 1) return null
+                      const xA = gAllLegXs[d.spanIdx], xB = gAllLegXs[d.spanIdx + 1]
+                      const spanW = xB - xA
+                      const topX = xA + d.topPct * spanW
+                      const botX = xA + d.botPct * spanW
+                      return GL({ key: `gd${di}`, x1: topX, y1: gBeamY(topX), x2: botX, y2: gBaseY + BEAM_THICK_PX / 2, sw: BEAM_THICK_PX * 0.75 })
+                    })}
+                    {/* Ghost blocks */}
+                    {(fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) => {
+                      const gBaseBeamLen = gGeom.baseBeamLength || (gLegX1 - gLegX0) / SC
+                      const bx = gLegX0 + (blk.positionCm / gBaseBeamLen) * (gLegX1 - gLegX0) - blockW / 2
+                      return GR({ key: `gb${bi}`, x: bx, y: gBlockTopY, width: blockW, height: blockH })
+                    })}
+                    {/* Ghost panels (along the slope) */}
+                    {(fullTrapGhost.panelLines ?? []).map((seg, si) => {
+                      let dCm = 0
+                      for (let j = 0; j < si; j++) dCm += (fullTrapGhost.panelLines[j].gapBeforeCm ?? 0) + (fullTrapGhost.panelLines[j].depthCm ?? 0)
+                      dCm += (seg.gapBeforeCm ?? 0)
+                      const gPanelOffX = -Math.sin(gAngleRad) * (BEAM_THICK_PX / 2 + 10 + 3)
+                      const gPanelOffY = -Math.cos(gAngleRad) * (BEAM_THICK_PX / 2 + 10 + 3)
+                      const p1x = (gX0 - RAIL_CM * Math.cos(gAngleRad) * SC) + dCm * Math.cos(gAngleRad) * SC + gPanelOffX
+                      const p1y = (gTopY0 + RAIL_CM * Math.sin(gAngleRad) * SC) - dCm * Math.sin(gAngleRad) * SC + gPanelOffY
+                      const p2x = p1x + seg.depthCm * Math.cos(gAngleRad) * SC
+                      const p2y = p1y - seg.depthCm * Math.sin(gAngleRad) * SC
+                      const dx = p2x - p1x, dy = p2y - p1y
+                      const len = Math.sqrt(dx * dx + dy * dy)
+                      const mx = (p1x + p2x) / 2, my = (p1y + p2y) / 2
+                      const ang = Math.atan2(dy, dx) * 180 / Math.PI
+                      return GR({ key: `gp${si}`, x: -len / 2, y: -3, width: len, height: 6, transform: `translate(${mx},${my}) rotate(${ang})` })
+                    })}
+                    {/* Ghost ground line */}
+                    <line x1={gLegX0 - 20} y1={gBlockTopY + blockH} x2={gLegX1 + 20} y2={gBlockTopY + blockH} stroke={GHOST_STROKE} strokeWidth="1.5" strokeDasharray={GHOST_DASH} />
+                  </g>
+                )
+              })()}
               <defs>
                 <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
                   <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
@@ -693,7 +802,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   label={fmt(activeSlopeBeamLenCm)} off={-(PANEL_OFFSET_PX + 14)} />
 
                 {(() => {
-                  if (firstActiveSegIdx < 0) return null
+                  if (!hasActiveZone) return null
                   const splitOff = -(PANEL_OFFSET_PX + 30)
                   const toCm = (dx) => fmt(dx / SC / Math.cos(angleRad))
                   const activeRailItems = railItems.filter(r => r.segIdx >= firstActiveSegIdx && r.segIdx <= lastActiveSegIdx)
@@ -929,9 +1038,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
         layers={[
-          { label: 'Annotations',   checked: showAnnotations,  setter: setShowAnnotations  },
-          { label: 'Punches',       checked: showPunches,      setter: setShowPunches      },
-          { label: 'Edit Bar',      checked: showDiagHandles,  setter: setShowDiagHandles  },
+          { label: 'Annotations',   checked: _showAnnotations, setter: setShowAnnotations  },
+          { label: 'Punches',       checked: _showPunches,     setter: setShowPunches      },
+          { label: 'Edit Bar',      checked: _showDiagHandles, setter: setShowDiagHandles  },
+          ...(fullTrapGhost ? [{ label: 'Ghost', checked: showGhost, setter: setShowGhost }] : []),
         ]}
         actions={[
           ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),

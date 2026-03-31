@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, getRails, getBases, updateStep, saveTab } from './services/projectsApi'
+import { listProjects, getProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -102,11 +102,15 @@ function App() {
     if (s.currentStep === 3 && s.cloudProjectId) {
       setBeRailsData(null)
       setBeBasesData(null)
+      setBeTrapezoidsData(null)
       getRails(s.cloudProjectId)
         .then(setBeRailsData)
         .catch(console.error)
       getBases(s.cloudProjectId)
         .then(setBeBasesData)
+        .catch(console.error)
+      getTrapezoids(s.cloudProjectId)
+        .then(setBeTrapezoidsData)
         .catch(console.error)
     }
   }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case

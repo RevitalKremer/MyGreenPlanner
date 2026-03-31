@@ -69,6 +69,12 @@ export async function getBases(id) {
   return res.json()
 }
 
+export async function getTrapezoids(id) {
+  const res = await mgpRequest(`/projects/${id}/trapezoids`)
+  if (!res.ok) throw new Error('Failed to fetch trapezoids')
+  return res.json()
+}
+
 export async function saveTab(id, tabName, step3Data = null, trapezoidConfigs = null) {
   const body = {}
   if (step3Data) body.step3 = step3Data

@@ -419,12 +419,15 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const linesPerRow = override.linesPerRow ?? areaGroup2.linesPerRow ?? globalCfg.linesPerRow ?? 1
     const lineOrientations = (override.lineOrientations ?? areaGroup2.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
 
-    return lineOrientations.map((o, i) => ({
-      depthCm: isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
-      gapBeforeCm: i === 0 ? 0 : panelGapCm,
-      isEmpty: isEmptyOrientation(o),
-      isHorizontal: isHorizontalOrientation(o),
-    }))
+    // Only include active (non-empty) lines — ghost handled by overlay of full trap
+    return lineOrientations
+      .filter(o => !isEmptyOrientation(o))
+      .map((o, i) => ({
+        depthCm: isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
+        gapBeforeCm: i === 0 ? 0 : panelGapCm,
+        isEmpty: false,
+        isHorizontal: isHorizontalOrientation(o),
+      }))
   }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings, areas, rowKeys])
 
   // lineRails for the selected row (for sidebar widgets / spacing display / detail tab)
@@ -436,10 +439,18 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     return getLineOrientations(areaKey, trapId)
   }, [selectedRowIdx, rowKeys, effectiveSelectedTrapId, getLineOrientations])
 
-  const selectedLineRails = useMemo(() =>
-    getLineRails(selectedRowIdx, selectedLineOrientations),
-    [selectedRowIdx, selectedLineOrientations, getLineRails]
-  )
+  const selectedLineRails = useMemo(() => {
+    const allRails = getLineRails(selectedRowIdx, selectedLineOrientations)
+    // Remap: only include active (non-empty) lines, re-index from 0
+    const remapped = {}
+    let activeIdx = 0
+    for (let li = 0; li < selectedLineOrientations.length; li++) {
+      if (isEmptyOrientation(selectedLineOrientations[li])) continue
+      if (allRails[li]) remapped[activeIdx] = allRails[li]
+      activeIdx++
+    }
+    return remapped
+  }, [selectedRowIdx, selectedLineOrientations, getLineRails])
 
   const selectedLinePanelDepths = useMemo(() =>
     selectedLineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm)),
@@ -677,7 +688,33 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'areas'  && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={areaLabel} />}
-          {activeTab === 'detail' && <div style={{ height: '100%', overflow: 'hidden' }}><DetailView rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId} panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)} lineRails={selectedLineRails} highlightParam={highlightParam} beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]} paramGroup={PARAM_GROUP} onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }} onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)} /></div>}
+          {activeTab === 'detail' && (() => {
+            // Find the full trap for ghost overlay (the one with no empty lines in this area)
+            const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
+            const fullTrapId = areaTrapIds.find(tid =>
+              beTrapezoidsData?.[tid]?.isFullTrap && tid !== effectiveSelectedTrapId
+            )
+            const fullTrapGhost = fullTrapId ? {
+              beDetailData: beTrapezoidsData[fullTrapId],
+              panelLines: trapPanelLinesMap[fullTrapId],
+              lineRails: trapLineRailsMap[fullTrapId],
+              rc: trapRCMap[fullTrapId],
+            } : null
+            return (
+              <div style={{ height: '100%', overflow: 'hidden' }}>
+                <DetailView
+                  rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
+                  panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)}
+                  lineRails={selectedLineRails} highlightParam={highlightParam}
+                  beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
+                  fullTrapGhost={fullTrapGhost}
+                  paramGroup={PARAM_GROUP}
+                  onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }}
+                  onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)}
+                />
+              </div>
+            )
+          })()}
 
           {activeTab === 'rails'  && (
             <div style={{ height: '100%', overflow: 'hidden' }}>

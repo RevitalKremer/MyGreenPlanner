@@ -260,6 +260,21 @@ async def get_bases(
     ]
 
 
+@router.get("/{project_id}/trapezoids")
+async def get_trapezoids(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return saved computed trapezoid details."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    computed_traps = (project.data or {}).get('step3', {}).get('computedTrapezoids', [])
+    return {ct['trapId']: ct for ct in computed_traps if 'trapId' in ct}
+
+
 @router.get("/{project_id}/rails/dimensions")
 async def get_rail_dimensions(
     project_id: uuid.UUID,
