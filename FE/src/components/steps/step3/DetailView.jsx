@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BORDER, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import LayersPanel from './LayersPanel'
@@ -99,7 +99,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     x: panelX1 + dCm * Math.cos(angleRad) * SC,
     y: panelY1 - dCm * Math.sin(angleRad) * SC,
   })
-  const { x: panelX2, y: panelY2 } = atSlope(totalPanelDepthCm)
+  const { x: panelX2 } = atSlope(totalPanelDepthCm)
 
   const beamY = (x) => topY0 + slope * (x - x0)
 
@@ -174,12 +174,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   }
   // Build diagonal data: use BE decisions (topPct, botPct, isDouble, disabled) when available,
   // but always compute pixel positions (topX, botX, topY, botY) from leg positions.
-  // No per-element ghost flags — ghost is rendered as a separate SVG overlay
-  const innerRailItems  = railItems.slice(1, -1)
-  const innerLegIsGhost = innerRailItems.map(() => false)
-  const legIsGhostFull  = allLegXs.map(() => false)
-  const firstActiveSegIdx = 0
-  const lastActiveSegIdx  = segments.length - 1
 
   // Diagonals — always from BE data, FE only computes pixel positions
   const diagonals = (() => {
@@ -210,11 +204,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     return raw.filter(s => !s.skip)
   })()
 
-  // Active beam boundary: first and last non-ghost leg indices
-  const _fali = legIsGhostFull.findIndex(g => !g)
-  const firstActiveLegIdx = _fali < 0 ? 0 : _fali
-  const _laliRev = [...legIsGhostFull].reverse().findIndex(g => !g)
-  const lastActiveLegIdx  = _laliRev < 0 ? legIsGhostFull.length - 1 : (legIsGhostFull.length - 1 - _laliRev)
+  // All legs are active (ghost handled by overlay)
+  const firstActiveLegIdx = 0
+  const lastActiveLegIdx  = allLegXs.length - 1
   const hasActiveZone = firstActiveLegIdx <= lastActiveLegIdx
   const activeBeamL = hasActiveZone ? allLegXs[firstActiveLegIdx] : legX0
   const activeBeamR = hasActiveZone ? allLegXs[lastActiveLegIdx]  : legX0
@@ -223,14 +215,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const activeBoundR = hasActiveZone ? (lastActiveLegIdx === allLegXs.length - 1 ? activeBeamR : activeBeamR + BEAM_THICK_PX / 2) : legX0
 
   // Ghost style: all rendered as rects using centralized ghost colors
-  const ghostRect = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
-  const ghostLine = ({ x1, y1, x2, y2, strokeWidth: sw }) => {
-    const dx = x2 - x1, dy = y2 - y1
-    const len = Math.sqrt(dx * dx + dy * dy)
-    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI
-    return ghostRect({ x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
-  }
   // Renders a thick line as a rotated rect so fill + stroke border work correctly with semi-transparent fill
   const lProfileLine = ({ x1, y1, x2, y2, strokeWidth: sw, capExtend: cap = 0 }) => {
     const dx = x2 - x1, dy = y2 - y1
@@ -244,24 +228,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   }
 
   // Diagonals with both legs in the active zone (used for punch sketches + annotations)
-  const activeDiags          = diagonals.filter(d => !legIsGhostFull[d.spanIndex] && !legIsGhostFull[d.spanIndex + 1])
+  const activeDiags          = diagonals
   const activeSlopeBeamLenCm = (activeBoundR - activeBoundL) / legBW * topBeamLength
   const activeBaseBeamLenCm  = (activeBoundR - activeBoundL) / SC
 
-  // Slope positions at the edges of the active panel area
-  const activePanelStart = (() => {
-    if (firstActiveSegIdx < 0 || firstActiveSegIdx >= segments.length) return { x: panelX1, y: panelY1 }
-    let d = 0
-    for (let i = 0; i < firstActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + (segments[i].depthCm ?? 0)
-    d += segments[firstActiveSegIdx].gapBeforeCm ?? 0
-    return atSlope(d)
-  })()
-  const activePanelEnd = (() => {
-    if (lastActiveSegIdx < 0 || lastActiveSegIdx >= segments.length) return { x: panelX2, y: panelY2 }
-    let d = 0
-    for (let i = 0; i <= lastActiveSegIdx; i++) d += (segments[i].gapBeforeCm ?? 0) + (segments[i].depthCm ?? 0)
-    return atSlope(d)
-  })()
+  // Panel start/end positions along the slope
+  const activePanelStart = atSlope(segments[0]?.gapBeforeCm ?? 0)
+  const activePanelEnd   = atSlope(totalPanelDepthCm)
 
   // Spans with no diagonal (skipped by rules or user-deleted) — used for "add" affordance
   const activeSpanSet    = new Set(diagonals.map(d => d.spanIndex))
@@ -524,11 +497,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 </>)
               })()}
 
-              {/* ── Structure: 4 main beams — always fully rendered ── */}
-              {/* ── Base beam: ghost left / active / ghost right ── */}
-              {legIsGhostFull[0] && ghostRect({ x: legX0, y: baseY, width: activeBoundL - legX0, height: BEAM_THICK_PX })}
-              <rect x={activeBoundL} y={baseY} width={activeBoundR - activeBoundL} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-              {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: baseY, width: legX1 - activeBoundR, height: BEAM_THICK_PX })}
+              {/* ── Base beam ── */}
+              <rect x={legX0} y={baseY} width={legBW} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
 
               {/* ── Rear leg ── */}
               {(() => {
@@ -552,14 +522,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {lProfileLine({ x1: legX0, y1: allLegTopYs[0], x2: legX1, y2: allLegTopYs[allLegTopYs.length - 1], strokeWidth: BEAM_THICK_PX })}
               {diagonals.map((d, di) => {
                 const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
-                const isDiagGhost = legIsGhostFull[d.spanIndex] || legIsGhostFull[d.spanIndex + 1]
                 return (
                   <g key={di}>
-                    {isDiagGhost
-                      ? ghostLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, strokeLinecap: 'square' })
-                      : lProfileLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, capExtend: d.halfCap })
-                    }
-                    {!isDiagGhost && d.isDouble && (<>
+                    {lProfileLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, capExtend: d.halfCap })}
+                    {d.isDouble && (<>
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
                         stroke={DANGER} strokeWidth="1" strokeLinecap="square"
                         strokeDasharray="4,4" opacity="0.6" />
@@ -578,7 +544,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                         stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
-                    {!isDiagGhost && showAnnotations && <Dim
+                    {showAnnotations && <Dim
                       ax1={d.topX - d.ux * d.halfCap} ay1={d.topY - d.uy * d.halfCap}
                       ax2={d.botX + d.ux * d.halfCap} ay2={d.botY + d.uy * d.halfCap}
                       label={fmt(d.lenCm)} off={-16} />}
@@ -605,16 +571,14 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   const cx  = (start.x + end.x) / 2 + panOffX
                   const cy  = (start.y + end.y) / 2 + panOffY
                   const len = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
-                  const isGhosted = idx < firstActiveSegIdx || idx > lastActiveSegIdx
                   return (
                     <g key={idx}>
                       <rect
                         x={cx - len/2} y={cy - PANEL_THICK_PX/2}
                         width={len} height={PANEL_THICK_PX}
-                        fill={isGhosted ? GHOST_FILL : seg.isEmpty ? 'white' : PANEL_BAR_FILL}
-                        stroke={isGhosted ? GHOST_STROKE : seg.isEmpty ? BORDER : PANEL_BAR_STROKE}
+                        fill={PANEL_BAR_FILL}
+                        stroke={PANEL_BAR_STROKE}
                         strokeWidth="1"
-                        strokeDasharray={isGhosted || seg.isEmpty ? GHOST_DASH : undefined}
                         transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
                       />
                       {hl('panel') && (
@@ -633,10 +597,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
               {/* ── Cross-rails profile (size from crossRailEdgeDistMm) ── */}
               {railItems.map(({ cx, segIdx, globalOffsetCm }, ci) => {
-                const isEmptySeg = segments[segIdx]?.isEmpty
-                const isGhosted  = segIdx < firstActiveSegIdx || segIdx > lastActiveSegIdx
                 const railFill   = RAIL_FILL
-                const railStroke = isEmptySeg ? BORDER : RAIL_STROKE
+                const railStroke = RAIL_STROKE
                 const cy = beamY(cx)
                 const beamTop  = -BEAM_THICK_PX / 2
                 const panBot   = -(PANEL_OFFSET_PX - PANEL_THICK_PX / 2)
@@ -650,10 +612,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   <g key={ci}>
                     <g transform={`translate(${cx}, ${cy}) rotate(${beamAngleDeg})`}>
                       <rect x={-RW/2} y={midY - RH/2} width={RW} height={RH}
-                        fill={isGhosted ? GHOST_FILL : isEmptySeg ? 'white' : railFill}
-                        stroke={isGhosted ? GHOST_STROKE : isEmptySeg ? BORDER : railStroke}
-                        strokeWidth="1"
-                        strokeDasharray={isGhosted || isEmptySeg ? GHOST_DASH : undefined} />
+                        fill={railFill} stroke={railStroke} strokeWidth="1" />
                       {hl('cross-rails') && (
                         <rect x={-RW/2 - 5} y={midY - RH/2 - 5} width={RW + 10} height={RH + 10}
                           fill="none" stroke={AMBER} strokeWidth="2.5" rx="3"
@@ -671,15 +630,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
               {/* ── Rail support profiles (L-bracket: slope-top → base-bottom, overlaps both beams) ── */}
               {innerLegXs.map((sx, ci) => {
-                const slopeTopY = allLegTopYs[ci + 1]   // inner legs are at index 1..n-2 in allLegTopYs
+                const slopeTopY = allLegTopYs[ci + 1]
                 const lenCm     = (blockTopY - slopeTopY) / SC
-                const isGhost   = innerLegIsGhost[ci] ?? false
                 return (
                   <g key={ci}>
-                    {isGhost
-                      ? ghostLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX, strokeLinecap: 'butt' })
-                      : lProfileLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX })
-                    }
+                    {lProfileLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX })}
                     {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>
                 )
@@ -725,9 +680,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   if (!hasActiveZone) return null
                   const splitOff = -(PANEL_OFFSET_PX + 30)
                   const toCm = (dx) => fmt(dx / SC / Math.cos(angleRad))
-                  const activeRailItems = railItems.filter(r => r.segIdx >= firstActiveSegIdx && r.segIdx <= lastActiveSegIdx)
-                  const aRail1X = activeRailItems[0]?.cx ?? activePanelStart.x
-                  const aRail2X = activeRailItems[activeRailItems.length - 1]?.cx ?? activePanelEnd.x
+                  const aRail1X = railItems[0]?.cx ?? activePanelStart.x
+                  const aRail2X = railItems[railItems.length - 1]?.cx ?? activePanelEnd.x
                   return (<>
                     <Dim ax1={activePanelStart.x} ay1={activePanelStart.y} ax2={aRail1X} ay2={beamY(aRail1X)}
                       label={toCm(aRail1X - activePanelStart.x)} off={splitOff} />
@@ -739,7 +693,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 })()}
 
                 {/* Left leg height: only when main rear leg is active (not ghosted to an inner leg) */}
-                {!legIsGhostFull[0] && beamY(activeBeamL) < baseY && (() => {
+                {(() => {
                   const slopeTopY = beamY(activeBeamL) - Math.cos(angleRad) * BEAM_THICK_PX / 2
                   return <Dim ax1={activeBeamL} ay1={slopeTopY} ax2={activeBeamL} ay2={blockTopY}
                     label={fmt((blockTopY - slopeTopY) / SC)} off={-55} />
@@ -754,7 +708,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   label={fmt(BLOCK_H_CM)} off={-14} />
 
                 {/* Right leg height: only when main front leg is active (not ghosted to an inner leg) */}
-                {!legIsGhostFull[allLegXs.length - 1] && (() => {
+                {(() => {
                   const slopeTopY = beamY(activeBeamR) - Math.cos(angleRad) * BEAM_THICK_PX / 2
                   return <Dim ax1={activeBeamR} ay1={slopeTopY} ax2={activeBeamR} ay2={blockTopY}
                     label={fmt((blockTopY - slopeTopY) / SC)} off={38} />
@@ -776,7 +730,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const activeBeamLenCm   = (activeBoundR - activeBoundL) / SC
-                const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
+                const activeInnerLegXs = innerLegXs
                 const baseMiddle = [
                   ...activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - activeBoundL) / SC) })),
                   ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / SC) })),
@@ -793,18 +747,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g>
                     <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
-                    {/* ghost left extension */}
-                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBoundL - legX0, height: barH })}
-                    {/* interactive active bar */}
-                    <rect x={activeBoundL} y={ry} width={activeBoundR - activeBoundL} height={barH}
+                    <rect x={legX0} y={ry} width={legBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
                       onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'bot') : undefined}
                     />
-                    {/* ghost right extension */}
-                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: ry, width: legX1 - activeBoundR, height: barH })}
                     {/* all punch circles + labels — Punches layer */}
                     {punches.map((px, i) => (
                       <g key={`wp-${i}`}>
@@ -851,7 +800,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 // End punches: 2cm from active beam ends, using same x-scale as full slope beam
                 const leftEndX  = activeBoundL + (2 / topBeamLength) * legBW
                 const rightEndX = activeBoundR - (2 / topBeamLength) * legBW
-                const activeInnerLegXs = innerLegXs.filter((_, ci) => !innerLegIsGhost[ci])
+                const activeInnerLegXs = innerLegXs
                 const slopeMiddle = [
                   ...activeDiags.map(d => ({ x: d.topX, label: fmt((d.topX - activeBoundL) / legBW * topBeamLength) })),
                   ...activeInnerLegXs.map(sx => ({ x: sx, label: fmt((sx - activeBoundL) / legBW * topBeamLength) })),
@@ -868,18 +817,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g>
                     <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
-                    {/* ghost left extension */}
-                    {legIsGhostFull[0] && ghostRect({ x: legX0, y: ry, width: activeBoundL - legX0, height: barH })}
-                    {/* interactive active bar */}
-                    <rect x={activeBoundL} y={ry} width={activeBoundR - activeBoundL} height={barH}
+                    <rect x={legX0} y={ry} width={legBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'top') : undefined}
                       onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'top') : undefined}
                     />
-                    {/* ghost right extension */}
-                    {legIsGhostFull[allLegXs.length - 1] && ghostRect({ x: activeBoundR, y: ry, width: legX1 - activeBoundR, height: barH })}
                     {/* all punch circles + labels — Punches layer */}
                     {punches.map((px, i) => (
                       <g key={`wp-${i}`}>
