@@ -388,7 +388,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const gBlockTopY = gBaseY + BEAM_THICK_PX
 
                 // Ghost style helpers — same as original ghost rendering (filled rects with dashed stroke)
-                const GR = (props) => <rect {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
+                const GR = ({ key, ...props }) => <rect key={key} {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
                 const GL = ({ x1: lx1, y1: ly1, x2: lx2, y2: ly2, sw }) => {
                   const dx = lx2 - lx1, dy = ly2 - ly1
                   const len = Math.sqrt(dx * dx + dy * dy)
@@ -483,10 +483,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const baseCm = (svgX) => fmt((svgX - legX0) / SC)
                 return (<>
                   {beBlocks.map((blk, bi) => {
-                    const bx = atSlope(blk.positionCm).x - blockW / 2
-                    const px = blk.isEnd
-                      ? (bi === 0 ? bx + punchOff : bx + blockW - punchOff)  // end blocks: punch from outer edge
-                      : bx + punchOff                                          // center blocks: punch from left edge
+                    // positionCm is the block's rear-edge depth — left edge of the block on base beam
+                    const bx = atSlope(blk.positionCm).x
+                    const px = bx + punchOff  // punch position from left edge of block
                     return (
                       <g key={bi}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
@@ -635,7 +634,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g key={ci}>
                     {lProfileLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX })}
-                    {!isGhost && showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
+                    {showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(lenCm)} off={14} />}
                   </g>
                 )
               })}
