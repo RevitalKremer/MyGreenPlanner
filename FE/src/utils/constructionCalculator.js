@@ -13,8 +13,8 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
   const panelGapCm     = config.panelGapCm
   const panelWidthCm   = config.panelWidthCm
   const panelLengthCm  = config.panelLengthCm
-  const railOverhang   = config.railOverhang ?? 4  // cm — extension beyond outermost panel on each side
-  const maxSpan        = config.maxSpan      ?? 165  // cm max spacing between trapezoids
+  const railOverhang   = config.railOverhang
+  const maxSpan        = config.maxSpan
 
   // Rail length (total row width including overhang)
   // config.rowLength can be passed from actual panel placement measurements (preferred)
@@ -25,16 +25,16 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
 
   // Trapezoid base (horizontal depth of frame, cm)
   // Use actual measured line depth if provided (multi-line rows), else single panel length
-  const lineDepthCm  = config.lineDepthCm  ?? panelLengthCm
-  const railOffsetCm = config.railOffsetCm ?? 0
-  const crossRailOffsetCm = config.crossRailOffsetCm ?? 0
+  const lineDepthCm  = config.lineDepthCm ?? panelLengthCm
+  const railOffsetCm = config.railOffsetCm
+  const crossRailOffsetCm = config.crossRailOffsetCm
   // baseLength = horizontal leg-to-leg span (first rail to last rail, projected)
   const baseLength   = config.baseLength
     ?? Math.cos(angleRad) * (lineDepthCm - 2 * railOffsetCm)
 
   // Base/slope beam physical lengths include overhang beyond each leg.
   // baseOverhangCm is measured ALONG THE SLOPE (same direction as lineRails offsets).
-  const baseOverhangCm = config.baseOverhangCm ?? 0
+  const baseOverhangCm = config.baseOverhangCm
   // Slope beam = rail-to-rail distance along slope + 2 × slope overhang
   const topBeamLength  = baseLength / Math.cos(angleRad) + 2 * baseOverhangCm
   // Horizontal base beam = slope beam projected onto ground
@@ -98,15 +98,15 @@ export function buildBOM(rowConstructions, rowLabels = []) {
     const areaLabel = rowLabels[i] ?? `Area ${i + 1}`
     const T  = rc.numTrapezoids           // number of frames in this row
     const nS = T - 1                      // number of spans = diagonals per row
-    const numRails = rc.numRails ?? 2
-    const linesPerRow       = rc.linesPerRow       ?? 1
-    const numLargeGaps      = rc.numLargeGaps      ?? 0
-    const numRailConnectors = rc.numRailConnectors ?? 0
+    const numRails = rc.numRails
+    const linesPerRow       = rc.linesPerRow
+    const numLargeGaps      = rc.numLargeGaps
+    const numRailConnectors = rc.numRailConnectors
     const numInnerLegsPerFrame = Math.max(0, numRails - 2)
     const angleRad = rc.angle * Math.PI / 180
     // Average inner leg length: beam-thickness + leg height at midpoint of frame
-    const BEAM_THICK_CM = 4
-    const avgInnerLegCm = BEAM_THICK_CM * (1 + Math.cos(angleRad) / 2)
+    const beamThickCm = rc.beamThickCm
+    const avgInnerLegCm = beamThickCm * (1 + Math.cos(angleRad) / 2)
       + (rc.heightRear + rc.heightFront) / 2
 
     // ── angle_profile_40x40 — frame pieces (beams + legs) ───────────────

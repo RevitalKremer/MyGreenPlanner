@@ -316,9 +316,9 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const s          = getSettings(i)
       const trapBases  = getTrapBasesSettings(trapId)
       const railOverhang = s.railOverhangCm
-      const maxSpan      = (trapBases.spacingMm ?? 2000) / 10
+      const maxSpan      = trapBases.spacingMm / 10
       const angleRad0    = angle * Math.PI / 180
-      const crossRailH0  = (s.crossRailEdgeDistMm ?? 40) / 10
+      const crossRailH0  = s.crossRailEdgeDistMm / 10
 
       const lineOrientations = getLineOrientations(areaKey, trapId)
       const lineRails        = getLineRails(i, lineOrientations)
@@ -348,7 +348,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
         railOverhang,
         maxSpan,
         railOffsetCm,
-        baseOverhangCm: trapBases.baseOverhangCm ?? 0,
+        baseOverhangCm: trapBases.baseOverhangCm,
         crossRailOffsetCm: s.crossRailOffsetCm,
         ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
@@ -375,9 +375,9 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const s           = getSettings(selectedRowIdx)
     const trapBases1  = getTrapBasesSettings(trapId)
     const railOverhang = s.railOverhangCm
-    const maxSpan      = (trapBases1.spacingMm ?? 2000) / 10
+    const maxSpan      = trapBases1.spacingMm / 10
     const angleRad1    = angle * Math.PI / 180
-    const crossRailH1  = (s.crossRailEdgeDistMm ?? 40) / 10
+    const crossRailH1  = s.crossRailEdgeDistMm / 10
 
     const lineOrientations = getLineOrientations(areaKey, trapId)
     const lineRails        = getLineRails(selectedRowIdx, lineOrientations)
@@ -400,7 +400,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       maxSpan,
       lineDepthCm,
       railOffsetCm,
-      baseOverhangCm: trapBases1.baseOverhangCm ?? 0,
+      baseOverhangCm: trapBases1.baseOverhangCm,
       crossRailOffsetCm: s.crossRailOffsetCm,
       ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
     })])
@@ -743,6 +743,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap}
               beTrapezoidsData={beTrapezoidsData}
+              beBasesData={beBasesData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
               onBasesChange={(trapId, offsets) => {

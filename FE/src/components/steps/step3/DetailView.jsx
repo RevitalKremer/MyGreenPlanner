@@ -32,8 +32,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   // Rail offset = first rail of first line (derived from lineRails)
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
   const panelLengthCm  = settings.panelLengthCm
-  const diagTopPct     = (settings.diagTopPct  ?? 25) / 100
-  const diagBasePct    = (settings.diagBasePct ?? 90) / 100
+  const diagTopPct     = settings.diagTopPct / 100
+  const diagBasePct    = settings.diagBasePct / 100
   const diagOverrides  = settings.diagOverrides ?? {}
 
   // Highlight helpers
@@ -46,7 +46,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   // Require BE legs data — without it, rendering produces NaN
   if (!beDetailData?.legs?.length) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
 
-  const baseOverhangCm = settings.baseOverhangCm ?? 0
+  const baseOverhangCm = settings.baseOverhangCm
   const { heightRear, heightFront, baseLength, angle, topBeamLength } = geom
   // Origin offset: BE positions are relative to rear outer leg (positionCm=0).
   // atSlope() works in global panel coords. Add originCm to convert.
@@ -55,11 +55,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   // All physical dimensions from server geometry (cm), converted to px via SC
   const SC         = 2.2
   const RAIL_CM    = railOffsetCm
-  const BLOCK_H_CM = geom.blockHeightCm ?? 15
-  const blockLengthCm = geom.blockLengthCm ?? 50
-  const crossRailEdgeDistCm = geom.crossRailHeightCm ?? 4
-  const beamThickCm = geom.beamThickCm ?? 4
-  const panelThickCm = geom.panelThickCm ?? 3.5
+  const BLOCK_H_CM = geom.blockHeightCm
+  const blockLengthCm = geom.blockLengthCm
+  const crossRailEdgeDistCm = geom.crossRailHeightCm
+  const beamThickCm = geom.beamThickCm
+  const panelThickCm = geom.panelThickCm
 
   const angleRad = angle * Math.PI / 180
   const bW      = baseLength   * SC   // leg-to-leg horizontal span
