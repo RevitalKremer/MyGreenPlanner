@@ -63,8 +63,8 @@ def compute_trapezoid_details(
     diag_base_pct        = _s(settings, ov, 'diagBasePct')
     base_overhang_cm     = _s(settings, ov, 'baseOverhangCm')
     cross_rail_edge_dist_mm = gs.get('crossRailEdgeDistMm', settings['crossRailEdgeDistMm'])
-    beam_thick_cm        = settings['angleProfileSizeMm'] / 10
-    panel_thick_cm       = settings['panelThickCm']
+    beam_thick_cm        = settings.get('angleProfileSizeMm', 40) / 10
+    panel_thick_cm       = settings.get('panelThickCm', 3.5)
 
     angle_rad = angle_deg * math.pi / 180
     cross_rail_cm = cross_rail_edge_dist_mm / 10
@@ -243,28 +243,30 @@ def compute_trapezoid_details(
 
     diagonals = [d for d in raw_diagonals if not d['disabled']]
 
-    # ── Blocks ─────────────────────────────────────────────────────────────
-    num_blocks = max(2, sum(
-        1 if seg.get('isHorizontal') else 2
-        for seg in panel_lines if not seg.get('isEmpty')
-    ))
-    num_center = num_blocks - 2
-
-    # Center blocks from inner rail positions (highest globalOffsetCm)
-    inner_rail_items = rail_items[1:-1] if len(rail_items) > 2 else []
-    center_blocks = sorted(inner_rail_items, key=lambda r: r['globalOffsetCm'])[-num_center:] if num_center > 0 else []
-    center_blocks.sort(key=lambda r: r['globalOffsetCm'])
-
+    # ── Blocks — one per leg ─────────────────────────────────────────────
+    # Rear outer leg: block left edge at leg position (block extends right)
+    # Front outer leg: block right edge at leg position (block extends left)
+    # Inner legs: block centered on rail position (railPositionCm)
+    # Skip if overlap with adjacent block.
     block_punch_clamped = min(block_punch_cm, block_length_cm)
 
-    blocks = [
-        # Rear end block (at origin = 0)
-        {'positionCm': 0, 'isEnd': True},
-        # Center blocks (shifted to origin)
-        *[{'positionCm': _r(r['globalOffsetCm'] - origin), 'isEnd': False} for r in center_blocks],
-        # Front end block
-        {'positionCm': _r(base_length_cm - block_length_cm), 'isEnd': True},
-    ]
+    raw_blocks = []
+    # Rear outer leg
+    raw_blocks.append({'positionCm': _r(rear_outer_pos), 'isEnd': True, 'legIdx': 0})
+    # Inner legs — centered on rail
+    for il in inner_legs:
+        rail_pos = il['railPositionCm']
+        left_edge = rail_pos - block_length_cm / 2
+        raw_blocks.append({'positionCm': _r(left_edge), 'isEnd': False, 'legIdx': None})
+    # Front outer leg — right-aligned
+    raw_blocks.append({'positionCm': _r(front_outer_pos - block_length_cm), 'isEnd': True, 'legIdx': len(legs) - 1})
+
+    # Remove overlaps: walk left-to-right, skip any block that overlaps the previous
+    blocks = []
+    for blk in raw_blocks:
+        if blocks and blk['positionCm'] < blocks[-1]['positionCm'] + block_length_cm - 0.1:
+            continue  # overlaps previous block — skip
+        blocks.append({'positionCm': blk['positionCm'], 'isEnd': blk['isEnd']})
 
     # ── Punches ────────────────────────────────────────────────────────────
     punches = []
@@ -283,7 +285,68 @@ def compute_trapezoid_details(
         'blocks': blocks,
         'punches': punches,
         'diagonals': diagonals,
+        '_blockPunchCm': block_punch_cm,  # kept for align_blocks() recomputation
     }
+
+
+def align_blocks(trap_details: dict[str, dict]) -> None:
+    """
+    Align block positions across all trapezoids in the same area.
+
+    All trapezoids share the same physical base beams, so block depth positions
+    must be consistent. We collect all block positions (in global panel coords),
+    merge into a unified set, then redistribute to each trapezoid — keeping only
+    positions that fall within that trapezoid's beam span.
+
+    Modifies trap_details in place (updates blocks and punches).
+    """
+    if len(trap_details) < 2:
+        return
+
+    # Collect all block positions in global coords (positionCm + originCm)
+    global_positions: set[float] = set()
+    for tid, detail in trap_details.items():
+        origin = detail.get('geometry', {}).get('originCm', 0)
+        for blk in detail.get('blocks', []):
+            global_positions.add(_r(blk['positionCm'] + origin))
+
+    sorted_globals = sorted(global_positions)
+
+    # Redistribute blocks to each trapezoid
+    for tid, detail in trap_details.items():
+        geom = detail.get('geometry', {})
+        origin = geom.get('originCm', 0)
+        beam_len = geom.get('topBeamLength', 0)  # slope length = local span
+        block_length = geom.get('blockLengthCm', 50)
+        block_punch = min(detail.get('_blockPunchCm', 9), block_length)
+
+        # Convert global positions to local, keep those within [0, beamLen]
+        local_positions = []
+        for gp in sorted_globals:
+            lp = _r(gp - origin)
+            if -0.1 <= lp <= beam_len + 0.1:
+                local_positions.append(lp)
+
+        # Remove overlaps (same logic as initial computation)
+        blocks = []
+        for lp in local_positions:
+            if blocks and lp < blocks[-1]['positionCm'] + block_length - 0.1:
+                continue
+            is_end = abs(lp) < 0.1 or abs(lp - (beam_len - block_length)) < 0.1
+            blocks.append({'positionCm': lp, 'isEnd': is_end})
+
+        detail['blocks'] = blocks
+
+        # Recompute punches from new block positions
+        block_punch_clamped = min(block_punch, block_length)
+        punches = []
+        for blk in blocks:
+            pos = blk['positionCm']
+            punches.append({'beamType': 'base', 'positionCm': _r(pos + block_punch_clamped)})
+            punches.append({'beamType': 'base', 'positionCm': _r(pos + block_length - block_punch_clamped)})
+            punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_punch_clamped)})
+            punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_length - block_punch_clamped)})
+        detail['punches'] = punches
 
 
 def _r(v: float) -> float:

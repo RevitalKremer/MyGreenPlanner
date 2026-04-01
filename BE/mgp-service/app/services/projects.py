@@ -385,7 +385,6 @@ def _build_base_inputs(
         'edge_offset_mm':      trap_cfg.get('edgeOffsetMm',      app_defaults['edgeOffsetMm']),
         'spacing_mm':          trap_cfg.get('spacingMm',          app_defaults['spacingMm']),
         'base_overhang_cm':    trap_cfg.get('baseOverhangCm',     app_defaults['baseOverhangCm']),
-        'block_length_cm':     app_defaults.get('blockLengthCm',  50),
         'cross_rail_offset_cm': app_defaults.get('crossRailEdgeDistMm', 40) / 10,
         'panel_gap_cm':        app_defaults['panelGapCm'],
         'trapezoid_id':        trapezoid_id,
@@ -458,7 +457,7 @@ async def compute_and_save_bases(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_([
                 'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
-                'blockLengthCm', 'crossRailEdgeDistMm',
+                'crossRailEdgeDistMm',
             ])
         )
     )).all()
@@ -629,6 +628,7 @@ async def compute_and_save_trapezoid_details(
                 'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
                 'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
                 'crossRailEdgeDistMm', 'angleProfileSizeMm', 'panelThickCm',
+                'diagTopPct', 'diagBasePct',
             ])
         )
     )).all()
@@ -699,16 +699,28 @@ async def compute_and_save_trapezoid_details(
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
 
-        # Get bases data from computed area — use the trap's own actual base data
+        # Derive bases_data from rail positions + overhang (independent of
+        # consolidated bases — consolidation can remove bases for shallower traps).
+        base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
         bases_data = None
-        if computed_area:
-            bases = [b for b in computed_area.get('bases', []) if b.get('trapezoidId') == trap_id]
-            if bases:
-                base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
+        if line_rails:
+            # Accumulate global rail offsets across panel lines
+            all_rail_offsets = []
+            d_cm = 0.0
+            for si, seg in enumerate(panel_lines):
+                d_cm += seg.get('gapBeforeCm', 0)
+                for off in line_rails.get(str(si), []):
+                    all_rail_offsets.append(d_cm + off)
+                d_cm += seg.get('depthCm', 0)
+            if all_rail_offsets:
+                first_rail = min(all_rail_offsets)
+                last_rail = max(all_rail_offsets)
+                top_depth = first_rail - base_overhang
+                bottom_depth = last_rail + base_overhang
                 bases_data = {
-                    'baseLengthCm': bases[0].get('lengthCm', 0),
-                    'rearLegDepthCm': bases[0].get('topDepthCm', 0) + base_overhang,
-                    'frontLegDepthCm': bases[0].get('bottomDepthCm', 0) - base_overhang,
+                    'baseLengthCm': round((bottom_depth - top_depth) * 10) / 10,
+                    'rearLegDepthCm': round(first_rail * 10) / 10,
+                    'frontLegDepthCm': round(last_rail * 10) / 10,
                 }
 
         rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
@@ -821,6 +833,12 @@ async def compute_and_save_trapezoid_details(
 
             _upsert_computed_trapezoid(step3, tid, detail)
             result[tid] = detail
+
+    # ── Align blocks across all trapezoids in the area (after trimmed-trap pass) ──
+    tds.align_blocks(result)
+    # Persist aligned blocks
+    for tid, detail in result.items():
+        _upsert_computed_trapezoid(step3, tid, detail)
 
     project.data = data
     flag_modified(project, 'data')

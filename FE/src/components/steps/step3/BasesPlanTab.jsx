@@ -14,7 +14,7 @@ import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
   const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
@@ -185,15 +185,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
             railLocalYs.push(lcY, rcY)
           })
           const railProfileSvg  = (crossRailEdgeMm / 10 / pixelToCmRatio) * sc
-          const blockLengthCm   = trapS.blockLengthCm ?? 50
+          // Blocks from BE trapezoid data (group's trapezoid)
+          const beBlocks = beTrapezoidsData?.[trapId]?.blocks ?? []
+          const beGeom = beTrapezoidsData?.[trapId]?.geometry ?? {}
+          const blockLengthCm   = beGeom.blockLengthCm ?? trapS.blockLengthCm ?? 50
           const blockWidthCm    = trapS.blockWidthCm  ?? 24
-          const blockLengthLocal = blockLengthCm / pixelToCmRatio
-          const blockLengthSvg  = blockLengthLocal * sc
+          const blockLengthSvg  = (blockLengthCm / pixelToCmRatio) * sc
           const blockWidthSvg   = (blockWidthCm / pixelToCmRatio) * sc
-          const numBlocks = Math.max(2, (lines || []).reduce((sum, ln) => sum + (ln.orientation === 'LANDSCAPE' ? 1 : 2), 0))
-          const innerRailYs = [...railLocalYs].sort((a, b) => a - b).slice(1, -1)
-          const centerBlockYs = numBlocks <= 2 ? [] : innerRailYs.slice(-(numBlocks - 2))
-          const allBlockYCenters = [baseTopY + blockLengthLocal / 2, ...centerBlockYs, baseBottomY - blockLengthLocal / 2]
           return (
             <g key={`bp-${trapId}`}>
               {bases.map((base, bi) => {
@@ -202,7 +200,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                 const [btx, bty] = toSvg(beamTop.x, beamTop.y)
                 const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
                 const lineAngle  = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-                return allBlockYCenters.map((blockCenterY, bki) => {
+                return beBlocks.map((blk, bki) => {
+                  // positionCm = left edge relative to origin (rear outer leg = baseTopY)
+                  const blockCenterY = baseTopY + (blk.positionCm + blockLengthCm / 2) / pixelToCmRatio
                   const sp = localToScreen({ x: base.localX, y: blockCenterY }, frame.center, angleRad)
                   const [bkx, bky] = toSvg(sp.x, sp.y)
                   return (
@@ -389,23 +389,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   const railProfileSvg = (crossRailEdgeMm / 10 / pixelToCmRatio) * sc
 
-                  // Block positions along the base line (plan view)
-                  const blockLengthCm   = trapS.blockLengthCm ?? 50
-                  const blockWidthCm   = trapS.blockWidthCm ?? 24
-                  const blockLengthLocal = blockLengthCm / pixelToCmRatio        // along-beam dimension (local frame)
-                  const blockLengthSvg  = blockLengthLocal * sc                  // SVG pixels along beam
-                  const blockWidthSvg  = (blockWidthCm / pixelToCmRatio) * sc // SVG pixels perpendicular to beam
-                  const numBlocks = Math.max(2, (lines || []).reduce((sum, ln) => {
-                    return sum + (ln.orientation === 'LANDSCAPE' ? 1 : 2)
-                  }, 0))
-                  const numCenterBlocks = numBlocks - 2
-                  const innerRailYs = [...railLocalYs].sort((a, b) => a - b).slice(1, -1)
-                  const centerBlockYs = numCenterBlocks === 0 ? [] : innerRailYs.slice(-numCenterBlocks)
-                  const allBlockYCenters = [
-                    baseTopY    + blockLengthLocal / 2,
-                    ...centerBlockYs,
-                    baseBottomY - blockLengthLocal / 2,
-                  ]
+                  // Blocks from BE trapezoid data (group's trapezoid)
+                  const beBlocks2 = beTrapezoidsData?.[trapId]?.blocks ?? []
+                  const beGeom2 = beTrapezoidsData?.[trapId]?.geometry ?? {}
+                  const blockLengthCm   = beGeom2.blockLengthCm ?? trapS.blockLengthCm ?? 50
+                  const blockWidthCm    = trapS.blockWidthCm ?? 24
+                  const blockLengthSvg  = (blockLengthCm / pixelToCmRatio) * sc
+                  const blockWidthSvg   = (blockWidthCm / pixelToCmRatio) * sc
 
                   return (
                     <g key={`bp-${trapId}`} opacity={trapOpacity}>
@@ -416,7 +406,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                         const [btx, bty] = toSvg(beamTop.x, beamTop.y)
                         const [bbx, bby] = toSvg(beamBottom.x, beamBottom.y)
                         const lineAngle = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-                        return allBlockYCenters.map((blockCenterY, bki) => {
+                        return beBlocks2.map((blk, bki) => {
+                          const blockCenterY = baseTopY + (blk.positionCm + blockLengthCm / 2) / pixelToCmRatio
                           const sp = localToScreen({ x: base.localX, y: blockCenterY }, frame.center, angleRad)
                           const [bkx, bky] = toSvg(sp.x, sp.y)
                           return (

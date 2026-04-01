@@ -49,7 +49,6 @@ def compute_area_bases(
     edge_offset_mm: float,
     spacing_mm: float,
     base_overhang_cm: float,
-    block_length_cm: float,
     cross_rail_offset_cm: float,
     panel_gap_cm: float,
     trapezoid_id: str,
@@ -204,51 +203,8 @@ def compute_area_bases(
             base['bottomDepthCm'] = _round2(base_bottom_depth_cm)
             base['lengthCm'] = _round2(base_length_cm)
 
-    # ── Cross-rail attachment points (for block placement) ─────────────────
-    cross_rail_depths_cm: list[float] = []
-    for si, li in enumerate(active_line_idxs):
-        ld = line_infos[li]
-        line_center = ld['rearEdgeCm'] + ld['depthCm'] / 2
-
-        if si == 0:
-            rear_conn = rear_leg_depth_cm + cross_rail_offset_cm
-        else:
-            rear_conn = ld['rearEdgeCm'] + cross_rail_offset_cm
-
-        if si == len(active_line_idxs) - 1:
-            front_conn = front_leg_depth_cm - cross_rail_offset_cm
-        else:
-            front_conn = ld['frontEdgeCm'] - cross_rail_offset_cm
-
-        # Symmetrize around line center
-        rear_dist = line_center - rear_conn
-        front_dist = front_conn - line_center
-        if rear_dist >= 0 and front_dist >= 0:
-            if rear_dist <= front_dist:
-                front_conn = line_center + rear_dist
-            else:
-                rear_conn = line_center - front_dist
-
-        cross_rail_depths_cm.extend([rear_conn, front_conn])
-
-    # ── Block depth positions along each base ──────────────────────────────
-    num_blocks = max(2, sum(
-        1 if line_infos[li]['orient'] == 'H' else 2
-        for li in active_line_idxs
-    ))
-    num_center_blocks = num_blocks - 2
-    inner_cross_rails = sorted(cross_rail_depths_cm)[1:-1] if len(cross_rail_depths_cm) > 2 else []
-    center_block_depths = inner_cross_rails[-num_center_blocks:] if num_center_blocks > 0 else []
-
-    block_depth_offsets_cm = [
-        _round2(base_top_depth_cm + block_length_cm / 2),
-        *[_round2(v) for v in center_block_depths],
-        _round2(base_bottom_depth_cm - block_length_cm / 2),
-    ]
-
-    # Add blockDepthOffsetsCm to each base
-    for base in bases:
-        base['blockDepthOffsetsCm'] = block_depth_offsets_cm
+    # Block positions are computed in trapezoid_detail_service (single source of truth).
+    # The FE bases view reads blocks from computedTrapezoids[trapId].blocks.
 
     # ── Diagonals ──────────────────────────────────────────────────────────
     n = len(bases)
@@ -284,7 +240,6 @@ def compute_area_bases(
         'baseTopDepthCm': _round2(base_top_depth_cm),
         'baseBottomDepthCm': _round2(base_bottom_depth_cm),
         'baseLengthCm': _round2(base_length_cm),
-        'blockDepthOffsetsCm': block_depth_offsets_cm,
         'diagonals': diagonals,
         'actualSpacingMm': actual_spacing_mm,
         'baseCount': len(bases),

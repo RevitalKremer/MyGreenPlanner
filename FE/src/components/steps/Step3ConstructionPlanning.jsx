@@ -742,6 +742,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               trapSettingsMap={trapSettingsMap}
               trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap}
+              beTrapezoidsData={beTrapezoidsData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
               onBasesChange={(trapId, offsets) => {

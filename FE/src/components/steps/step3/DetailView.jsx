@@ -43,6 +43,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   // Use BE-computed geometry when available, fall back to FE rc
   const geom = beDetailData?.geometry ?? rc
   if (!geom) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
+  // Require BE legs data — without it, rendering produces NaN
+  if (!beDetailData?.legs?.length) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
 
   const baseOverhangCm = settings.baseOverhangCm ?? 0
   const { heightRear, heightFront, baseLength, angle, topBeamLength } = geom
@@ -55,7 +57,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const RAIL_CM    = railOffsetCm
   const BLOCK_H_CM = geom.blockHeightCm ?? 15
   const blockLengthCm = geom.blockLengthCm ?? 50
-  const blockPunchCm = Math.min(settings.blockPunchCm ?? 9, blockLengthCm)
   const crossRailEdgeDistCm = geom.crossRailHeightCm ?? 4
   const beamThickCm = geom.beamThickCm ?? 4
   const panelThickCm = geom.panelThickCm ?? 3.5
@@ -416,21 +417,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       const topY = gBaseY - (hA + topFrac * (hB - hA))
                       return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: gBaseY + BEAM_THICK_PX / 2, sw: BEAM_THICK_PX * 0.75 })
                     })}
-                    {/* Ghost blocks */}
+                    {/* Ghost blocks — positionCm is left edge, no centering */}
                     {(fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) => {
-                      const bx = gAtTrap(blk.positionCm).x - blockW / 2
+                      const bx = gAtTrap(blk.positionCm).x
                       return GR({ key: `gb${bi}`, x: bx, y: gBlockTopY, width: blockW, height: blockH })
                     })}
-                    {/* Ghost panels (along the slope) — use ghost beam line for Y */}
+                    {/* Ghost panels (along the slope) — vertical offset, matching main panel rendering */}
                     {(() => {
                       const gBW = gActualX1 - gActualX0
                       const gTopY0 = gBaseY - gLegHeights[0], gTopYN = gBaseY - gLegHeights[gLegHeights.length - 1]
                       const gBeamY = (x) => gBW > 0 ? gTopY0 + (x - gActualX0) / gBW * (gTopYN - gTopY0) : gTopY0
                       const gBeamDeg = gBW > 0 ? Math.atan2(gTopYN - gTopY0, gBW) * 180 / Math.PI : 0
-                      const gBeamRad = gBeamDeg * Math.PI / 180
-                      const gPOff = BEAM_THICK_PX / 2 + 10 + 3
-                      const gPOffX = -Math.sin(gBeamRad) * gPOff
-                      const gPOffY = -Math.cos(gBeamRad) * gPOff
                       let dCm = 0
                       return (fullTrapGhost.panelLines ?? []).map((seg, si) => {
                         dCm += (seg.gapBeforeCm ?? 0)
@@ -438,11 +435,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                         const ex = gAtSlope(dCm + (seg.depthCm ?? 0)).x
                         dCm += (seg.depthCm ?? 0)
                         const sy = gBeamY(sx), ey = gBeamY(ex)
-                        const cx = (sx + ex) / 2 + gPOffX
-                        const cy = (sy + ey) / 2 + gPOffY
+                        const cx = (sx + ex) / 2
+                        const cy = (sy + ey) / 2 - PANEL_OFFSET_PX
                         const dx = ex - sx, dy = ey - sy
                         const len = Math.sqrt(dx * dx + dy * dy)
-                        return GR({ key: `gp${si}`, x: -len / 2, y: -3, width: len, height: 6, transform: `translate(${cx},${cy}) rotate(${gBeamDeg})` })
+                        return GR({ key: `gp${si}`, x: -len / 2, y: -PANEL_THICK_PX / 2, width: len, height: PANEL_THICK_PX, transform: `translate(${cx},${cy}) rotate(${gBeamDeg})` })
                       })
                     })()}
                     {/* Ghost ground line */}
@@ -463,17 +460,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Blocks — rendered from BE data ── */}
               {(() => {
                 const beBlocks = beDetailData?.blocks ?? []
-                const punchOff = blockPunchCm * SC
                 return (<>
                   {beBlocks.map((blk, bi) => {
-                    // positionCm is the block's rear-edge depth — left edge of the block on base beam
                     const bx = atTrap(blk.positionCm).x
-                    const px = bx + punchOff  // punch position from left edge of block
-                    const punchLabel = fmt(blk.positionCm + blockPunchCm)
                     return (
                       <g key={bi}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
-                        {showPunches && <text x={px} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{punchLabel}</text>}
+                        {showPunches && <text x={bx + blockW / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{fmt(blk.positionCm)}</text>}
                       </g>
                     )
                   })}
@@ -641,7 +634,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
                   {(beDetailData?.blocks ?? []).map((blk, bi) => {
-                    const bx = atTrap(blk.positionCm).x - blockW / 2
+                    const bx = atTrap(blk.positionCm).x
                     return <rect key={bi} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })}

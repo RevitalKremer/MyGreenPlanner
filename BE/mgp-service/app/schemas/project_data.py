@@ -95,7 +95,6 @@ class Rail(BaseModel):
     lineIdx: int
     offsetFromRearEdgeCm: float
     offsetFromLineFrontCm: float = 0
-    orientation: Literal['PORTRAIT', 'LANDSCAPE']
     startCm: float
     endCm: float
     lengthMm: int
@@ -111,7 +110,6 @@ class Base(BaseModel):
     topDepthCm: float
     bottomDepthCm: float
     lengthCm: float
-    blockDepthOffsetsCm: list[float] = Field(default_factory=list)
 
 
 class Diagonal(BaseModel):
@@ -136,11 +134,25 @@ class ComputedTrapezoid(BaseModel):
     """Server-computed structural details for one trapezoid."""
     trapId: str                     # matches step2.trapezoids key
     geometry: dict = Field(default_factory=dict)
-    # { heightRear, heightFront, topBeamLength, baseBeamLength, baseLength, diagonalLength, angle, frontHeight }
+    # geometry keys:
+    #   heightRear, heightFront          — structural leg heights (cm)
+    #   topBeamLength, baseBeamLength    — slope / horizontal beam lengths (cm)
+    #   baseLength                       — horizontal leg-to-leg span (cm)
+    #   diagonalLength                   — simplified diagonal length (cm)
+    #   angle                            — tilt angle (degrees)
+    #   panelFrontHeight                 — panel lower edge height from floor (cm, step2 input)
+    #   panelRearHeightCm                — panel lower edge height at ridge side (cm)
+    #   originCm                         — coordinate origin in global panel coords (cm)
+    #   panelEdgeToFirstRailCm, panelEdgeToLastRailCm, railToRailCm, overhangCm
+    #   beamThickCm, panelThickCm, blockHeightCm, blockLengthCm, crossRailHeightCm
     legs: list[dict] = Field(default_factory=list)
+    # legs[]: positionCm, heightCm, isInner, side, railPositionCm (inner only)
     blocks: list[dict] = Field(default_factory=list)
+    # blocks[]: positionCm (left edge), isEnd
     punches: list[dict] = Field(default_factory=list)
+    # punches[]: beamType ('base'|'slope'), positionCm
     diagonals: list[dict] = Field(default_factory=list)
+    # diagonals[]: spanIdx, topPct, botPct, lengthCm, isDouble, disabled
 
 
 class Step3Data(BaseModel):
