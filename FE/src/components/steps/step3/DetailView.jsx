@@ -365,12 +365,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
                 // Ghost style helpers — same as original ghost rendering (filled rects with dashed stroke)
                 const GR = ({ key, ...props }) => <rect key={key} {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
-                const GL = ({ x1: lx1, y1: ly1, x2: lx2, y2: ly2, sw }) => {
+                const GL = ({ key, x1: lx1, y1: ly1, x2: lx2, y2: ly2, sw }) => {
                   const dx = lx2 - lx1, dy = ly2 - ly1
                   const len = Math.sqrt(dx * dx + dy * dy)
                   const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
                   const ang = Math.atan2(dy, dx) * 180 / Math.PI
-                  return GR({ x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
+                  return GR({ key, x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
                 }
 
                 const gDiags = (fullTrapGhost.beDetailData.diagonals ?? []).filter(d => !d.disabled)
@@ -392,13 +392,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g pointerEvents="none">
                     {/* Ghost base beam */}
-                    {GR({ x: gActualX0, y: gBaseY, width: gActualX1 - gActualX0, height: BEAM_THICK_PX })}
+                    {GR({ key: 'g-base', x: gActualX0, y: gBaseY, width: gActualX1 - gActualX0, height: BEAM_THICK_PX })}
                     {/* Ghost slope beam */}
-                    {GL({ x1: gActualX0, y1: gBaseY - gLegHeights[0], x2: gActualX1, y2: gBaseY - gLegHeights[gLegHeights.length - 1], sw: BEAM_THICK_PX })}
+                    {GL({ key: 'g-slope', x1: gActualX0, y1: gBaseY - gLegHeights[0], x2: gActualX1, y2: gBaseY - gLegHeights[gLegHeights.length - 1], sw: BEAM_THICK_PX })}
                     {/* Ghost rear leg */}
-                    {GL({ x1: gActualX0 + BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[0], x2: gActualX0 + BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
+                    {GL({ key: 'g-rear', x1: gActualX0 + BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[0], x2: gActualX0 + BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
                     {/* Ghost front leg */}
-                    {GL({ x1: gActualX1 - BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[gLegHeights.length - 1], x2: gActualX1 - BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
+                    {GL({ key: 'g-front', x1: gActualX1 - BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[gLegHeights.length - 1], x2: gActualX1 - BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
                     {/* Ghost inner legs */}
                     {gAllLegXs.slice(1, -1).map((lx, ci) => {
                       const lh = gLegHeights[ci + 1] ?? 0
