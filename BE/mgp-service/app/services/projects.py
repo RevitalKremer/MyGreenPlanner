@@ -4,6 +4,7 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm import selectinload
 
 from app.models.project import Project
 from app.models.setting import AppSetting
@@ -12,9 +13,33 @@ from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
 
 
-async def list_projects(db: AsyncSession, owner_id: uuid.UUID) -> list[Project]:
-    result = await db.execute(select(Project).where(Project.owner_id == owner_id).order_by(Project.updated_at.desc()))
-    return list(result.scalars().all())
+async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
+    """List projects. If is_admin=True, return all projects; otherwise filter by owner_id.
+    Returns tuple of (projects_list, total_count).
+    """
+    # Build base query
+    if is_admin:
+        # Admin sees all projects with owner info loaded
+        query = select(Project).options(selectinload(Project.owner))
+    else:
+        # Regular user sees only their own projects
+        query = select(Project).where(Project.owner_id == owner_id)
+    
+    # Get total count
+    from sqlalchemy import func
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # Apply ordering and limit
+    query = query.order_by(Project.updated_at.desc())
+    if limit is not None and limit > 0:
+        query = query.limit(limit)
+    
+    result = await db.execute(query)
+    projects = list(result.scalars().all())
+    
+    return projects, total
 
 
 async def get_project(db: AsyncSession, project_id: uuid.UUID, owner_id: uuid.UUID) -> Project | None:
@@ -122,7 +147,7 @@ def _get_computed_trapezoids(data: dict) -> list:
 def _get_computed_trapezoid(data: dict, trap_id: str) -> dict | None:
     """Find a computed trapezoid by trapId."""
     for ct in _get_computed_trapezoids(data):
-        if ct.get('trapId') == trap_id:
+        if ct.get('trapezoidId') == trap_id:
             return ct
     return None
 
@@ -141,10 +166,10 @@ def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
     """Insert or update a computed trapezoid entry by trapId."""
     computed = step3.setdefault('computedTrapezoids', [])
     for ct in computed:
-        if ct.get('trapId') == trap_id:
+        if ct.get('trapezoidId') == trap_id:
             ct.update(detail)
             return
-    computed.append({'trapId': trap_id, **detail})
+    computed.append({'trapezoidId': trap_id, **detail})
 
 
 def _derive_line_rails(computed_area: dict | None) -> dict[str, list[float]]:

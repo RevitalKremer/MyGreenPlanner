@@ -36,7 +36,14 @@ class ProjectSummary(BaseModel):
     name: str
     location: str | None
     navigation: dict
+    owner_id: uuid.UUID
+    owner_email: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectSummary]
+    total: int

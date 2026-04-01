@@ -12,15 +12,32 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editLocation, setEditLocation] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const canCreate = projectName.trim().length > 0 && appDefaultsReady
+
+  // Filter projects by search query
+  const filteredProjects = cloudProjects.filter(p => {
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      p.name.toLowerCase().includes(query) ||
+      (p.location && p.location.toLowerCase().includes(query)) ||
+      (p.owner_email && p.owner_email.toLowerCase().includes(query))
+    )
+  })
+
+  const hasMore = cloudProjects.length < totalProjectsCount
 
   const handleCreate = () => {
     if (!canCreate) return
@@ -189,61 +206,207 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       </div>
 
-      {/* My Projects — visible to logged-in users */}
+      {/* My Projects / All Projects — visible to logged-in users */}
       {user && (
         <div style={{ width: '100%', maxWidth: '780px', marginTop: '1.75rem' }}>
-          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-            {t('welcome.savedProjects')}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {user.role === 'admin' ? t('welcome.allProjects') : t('welcome.savedProjects')}
+            </div>
+            {cloudProjects.length > 0 && (
+              <div style={{ fontSize: '0.75rem', color: TEXT_MUTED }}>
+                {t('welcome.showingCount', { shown: filteredProjects.length, total: totalProjectsCount })}
+              </div>
+            )}
           </div>
+
+          {/* Search bar */}
+          {cloudProjects.length > 0 && (
+            <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={t('welcome.searchPlaceholder')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem 0.75rem',
+                  border: `1.5px solid ${BORDER_LIGHT}`,
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: 'white',
+                    border: `1.5px solid ${BORDER_LIGHT}`,
+                    borderRadius: '8px',
+                    color: TEXT_MUTED,
+                    cursor: 'pointer',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  ✕ {t('welcome.clearSearch')}
+                </button>
+              )}
+              {hasMore && (
+                <button
+                  onClick={onLoadMoreProjects}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    background: PRIMARY,
+                    color: TEXT,
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {t('welcome.showAll')}
+                </button>
+              )}
+            </div>
+          )}
 
           {cloudProjectsLoading ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
           ) : cloudProjects.length === 0 ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
+          ) : filteredProjects.length === 0 ? (
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {cloudProjects.map(p => (
-                <div key={p.id} style={{
-                  background: 'white', borderRadius: '10px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
-                  border: `1.5px solid ${BORDER_LIGHT}`,
-                  padding: '0.75rem 1rem',
-                  display: 'flex', alignItems: 'center', gap: '1rem',
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.name}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
-                      {p.location ? `${p.location} · ` : ''}
-                      {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </div>
+              {filteredProjects.map(p => {
+                const isEditing = editingId === p.id
+                return (
+                  <div key={p.id} style={{
+                    background: 'white', borderRadius: '10px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+                    border: `1.5px solid ${isEditing ? TEXT_DARK : BORDER_LIGHT}`,
+                    padding: '0.75rem 1rem',
+                    display: 'flex', alignItems: 'center', gap: '1rem',
+                  }}>
+                    {isEditing ? (
+                      // Edit mode
+                      <>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            placeholder={t('welcome.projectName')}
+                            style={{
+                              width: '100%', padding: '0.4rem 0.6rem', boxSizing: 'border-box',
+                              border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px',
+                              fontSize: '0.85rem', outline: 'none'
+                            }}
+                          />
+                          <input
+                            type="text"
+                            value={editLocation}
+                            onChange={e => setEditLocation(e.target.value)}
+                            placeholder={t('welcome.location')}
+                            style={{
+                              width: '100%', padding: '0.4rem 0.6rem', boxSizing: 'border-box',
+                              border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px',
+                              fontSize: '0.85rem', outline: 'none'
+                            }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (editName.trim()) {
+                              onUpdateCloudProject(p.id, editName.trim(), editLocation.trim())
+                              setEditingId(null)
+                            }
+                          }}
+                          disabled={!editName.trim()}
+                          style={{
+                            padding: '0.4rem 0.9rem',
+                            background: editName.trim() ? PRIMARY : BORDER_LIGHT,
+                            color: editName.trim() ? 'white' : TEXT_VERY_LIGHT,
+                            border: 'none', borderRadius: '7px',
+                            cursor: editName.trim() ? 'pointer' : 'default',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.save')}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          style={{
+                            padding: '0.4rem 0.9rem', background: 'white',
+                            color: TEXT_DARK, border: `1.5px solid ${BORDER_LIGHT}`,
+                            borderRadius: '7px', cursor: 'pointer',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.cancel')}
+                        </button>
+                      </>
+                    ) : (
+                      // Display mode
+                      <>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
+                            {p.location ? `${p.location} · ` : ''}
+                            {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onLoadCloudProject(p.id)}
+                          disabled={!appDefaultsReady}
+                          style={{
+                            padding: '0.4rem 0.9rem', background: appDefaultsReady ? TEXT_DARK : BORDER_LIGHT, color: appDefaultsReady ? 'white' : TEXT_VERY_LIGHT,
+                            border: 'none', borderRadius: '7px', cursor: appDefaultsReady ? 'pointer' : 'default',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.open')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingId(p.id)
+                            setEditName(p.name)
+                            setEditLocation(p.location || '')
+                          }}
+                          title={t('welcome.editProject')}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => onDeleteCloudProject(p.id)}
+                          title={t('welcome.deleteProject')}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <button
-                    onClick={() => onLoadCloudProject(p.id)}
-                    disabled={!appDefaultsReady}
-                    style={{
-                      padding: '0.4rem 0.9rem', background: appDefaultsReady ? TEXT_DARK : BORDER_LIGHT, color: appDefaultsReady ? 'white' : TEXT_VERY_LIGHT,
-                      border: 'none', borderRadius: '7px', cursor: appDefaultsReady ? 'pointer' : 'default',
-                      fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {t('welcome.open')}
-                  </button>
-                  <button
-                    onClick={() => onDeleteCloudProject(p.id)}
-                    title={t('welcome.deleteProject')}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                    </svg>
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

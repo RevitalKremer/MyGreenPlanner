@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.setting import AppSetting
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary
+from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary, ProjectListResponse
 from app.schemas.bom import BOMRead, BOMItemRead, BOMDeltasUpdate, BOMEffectiveRead
 from app.services import projects as project_service
 from app.services import rail_service
@@ -42,12 +42,30 @@ class SaveBasesTabRequest(BaseModel):
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("", response_model=list[ProjectSummary])
+@router.get("", response_model=ProjectListResponse)
 async def list_projects(
+    limit: int | None = Query(None, description="Maximum number of projects to return. If None, return all."),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await project_service.list_projects(db, current_user.id)
+    is_admin = current_user.role.value == "admin"
+    projects, total = await project_service.list_projects(db, current_user.id, is_admin=is_admin, limit=limit)
+    # For admin, populate owner_email from loaded relationship
+    project_summaries = []
+    for proj in projects:
+        proj_dict = {
+            "id": proj.id,
+            "name": proj.name,
+            "location": proj.location,
+            "navigation": proj.navigation,
+            "owner_id": proj.owner_id,
+            "created_at": proj.created_at,
+            "updated_at": proj.updated_at,
+        }
+        if is_admin and proj.owner:
+            proj_dict["owner_email"] = proj.owner.email
+        project_summaries.append(proj_dict)
+    return {"projects": project_summaries, "total": total}
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

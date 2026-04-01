@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -38,6 +38,8 @@ function App() {
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
   const [cloudProjects, setCloudProjects] = useState([])
   const [cloudProjectsLoading, setCloudProjectsLoading] = useState(false)
+  const [totalProjectsCount, setTotalProjectsCount] = useState(0)
+  const [projectsLimit, setProjectsLimit] = useState(10) // null = load all
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
 
@@ -70,14 +72,16 @@ function App() {
     if (!auth.user) return
     setCloudProjectsLoading(true)
     try {
-      const list = await listProjects()
-      setCloudProjects(list)
+      const data = await listProjects(projectsLimit)
+      setCloudProjects(data.projects || [])
+      setTotalProjectsCount(data.total || 0)
     } catch {
       setCloudProjects([])
+      setTotalProjectsCount(0)
     } finally {
       setCloudProjectsLoading(false)
     }
-  }, [auth.user])
+  }, [auth.user, projectsLimit])
 
   useEffect(() => {
     if (auth.user) fetchCloudProjects()
@@ -184,14 +188,28 @@ function App() {
     }
   }
 
+  const handleUpdateCloudProject = async (projectId, name, location) => {
+    try {
+      await updateProject(projectId, { name, location })
+      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, location } : p))
+    } catch (err) {
+      alert(`Could not update project: ${err.message}`)
+    }
+  }
+
   const handleDeleteCloudProject = async (projectId) => {
     if (!confirm(t('app.deleteProjectConfirm'))) return
     try {
       await deleteProject(projectId)
       setCloudProjects(prev => prev.filter(p => p.id !== projectId))
+      setTotalProjectsCount(prev => Math.max(0, prev - 1))
     } catch (err) {
       alert(t('app.deleteProjectError', { msg: err.message }))
     }
+  }
+
+  const handleLoadMoreProjects = () => {
+    setProjectsLimit(null) // Load all
   }
 
   if (s.appScreen === 'welcome') {
@@ -206,8 +224,11 @@ function App() {
         authLoading={auth.authLoading}
         cloudProjects={cloudProjects}
         cloudProjectsLoading={cloudProjectsLoading}
+        totalProjectsCount={totalProjectsCount}
         onLoadCloudProject={handleLoadCloudProject}
+        onUpdateCloudProject={handleUpdateCloudProject}
         onDeleteCloudProject={handleDeleteCloudProject}
+        onLoadMoreProjects={handleLoadMoreProjects}
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
         appDefaultsReady={!!s.appDefaults}

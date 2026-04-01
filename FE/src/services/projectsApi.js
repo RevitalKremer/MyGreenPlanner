@@ -1,9 +1,10 @@
 import { mgpRequest } from './mgpApi'
 
-export async function listProjects() {
-  const res = await mgpRequest('/projects')
+export async function listProjects(limit = null) {
+  const url = limit ? `/projects?limit=${limit}` : '/projects'
+  const res = await mgpRequest(url)
   if (!res.ok) throw new Error('Failed to load projects')
-  return res.json()
+  return res.json() // returns { projects: [...], total: N }
 }
 
 export async function createProject(name, location, layout, data) {
