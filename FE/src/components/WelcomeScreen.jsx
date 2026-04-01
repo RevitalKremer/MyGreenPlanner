@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
@@ -11,44 +11,20 @@ const IconPlus = () => (
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
-const IconFolder = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-)
 
-export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
   const { t } = useLang()
-  const [mode, setMode] = useState(null) // 'new' | 'import'
+  const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [importError, setImportError] = useState(null)
-  const fileInputRef = useRef(null)
 
   const canCreate = projectName.trim().length > 0 && appDefaultsReady
 
   const handleCreate = () => {
     if (!canCreate) return
     onCreateProject({ name: projectName.trim(), location: location.trim(), date })
-  }
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setImportError(null)
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result)
-        if (!data.version) throw new Error('Invalid project file')
-        onImportProject(data)
-      } catch {
-        setImportError(t('welcome.importError'))
-      }
-    }
-    reader.readAsText(file)
   }
 
   const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
@@ -211,69 +187,6 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
           )}
         </div>
 
-        {/* Import Project card */}
-        <div style={{
-          flex: '1 1 320px', maxWidth: '360px',
-          background: 'white', borderRadius: '16px',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.09)',
-          border: `2px solid ${mode === 'import' ? TEXT_DARK : BORDER_LIGHT}`,
-          overflow: 'hidden', transition: 'border-color 0.15s'
-        }}>
-          <div
-            onClick={() => { setMode(mode === 'import' ? null : 'import'); setImportError(null) }}
-            style={{
-              padding: '1.5rem 1.75rem', cursor: 'pointer',
-              background: mode === 'import' ? '#f6f6f6' : 'white',
-              display: 'flex', alignItems: 'center', gap: '1rem',
-              borderBottom: mode === 'import' ? `1px solid ${BORDER_FAINT}` : 'none',
-              transition: 'background 0.15s'
-            }}
-          >
-            <div style={{
-              width: '46px', height: '46px', borderRadius: '12px',
-              background: BORDER_FAINT, color: TEXT_DARK,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <IconFolder />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('welcome.importProject')}</div>
-              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{t('welcome.importProjectDesc')}</div>
-            </div>
-          </div>
-
-          {mode === 'import' && (
-            <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
-              <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: TEXT_MUTED, lineHeight: 1.5 }}>
-                {t('welcome.importInstruction')}
-              </p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  width: '100%', padding: '0.75rem',
-                  background: TEXT_DARK, color: 'white',
-                  border: 'none', borderRadius: '8px',
-                  cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem'
-                }}
-              >
-                {t('welcome.selectFile')}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".mgp,.json"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-              />
-              {importError && (
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#e53935', background: '#FFEBEE', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
-                  {importError}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* My Projects — visible to logged-in users */}

@@ -34,7 +34,7 @@ function App() {
   }
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [showAuthGate, setShowAuthGate] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export' | 'save'
+  const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
   const [cloudProjects, setCloudProjects] = useState([])
   const [cloudProjectsLoading, setCloudProjectsLoading] = useState(false)
@@ -198,7 +198,6 @@ function App() {
     return (
       <WelcomeScreen
         onCreateProject={s.handleCreateProject}
-        onImportProject={s.handleImportProject}
         user={auth.user}
         onLogin={auth.login}
         onRegister={auth.register}
@@ -278,51 +277,6 @@ function App() {
 
             {/* Divider */}
             <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.13)', margin: '0 0.2rem' }} />
-
-            {/* Save / Export button */}
-            {auth.user ? (
-              <button
-                onClick={async () => {
-                  const savedId = await handleCloudSave()
-                  if (savedId && s.currentStep === 3) {
-                    triggerComputeRails(savedId, step3SettingsRef.current)
-                  }
-                }}
-                disabled={saveState === 'saving'}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: saveState === 'saving' ? 'default' : 'pointer', padding: '0.3rem 0.65rem', color: saveState === 'saved' ? '#6fcf97' : saveState === 'error' ? '#eb5757' : 'rgba(255,255,255,0.75)' }}
-              >
-                {saveState === 'saving' ? (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-                    <circle cx="12" cy="12" r="9"/>
-                  </svg>
-                ) : saveState === 'saved' ? (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                ) : (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                    <polyline points="17 21 17 13 7 13 7 21"/>
-                    <polyline points="7 3 7 8 15 8"/>
-                  </svg>
-                )}
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>
-                  {saveState === 'saving' ? t('app.saving') : saveState === 'saved' ? t('app.saved') : saveState === 'error' ? t('app.error') : t('app.save')}
-                </span>
-              </button>
-            ) : (
-              <button
-                onClick={() => requireLogin('export') && s.handleExportProject()}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>{t('app.export')}</span>
-              </button>
-            )}
 
             {/* Start Over icon button */}
             <button
