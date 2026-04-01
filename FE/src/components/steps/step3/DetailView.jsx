@@ -726,7 +726,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 })()
                 return (
                   <g>
-                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Base beam — punch positions</text>
+                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.baseBeamPunches')}</text>
                     <rect x={legX0} y={ry} width={legBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
@@ -792,7 +792,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 })()
                 return (
                   <g>
-                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">Slope beam — punch positions</text>
+                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.slopeBeamPunches')}</text>
                     <rect x={legX0} y={ry} width={legBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
@@ -840,24 +840,24 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
             {/* Members table */}
             <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Members per trapezoid</div>
+              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>{t('step3.detail.membersTitle')}</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ background: BG_SUBTLE }}>
-                    <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>Element</th>
-                    <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>Length (cm)</th>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>{t('step3.detail.element')}</th>
+                    <th style={{ textAlign: 'right', padding: '0.3rem 0.5rem', fontWeight: '700', color: TEXT_SECONDARY }}>{t('step3.detail.length')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    ['Base beam',  activeBaseBeamLenCm],
-                    ['Top beam',   activeSlopeBeamLenCm],
-                    ['Rear leg',   beLegs[0]?.heightCm ?? 0],
-                    ['Front leg',  beLegs[beLegs.length - 1]?.heightCm ?? 0],
+                    [t('step3.detail.baseBeam'),  activeBaseBeamLenCm],
+                    [t('step3.detail.topBeam'),   activeSlopeBeamLenCm],
+                    [t('step3.detail.rearLeg'),   beLegs[0]?.heightCm ?? 0],
+                    [t('step3.detail.frontLeg'),  beLegs[beLegs.length - 1]?.heightCm ?? 0],
                     ...activeDiags.map((d, i) => [
                       activeDiags.length > 1
-                        ? `Diagonal ${i + 1}${d.isDouble ? ' ×2' : ''}`
-                        : `Diagonal${d.isDouble ? ' ×2' : ''}`,
+                        ? `${t('step3.detail.diagonal')} ${i + 1}${d.isDouble ? ' ×2' : ''}`
+                        : `${t('step3.detail.diagonal')}${d.isDouble ? ' ×2' : ''}`,
                       d.lenCm,
                     ]),
                   ].map(([name, val]) => (
@@ -878,17 +878,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
         layers={[
-          { label: 'Annotations',   checked: _showAnnotations, setter: setShowAnnotations  },
-          { label: 'Punches',       checked: _showPunches,     setter: setShowPunches      },
-          { label: 'Edit Bar',      checked: _showDiagHandles, setter: setShowDiagHandles  },
-          ...(fullTrapGhost ? [{ label: 'Ghost', checked: showGhost, setter: setShowGhost }] : []),
+          { label: t('step3.layer.annotations'),   checked: _showAnnotations, setter: setShowAnnotations  },
+          { label: t('step3.layer.punches'),       checked: _showPunches,     setter: setShowPunches      },
+          { label: t('step3.layer.editBar'),      checked: _showDiagHandles, setter: setShowDiagHandles  },
+          ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),
         ]}
         actions={[
-          ...(onReset ? [{ label: 'Reset to defaults', onClick: onReset, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
+          ...(onReset ? [{ label: t('step3.layer.resetDefaults'), onClick: onReset, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
           ...(Object.keys(diagOverrides).length > 0
-            ? [{ label: 'Reset handles', onClick: () => onUpdateSetting?.('diagOverrides', {}), style: { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } }]
+            ? [{ label: t('step3.layer.resetHandles'), onClick: () => onUpdateSetting?.('diagOverrides', {}), style: { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } }]
             : []),
-          { label: rulerActive ? '📏 Ruler ON' : '📏 Ruler', onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+          { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
       />}
 
