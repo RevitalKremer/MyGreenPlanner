@@ -219,13 +219,37 @@ setPanelAngle('')
     setReferenceLineLengthCm(String(100 * WHITEBOARD_DEFAULT_RATIO_CM_PER_PX))
   }
 
-  const handleCreateProject = (projectInfo) => {
+  const handleCreateProject = async (projectInfo) => {
     setCurrentProject(projectInfo)
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
     setUploadedImageMode(true)
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
     applyWhiteboardDefaults()
+    
+    // Save project to database immediately with initial empty layout
+    try {
+      const name = projectInfo?.name || 'Untitled'
+      const location = projectInfo?.location || null
+      const roofSpec = projectInfo?.roofSpec || null
+      const initialLayout = {
+        uploadedImageData: data,
+        roofPolygon: { coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 },
+        referenceLine: null,
+        baseline: null,
+        panels: [],
+        rectAreas: [],
+        deletedPanelKeys: {},
+      }
+      const initialData = { step2: {}, step3: {}, step4: {}, step5: {} }
+      
+      const saved = await createProject(name, location, initialLayout, initialData, roofSpec)
+      setCloudProjectId(saved.id)
+    } catch (err) {
+      console.error('Failed to create project in database:', err)
+      // Continue anyway - project can be saved later
+    }
+    
     setAppScreen('wizard')
   }
 
@@ -438,13 +462,14 @@ setPanelAngle('')
   const handleSaveProject = async (step = null) => {
     const name     = currentProject?.name || 'Untitled'
     const location = currentProject?.location || null
+    const roofSpec = currentProject?.roofSpec || null
     const layout   = getLayoutData()
     const data     = getProjectData()
     if (cloudProjectId) {
       await updateProject(cloudProjectId, { name, location, layout, data }, step)
       return cloudProjectId
     } else {
-      const saved = await createProject(name, location, layout, data)
+      const saved = await createProject(name, location, layout, data, roofSpec)
       setCloudProjectId(saved.id)
       return saved.id
     }

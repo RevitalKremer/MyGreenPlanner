@@ -7,10 +7,16 @@ export async function listProjects(limit = null) {
   return res.json() // returns { projects: [...], total: N }
 }
 
-export async function createProject(name, location, layout, data) {
+export async function createProject(name, location, layout, data, roofSpec = null) {
   const res = await mgpRequest('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, location: location || null, layout, data }),
+    body: JSON.stringify({ 
+      name, 
+      location: location || null, 
+      layout, 
+      data,
+      ...(roofSpec ? { roof_spec: roofSpec } : {})
+    }),
   })
   if (!res.ok) throw new Error('Failed to create project')
   return res.json()

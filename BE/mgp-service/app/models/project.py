@@ -14,6 +14,7 @@ class Project(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    roof_spec: Mapped[dict] = mapped_column(JSONB, nullable=False, default=lambda: {"type": "concrete"})
     navigation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=lambda: {"step": 1, "tab": None})
     layout: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

@@ -56,6 +56,7 @@ const he = {
   'welcome.location':               'מיקום',
   'welcome.locationPlaceholder':    'לדוגמה: תל אביב',
   'welcome.date':                   'תאריך',
+  'welcome.roofType':               'סוג גג',
   'welcome.startPlanning':          'התחל תכנון →',
   'welcome.loadingSettings':        'טוען הגדרות…',
   'welcome.importProject':          'ייבוא פרויקט',
@@ -81,6 +82,17 @@ const he = {
   'welcome.copyright':              'MyGreenPlanner ©',
   'welcome.invalidImage':           'נא לבחור קובץ תמונה תקין',
   'welcome.required':               '*',
+
+  // ── Roof Specification ───────────────────────────────────────────────────
+  'roofSpec.type.concrete':           'גג בטון',
+  'roofSpec.type.tiles':              'גג רעפים',
+  'roofSpec.type.iskurit':            'אזכורית',
+  'roofSpec.type.insulatedPanel':     'פנל מבודד',
+  'roofSpec.distanceBetweenPurlins':  'מרחק בין פתות (ס״מ)',
+  'roofSpec.distancePlaceholder':     'לדוגמה: 120',
+  'roofSpec.installationOrientation': 'כיוון התקנה',
+  'roofSpec.orientation.perpendicular': 'התקנה בניצב לפתות',
+  'roofSpec.orientation.parallel':      'התקנה לאורך הפתות',
 
   // ── Image uploader ───────────────────────────────────────────────────────
   'uploader.clickToUpload':    'לחץ להעלאת תמונת מבט-על של הגג',

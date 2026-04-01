@@ -56,6 +56,7 @@ const en = {
   'welcome.location':             'Location',
   'welcome.locationPlaceholder':  'e.g. Tel Aviv, Israel',
   'welcome.date':                 'Date',
+  'welcome.roofType':             'Roof Type',
   'welcome.startPlanning':        'Start Planning →',
   'welcome.loadingSettings':      'Loading settings…',
   'welcome.importProject':        'Import Project',
@@ -81,6 +82,17 @@ const en = {
   'welcome.copyright':            'MyGreenPlanner ©',
   'welcome.invalidImage':         'Please select a valid image file',
   'welcome.required':             '*',
+
+  // ── Roof Specification ───────────────────────────────────────────────────
+  'roofSpec.type.concrete':           'Concrete Roof',
+  'roofSpec.type.tiles':              'Tiles Roof',
+  'roofSpec.type.iskurit':            'Iskurit (Corrugated Metal)',
+  'roofSpec.type.insulatedPanel':     'Insulated Panel',
+  'roofSpec.distanceBetweenPurlins':  'Distance Between Purlins (cm)',
+  'roofSpec.distancePlaceholder':     'e.g. 120',
+  'roofSpec.installationOrientation': 'Installation Orientation',
+  'roofSpec.orientation.perpendicular': 'Perpendicular to Purlins',
+  'roofSpec.orientation.parallel':      'Parallel to Purlins',
 
   // ── Image uploader ───────────────────────────────────────────────────────
   'uploader.clickToUpload':    'Click to upload an aerial image of your roof',
@@ -360,7 +372,7 @@ const en = {
   'step3.layer.baseIDs':         'Base IDs',
   'step3.layer.railLines':       'Rail lines',
   'step3.layer.diagonals':       'Diagonals',
-  'step3.detail.membersTitle':   'Members per trapezoid',
+  'step3.detail.membersTitle':   'Trapezoid Members',
   'step3.detail.element':        'Element',
   'step3.detail.length':         'Length (cm)',
   'step3.detail.baseBeam':       'Base beam',

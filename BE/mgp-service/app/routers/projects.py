@@ -57,6 +57,7 @@ async def list_projects(
             "id": proj.id,
             "name": proj.name,
             "location": proj.location,
+            "roof_spec": proj.roof_spec,
             "navigation": proj.navigation,
             "owner_id": proj.owner_id,
             "created_at": proj.created_at,

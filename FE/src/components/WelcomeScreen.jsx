@@ -19,6 +19,9 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [roofType, setRoofType] = useState('concrete')
+  const [distanceBetweenPurlins, setDistanceBetweenPurlins] = useState('')
+  const [installationOrientation, setInstallationOrientation] = useState('perpendicular')
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editLocation, setEditLocation] = useState('')
@@ -41,7 +44,14 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
   const handleCreate = () => {
     if (!canCreate) return
-    onCreateProject({ name: projectName.trim(), location: location.trim(), date })
+    const roofSpec = {
+      type: roofType,
+      ...(roofType === 'iskurit' || roofType === 'insulated_panel' ? {
+        distanceBetweenPurlinsCm: parseFloat(distanceBetweenPurlins) || null,
+        installationOrientation: installationOrientation
+      } : {})
+    }
+    onCreateProject({ name: projectName.trim(), location: location.trim(), date, roofSpec })
   }
 
   const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
@@ -176,6 +186,61 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   }}
                 />
               </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                  {t('welcome.roofType')}
+                </label>
+                <select
+                  value={roofType}
+                  onChange={e => setRoofType(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
+                    background: 'white', cursor: 'pointer'
+                  }}
+                >
+                  <option value="concrete">{t('roofSpec.type.concrete')}</option>
+                  <option value="tiles">{t('roofSpec.type.tiles')}</option>
+                  <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
+                  <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
+                </select>
+              </div>
+              {(roofType === 'iskurit' || roofType === 'insulated_panel') && (
+                <>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                      {t('roofSpec.distanceBetweenPurlins')}
+                    </label>
+                    <input
+                      type="number"
+                      value={distanceBetweenPurlins}
+                      onChange={e => setDistanceBetweenPurlins(e.target.value)}
+                      placeholder={t('roofSpec.distancePlaceholder')}
+                      style={{
+                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                      {t('roofSpec.installationOrientation')}
+                    </label>
+                    <select
+                      value={installationOrientation}
+                      onChange={e => setInstallationOrientation(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
+                        background: 'white', cursor: 'pointer'
+                      }}
+                    >
+                      <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
+                      <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
+                    </select>
+                  </div>
+                </>
+              )}
               <button
                 onClick={handleCreate}
                 disabled={!canCreate}
