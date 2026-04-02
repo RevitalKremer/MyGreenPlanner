@@ -575,7 +575,10 @@ async def update_project_step(
     Forward: resets dependent data and recomputes (e.g., rails+bases on 2→3).
     Backward: clears data from steps being navigated away from.
     """
-    old_step = (project.navigation or {}).get('step', 1)
+    # Infer old step from navigation; if not set, assume one step before new_step
+    # (the FE always saves before calling updateStep, so the transition is always ±1)
+    nav_step = (project.navigation or {}).get('step')
+    old_step = nav_step if nav_step is not None else max(1, new_step - 1)
     if new_step == old_step:
         return {'currentStep': old_step, 'clearedSteps': []}
     if new_step < 1 or new_step > 5:
