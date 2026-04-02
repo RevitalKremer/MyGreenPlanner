@@ -425,9 +425,9 @@ export default function Step3Sidebar({
                 {areaParams.map(p => renderParam(p))}
                 {/* Apply button */}
                 {applyBtn(
-                  sec.tabKey === 'rails'  ? onApplyRailsToAllAreas :
-                  sec.tabKey === 'bases'  ? applyBasesToAll :
-                  () => applySection(selectedRowIdx, areaKeys)
+                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
+                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
+                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) }
                 )}
                 {/* Global params — rendered after the apply button */}
                 {globalParams.length > 0 && (
