@@ -111,14 +111,14 @@ def _derive_row_construction(
     # numRailConnectors: sum of (stockSegments.length - 1) across all rails
     num_rail_connectors = 0
     for r in rails:
-        segs = r.get('stockSegments') or []
+        segs = r.get('stockSegmentsMm') or []
         if len(segs) > 1:
             num_rail_connectors += len(segs) - 1
 
     # rowLength: max span across all rails
     row_length = 0
     if rails:
-        row_length = max(r.get('lengthMm', 0) / 10 for r in rails)
+        row_length = max(r.get('lengthCm', 0) for r in rails)
 
     # numLargeGaps: stored at area level by rail computation
     num_large_gaps = area.get('numLargeGaps', 0)

@@ -170,9 +170,9 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
         localEnd,
         screenStart,
         screenEnd,
-        lengthMm,
-        stockSegments: stockPieces,
-        leftoverMm: totalLeftover,
+        lengthCm: Math.round(lengthCm * 10) / 10,
+        stockSegmentsMm: stockPieces,
+        leftoverCm: Math.round(totalLeftover) / 10,
       })
     }
   }

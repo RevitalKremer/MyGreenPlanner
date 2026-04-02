@@ -312,7 +312,7 @@ async def get_rail_dimensions(
             'rails': [
                 {k: r[k] for k in ('railId', 'lineIdx',
                                     'offsetFromLineFrontCm', 'offsetFromRearEdgeCm',
-                                    'startCm', 'lengthMm')
+                                    'startCm', 'lengthCm')
                  if k in r}
                 for r in ca.get('rails', [])
             ],

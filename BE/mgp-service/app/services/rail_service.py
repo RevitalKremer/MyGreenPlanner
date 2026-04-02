@@ -135,9 +135,9 @@ def compute_area_rails(
                 'offsetFromLineFrontCm': round(offset_from_front, 4),
                 'offsetFromRearEdgeCm': offset_from_rear,
                 'startCm':              start_cm,
-                'lengthMm':             length_mm,
-                'stockSegments':        [s['used'] for s in segs],
-                'leftoverMm':           sum(s['leftover'] for s in segs),
+                'lengthCm':             round(length_mm / 10, 1),
+                'stockSegmentsMm':      [s['used'] for s in segs],
+                'leftoverCm':           round(sum(s['leftover'] for s in segs) / 10, 1),
             })
             rail_counter += 1
 
@@ -157,9 +157,9 @@ def compute_materials_summary(areas_rails: list[list[dict]], stock_lengths: list
     for rails in areas_rails:
         for rail in rails:
             total_rails += 1
-            total_length_mm += rail['lengthMm']
-            total_leftover_mm += rail['leftoverMm']
-            for seg in rail['stockSegments']:
+            total_length_mm += round(rail['lengthCm'] * 10)
+            total_leftover_mm += round(rail['leftoverCm'] * 10)
+            for seg in rail['stockSegmentsMm']:
                 stock_counts[seg] = stock_counts.get(seg, 0) + 1
 
     return {
