@@ -403,17 +403,24 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 // Ghost atSlope: offset from real trap's origin by the difference in originCm
                 const gOriginCm = fullTrapGhost.beDetailData.geometry?.originCm ?? 0
                 const originDelta = (gOriginCm - originCm) * Math.cos(gAngleRad) * SC
-                const gAtTrap = (posCm) => ({
-                  x: legX0 + originDelta + posCm * Math.cos(gAngleRad) * SC,
-                  y: gBaseY - (gGeom.heightRear + posCm * Math.sin(gAngleRad)) * SC,
-                })
-                const gAtSlope = (dCm) => gAtTrap(dCm - gOriginCm)
-                const gAllLegXs = gLegs.map(leg => gAtTrap(leg.positionCm).x)
-                // Use actual leg positions for beam ends (not geometry-based gLegX0/gLegX1)
-                const gActualX0 = gAllLegXs[0] ?? legX0
-                const gActualX1 = gAllLegXs[gAllLegXs.length - 1] ?? legX1
-                // Leg heights from BE data
                 const gLegHeights = gLegs.map(leg => leg.heightCm * SC)
+                const gLegXPositions = gLegs.map(leg => legX0 + originDelta + leg.positionCm * Math.cos(gAngleRad) * SC)
+                const gActualX0 = gLegXPositions[0] ?? legX0
+                const gActualX1 = gLegXPositions[gLegXPositions.length - 1] ?? legX1
+                const gLegBW = gActualX1 - gActualX0
+                // Interpolate Y from ghost leg heights (matches beamYFromLegs for real trap)
+                const gBeamY = (x) => {
+                  if (gLegBW <= 0) return gBaseY - (gLegHeights[0] ?? 0)
+                  const frac = (x - gActualX0) / gLegBW
+                  const h0 = gLegHeights[0] ?? 0, h1 = gLegHeights[gLegHeights.length - 1] ?? 0
+                  return gBaseY - (h0 + frac * (h1 - h0))
+                }
+                const gAtTrap = (posCm) => {
+                  const x = legX0 + originDelta + posCm * Math.cos(gAngleRad) * SC
+                  return { x, y: gBeamY(x) }
+                }
+                const gAtSlope = (dCm) => gAtTrap(dCm - gOriginCm)
+                const gAllLegXs = gLegXPositions
 
                 return (
                   <g pointerEvents="none">

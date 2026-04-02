@@ -399,9 +399,13 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         other_base_positions = [p['positionCm'] for p in non_block_punches if p['beamType'] == 'base']
         block_punch = geom.get('blockPunchCm', 9)
         profile_step = geom.get('beamThickCm', 4)
-        detail['punches'] = non_block_punches + _compute_block_punches(
+        new_block_punches = _compute_block_punches(
             blocks, other_base_positions, block_length, base_beam_len, block_punch, profile_step,
         )
+        # Add reversedPositionCm (distance from beam end) to block punches
+        for p in new_block_punches:
+            p['reversedPositionCm'] = _r(base_beam_len - p['positionCm'])
+        detail['punches'] = non_block_punches + new_block_punches
 
 
 def _compute_block_punches(
