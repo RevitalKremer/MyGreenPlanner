@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, deleteProject, computeRails, getRails } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -34,10 +34,12 @@ function App() {
   }
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [showAuthGate, setShowAuthGate] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // 'next' | 'export' | 'save'
+  const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
   const [cloudProjects, setCloudProjects] = useState([])
   const [cloudProjectsLoading, setCloudProjectsLoading] = useState(false)
+  const [totalProjectsCount, setTotalProjectsCount] = useState(0)
+  const [projectsLimit, setProjectsLimit] = useState(10) // null = load all
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
 
@@ -70,14 +72,16 @@ function App() {
     if (!auth.user) return
     setCloudProjectsLoading(true)
     try {
-      const list = await listProjects()
-      setCloudProjects(list)
+      const data = await listProjects(projectsLimit)
+      setCloudProjects(data.projects || [])
+      setTotalProjectsCount(data.total || 0)
     } catch {
       setCloudProjects([])
+      setTotalProjectsCount(0)
     } finally {
       setCloudProjectsLoading(false)
     }
-  }, [auth.user])
+  }, [auth.user, projectsLimit])
 
   useEffect(() => {
     if (auth.user) fetchCloudProjects()
@@ -85,33 +89,59 @@ function App() {
   }, [auth.user, fetchCloudProjects])
 
   const [beRailsData, setBeRailsData] = useState(null)
-  const [railsComputing, setRailsComputing] = useState(false)
+  const [beBasesData, setBeBasesData] = useState(null)
+  const [beTrapezoidsData, setBeTrapezoidsData] = useState(null)
+  const [savedActiveTab, setSavedActiveTab] = useState(null)
+  const [railsComputing] = useState(false)
+  const [basesComputing] = useState(false)
   // Always-current step3 settings — updated synchronously in onSettingsChange so commit
   // callbacks never read stale state from the React re-render cycle.
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
+  const trapConfigsRef = useRef(s.trapezoidConfigs)
+  const customBasesRef = useRef({})
 
   // Trigger rail computation when a (different) project is loaded while on step 3.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
     if (s.currentStep === 3 && s.cloudProjectId) {
       setBeRailsData(null)
+      setBeBasesData(null)
+      setBeTrapezoidsData(null)
       getRails(s.cloudProjectId)
         .then(setBeRailsData)
+        .catch(console.error)
+      getBases(s.cloudProjectId)
+        .then(setBeBasesData)
+        .catch(console.error)
+      getTrapezoids(s.cloudProjectId)
+        .then(setBeTrapezoidsData)
         .catch(console.error)
     }
   }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
 
-  const triggerComputeRails = (id, step3Data = null) => {
-    setRailsComputing(true)
-    computeRails(id, step3Data)
-      .then(data => { setBeRailsData(data) })
-      .catch(console.error)
-      .finally(() => setRailsComputing(false))
-  }
-
-  const handleRailSettingsCommit = useCallback(() => {
+  const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
-    triggerComputeRails(s.cloudProjectId, step3SettingsRef.current)
+    try {
+      // Build trapezoid configs with custom offsets for bases/trapezoids tabs
+      let trapConfigs = trapConfigsRef.current
+      if (tabName === 'bases') {
+        const customBases = { ...customBasesRef.current }
+        if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
+        trapConfigs = { ...(trapConfigs || {}) }
+        for (const [trapId, offsets] of Object.entries(customBases)) {
+          trapConfigs[trapId] = { ...(trapConfigs[trapId] || {}), customOffsets: offsets }
+        }
+      }
+
+      const result = await saveTab(
+        s.cloudProjectId, tabName,
+        step3SettingsRef.current,
+        (tabName === 'bases' || tabName === 'trapezoids') ? trapConfigs : null,
+      )
+      if (result.rails) setBeRailsData(result.rails)
+      if (result.bases) setBeBasesData(result.bases)
+      if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+    } catch (e) { console.error(e) }
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCloudSave = async (step = null) => {
@@ -146,13 +176,24 @@ function App() {
       const layout = cloudProject.layout ?? {}
       const merged = {
         project:     { name: cloudProject.name, location: cloudProject.location },
-        currentStep: layout.currentStep,
+        currentStep: cloudProject.navigation?.step ?? layout.currentStep ?? 1,
+        activeTab:   cloudProject.navigation?.tab ?? null,
         layout,
         ...(cloudProject.data ?? {}),
       }
+      setSavedActiveTab(merged.activeTab)
       s.handleImportProject(merged, cloudProject.id)
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
+    }
+  }
+
+  const handleUpdateCloudProject = async (projectId, name, location) => {
+    try {
+      await updateProject(projectId, { name, location })
+      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, location } : p))
+    } catch (err) {
+      alert(`Could not update project: ${err.message}`)
     }
   }
 
@@ -161,16 +202,20 @@ function App() {
     try {
       await deleteProject(projectId)
       setCloudProjects(prev => prev.filter(p => p.id !== projectId))
+      setTotalProjectsCount(prev => Math.max(0, prev - 1))
     } catch (err) {
       alert(t('app.deleteProjectError', { msg: err.message }))
     }
+  }
+
+  const handleLoadMoreProjects = () => {
+    setProjectsLimit(null) // Load all
   }
 
   if (s.appScreen === 'welcome') {
     return (
       <WelcomeScreen
         onCreateProject={s.handleCreateProject}
-        onImportProject={s.handleImportProject}
         user={auth.user}
         onLogin={auth.login}
         onRegister={auth.register}
@@ -179,10 +224,14 @@ function App() {
         authLoading={auth.authLoading}
         cloudProjects={cloudProjects}
         cloudProjectsLoading={cloudProjectsLoading}
+        totalProjectsCount={totalProjectsCount}
         onLoadCloudProject={handleLoadCloudProject}
+        onUpdateCloudProject={handleUpdateCloudProject}
         onDeleteCloudProject={handleDeleteCloudProject}
+        onLoadMoreProjects={handleLoadMoreProjects}
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
+        appDefaultsReady={!!s.appDefaults}
       />
     )
   }
@@ -249,51 +298,6 @@ function App() {
 
             {/* Divider */}
             <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.13)', margin: '0 0.2rem' }} />
-
-            {/* Save / Export button */}
-            {auth.user ? (
-              <button
-                onClick={async () => {
-                  const savedId = await handleCloudSave()
-                  if (savedId && s.currentStep === 3) {
-                    triggerComputeRails(savedId, step3SettingsRef.current)
-                  }
-                }}
-                disabled={saveState === 'saving'}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: saveState === 'saving' ? 'default' : 'pointer', padding: '0.3rem 0.65rem', color: saveState === 'saved' ? '#6fcf97' : saveState === 'error' ? '#eb5757' : 'rgba(255,255,255,0.75)' }}
-              >
-                {saveState === 'saving' ? (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-                    <circle cx="12" cy="12" r="9"/>
-                  </svg>
-                ) : saveState === 'saved' ? (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                ) : (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                    <polyline points="17 21 17 13 7 13 7 21"/>
-                    <polyline points="7 3 7 8 15 8"/>
-                  </svg>
-                )}
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>
-                  {saveState === 'saving' ? t('app.saving') : saveState === 'saved' ? t('app.saved') : saveState === 'error' ? t('app.error') : t('app.save')}
-                </span>
-              </button>
-            ) : (
-              <button
-                onClick={() => requireLogin('export') && s.handleExportProject()}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.75)' }}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span style={{ fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em' }}>{t('app.export')}</span>
-              </button>
-            )}
 
             {/* Start Over icon button */}
             <button
@@ -417,17 +421,25 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             railsComputing={railsComputing}
-            onRailSettingsCommit={handleRailSettingsCommit}
+            onTabSave={handleTabSave}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
             initialGlobalSettings={s.step3GlobalSettings}
             initialAreaSettings={s.step3AreaSettings}
+            initialTab={savedActiveTab}
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
-            onBOMDataChange={s.setStep3BOMData}
+            onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
+            onCustomBasesChange={(map) => { customBasesRef.current = map }}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
+            beBasesData={beBasesData}
+            beTrapezoidsData={beTrapezoidsData}
+            basesComputing={basesComputing}
             appDefaults={s.appDefaults}
+            paramSchema={s.paramSchema}
+            settingsDefaults={s.settingsDefaults}
+            paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}
           />
         </div>
@@ -448,8 +460,7 @@ function App() {
             refinedArea={s.refinedArea}
             areas={s.areas}
             project={s.currentProject}
-            rowConstructions={s.step3BOMData.rowConstructions}
-            rowLabels={s.step3BOMData.rowLabels}
+            projectId={s.cloudProjectId}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}
@@ -497,7 +508,13 @@ function App() {
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
-        <button className="btn-nav btn-back" onClick={s.handleBack} disabled={s.currentStep === 1}>
+        <button className="btn-nav btn-back" onClick={async () => {
+          if (s.currentStep > 1 && s.cloudProjectId) {
+            if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
+            await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+          }
+          s.handleBack()
+        }} disabled={s.currentStep === 1}>
           {t('nav.back')}
         </button>
 
@@ -525,10 +542,15 @@ function App() {
             s.handleNext(TOTAL_STEPS)
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
-              // Trigger rail computation only after step-2 save commits — avoids the race
-              // where computeRails reads stale DB data and overwrites the just-saved areas.
-              if (stepBeforeNext === LOGIN_REQUIRED_STEP - 1 && savedId) {
-                triggerComputeRails(savedId, step3SettingsRef.current)
+              if (savedId) {
+                // Tell the BE about the step transition — it resets dependent data
+                // and computes rails+bases on 2→3 (returned in response)
+                try {
+                  const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+                  if (stepResult.rails) setBeRailsData(stepResult.rails)
+                  if (stepResult.bases) setBeBasesData(stepResult.bases)
+                  if (stepResult.trapezoidDetails) setBeTrapezoidsData(stepResult.trapezoidDetails)
+                } catch (e) { console.error(e) }
               }
             }
           }}

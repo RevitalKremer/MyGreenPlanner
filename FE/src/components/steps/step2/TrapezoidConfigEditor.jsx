@@ -45,13 +45,12 @@ export default function TrapezoidConfigEditor({
   // Fall back to derived from actual panels for manual/legacy trapezoids.
   const storedOrients = trapezoidConfigs?.[selectedTrapezoidId]?.lineOrientations
   const effectiveLineOrientations = (storedOrients?.length > 0) ? storedOrients : derivedOrients
-  const effectiveLinesPerRow = effectiveLineOrientations.length
 
-  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, effectiveLinesPerRow, panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+  const totalSlope = computeTotalSlopeDepth(effectiveLineOrientations, panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
 
   // Cross-section SVG geometry
   const W = 130, H = 62, groundY = H - 8, fX = 15
-  const lineDepths = effectiveLineOrientations.slice(0, effectiveLinesPerRow)
+  const lineDepths = effectiveLineOrientations
     .map(o => isHorizontalOrientation(o) ? panelSpec.widthCm : panelSpec.lengthCm)
   const angleRad = angle * Math.PI / 180
   const totalHoriz = totalSlope * Math.cos(angleRad)
@@ -182,7 +181,7 @@ export default function TrapezoidConfigEditor({
             )
           })}
         </div>
-        <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{effectiveLinesPerRow}×</span>
+        <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{effectiveLineOrientations.length}×</span>
       </div>
 
     </div>

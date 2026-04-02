@@ -1,10 +1,3 @@
-export const DEFAULT_RAIL_SPACING_VERTICAL_CM   = 140
-export const DEFAULT_RAIL_SPACING_HORIZONTAL_CM = 70
-export const MIN_RAIL_SPACING_VERTICAL_CM       = 130
-export const MIN_RAIL_SPACING_HORIZONTAL_CM     = 60
-export const DEFAULT_RAIL_OVERHANG_CM           = 4
-export const DEFAULT_STOCK_LENGTHS_MM           = [5000, 6000]
-
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)
@@ -13,14 +6,13 @@ export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
 // Build default lineRails for each panel line based on orientation and depths
 // lineOrientations: array of 'vertical'|'horizontal'|'empty'
 // panelDepthsCm: array of depths per line (same length)
+// railSpacingV / railSpacingH: default spacing from server app_settings
 // Returns: { [lineIdx]: [offsetCm, offsetCm] }
-export function initDefaultLineRails(lineOrientations, panelDepthsCm) {
+export function initDefaultLineRails(lineOrientations, panelDepthsCm, railSpacingV, railSpacingH) {
   const result = {}
   lineOrientations.forEach((orientation, i) => {
     const depth = panelDepthsCm[i]
-    const spacing = orientation === 'horizontal'
-      ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM
-      : DEFAULT_RAIL_SPACING_VERTICAL_CM
+    const spacing = orientation === 'horizontal' ? railSpacingH : railSpacingV
     const offset = railOffsetFromSpacing(depth, spacing)
     result[i] = [offset, depth - offset]
   })
@@ -51,7 +43,7 @@ export function getPanelOrientation(panel) {
 }
 
 // Split a length in mm into stock segments (greedy, largest-first)
-export function splitIntoStockSegments(lengthMm, stockLengths = DEFAULT_STOCK_LENGTHS_MM) {
+export function splitIntoStockSegments(lengthMm, stockLengths) {
   const sorted = [...stockLengths].sort((a, b) => b - a)
   const segments = []
   let remaining = Math.round(lengthMm)
@@ -74,10 +66,13 @@ export function splitIntoStockSegments(lengthMm, stockLengths = DEFAULT_STOCK_LE
 // railConfig.stockLengths: available stock lengths in mm
 export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {}) {
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
+  if (!railConfig.stockLengths || !railConfig.overhangCm) return null
 
-  const railOverhangCm = railConfig.overhangCm    ?? DEFAULT_RAIL_OVERHANG_CM
-  const stockLengths   = railConfig.stockLengths  ?? DEFAULT_STOCK_LENGTHS_MM
+  const railOverhangCm = railConfig.overhangCm
+  const stockLengths   = railConfig.stockLengths
   const lineRails      = railConfig.lineRails      ?? null   // { [lineIdx]: [offsetCm, ...] }
+  const railSpacingV   = railConfig.railSpacingV
+  const railSpacingH   = railConfig.railSpacingH
   const railOverhangPx = railOverhangCm / pixelToCmRatio
 
   const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
@@ -135,9 +130,7 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
     if (lineRails && lineRails[lineIdx] && lineRails[lineIdx].length >= 2) {
       railYPositions = lineRails[lineIdx].map(offsetCm => lineMaxY - offsetCm / pixelToCmRatio)
     } else {
-      const spacing = orientation === 'LANDSCAPE'
-        ? DEFAULT_RAIL_SPACING_HORIZONTAL_CM
-        : DEFAULT_RAIL_SPACING_VERTICAL_CM
+      const spacing = orientation === 'LANDSCAPE' ? railSpacingH : railSpacingV
       const offsetPx = Math.max(0, (lineDepthPx - spacing / pixelToCmRatio) / 2)
       railYPositions = [lineMinY + offsetPx, lineMaxY - offsetPx]
     }
@@ -177,9 +170,9 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
         localEnd,
         screenStart,
         screenEnd,
-        lengthMm,
-        stockSegments: stockPieces,
-        leftoverMm: totalLeftover,
+        lengthCm: Math.round(lengthCm * 10) / 10,
+        stockSegmentsMm: stockPieces,
+        leftoverCm: Math.round(totalLeftover) / 10,
       })
     }
   }

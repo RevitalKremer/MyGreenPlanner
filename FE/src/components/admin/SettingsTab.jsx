@@ -9,9 +9,10 @@ const SECTION_LABELS = { global: 'Global', rails: 'Rails', bases: 'Bases', detai
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState([])
-  const [edits, setEdits] = useState({})      // key → new value_json string
-  const [minEdits, setMinEdits] = useState({}) // key → new min_val string
-  const [maxEdits, setMaxEdits] = useState({}) // key → new max_val string
+  const [edits, setEdits] = useState({})       // key → new value_json string
+  const [minEdits, setMinEdits] = useState({})  // key → new min_val string
+  const [maxEdits, setMaxEdits] = useState({})  // key → new max_val string
+  const [stepEdits, setStepEdits] = useState({}) // key → new step_val string
   const [saving, setSaving] = useState({})
   const [saved, setSaved] = useState({})
   const [error, setError] = useState(null)
@@ -24,7 +25,7 @@ export default function SettingsTab() {
   }, [])
 
   const getValue = (s) => edits[s.key] !== undefined ? edits[s.key] : s.value_json
-  const isDirty = (s) => edits[s.key] !== undefined || minEdits[s.key] !== undefined || maxEdits[s.key] !== undefined
+  const isDirty = (s) => edits[s.key] !== undefined || minEdits[s.key] !== undefined || maxEdits[s.key] !== undefined || stepEdits[s.key] !== undefined
 
   const handleSave = async (s) => {
     setSaving(prev => ({ ...prev, [s.key]: true }))
@@ -38,12 +39,14 @@ export default function SettingsTab() {
       const payload = { value_json: val }
       if (minEdits[s.key] !== undefined) payload.min_val = minEdits[s.key] === '' ? null : Number(minEdits[s.key])
       if (maxEdits[s.key] !== undefined) payload.max_val = maxEdits[s.key] === '' ? null : Number(maxEdits[s.key])
+      if (stepEdits[s.key] !== undefined) payload.step_val = stepEdits[s.key] === '' ? null : Number(stepEdits[s.key])
 
       const updated = await updateSetting(s.key, payload)
       setSettings(prev => prev.map(x => x.key === s.key ? updated : x))
       setEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setMinEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setMaxEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
+      setStepEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setSaved(prev => ({ ...prev, [s.key]: true }))
       setTimeout(() => setSaved(prev => { const n = { ...prev }; delete n[s.key]; return n }), 2000)
     } catch {
@@ -71,7 +74,7 @@ export default function SettingsTab() {
           </div>
           {/* Column headers */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px auto',
+            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px auto',
             alignItems: 'center', gap: '0.5rem',
             padding: '0.3rem 0.85rem',
             borderRadius: '8px 8px 0 0',
@@ -80,6 +83,7 @@ export default function SettingsTab() {
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Default</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Min</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Max</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Step</div>
             <div />
           </div>
           <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: '10px', overflow: 'hidden' }}>
@@ -87,8 +91,9 @@ export default function SettingsTab() {
               const val = getValue(s)
               const dirty = isDirty(s)
               const displayVal = s.param_type === 'array' ? (Array.isArray(val) ? val.join(', ') : String(val)) : String(val)
-              const displayMin = minEdits[s.key] !== undefined ? minEdits[s.key] : (s.min_val != null ? String(s.min_val) : '')
-              const displayMax = maxEdits[s.key] !== undefined ? maxEdits[s.key] : (s.max_val != null ? String(s.max_val) : '')
+              const displayMin  = minEdits[s.key]  !== undefined ? minEdits[s.key]  : (s.min_val  != null ? String(s.min_val)  : '')
+              const displayMax  = maxEdits[s.key]  !== undefined ? maxEdits[s.key]  : (s.max_val  != null ? String(s.max_val)  : '')
+              const displayStep = stepEdits[s.key] !== undefined ? stepEdits[s.key] : (s.step_val != null ? String(s.step_val) : '')
 
               const inputStyle = (isDirtyField) => ({
                 padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.85rem',
@@ -98,7 +103,7 @@ export default function SettingsTab() {
 
               return (
                 <div key={s.key} style={{
-                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px auto',
+                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px auto',
                   alignItems: 'center', gap: '0.5rem',
                   padding: '0.6rem 0.85rem',
                   background: i % 2 === 0 ? 'white' : BG_SUBTLE,
@@ -125,6 +130,13 @@ export default function SettingsTab() {
                     placeholder="—"
                     onChange={e => setMaxEdits(prev => ({ ...prev, [s.key]: e.target.value }))}
                     style={inputStyle(maxEdits[s.key] !== undefined)}
+                    type="number"
+                  />
+                  <input
+                    value={displayStep}
+                    placeholder="—"
+                    onChange={e => setStepEdits(prev => ({ ...prev, [s.key]: e.target.value }))}
+                    style={inputStyle(stepEdits[s.key] !== undefined)}
                     type="number"
                   />
                   <button

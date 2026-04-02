@@ -6,7 +6,7 @@ import {
   DANGER, ADD_GREEN_BG,
 } from '../../styles/colors'
 
-const emptyForm = { type_key: '', product_type: 'material', part_number: '', name: '', additional_info: '', active: true, extra: '', alt_group: '', is_default: false }
+const emptyForm = { type_key: '', product_type: 'material', part_number: '', name: '', name_he: '', additional_info: '', active: true, extra: '', alt_group: '', is_default: false }
 
 function EditRow({ product, onSave, onCancel }) {
   const [form, setForm] = useState({ ...emptyForm, ...product, alt_group: product?.alt_group ?? '' })
@@ -26,6 +26,7 @@ function EditRow({ product, onSave, onCancel }) {
     <tr style={{ background: ADD_GREEN_BG }}>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'type_key', { fontFamily: 'monospace' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'Product name')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name_he', 'שם בעברית', { direction: 'rtl' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('extra', 'e.g. 10%')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('alt_group', '#', { width: '3.5rem' })}</td>
@@ -117,6 +118,7 @@ export default function ProductsTab() {
     switch (key) {
       case 'type_key':    return p.type_key ?? ''
       case 'name':        return p.name ?? ''
+      case 'name_he':     return p.name_he ?? ''
       case 'part_number': return p.part_number ?? ''
       case 'extra':       return p.extra ?? ''
       case 'alt_group':   return p.alt_group ?? Infinity
@@ -189,6 +191,7 @@ export default function ProductsTab() {
             <tr>
               <SortTh colKey="type_key"    label="Key" />
               <SortTh colKey="name"        label="Name" />
+              <SortTh colKey="name_he"    label="שם (HE)" />
               <SortTh colKey="part_number" label="P.N." />
               <SortTh colKey="extra"       label="Extra" />
               <SortTh colKey="alt_group"   label="Alt Group" />
@@ -203,7 +206,7 @@ export default function ProductsTab() {
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
-                <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
+                <td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
                   No materials found.
                 </td>
               </tr>
@@ -215,6 +218,7 @@ export default function ProductsTab() {
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.type_key}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, direction: 'rtl' }}>{p.name_he || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.part_number || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, fontSize: '0.78rem' }}>{p.extra || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'center' }}>{p.alt_group ?? '—'}</td>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, RAIL_STROKE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { computeRowRailLayout, localToScreen, screenToLocal, DEFAULT_RAIL_OVERHANG_CM, DEFAULT_STOCK_LENGTHS_MM } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildRowGroups, buildTrapezoidGroups } from './tabUtils'
@@ -30,9 +30,9 @@ export default function RailLayoutTab({
   railsComputing = false,
 }) {
   const { t } = useLang()
-  const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
-  const stockLengths        = settings.stockLengths        ?? DEFAULT_STOCK_LENGTHS_MM
-  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
+  const railOverhangCm      = settings.railOverhangCm
+  const stockLengths        = settings.stockLengths
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm
 
   const svgRef = useRef(null)
 
@@ -78,7 +78,7 @@ export default function RailLayoutTab({
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
-  const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverMm, 0) ?? 0), 0)
+  const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverCm, 0) ?? 0), 0)
 
   const bbox = useMemo(() => {
     if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
@@ -143,8 +143,8 @@ export default function RailLayoutTab({
       const s = trapSettingsMap[trapId] ?? {}
       return computeRowRailLayout(trapGroups[trapId], pixelToCmRatio, {
         lineRails:    trapLineRailsMap[trapId] ?? null,
-        overhangCm:   s.railOverhangCm ?? DEFAULT_RAIL_OVERHANG_CM,
-        stockLengths: s.stockLengths   ?? DEFAULT_STOCK_LENGTHS_MM,
+        overhangCm:   s.railOverhangCm ?? settings.railOverhangCm,
+        stockLengths: s.stockLengths ?? settings.stockLengths,
       })
     })
     // Reduced left pad — no cross-section bar
@@ -184,7 +184,7 @@ export default function RailLayoutTab({
                 return (
                   <DimensionAnnotation key={`dim-${rail.railId}`}
                     measurePts={measurePts} annPts={annPts}
-                    labels={[String(Math.round(rail.lengthMm))]}
+                    labels={[String(Math.round(rail.lengthCm))]}
                     zoom={1} color={TEXT_SECONDARY}
                   />
                 )
@@ -194,7 +194,7 @@ export default function RailLayoutTab({
             const refRail = rl.rails[0]
             if (!refRail || !rl.panelLocalRects || !rl.frame) return null
             const counts = {}
-            for (const mm of refRail.stockSegments) counts[mm] = (counts[mm] ?? 0) + 1
+            for (const mm of refRail.stockSegmentsMm) counts[mm] = (counts[mm] ?? 0) + 1
             const text = Object.entries(counts)
               .sort((a, b) => Number(b[0]) - Number(a[0]))
               .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
@@ -310,7 +310,7 @@ export default function RailLayoutTab({
                           return (
                             <DimensionAnnotation key={`dim-${rail.railId}`}
                               measurePts={measurePts} annPts={annPts}
-                              labels={[String(Math.round(rail.lengthMm))]}
+                              labels={[String(Math.round(rail.lengthCm))]}
                               zoom={zoom} color={color}
                             />
                           )
@@ -345,7 +345,7 @@ export default function RailLayoutTab({
                       const refRail = rl.rails[0]
                       if (!refRail || !showMaterialSummary || !rl.panelLocalRects || !rl.frame) return null
                       const counts = {}
-                      for (const mm of refRail.stockSegments) counts[mm] = (counts[mm] ?? 0) + 1
+                      for (const mm of refRail.stockSegmentsMm) counts[mm] = (counts[mm] ?? 0) + 1
                       const text = Object.entries(counts)
                         .sort((a, b) => Number(b[0]) - Number(a[0]))
                         .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)

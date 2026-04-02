@@ -1,4 +1,5 @@
 import { useLang } from './LangContext'
+import { useAuth } from '../hooks/useAuth'
 
 const LANGS = [
   { code: 'en', flag: '🇺🇸' },
@@ -8,6 +9,7 @@ const LANGS = [
 // dark=true → for dark header; dark=false → for light welcome screen
 export default function LangToggle({ dark = true }) {
   const { lang, setLang } = useLang()
+  const { user, updateProfile } = useAuth()
   const current = LANGS.find(l => l.code === lang) ?? LANGS[0]
 
   return (
@@ -20,7 +22,11 @@ export default function LangToggle({ dark = true }) {
       </span>
       <select
         value={lang}
-        onChange={e => setLang(e.target.value)}
+        onChange={e => {
+          const newLang = e.target.value
+          setLang(newLang)
+          if (user) updateProfile({ lang: newLang }).catch(() => {})
+        }}
         style={{
           appearance: 'none', WebkitAppearance: 'none',
           background: 'transparent',

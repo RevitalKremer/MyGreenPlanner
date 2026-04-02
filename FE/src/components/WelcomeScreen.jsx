@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
@@ -11,44 +11,47 @@ const IconPlus = () => (
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
-const IconFolder = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-)
 
-export default function WelcomeScreen({ onCreateProject, onImportProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, onLoadCloudProject, onDeleteCloudProject, onForgotPassword, onResetPassword }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
   const { t } = useLang()
-  const [mode, setMode] = useState(null) // 'new' | 'import'
+  const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [importError, setImportError] = useState(null)
-  const fileInputRef = useRef(null)
+  const [roofType, setRoofType] = useState('concrete')
+  const [distanceBetweenPurlins, setDistanceBetweenPurlins] = useState('')
+  const [installationOrientation, setInstallationOrientation] = useState('perpendicular')
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editLocation, setEditLocation] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const canCreate = projectName.trim().length > 0
+  const canCreate = projectName.trim().length > 0 && appDefaultsReady
+
+  // Filter projects by search query
+  const filteredProjects = cloudProjects.filter(p => {
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      p.name.toLowerCase().includes(query) ||
+      (p.location && p.location.toLowerCase().includes(query)) ||
+      (p.owner_email && p.owner_email.toLowerCase().includes(query))
+    )
+  })
+
+  const hasMore = cloudProjects.length < totalProjectsCount
 
   const handleCreate = () => {
     if (!canCreate) return
-    onCreateProject({ name: projectName.trim(), location: location.trim(), date })
-  }
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setImportError(null)
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result)
-        if (!data.version) throw new Error('Invalid project file')
-        onImportProject(data)
-      } catch {
-        setImportError(t('welcome.importError'))
-      }
+    const roofSpec = {
+      type: roofType,
+      ...(roofType === 'iskurit' || roofType === 'insulated_panel' ? {
+        distanceBetweenPurlinsCm: parseFloat(distanceBetweenPurlins) || null,
+        installationOrientation: installationOrientation
+      } : {})
     }
-    reader.readAsText(file)
+    onCreateProject({ name: projectName.trim(), location: location.trim(), date, roofSpec })
   }
 
   const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
@@ -183,6 +186,61 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
                   }}
                 />
               </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                  {t('welcome.roofType')}
+                </label>
+                <select
+                  value={roofType}
+                  onChange={e => setRoofType(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
+                    background: 'white', cursor: 'pointer'
+                  }}
+                >
+                  <option value="concrete">{t('roofSpec.type.concrete')}</option>
+                  <option value="tiles">{t('roofSpec.type.tiles')}</option>
+                  <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
+                  <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
+                </select>
+              </div>
+              {(roofType === 'iskurit' || roofType === 'insulated_panel') && (
+                <>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                      {t('roofSpec.distanceBetweenPurlins')}
+                    </label>
+                    <input
+                      type="number"
+                      value={distanceBetweenPurlins}
+                      onChange={e => setDistanceBetweenPurlins(e.target.value)}
+                      placeholder={t('roofSpec.distancePlaceholder')}
+                      style={{
+                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                      {t('roofSpec.installationOrientation')}
+                    </label>
+                    <select
+                      value={installationOrientation}
+                      onChange={e => setInstallationOrientation(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
+                        background: 'white', cursor: 'pointer'
+                      }}
+                    >
+                      <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
+                      <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
+                    </select>
+                  </div>
+                </>
+              )}
               <button
                 onClick={handleCreate}
                 disabled={!canCreate}
@@ -198,129 +256,222 @@ export default function WelcomeScreen({ onCreateProject, onImportProject, user, 
               >
                 {t('welcome.startPlanning')}
               </button>
-            </div>
-          )}
-        </div>
-
-        {/* Import Project card */}
-        <div style={{
-          flex: '1 1 320px', maxWidth: '360px',
-          background: 'white', borderRadius: '16px',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.09)',
-          border: `2px solid ${mode === 'import' ? TEXT_DARK : BORDER_LIGHT}`,
-          overflow: 'hidden', transition: 'border-color 0.15s'
-        }}>
-          <div
-            onClick={() => { setMode(mode === 'import' ? null : 'import'); setImportError(null) }}
-            style={{
-              padding: '1.5rem 1.75rem', cursor: 'pointer',
-              background: mode === 'import' ? '#f6f6f6' : 'white',
-              display: 'flex', alignItems: 'center', gap: '1rem',
-              borderBottom: mode === 'import' ? `1px solid ${BORDER_FAINT}` : 'none',
-              transition: 'background 0.15s'
-            }}
-          >
-            <div style={{
-              width: '46px', height: '46px', borderRadius: '12px',
-              background: BORDER_FAINT, color: TEXT_DARK,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <IconFolder />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('welcome.importProject')}</div>
-              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{t('welcome.importProjectDesc')}</div>
-            </div>
-          </div>
-
-          {mode === 'import' && (
-            <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
-              <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: TEXT_MUTED, lineHeight: 1.5 }}>
-                {t('welcome.importInstruction')}
-              </p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  width: '100%', padding: '0.75rem',
-                  background: TEXT_DARK, color: 'white',
-                  border: 'none', borderRadius: '8px',
-                  cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem'
-                }}
-              >
-                {t('welcome.selectFile')}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".mgp,.json"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-              />
-              {importError && (
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#e53935', background: '#FFEBEE', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
-                  {importError}
-                </p>
+              {!appDefaultsReady && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: TEXT_LIGHT }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="31.4 31.4" strokeLinecap="round" />
+                  </svg>
+                  {t('welcome.loadingSettings')}
+                  <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+                </div>
               )}
             </div>
           )}
         </div>
+
       </div>
 
-      {/* My Projects — visible to logged-in users */}
+      {/* My Projects / All Projects — visible to logged-in users */}
       {user && (
         <div style={{ width: '100%', maxWidth: '780px', marginTop: '1.75rem' }}>
-          <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-            {t('welcome.savedProjects')}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {user.role === 'admin' ? t('welcome.allProjects') : t('welcome.savedProjects')}
+            </div>
+            {cloudProjects.length > 0 && (
+              <div style={{ fontSize: '0.75rem', color: TEXT_MUTED }}>
+                {t('welcome.showingCount', { shown: filteredProjects.length, total: totalProjectsCount })}
+              </div>
+            )}
           </div>
+
+          {/* Search bar */}
+          {cloudProjects.length > 0 && (
+            <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={t('welcome.searchPlaceholder')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem 0.75rem',
+                  border: `1.5px solid ${BORDER_LIGHT}`,
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: 'white',
+                    border: `1.5px solid ${BORDER_LIGHT}`,
+                    borderRadius: '8px',
+                    color: TEXT_MUTED,
+                    cursor: 'pointer',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  ✕ {t('welcome.clearSearch')}
+                </button>
+              )}
+              {hasMore && (
+                <button
+                  onClick={onLoadMoreProjects}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    background: PRIMARY,
+                    color: TEXT,
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {t('welcome.showAll')}
+                </button>
+              )}
+            </div>
+          )}
 
           {cloudProjectsLoading ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
           ) : cloudProjects.length === 0 ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
+          ) : filteredProjects.length === 0 ? (
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {cloudProjects.map(p => (
-                <div key={p.id} style={{
-                  background: 'white', borderRadius: '10px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
-                  border: `1.5px solid ${BORDER_LIGHT}`,
-                  padding: '0.75rem 1rem',
-                  display: 'flex', alignItems: 'center', gap: '1rem',
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.name}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
-                      {p.location ? `${p.location} · ` : ''}
-                      {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </div>
+              {filteredProjects.map(p => {
+                const isEditing = editingId === p.id
+                return (
+                  <div key={p.id} style={{
+                    background: 'white', borderRadius: '10px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+                    border: `1.5px solid ${isEditing ? TEXT_DARK : BORDER_LIGHT}`,
+                    padding: '0.75rem 1rem',
+                    display: 'flex', alignItems: 'center', gap: '1rem',
+                  }}>
+                    {isEditing ? (
+                      // Edit mode
+                      <>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            placeholder={t('welcome.projectName')}
+                            style={{
+                              width: '100%', padding: '0.4rem 0.6rem', boxSizing: 'border-box',
+                              border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px',
+                              fontSize: '0.85rem', outline: 'none'
+                            }}
+                          />
+                          <input
+                            type="text"
+                            value={editLocation}
+                            onChange={e => setEditLocation(e.target.value)}
+                            placeholder={t('welcome.location')}
+                            style={{
+                              width: '100%', padding: '0.4rem 0.6rem', boxSizing: 'border-box',
+                              border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px',
+                              fontSize: '0.85rem', outline: 'none'
+                            }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (editName.trim()) {
+                              onUpdateCloudProject(p.id, editName.trim(), editLocation.trim())
+                              setEditingId(null)
+                            }
+                          }}
+                          disabled={!editName.trim()}
+                          style={{
+                            padding: '0.4rem 0.9rem',
+                            background: editName.trim() ? PRIMARY : BORDER_LIGHT,
+                            color: editName.trim() ? 'white' : TEXT_VERY_LIGHT,
+                            border: 'none', borderRadius: '7px',
+                            cursor: editName.trim() ? 'pointer' : 'default',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.save')}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          style={{
+                            padding: '0.4rem 0.9rem', background: 'white',
+                            color: TEXT_DARK, border: `1.5px solid ${BORDER_LIGHT}`,
+                            borderRadius: '7px', cursor: 'pointer',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.cancel')}
+                        </button>
+                      </>
+                    ) : (
+                      // Display mode
+                      <>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
+                            {p.location ? `${p.location} · ` : ''}
+                            {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onLoadCloudProject(p.id)}
+                          disabled={!appDefaultsReady}
+                          style={{
+                            padding: '0.4rem 0.9rem', background: appDefaultsReady ? TEXT_DARK : BORDER_LIGHT, color: appDefaultsReady ? 'white' : TEXT_VERY_LIGHT,
+                            border: 'none', borderRadius: '7px', cursor: appDefaultsReady ? 'pointer' : 'default',
+                            fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('welcome.open')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingId(p.id)
+                            setEditName(p.name)
+                            setEditLocation(p.location || '')
+                          }}
+                          title={t('welcome.editProject')}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => onDeleteCloudProject(p.id)}
+                          title={t('welcome.deleteProject')}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <button
-                    onClick={() => onLoadCloudProject(p.id)}
-                    style={{
-                      padding: '0.4rem 0.9rem', background: TEXT_DARK, color: 'white',
-                      border: 'none', borderRadius: '7px', cursor: 'pointer',
-                      fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {t('welcome.open')}
-                  </button>
-                  <button
-                    onClick={() => onDeleteCloudProject(p.id)}
-                    title={t('welcome.deleteProject')}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                    </svg>
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

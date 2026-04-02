@@ -150,6 +150,8 @@ async def update_me(
         current_user.full_name = payload.full_name
     if payload.phone_number is not None:
         current_user.phone_number = payload.phone_number or None
+    if payload.lang is not None:
+        current_user.lang = payload.lang
     await db.commit()
     await db.refresh(current_user)
     return current_user

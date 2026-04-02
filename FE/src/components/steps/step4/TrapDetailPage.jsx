@@ -10,9 +10,9 @@ const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 function computeNaturalSize(rc, settings, lineRails, panelLines) {
   const SC = 2.2
   const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
-  const blockHeightCm  = settings.blockHeightCm  ?? 30
+  const blockHeightCm  = settings.blockHeightCm
   const panelLengthCm  = settings.panelLengthCm
-  const baseOverhangCm = settings.baseOverhangCm ?? 0
+  const baseOverhangCm = settings.baseOverhangCm
   const { heightRear, heightFront, baseLength, angle } = rc
 
   const angleRad = angle * Math.PI / 180

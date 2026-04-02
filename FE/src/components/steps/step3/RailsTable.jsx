@@ -18,9 +18,9 @@ export default function RailsTable({ rails, rowIdx }) {
   const [expanded, setExpanded] = useState(false)
   if (!rails || rails.length === 0) return null
 
-  const totalLengthMm = rails.reduce((s, r) => s + r.lengthMm, 0)
-  const totalPieces   = rails.reduce((s, r) => s + r.stockSegments.length, 0)
-  const totalLeftover = rails.reduce((s, r) => s + r.leftoverMm, 0)
+  const totalLengthCm = rails.reduce((s, r) => s + r.lengthCm, 0)
+  const totalPieces   = rails.reduce((s, r) => s + r.stockSegmentsMm.length, 0)
+  const totalLeftover = rails.reduce((s, r) => s + r.leftoverCm, 0)
   const tdBase = { padding: '0.3rem 0.5rem' }
 
   return (
@@ -43,7 +43,7 @@ export default function RailsTable({ rails, rowIdx }) {
             <td style={{ ...tdBase, fontWeight: '700', color: TEXT }}>{t('step3.rails.total')}</td>
             <td style={{ ...tdBase, color: TEXT_SECONDARY }}>—</td>
             <td style={{ ...tdBase, color: TEXT_SECONDARY }}>—</td>
-            <td style={{ ...tdBase, fontWeight: '700', color: TEXT_DARKEST }}>{fmt(totalLengthMm)}</td>
+            <td style={{ ...tdBase, fontWeight: '700', color: TEXT_DARKEST }}>{fmt(totalLengthCm)}</td>
             <td style={{ ...tdBase, fontWeight: '700', color: TEXT }}>{t('step3.rails.pcs', { n: totalPieces })}</td>
             <td style={{ ...tdBase, fontWeight: '700', color: totalLeftover > 0 ? AMBER_DARK : TEXT_MUTED }}>{fmt(totalLeftover)}</td>
           </tr>
@@ -53,9 +53,9 @@ export default function RailsTable({ rails, rowIdx }) {
               <td style={{ ...tdBase, fontWeight: '600', color: TEXT_SECONDARY }}>{rail.railId}</td>
               <td style={{ ...tdBase, color: TEXT_MUTED }}>L{rail.lineIdx + 1}</td>
               <td style={{ ...tdBase, color: TEXT_MUTED }}>{rail.orientation}</td>
-              <td style={{ ...tdBase, color: TEXT }}>{fmt(rail.lengthMm)}</td>
-              <td style={{ ...tdBase, color: TEXT }}>{formatStockPieces(rail.stockSegments)}</td>
-              <td style={{ ...tdBase, color: rail.leftoverMm > 0 ? AMBER_DARK : TEXT_VERY_LIGHT }}>{fmt(rail.leftoverMm)}</td>
+              <td style={{ ...tdBase, color: TEXT }}>{fmt(rail.lengthCm)}</td>
+              <td style={{ ...tdBase, color: TEXT }}>{formatStockPieces(rail.stockSegmentsMm)}</td>
+              <td style={{ ...tdBase, color: rail.leftoverCm > 0 ? AMBER_DARK : TEXT_VERY_LIGHT }}>{fmt(rail.leftoverCm)}</td>
             </tr>
           ))}
         </tbody>

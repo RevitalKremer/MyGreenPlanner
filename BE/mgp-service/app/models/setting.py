@@ -18,4 +18,5 @@ class AppSetting(Base):
     min_val: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_val: Mapped[float | None] = mapped_column(Float, nullable=True)
     step_val: Mapped[float | None] = mapped_column(Float, nullable=True)
+    highlight_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

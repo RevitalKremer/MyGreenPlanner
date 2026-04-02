@@ -1,12 +1,13 @@
-import { useRef, useState, useMemo, useEffect } from 'react'
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import * as XLSX from 'xlsx'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups } from './step3/tabUtils'
-import { buildBOM } from '../../utils/constructionCalculator'
+import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -236,7 +237,7 @@ function ScaledPage({ scale, children }) {
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step4PdfReport({
-  panels = [], refinedArea, areas = {}, rowConstructions = [], rowLabels = [], project,
+  panels = [], refinedArea, areas = {}, project, projectId,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
   bomDeltas = {}, onBomDeltasChange,
@@ -248,9 +249,52 @@ export default function Step4PdfReport({
   const page4Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
+  const { lang } = useLang()
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
+  const [bomItems, setBomItems] = useState([])
+  const [bomLoading, setBomLoading] = useState(false)
+
+  // Fetch BOM from server on mount
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    ;(async () => {
+      setBomLoading(true)
+      try {
+        let bom = await getBOM(projectId, lang).catch(() => null)
+        if (!bom || bom.isStale) {
+          bom = await computeBOM(projectId, lang)
+        }
+        if (!cancelled) setBomItems(bom.items ?? [])
+      } catch (err) {
+        console.error('Failed to load BOM:', err)
+      } finally {
+        if (!cancelled) setBomLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [projectId, lang])
+
+  // Debounced save of bomDeltas to server
+  const saveDeltasTimer = useRef(null)
+  const handleBomDeltasChange = useCallback((deltas) => {
+    onBomDeltasChange?.(deltas)
+    if (!projectId) return
+    clearTimeout(saveDeltasTimer.current)
+    saveDeltasTimer.current = setTimeout(() => {
+      saveBomDeltas(projectId, deltas).catch(err => console.error('Failed to save BOM deltas:', err))
+    }, 800)
+  }, [projectId, onBomDeltasChange])
+
+  const handleResetDefaults = useCallback(async () => {
+    onBomDeltasChange?.({})
+    clearTimeout(saveDeltasTimer.current)
+    if (projectId) {
+      try { await saveBomDeltas(projectId, {}) } catch (err) { console.error('Failed to reset BOM deltas:', err) }
+    }
+  }, [projectId, onBomDeltasChange])
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -364,27 +408,19 @@ export default function Step4PdfReport({
     setIsExporting(false)
   }
 
-  const handleExportExcel = () => {
-    // Build final BOM rows (base + deltas applied)
-    const baseRows  = buildBOM(rowConstructions, rowLabels)
-    const overrides = bomDeltas.overrides ?? {}
-    const additions = bomDeltas.additions ?? []
-
-    const finalRows = [
-      ...baseRows.map(row => {
-        const key    = `${row.areaLabel}||${row.element}`
-        const ov     = overrides[key]
-        if (ov?.removed) return null
-        const qty    = ov?.qty    != null ? ov.qty    : row.qty
-        const extras = ov?.extras != null ? ov.extras : row.extras ?? 0
-        return { ...row, qty, extras, total: qty + extras }
-      }).filter(Boolean),
-      ...additions.map(add => ({
-        areaLabel: add.areaLabel, element: add.element,
-        qty: add.qty, extras: add.extras ?? 0, total: add.qty + (add.extras ?? 0),
-        totalLengthM: null,
-      })),
-    ]
+  const handleExportExcel = async () => {
+    // Fetch effective BOM (base + deltas applied) from server
+    let finalRows
+    try {
+      if (projectId) {
+        const effective = await getEffectiveBOM(projectId, lang)
+        finalRows = effective.items ?? []
+      } else {
+        finalRows = bomItems
+      }
+    } catch {
+      finalRows = bomItems
+    }
 
     const dateExport = new Date().toLocaleDateString()
     const projectName = project?.name || ''
@@ -404,12 +440,12 @@ export default function Step4PdfReport({
         return [
           i + 1,
           row.areaLabel,
-          product?.name ?? row.element,
-          product?.pn   ?? '',
-          row.totalLengthM != null ? +row.totalLengthM.toFixed(2) : '',
+          product?.name ?? row.name ?? row.element,
+          product?.pn   ?? row.partNumber ?? '',
+          row.totalLengthM != null ? +Number(row.totalLengthM).toFixed(2) : '',
           row.qty,
-          row.extras,
-          row.total,
+          row.extras ?? 0,
+          (row.qty ?? 0) + (row.extras ?? 0),
         ]
       }),
     ]
@@ -496,7 +532,10 @@ export default function Step4PdfReport({
       {activeTab === 'bom' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', background: PDF_CANVAS_BG }}>
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            <BOMView rowConstructions={rowConstructions} rowLabels={rowLabels} bomDeltas={bomDeltas} onBomDeltasChange={onBomDeltasChange} products={products} productByType={productByType} altsByType={altsByType} />
+            {bomLoading
+              ? <div style={{ textAlign: 'center', padding: '3rem', color: TEXT_PLACEHOLDER }}>Loading BOM...</div>
+              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} products={products} productByType={productByType} altsByType={altsByType} />
+            }
           </div>
         </div>
       )}

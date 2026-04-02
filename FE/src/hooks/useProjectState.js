@@ -6,28 +6,7 @@ import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchP
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 
-function logPanelGrid(grid, trigger) {
-  console.group(`[panelGrid] ${trigger}`)
-  Object.entries(grid).forEach(([label, areaGrid]) => {
-    const totalSlots = areaGrid.rows.reduce((sum, r) => sum + r.length, 0)
-    const active = areaGrid.rows.reduce((sum, r) => sum + r.filter(c => c === 'V' || c === 'H').length, 0)
-    const empty = totalSlots - active
-    console.group(`Area "${label}" — startCorner: ${areaGrid.startCorner}, areaAngle: ${areaGrid.areaAngle}°, rows: ${areaGrid.rows.length}, panels: ${active}, empty slots: ${empty}`)
-    areaGrid.rows.forEach((row, i) => {
-      const pos = areaGrid.rowPositions?.[i]
-      if (pos) {
-        console.log(`  row ${i}: [${row.join(', ')}]  positions: [${pos.join(', ')}]`)
-      } else {
-        console.log(`  row ${i}: [${row.join(', ')}]`)
-      }
-    })
-    if (areaGrid.rowPositions) {
-      console.log('  rowPositions:', areaGrid.rowPositions)
-    }
-    console.groupEnd()
-  })
-  console.groupEnd()
-}
+
 const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
 
 export function useProjectState() {
@@ -81,8 +60,6 @@ export function useProjectState() {
   // Step 4: Construction planning settings (persisted for export)
   const [step3GlobalSettings, setStep3GlobalSettings] = useState(null)
   const [step3AreaSettings,   setStep3AreaSettings]   = useState(null)
-  const [step3BOMData,        setStep3BOMData]        = useState({ rowConstructions: [], rowLabels: [] })
-
   // Step 4: Plan approval
   const [step4PlanApproval, setStep4PlanApproval] = useState(null)
   // { name: string, date: string (ISO), strictConsent: bool }
@@ -96,8 +73,47 @@ export function useProjectState() {
   // Panel types — fetched from server, falls back to hardcoded list
   const [panelTypes, setPanelTypes] = useState([])
 
-  // App defaults — fetched from app_settings table (single source of truth)
-  const [appDefaults, setAppDefaults] = useState(null)
+  // App settings — full param schema fetched from app_settings table (single source of truth)
+  const [appSettingsRaw, setAppSettingsRaw] = useState(null)
+
+  // Derived: {key: value} map for backward compat (used by appDefaults?.panelGapCm etc.)
+  const appDefaults = useMemo(() => {
+    if (!appSettingsRaw) return null
+    return Object.fromEntries(appSettingsRaw.map(s => [s.key, s.value_json]))
+  }, [appSettingsRaw])
+
+  // Derived: param schema array for sidebar rendering
+  const paramSchema = useMemo(() => {
+    if (!appSettingsRaw) return []
+    return appSettingsRaw.map(s => ({
+      key: s.key,
+      label: s.label,
+      section: s.section,
+      scope: s.scope,
+      type: s.param_type,
+      default: s.value_json,
+      min: s.min_val,
+      max: s.max_val,
+      step: s.step_val,
+      highlightGroup: s.highlight_group,
+      orientation: s.key === 'railSpacingV' ? 'vertical' : s.key === 'railSpacingH' ? 'horizontal' : undefined,
+    }))
+  }, [appSettingsRaw])
+
+  // Derived: settings defaults {key: default_value} for seeding globalSettings
+  const settingsDefaults = useMemo(() => {
+    if (!paramSchema.length) return {}
+    return Object.fromEntries(
+      paramSchema.filter(p => p.type !== 'rail-spacing').map(p => [p.key, p.default])
+    )
+  }, [paramSchema])
+
+  // Derived: param key → highlight group mapping
+  const paramGroup = useMemo(() => {
+    return Object.fromEntries(
+      paramSchema.filter(p => p.highlightGroup != null).map(p => [p.key, p.highlightGroup])
+    )
+  }, [paramSchema])
 
   // Products — fetched from server (materials for BOM)
   const [products, setProducts] = useState([])
@@ -129,8 +145,8 @@ export function useProjectState() {
       .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
       .catch(() => { /* keep hardcoded fallback */ })
     fetchAppDefaults()
-      .then(d => { console.log('[appDefaults] loaded:', d); setAppDefaults(d) })
-      .catch(e => { console.error('[appDefaults] FAILED to load:', e) })
+      .then(setAppSettingsRaw)
+      .catch(() => { /* keep null — callers must handle */ })
     fetchProducts()
       .then(items => setProducts(items.map(p => ({
         type: p.type_key, pn: p.part_number ?? '', name: p.name,
@@ -225,7 +241,7 @@ setPanelAngle('')
     resetWizardState()
     setCurrentProject(data.project)
 
-    if (data.version === '2.0') {
+    if (data.version === '2.0' || data.version === '3.0') {
       // ── v2.0 format ────────────────────────────────────────────────────────
       const layout = data.layout || {}
       const s2     = data.step2  || {}
@@ -258,8 +274,9 @@ setPanelAngle('')
 
       if (s2.trapezoids) {
         const configs = {}
-        Object.entries(s2.trapezoids).forEach(([id, t]) => {
-          configs[id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, linesPerRow: t.linesPerRow, lineOrientations: t.lineOrientations }
+        const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids).map(([id, t]) => ({ id, ...t }))
+        traps.forEach(t => {
+          configs[t.id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
         })
         setTrapezoidConfigs(configs)
       }
@@ -270,7 +287,6 @@ setPanelAngle('')
           label: a.label ?? a.id,
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
-          linesPerRow: a.trapezoids?.[0]?.linesPerRow ?? 1,
           lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['vertical'],
         })))
         // Reconstruct panelGrid from per-area panelGrid fields
@@ -287,7 +303,7 @@ setPanelAngle('')
           panelType: s2.panelType,
           referenceLine: layout.referenceLine,
           referenceLineLengthCm: layout.referenceLineLengthCm,
-          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: ['vertical'] },
         })
       }
 
@@ -355,28 +371,25 @@ setPanelAngle('')
   }
 
   const getProjectData = () => {
-    const step2Trapezoids = {}
-    Object.entries(trapezoidConfigs).forEach(([id, cfg]) => {
-      step2Trapezoids[id] = {
-        angleDeg:         cfg.angle,
-        frontHeightCm:    cfg.frontHeight,
-        linesPerRow:      cfg.linesPerRow,
-        lineOrientations: cfg.lineOrientations,
-      }
-    })
+    const step2Trapezoids = Object.entries(trapezoidConfigs).map(([id, cfg]) => ({
+      id,
+      angleDeg:         cfg.angle,
+      frontHeightCm:    cfg.frontHeight,
+      lineOrientations: cfg.lineOrientations,
+    }))
     const step2Areas = rectAreas.map((ra, idx) => {
       const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
       return {
         id:            ra.id,
         label:         ra.label,
-        frontHeightCm: ra.frontHeight !== '' ? parseFloat(ra.frontHeight) || 0 : null,
-        angleDeg:      ra.angle !== '' ? parseFloat(ra.angle) || 0 : null,
+        frontHeightCm: parseFloat(ra.frontHeight !== '' ? ra.frontHeight : panelFrontHeight) || 0,
+        angleDeg:      parseFloat(ra.angle !== '' ? ra.angle : panelAngle) || 0,
         trapezoidIds:  areaTrapIds,
         panelGrid:     panelGrid[ra.label] ?? null,
       }
     })
     return {
-      version: '2.0',
+      version: '3.0',
       step2: {
         panelType,
         panelWidthCm:  panelSpec.widthCm,
@@ -422,13 +435,14 @@ setPanelAngle('')
   const handleSaveProject = async (step = null) => {
     const name     = currentProject?.name || 'Untitled'
     const location = currentProject?.location || null
+    const roofSpec = currentProject?.roofSpec || null
     const layout   = getLayoutData()
     const data     = getProjectData()
     if (cloudProjectId) {
       await updateProject(cloudProjectId, { name, location, layout, data }, step)
       return cloudProjectId
     } else {
-      const saved = await createProject(name, location, layout, data)
+      const saved = await createProject(name, location, layout, data, roofSpec)
       setCloudProjectId(saved.id)
       return saved.id
     }
@@ -594,8 +608,8 @@ setPanelAngle('')
       const shape = sig.split('|')
       newTrapConfigs[trapId] = {
         angle: aAngle, frontHeight: aFront,
-        backHeight: computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm),
-        linesPerRow: shape.length, lineOrientations: shape,
+        backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm),
+        lineOrientations: shape,
       }
     })
 
@@ -629,7 +643,7 @@ setPanelAngle('')
     if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
-    const newArea = { angle: 0, frontHeight: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
+    const newArea = { angle: 0, frontHeight: 0, lineOrientations: ['vertical'] }
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
@@ -795,7 +809,6 @@ setPanelAngle('')
         const existingPanels = panels.filter(p => p.area === areaIdx)
         const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
         areaLineConfigs[areaIdx] = {
-          linesPerRow: Math.max(1, lineRows.length),
           lineOrientations: lineRows.map(r => {
             const s = existingPanels.find(p => p.row === r)
             return s?.heightCm > 150 ? 'vertical' : 'horizontal'
@@ -834,14 +847,13 @@ setPanelAngle('')
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
-      const derivedLPR = Math.max(1, lineRows.length)
       const rowOrient = {}  // row → 'vertical'|'horizontal'
       lineRows.forEach(r => {
         const s = filtered.find(p => p.row === r)
         rowOrient[r] = s?.heightCm > 150 ? 'vertical' : 'horizontal'
       })
       const derivedOrients = lineRows.map(r => rowOrient[r])
-      areaLineConfigs[areaIdx] = { linesPerRow: derivedLPR, lineOrientations: derivedOrients }
+      areaLineConfigs[areaIdx] = { lineOrientations: derivedOrients }
 
       if (!area.manualTrapezoids) {
         // ── Auto-split: group columns by their row-presence signature ────────────
@@ -882,9 +894,9 @@ setPanelAngle('')
         // Build groupTrapConfigs for each unique trap shape
         sigToTrap.forEach((trapId, sig) => {
           const shape = sig.split('|')
-          const trapBack = computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+          const trapBack = computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: trapBack,
-            linesPerRow: shape.length, lineOrientations: shape }
+            lineOrientations: shape }
         })
 
         filtered.forEach(p => {
@@ -892,21 +904,21 @@ setPanelAngle('')
           const sig = colSig(physCol)
           allPanels.push({ ...p, id: panelId++, area: areaIdx,
             trapezoidId: sigToTrap.get(sig) || area.label,
-            yDir: area.yDir ?? 'ttb' })
+            xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
         })
       } else {
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
         const defaultTrap = area.label
-        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, derivedLPR, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack,
-            linesPerRow: derivedLPR, lineOrientations: derivedOrients }
+            lineOrientations: derivedOrients }
         })
         filtered.forEach(p => {
           const trapId = colToTrap[String(p.col ?? 0)] ?? defaultTrap
-          allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId: trapId, yDir: area.yDir ?? 'ttb' })
+          allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId: trapId, xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
         })
       }
     })
@@ -922,14 +934,12 @@ setPanelAngle('')
     }
 
     setPanelGrid(newPanelGrid)
-    logPanelGrid(newPanelGrid, 'panel grid generated')
 
     setPanels(allPanels)
     setAreas(effectiveRectAreas.map((a, idx) => ({
       label: a.label,
       angle: parseFloat(a.angle) || 0,
       frontHeight: parseFloat(a.frontHeight) || 0,
-      linesPerRow: areaLineConfigs[idx]?.linesPerRow ?? 1,
       lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? ['vertical'],
     })))
     setTrapezoidConfigs(prev => {
@@ -941,7 +951,7 @@ setPanelAngle('')
       polygon: roofPolygon, panelType, referenceLine,
       referenceLineLengthCm: parseFloat(referenceLineLengthCm),
       pixelToCmRatio,
-      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, lineOrientations: ['vertical'] },
     })
   }
 
@@ -998,7 +1008,6 @@ setPanelAngle('')
         newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, ratio)
       })
       setPanelGrid(newGrid)
-      logPanelGrid(newGrid, 'loaded (col-synced)')
       return next
     })
   }
@@ -1017,7 +1026,6 @@ setPanelAngle('')
       newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
     })
     setPanelGrid(newGrid)
-    logPanelGrid(newGrid, 'panel deleted/rotated')
   }
 
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
@@ -1047,7 +1055,7 @@ setPanelAngle('')
         polygon: roofPolygon, panelType, referenceLine,
         referenceLineLengthCm: parseFloat(referenceLineLengthCm),
         pixelToCmRatio,
-        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: ['vertical'] },
       })
     }
 
@@ -1142,7 +1150,6 @@ setPanelAngle('')
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,
-    step3BOMData, setStep3BOMData,
     // Step 5 (plan approval)
     step4PlanApproval, setStep4PlanApproval,
     // Step 6 (BOM / PDF)
@@ -1151,6 +1158,9 @@ setPanelAngle('')
     panelSpec,
     // App defaults (from app_settings DB table)
     appDefaults,
+    paramSchema,
+    settingsDefaults,
+    paramGroup,
     // Products (materials for BOM)
     products, productByType, altsByType,
     // Cloud
