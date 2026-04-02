@@ -656,6 +656,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         applyBasesToAll={applyBasesToAll}
         paramSchema={PARAM_SCHEMA}
         paramGroup={PARAM_GROUP}
+        onApplyChanges={(tab) => onTabSave?.(tab === 'detail' ? 'trapezoids' : tab)}
       />
 
       {/* ── Main content ── */}

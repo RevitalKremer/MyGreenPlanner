@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -113,6 +113,7 @@ export default function Step3Sidebar({
   applyBasesToAll,
   paramSchema: PARAM_SCHEMA = [],
   paramGroup: PARAM_GROUP = {},
+  onApplyChanges,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -409,6 +410,18 @@ export default function Step3Sidebar({
                   <div style={{ marginTop: '0.5rem' }}>
                     {globalParams.map(p => renderParam(p))}
                   </div>
+                )}
+                {/* Apply Changes — save to server and recalculate */}
+                {onApplyChanges && (
+                  <button onClick={() => onApplyChanges(sec.tabKey)}
+                    style={{
+                      width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+                      fontSize: '0.65rem', fontWeight: '600', color: PRIMARY_DARK,
+                      background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`,
+                      borderRadius: '4px', cursor: 'pointer',
+                    }}>
+                    {t('step3.sidebar.applyChanges')}
+                  </button>
                 )}
               </div>
             )}

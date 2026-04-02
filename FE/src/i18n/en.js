@@ -233,6 +233,7 @@ const en = {
   'step3.sidebar.areas':          'Areas',
   'step3.sidebar.stockLengthsPlaceholder': 'e.g. 5000, 6000',
   'step3.sidebar.applyToAll':     'Apply to all areas',
+  'step3.sidebar.applyChanges':   'Apply Changes',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',

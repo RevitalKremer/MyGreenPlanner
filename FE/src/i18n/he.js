@@ -233,6 +233,7 @@ const he = {
   'step3.sidebar.areas':                   'אזורים',
   'step3.sidebar.stockLengthsPlaceholder': 'לדוגמה: 5000, 6000',
   'step3.sidebar.applyToAll':              'החל על כל האזורים',
+  'step3.sidebar.applyChanges':            'החל שינויים',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':    'לחץ לעריכה',

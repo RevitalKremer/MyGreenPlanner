@@ -451,7 +451,6 @@ export default function RailLayoutTab({
             ]}
             summary={null}
             actions={[
-              { label: t('step3.layer.applyToAll'),    onClick: onApplyRailsToAll, style: { color: TEXT_SECONDARY, background: BG_MID, border: `1px solid ${BORDER}` } },
               { label: t('step3.layer.resetDefaults'), onClick: onResetRails,      style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } },
               { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
             ]}
