@@ -832,15 +832,16 @@ async def compute_and_save_trapezoid_details(
                         active_rail_positions.add(round(d_cm + off - full_origin, 1))
                 d_cm += depth
 
-            # Filter full trap's legs: keep outer rear + inner legs at active rail positions
+            # Filter full trap's legs: keep outer rear (first) + inner legs at active rail positions
+            # Legs are sorted by positionCm; first and last are outer, rest are inner.
             full_legs = full_trap_detail.get('legs', [])
             filtered_legs = []
-            for leg in full_legs:
-                if not leg['isInner']:
-                    # Outer rear leg (position 0): always keep
-                    if round(leg['positionCm'], 1) == 0:
+            for i, leg in enumerate(full_legs):
+                is_inner = 0 < i < len(full_legs) - 1
+                if not is_inner:
+                    # Outer rear leg (first): always keep; outer front (last): skip — will add correct one below
+                    if i == 0:
                         filtered_legs.append(leg)
-                    # Skip outer front leg — will add correct one below
                 else:
                     # Inner leg: match on railPositionCm (position before cross-rail offset)
                     rail_pos = round(leg.get('railPositionCm', leg['positionCm']), 1)
@@ -862,8 +863,6 @@ async def compute_and_save_trapezoid_details(
                 filtered_legs.append({
                     'positionCm': round(front_pos * 10) / 10,
                     'heightCm': round(front_height * 10) / 10,
-                    'isInner': False,
-                    'side': 'outer',
                 })
 
             detail['legs'] = filtered_legs

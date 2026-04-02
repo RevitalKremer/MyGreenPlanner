@@ -178,16 +178,14 @@ def compute_trapezoid_details(
         inner_legs.append({
             'positionCm': _r(leg_pos),
             'heightCm': _r(leg_height),
-            'isInner': True,
-            'side': side,
             'railPositionCm': _r(rail_pos),
         })
 
-    legs = [
-        {'positionCm': _r(rear_outer_pos), 'heightCm': _r(height_rear), 'isInner': False, 'side': 'outer'},
+    legs = sorted([
+        {'positionCm': _r(rear_outer_pos), 'heightCm': _r(height_rear)},
         *inner_legs,
-        {'positionCm': _r(front_outer_pos), 'heightCm': _r(height_front), 'isInner': False, 'side': 'outer'},
-    ]
+        {'positionCm': _r(front_outer_pos), 'heightCm': _r(height_front)},
+    ], key=lambda l: l['positionCm'])
 
     # ── Active zone ────────────────────────────────────────────────────────
     active_segs = [i for i, s in enumerate(panel_lines) if not s.get('isEmpty', False)]

@@ -145,7 +145,7 @@ class ComputedTrapezoid(BaseModel):
     #   panelEdgeToFirstRailCm, panelEdgeToLastRailCm, railToRailCm, overhangCm
     #   beamThickCm, panelThickCm, blockHeightCm, blockLengthCm, crossRailHeightCm
     legs: list[dict] = Field(default_factory=list)
-    # legs[]: positionCm, heightCm, isInner, side, railPositionCm (inner only)
+    # legs[]: positionCm, heightCm, railPositionCm (inner only); sorted by positionCm, first/last are outer
     blocks: list[dict] = Field(default_factory=list)
     # blocks[]: positionCm (left edge on base beam), isEnd, slopePositionCm, slopeLengthCm
     punches: list[dict] = Field(default_factory=list)
