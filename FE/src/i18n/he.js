@@ -389,7 +389,8 @@ const he = {
 
   // ── Step 3 – Rails table ──────────────────────────────────────────────────
   'step3.rails.colRail':     'קושרת',
-  'step3.rails.colLine':     'קו',
+  'step3.rails.colLine':     'שןרה',
+  'step3.rails.colPanelLine': 'שורת פנלים #',
   'step3.rails.colType':     'סוג',
   'step3.rails.colLength':   'אורך (מ"מ)',
   'step3.rails.colStock':    'חתיכות מלאי',

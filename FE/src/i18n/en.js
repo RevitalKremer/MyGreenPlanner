@@ -390,6 +390,7 @@ const en = {
   // ── Step 3 – Rails table ──────────────────────────────────────────────────
   'step3.rails.colRail':     'Rail',
   'step3.rails.colLine':     'Line',
+  'step3.rails.colPanelLine': 'Panel Line #',
   'step3.rails.colType':     'Type',
   'step3.rails.colLength':   'Length (mm)',
   'step3.rails.colStock':    'Stock pieces',

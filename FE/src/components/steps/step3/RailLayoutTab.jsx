@@ -481,11 +481,9 @@ export default function RailLayoutTab({
         </button>
         {tableOpen && (
           <div style={{ overflowY: 'auto', maxHeight: '260px', padding: '0.5rem 1.25rem 1rem' }}>
-            {rowKeys.map((rowKey, i) => {
-              const rl = railLayouts[i]
-              if (!rl) return null
-              return <RailsTable key={rowKey} rails={rl.rails} rowIdx={i} />
-            })}
+            {(beRailsData ?? []).map((areaData, i) => (
+              <RailsTable key={areaData.areaLabel} areaLabel={areaData.areaLabel} rails={areaData.rails ?? []} />
+            ))}
           </div>
         )}
       </div>
