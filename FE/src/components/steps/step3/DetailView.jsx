@@ -150,13 +150,16 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const numSpans = allLegXs.length - 1
     const raw = beDiags.map(d => {
       if (d.spanIdx >= numSpans) return null
+      const ov = diagOverrides[d.spanIdx] ?? {}
+      const topPct = ov.topPct ?? d.topPct
+      const botPct = ov.botPct ?? d.botPct
       const xA = allLegXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
       const spanW = xB - xA
-      const topX = xA + d.topPct * spanW
-      const botX = xA + d.botPct * spanW
+      const topX = xA + topPct * spanW
+      const botX = xA + botPct * spanW
       // Interpolate slope Y from leg heights at span endpoints
       const hATopY = allLegTopYs[d.spanIdx], hBTopY = allLegTopYs[d.spanIdx + 1]
-      const topY = hATopY + d.topPct * (hBTopY - hATopY)
+      const topY = hATopY + topPct * (hBTopY - hATopY)
       const botY = baseY + BEAM_THICK_PX / 2
       const _dx = botX - topX, _dy = botY - topY
       const _len = Math.sqrt(_dx * _dx + _dy * _dy)
@@ -165,7 +168,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const reversed = numSpans > 1 && d.spanIdx === 0
       return {
         xA, xB, spanW, topX, botX, topY, botY, ux, uy, halfCap,
-        lenCm: d.lengthCm, isDouble: d.isDouble, reversed, skip: d.disabled,
+        lenCm: d.lengthCm, isDouble: d.isDouble, reversed, skip: ov.disabled ?? d.disabled,
         spanIndex: d.spanIdx,
         hA: allLegHeights[d.spanIdx] / SC, hB: allLegHeights[d.spanIdx + 1] / SC,
       }
@@ -627,20 +630,26 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Punches on beams — rendered from BE data (all origins) ── */}
-              {showPunches && (beDetailData?.punches ?? []).map((p, i) => {
-                const px = atTrap(p.positionCm).x
-                const isDiag = p.origin === 'diagonal'
-                const stroke = isDiag ? BLUE : TEXT_SECONDARY
-                if (p.beamType === 'base') {
-                  return <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={isDiag ? 2.5 : 2}
-                    fill="white" stroke={stroke} strokeWidth="1" />
-                }
-                // slope beam: Y at this X along the slope from first to last leg
-                const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
-                return <circle key={i} cx={px} cy={slopeY} r={isDiag ? 2.5 : 2}
-                  fill="white" stroke={stroke} strokeWidth="1" />
-              })}
+              {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
+              {showPunches && <>
+                {(beDetailData?.punches ?? []).filter(p => p.origin !== 'diagonal').map((p, i) => {
+                  const px = atTrap(p.positionCm).x
+                  if (p.beamType === 'base') {
+                    return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
+                      fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                  }
+                  const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
+                  return <circle key={`p-${i}`} cx={px} cy={slopeY} r={2}
+                    fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                })}
+                {activeDiags.map((d, di) => {
+                  const slopeY = allLegTopYs[0] + (d.topX - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
+                  return (<g key={`dp-${di}`}>
+                    <circle cx={d.topX} cy={slopeY} r={2.5} fill="white" stroke={BLUE} strokeWidth="1" />
+                    <circle cx={d.botX} cy={baseY + BEAM_THICK_PX / 2} r={2.5} fill="white" stroke={BLUE} strokeWidth="1" />
+                  </g>)
+                })}
+              </>}
 
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
@@ -722,10 +731,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const ry    = blockBotY + 130
                 const barH  = 12
                 const barCy = ry + barH / 2
-                const basePunches = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'base' && p.origin !== 'block')
+                const nonDiagBasePunches = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
                   .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
-                  .sort((a, b) => a.x - b.x)
+                const diagBasePunches = activeDiags.map(d => ({
+                  x: d.botX, label: fmt((d.botX - legX0) / SC), origin: 'diagonal',
+                }))
+                const basePunches = [...nonDiagBasePunches, ...diagBasePunches].sort((a, b) => a.x - b.x)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'bot') return null
                   const span = findSpan(barHover.svgX)
@@ -789,10 +801,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const activeSlopeBeamLenCm = topBeamLength
-                const slopePunches = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'slope' && p.origin !== 'rail')
+                const nonDiagSlopePunches = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
                   .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
-                  .sort((a, b) => a.x - b.x)
+                const diagSlopePunches = activeDiags.map(d => ({
+                  x: d.topX, label: fmt((d.topX - legX0) / SC), origin: 'diagonal',
+                }))
+                const slopePunches = [...nonDiagSlopePunches, ...diagSlopePunches].sort((a, b) => a.x - b.x)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'top') return null
                   const span = findSpan(barHover.svgX)
