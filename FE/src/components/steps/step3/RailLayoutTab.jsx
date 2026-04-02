@@ -30,9 +30,9 @@ export default function RailLayoutTab({
   railsComputing = false,
 }) {
   const { t } = useLang()
-  const railOverhangCm      = settings.railOverhangCm
-  const stockLengths        = settings.stockLengths
-  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm
+  const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
+  const stockLengths        = settings.stockLengths        ?? DEFAULT_STOCK_LENGTHS_MM
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
 
   const svgRef = useRef(null)
 
