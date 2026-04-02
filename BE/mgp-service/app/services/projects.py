@@ -651,6 +651,155 @@ async def update_project_step(
     return result
 
 
+def _r(v: float) -> float:
+    return round(v * 10) / 10
+
+
+def _trim_trapezoid(
+    detail: dict,
+    full_trap_detail: dict,
+    active_rail_positions: set,
+    full_origin: float,
+    line_orientations: list[str] = None,
+    panel_width_cm: float = 0,
+    panel_length_cm: float = 0,
+    panel_gap_cm: float = 0,
+) -> None:
+    """
+    Trim a trapezoid detail to only include legs/blocks/punches/diagonals
+    relevant to its active panel lines. Rebases all positions to start from 0.
+    Modifies detail in place.
+    """
+    full_legs = full_trap_detail.get('legs', [])
+    if len(full_legs) < 2:
+        return
+
+    # Keep inner legs matching active rail positions + outer legs if they bound active rails
+    filtered_legs = []
+    for leg in full_legs[1:-1]:
+        rail_pos = round(leg.get('railPositionCm', leg['positionCm']), 1)
+        if rail_pos in active_rail_positions:
+            filtered_legs.append({**leg})
+    # Include front outer leg if active rails extend beyond the last inner leg
+    if filtered_legs and active_rail_positions:
+        last_inner_pos = filtered_legs[-1]['positionCm']
+        if max(active_rail_positions) > last_inner_pos:
+            filtered_legs.append({**full_legs[-1]})
+
+    if len(filtered_legs) < 2:
+        detail['legs'] = filtered_legs
+        detail['diagonals'] = []
+        return
+
+    # Capture pre-rebase positions for diagonal filtering
+    pre_rebase_positions = [_r(l['positionCm']) for l in filtered_legs]
+
+    # Rebase: shift so first leg is at position 0
+    rear_pos = filtered_legs[0]['positionCm']
+    front_pos = filtered_legs[-1]['positionCm']
+    slope_len = front_pos - rear_pos
+    angle = detail.get('geometry', {}).get('angle', 0)
+    cos_a = math.cos(angle * math.pi / 180)
+    base_len = slope_len * cos_a
+    geom = detail['geometry']
+
+    # Update geometry
+    geom['originCm'] = _r(full_origin + rear_pos)
+    geom['heightRear'] = filtered_legs[0]['heightCm']
+    geom['heightFront'] = filtered_legs[-1]['heightCm']
+    geom['topBeamLength'] = _r(slope_len)
+    geom['baseBeamLength'] = _r(base_len)
+    geom['baseLength'] = _r(base_len)
+
+    # Update panelFrontHeight if first line is empty (EV/EH)
+    orients = line_orientations or []
+    if orients and 'empty' in orients[0]:
+        skipped_depth = 0
+        for li, o in enumerate(orients):
+            if 'empty' not in o:
+                break
+            is_h = o == 'empty-horizontal'
+            skipped_depth += panel_width_cm if is_h else panel_length_cm
+            if li > 0:
+                skipped_depth += panel_gap_cm
+        sin_a = math.sin(angle * math.pi / 180)
+        geom['panelFrontHeight'] = _r(geom.get('panelFrontHeight', 0) + skipped_depth * sin_a)
+
+    # Update panelRearHeightCm if last line is empty (EV/EH)
+    if orients and 'empty' in orients[-1]:
+        skipped_rear = 0
+        for o in reversed(orients):
+            if 'empty' not in o:
+                break
+            is_h = o == 'empty-horizontal'
+            skipped_rear += panel_width_cm if is_h else panel_length_cm
+            skipped_rear += panel_gap_cm
+        sin_a = math.sin(angle * math.pi / 180)
+        geom['panelRearHeightCm'] = _r(geom.get('panelRearHeightCm', 0) - skipped_rear * sin_a)
+
+    # Rebase legs
+    for leg in filtered_legs:
+        leg['positionCm'] = _r(leg['positionCm'] - rear_pos)
+        if 'railPositionCm' in leg:
+            leg['railPositionCm'] = _r(leg['railPositionCm'] - rear_pos)
+    detail['legs'] = filtered_legs
+
+    # Recompute railToRailCm
+    inner_rails = [l.get('railPositionCm', l['positionCm']) for l in filtered_legs[1:-1]]
+    if inner_rails:
+        geom['railToRailCm'] = _r(max(inner_rails) - min(inner_rails))
+
+    # Rebase punches
+    base_shift = rear_pos * cos_a
+    new_punches = []
+    for p in detail.get('punches', []):
+        pp = {**p}
+        shift = rear_pos if p['beamType'] == 'slope' else base_shift
+        pp['positionCm'] = _r(p['positionCm'] - shift)
+        beam_len = slope_len if p['beamType'] == 'slope' else base_len
+        if -0.5 <= pp['positionCm'] <= beam_len + 0.5:
+            if p.get('origin') == 'block' and p['beamType'] == 'base':
+                pp['reversedPositionCm'] = _r(base_len - pp['positionCm'])
+            elif p['beamType'] == 'slope' and p.get('origin') != 'rail':
+                pp['reversedPositionCm'] = _r(slope_len - pp['positionCm'])
+            new_punches.append(pp)
+    # Replace outerLeg punches with fresh ones for trimmed beam ends
+    profile_half = geom.get('beamThickCm', 4) / 2
+    new_punches = [p for p in new_punches if p.get('origin') != 'outerLeg']
+    new_punches.append({'beamType': 'base',  'positionCm': _r(profile_half), 'origin': 'outerLeg'})
+    new_punches.append({'beamType': 'base',  'positionCm': _r(base_len - profile_half), 'origin': 'outerLeg'})
+    new_punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg',
+                        'reversedPositionCm': _r(slope_len - profile_half)})
+    new_punches.append({'beamType': 'slope', 'positionCm': _r(slope_len - profile_half), 'origin': 'outerLeg',
+                        'reversedPositionCm': _r(profile_half)})
+    detail['punches'] = new_punches
+
+    # Rebase blocks
+    new_blocks = []
+    for blk in detail.get('blocks', []):
+        nb = {**blk}
+        nb['positionCm'] = _r(blk['positionCm'] - rear_pos)
+        if 'slopePositionCm' in nb and cos_a > 0:
+            nb['slopePositionCm'] = _r(blk['slopePositionCm'] - rear_pos / cos_a)
+        if nb['positionCm'] >= -0.5:
+            new_blocks.append(nb)
+    detail['blocks'] = new_blocks
+
+    # Filter diagonals from full trap: keep those where both adjacent legs survived
+    pos_to_idx = {p: i for i, p in enumerate(pre_rebase_positions)}
+    new_diags = []
+    for d in full_trap_detail.get('diagonals', []):
+        si = d['spanIdx']
+        if si < len(full_legs) - 1:
+            pa = _r(full_legs[si]['positionCm'])
+            pb = _r(full_legs[si + 1]['positionCm'])
+            ia = pos_to_idx.get(pa)
+            ib = pos_to_idx.get(pb)
+            if ia is not None and ib is not None and ib == ia + 1:
+                new_diags.append({**d, 'spanIdx': ia})
+    detail['diagonals'] = new_diags
+
+
 async def compute_and_save_trapezoid_details(
     db: AsyncSession, project: Project, tds,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
@@ -806,7 +955,6 @@ async def compute_and_save_trapezoid_details(
 
     if full_trap_detail:
         full_origin = full_trap_detail.get('geometry', {}).get('originCm', 0)
-        full_base_overhang = app_defaults.get('baseOverhangCm', 5)
 
         for tid, detail in result.items():
             if detail.get('isFullTrap'):
@@ -837,117 +985,11 @@ async def compute_and_save_trapezoid_details(
                         active_rail_positions.add(round(d_cm + off - full_origin, 1))
                 d_cm += depth
 
-            # Filter full trap's legs: compute rear/front from active rails, keep matching inner legs.
-            # All positions stay in full-trap slope coordinates (shared across all traps in the area).
-            full_legs = full_trap_detail.get('legs', [])
-            full_rear = full_legs[0] if full_legs else {'positionCm': 0, 'heightCm': 0}
-            full_front = full_legs[-1] if full_legs else {'positionCm': 0, 'heightCm': 0}
-            full_span = full_front['positionCm']
-
-            def interp_height(pos):
-                frac = pos / full_span if full_span > 0 else 0
-                return full_rear['heightCm'] + frac * (full_front['heightCm'] - full_rear['heightCm'])
-
-            t_cfg_local = (trapezoid_configs or {}).get(tid, {})
-            trap_overhang = t_cfg_local.get('baseOverhangCm', full_base_overhang)
-
-            filtered_legs = []
-            if active_rail_positions:
-                first_rail = min(active_rail_positions)
-                last_rail = max(active_rail_positions)
-
-                # Rear outer leg at first active rail - overhang
-                rear_pos = first_rail - trap_overhang
-                filtered_legs.append({
-                    'positionCm': round(rear_pos * 10) / 10,
-                    'heightCm': round(interp_height(rear_pos) * 10) / 10,
-                })
-
-                # Inner legs: keep those matching active rail positions (copy to avoid mutating full trap)
-                for leg in full_legs[1:-1]:
-                    rail_pos = round(leg.get('railPositionCm', leg['positionCm']), 1)
-                    if rail_pos in active_rail_positions:
-                        filtered_legs.append({**leg})
-
-                # Front outer leg at last active rail + overhang
-                front_pos = last_rail + trap_overhang
-                filtered_legs.append({
-                    'positionCm': round(front_pos * 10) / 10,
-                    'heightCm': round(interp_height(front_pos) * 10) / 10,
-                })
-
-            detail['legs'] = filtered_legs
-
-            # ── Full rebase: shift everything so trimmed trap starts at 0 ──
-            if len(filtered_legs) >= 2:
-                rear_pos = filtered_legs[0]['positionCm']
-                front_pos_leg = filtered_legs[-1]['positionCm']
-                slope_len = front_pos_leg - rear_pos
-                _cos_a = math.cos(detail['geometry'].get('angle', 0) * math.pi / 180)
-                base_len = slope_len * _cos_a
-                geom = detail['geometry']
-
-                # Update originCm so FE maps to the correct global position
-                geom['originCm'] = round((full_origin + rear_pos) * 10) / 10
-                geom['heightRear'] = filtered_legs[0]['heightCm']
-                geom['heightFront'] = filtered_legs[-1]['heightCm']
-                geom['topBeamLength'] = round(slope_len * 10) / 10
-                geom['baseBeamLength'] = round(base_len * 10) / 10
-                geom['baseLength'] = round(base_len * 10) / 10
-
-                # Rebase legs to start from 0
-                for leg in filtered_legs:
-                    leg['positionCm'] = round((leg['positionCm'] - rear_pos) * 10) / 10
-
-                # Rebase punches (slope: shift by rear_pos; base: shift by rear_pos * cos)
-                base_shift = rear_pos * _cos_a
-                new_punches = []
-                for p in detail.get('punches', []):
-                    pp = {**p}
-                    shift = rear_pos if p['beamType'] == 'slope' else base_shift
-                    pp['positionCm'] = round((p['positionCm'] - shift) * 10) / 10
-                    beam_len = slope_len if p['beamType'] == 'slope' else base_len
-                    if -0.5 <= pp['positionCm'] <= beam_len + 0.5:
-                        # Recompute reversedPositionCm
-                        if p.get('origin') == 'block' and p['beamType'] == 'base':
-                            pp['reversedPositionCm'] = round((base_len - pp['positionCm']) * 10) / 10
-                        elif p['beamType'] == 'slope' and p.get('origin') != 'rail':
-                            pp['reversedPositionCm'] = round((slope_len - pp['positionCm']) * 10) / 10
-                        new_punches.append(pp)
-                detail['punches'] = new_punches
-
-                # Rebase blocks
-                new_blocks = []
-                for blk in detail.get('blocks', []):
-                    nb = {**blk}
-                    nb['positionCm'] = round((blk['positionCm'] - rear_pos) * 10) / 10
-                    if nb['positionCm'] >= -0.5:
-                        new_blocks.append(nb)
-                detail['blocks'] = new_blocks
-
-            # Filter diagonals: keep only those where both adjacent full-trap legs survived.
-            # Use pre-rebase positions for matching, map to post-rebase filtered leg indices.
-            kept_full_positions = []
-            kept_full_positions.append(round(rear_pos * 10) / 10 if len(filtered_legs) >= 2 else 0)
-            for leg in full_legs[1:-1]:
-                rp = round(leg.get('railPositionCm', leg['positionCm']), 1)
-                if rp in active_rail_positions:
-                    kept_full_positions.append(round(leg['positionCm'] * 10) / 10)
-            if len(filtered_legs) >= 2:
-                kept_full_positions.append(round(front_pos * 10) / 10)
-            pos_to_idx = {p: i for i, p in enumerate(kept_full_positions)}
-
-            new_diags = []
-            for d in detail.get('diagonals', []):
-                si = d['spanIdx']
-                if si < len(full_legs) - 1:
-                    pa = round(full_legs[si]['positionCm'] * 10) / 10
-                    pb = round(full_legs[si + 1]['positionCm'] * 10) / 10
-                    ia = pos_to_idx.get(pa)
-                    ib = pos_to_idx.get(pb)
-                    if ia is not None and ib is not None and ib == ia + 1:
-                        new_diags.append({**d, 'spanIdx': ia})
-            detail['diagonals'] = new_diags
+            _trim_trapezoid(
+                detail, full_trap_detail, active_rail_positions, full_origin,
+                local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
+                app_defaults.get('panelGapCm'),
+            )
 
             _upsert_computed_trapezoid(step3, tid, detail)
             result[tid] = detail

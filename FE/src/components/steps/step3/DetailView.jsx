@@ -30,7 +30,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   } = useCanvasPanZoom()
 
   // Rail offset = first rail of first line (derived from lineRails)
-  const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
+  const railOffsetCm   = lineRails?.[0]?.[0] ?? lineRails?.['0']?.[0] ?? 0
   const panelLengthCm  = settings.panelLengthCm
   const diagTopPct     = settings.diagTopPct / 100
   const diagBasePct    = settings.diagBasePct / 100
@@ -109,7 +109,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     for (let si = 0; si < segments.length; si++) {
       const seg = segments[si]
       dCm += (seg.gapBeforeCm ?? 0)
-      const segRails = lineRails?.[si] ?? []
+      if (seg.isEmpty) { dCm += (seg.depthCm ?? 0); continue }
+      const segRails = lineRails?.[si] ?? lineRails?.[String(si)] ?? []
       for (const offsetCm of segRails) {
         items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm, globalOffsetCm: dCm + offsetCm })
       }
@@ -301,8 +302,28 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const sx = atSlope(dCm).x
     return { x: sx, y: beamYFromLegs(sx) - (PANEL_OFFSET_PX - PANEL_THICK_PX / 2) }
   }
-  const activePanelStartBot = panelBottomPos(segments[0]?.gapBeforeCm ?? 0)
-  const activePanelEndBot   = panelBottomPos(totalPanelDepthCm)
+  // Find depth to first active (non-empty) panel line
+  const firstActiveDepth = (() => {
+    let d = 0
+    for (const seg of segments) {
+      d += seg.gapBeforeCm ?? 0
+      if (!seg.isEmpty) return d
+      d += seg.depthCm ?? 0
+    }
+    return 0
+  })()
+  const activePanelStartBot = panelBottomPos(firstActiveDepth)
+  // Find depth at end of last active (non-empty) panel line
+  const lastActiveDepth = (() => {
+    let d = 0, lastEnd = totalPanelDepthCm
+    for (const seg of segments) {
+      d += seg.gapBeforeCm ?? 0
+      d += seg.depthCm ?? 0
+      if (!seg.isEmpty) lastEnd = d
+    }
+    return lastEnd
+  })()
+  const activePanelEndBot   = panelBottomPos(lastActiveDepth)
 
   const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
     const col = tbd ? TC : DC
@@ -363,9 +384,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {showGhost && fullTrapGhost?.beDetailData?.geometry && (() => {
                 const gGeom = fullTrapGhost.beDetailData.geometry
                 const gAngleRad = gGeom.angle * Math.PI / 180
-                const gHR = gGeom.heightRear * SC
-                // Align at panel start: same base line, shift so rear leg tops match
-                const gBaseY = baseY + (hR - gHR)
+                // Same base beam level — side view looks through both traps at ground plane
+                const gBaseY = baseY
                 const gBlockTopY = gBaseY + BEAM_THICK_PX
 
                 // Ghost style helpers — same as original ghost rendering (filled rects with dashed stroke)
@@ -380,13 +400,14 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
                 const gDiags = (fullTrapGhost.beDetailData.diagonals ?? []).filter(d => !d.disabled)
                 const gLegs = fullTrapGhost.beDetailData.legs ?? []
-                // Ghost atSlope: same panel origin as real trap, converts positionCm to SVG x
+                // Ghost atSlope: offset from real trap's origin by the difference in originCm
                 const gOriginCm = fullTrapGhost.beDetailData.geometry?.originCm ?? 0
-                const gAtSlope = (dCm) => ({
-                  x: panelX1 + dCm * Math.cos(gAngleRad) * SC,
-                  y: panelY1 - dCm * Math.sin(gAngleRad) * SC,
+                const originDelta = (gOriginCm - originCm) * Math.cos(gAngleRad) * SC
+                const gAtTrap = (posCm) => ({
+                  x: legX0 + originDelta + posCm * Math.cos(gAngleRad) * SC,
+                  y: gBaseY - (gGeom.heightRear + posCm * Math.sin(gAngleRad)) * SC,
                 })
-                const gAtTrap = (posCm) => gAtSlope(posCm + gOriginCm)
+                const gAtSlope = (dCm) => gAtTrap(dCm - gOriginCm)
                 const gAllLegXs = gLegs.map(leg => gAtTrap(leg.positionCm).x)
                 // Use actual leg positions for beam ends (not geometry-based gLegX0/gLegX1)
                 const gActualX0 = gAllLegXs[0] ?? legX0
@@ -573,6 +594,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   dCm += seg.gapBeforeCm
                   const sx = atSlope(dCm).x
                   dCm += seg.depthCm
+                  if (seg.isEmpty) return null
                   const ex = atSlope(dCm).x
                   const sy = beamYFromLegs(sx), ey = beamYFromLegs(ex)
                   const cx  = (sx + ex) / 2
@@ -696,8 +718,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   if (!hasActiveZone) return null
                   // Panel distance annotations: all on the beam line (parallel to panel)
                   const panelOff = -(PANEL_OFFSET_PX + 28)
-                  const psx = atSlope(segments[0]?.gapBeforeCm ?? 0).x
-                  const pex = atSlope(totalPanelDepthCm).x
+                  const psx = atSlope(firstActiveDepth).x
+                  const pex = atSlope(lastActiveDepth).x
                   const r1x = railItems[0]?.cx ?? psx
                   const r2x = railItems[railItems.length - 1]?.cx ?? pex
                   return (<>

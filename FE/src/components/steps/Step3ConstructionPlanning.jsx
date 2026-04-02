@@ -707,8 +707,8 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 <DetailView
                   rc={selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
-                  panelLines={selectedRowLineDepths} settings={getSettings(selectedRowIdx)}
-                  lineRails={selectedLineRails} highlightParam={highlightParam}
+                  panelLines={trapPanelLinesMap[effectiveSelectedTrapId] ?? selectedRowLineDepths} settings={getSettings(selectedRowIdx)}
+                  lineRails={trapLineRailsMap[effectiveSelectedTrapId] ?? selectedLineRails} highlightParam={highlightParam}
                   beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
                   fullTrapGhost={fullTrapGhost}
                   paramGroup={PARAM_GROUP}
