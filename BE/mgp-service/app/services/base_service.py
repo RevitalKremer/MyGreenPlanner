@@ -308,19 +308,4 @@ def consolidate_area_bases(
             )
         ]
 
-    # ── Reassign trapezoidId by matching base lengthCm to trapezoid depth ──
-    # After consolidation, surviving bases may have varying lengths but all
-    # carry the winning trapezoid's ID. Reassign so the FE can group correctly.
-    depth_to_trap: dict[float, str] = {}
-    for trap_id in trap_ids:
-        bd = bases_data_map.get(trap_id)
-        if bd:
-            depth_to_trap[round(bd['baseLengthCm'], 1)] = trap_id
-
-    for trap_id, bases in result.items():
-        for base in bases:
-            base_len = round(base.get('lengthCm', 0), 1)
-            if base_len in depth_to_trap:
-                base['trapezoidId'] = depth_to_trap[base_len]
-
     return result

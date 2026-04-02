@@ -132,7 +132,7 @@ class ComputedArea(BaseModel):
 
 class ComputedTrapezoid(BaseModel):
     """Server-computed structural details for one trapezoid."""
-    trapId: str                     # matches step2.trapezoids key
+    trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
     geometry: dict = Field(default_factory=dict)
     # geometry keys:
     #   heightRear, heightFront          — structural leg heights (cm)
@@ -148,7 +148,7 @@ class ComputedTrapezoid(BaseModel):
     legs: list[dict] = Field(default_factory=list)
     # legs[]: positionCm, heightCm, isInner, side, railPositionCm (inner only)
     blocks: list[dict] = Field(default_factory=list)
-    # blocks[]: positionCm (left edge), isEnd
+    # blocks[]: positionCm (left edge on base beam), isEnd, slopePositionCm, slopeLengthCm
     punches: list[dict] = Field(default_factory=list)
     # punches[]: beamType ('base'|'slope'), positionCm
     diagonals: list[dict] = Field(default_factory=list)

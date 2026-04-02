@@ -262,11 +262,19 @@ def compute_trapezoid_details(
     raw_blocks.append({'positionCm': _r(front_outer_pos - block_length_cm), 'isEnd': True, 'legIdx': len(legs) - 1})
 
     # Remove overlaps: walk left-to-right, skip any block that overlaps the previous
+    # Add slope projection for bases layout (top-down view shows slope beam, blocks sit on base beam)
+    slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
     blocks = []
     for blk in raw_blocks:
         if blocks and blk['positionCm'] < blocks[-1]['positionCm'] + block_length_cm - 0.1:
             continue  # overlaps previous block — skip
-        blocks.append({'positionCm': blk['positionCm'], 'isEnd': blk['isEnd']})
+        pos = blk['positionCm']
+        blocks.append({
+            'positionCm': _r(pos),
+            'isEnd': blk['isEnd'],
+            'slopePositionCm': _r(pos / cos_a) if cos_a > 0 else _r(pos),
+            'slopeLengthCm': _r(slope_block_length),
+        })
 
     # ── Punches ────────────────────────────────────────────────────────────
     punches = []
@@ -327,13 +335,21 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
             if -0.1 <= lp <= beam_len + 0.1:
                 local_positions.append(lp)
 
-        # Remove overlaps (same logic as initial computation)
+        # Remove overlaps + add slope projection (same logic as initial computation)
+        angle_deg = geom.get('angle', 0)
+        cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
+        slope_block_length = block_length / cos_a if cos_a > 0 else block_length
         blocks = []
         for lp in local_positions:
             if blocks and lp < blocks[-1]['positionCm'] + block_length - 0.1:
                 continue
             is_end = abs(lp) < 0.1 or abs(lp - (beam_len - block_length)) < 0.1
-            blocks.append({'positionCm': lp, 'isEnd': is_end})
+            blocks.append({
+                'positionCm': lp,
+                'isEnd': is_end,
+                'slopePositionCm': _r(lp / cos_a) if cos_a > 0 else lp,
+                'slopeLengthCm': _r(slope_block_length),
+            })
 
         detail['blocks'] = blocks
 

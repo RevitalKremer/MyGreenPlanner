@@ -615,6 +615,17 @@ async def update_project_step(
             bom_obj = await bom_service.compute_and_save_bom(db, project)
             bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
 
+    # Re-read bases from DB after trapezoid computation (trapezoidId reassignment updates bases)
+    if trapezoid_details and bases_result:
+        await db.refresh(project)
+        updated_step3 = (project.data or {}).get('step3', {})
+        for area_res in bases_result:
+            label = area_res.get('areaLabel', '')
+            for ca in updated_step3.get('computedAreas', []):
+                if ca.get('label') == label:
+                    area_res['bases'] = ca.get('bases', [])
+                    break
+
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
         result['rails'] = rails_result
@@ -861,7 +872,23 @@ async def compute_and_save_trapezoid_details(
 
     # ── Align blocks across all trapezoids in the area (after trimmed-trap pass) ──
     tds.align_blocks(result)
-    # Persist aligned blocks
+
+    # ── Reassign trapezoidId on consolidated bases using topBeamLength ──────
+    # Now that trapezoid details are computed, match each base's lengthCm
+    # to the trapezoid whose topBeamLength matches.
+    depth_to_trap: dict[float, str] = {}
+    for tid, detail in result.items():
+        tbl = detail.get('geometry', {}).get('topBeamLength', 0)
+        if tbl:
+            depth_to_trap[round(tbl, 1)] = tid
+
+    for area_data in step3.get('computedAreas', []):
+        for base in area_data.get('bases', []):
+            base_len = round(base.get('lengthCm', 0), 1)
+            if base_len in depth_to_trap:
+                base['trapezoidId'] = depth_to_trap[base_len]
+
+    # Persist aligned blocks + reassigned bases
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
 
@@ -896,6 +923,17 @@ async def save_tab(
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
+
+    # Re-read bases from DB after trapezoid computation (trapezoidId reassignment updates bases)
+    if trapezoid_details and bases_result:
+        await db.refresh(project)
+        updated_step3 = (project.data or {}).get('step3', {})
+        for area_res in bases_result:
+            label = area_res.get('areaLabel', '')
+            for ca in updated_step3.get('computedAreas', []):
+                if ca.get('label') == label:
+                    area_res['bases'] = ca.get('bases', [])
+                    break
 
     return {
         'tab': tab,
