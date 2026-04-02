@@ -415,7 +415,7 @@ def _compute_block_punches(
     in the block range.
     """
     OVERLAP_MARGIN = 2   # cm — minimum distance from any existing punch
-    INNER_OFFSET   = 2   # cm
+    INNER_OFFSET   = 8   # cm
 
     def has_overlap(candidate, existing):
         return any(abs(candidate - p) < OVERLAP_MARGIN for p in existing)

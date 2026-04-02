@@ -738,9 +738,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const baseBeamLen = activeBaseBeamLenCm
-                const slopeBeamLen = topBeamLength
-                const baseBW = slopeBeamLen > 0 ? (baseBeamLen / slopeBeamLen) * legBW : legBW
-                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * baseBW
+                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * legBW
                 const nonDiagBasePunches = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
                   .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
@@ -758,7 +756,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g>
                     <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.baseBeamPunches')}</text>
-                    <rect x={legX0} y={ry} width={baseBW} height={barH}
+                    <rect x={legX0} y={ry} width={legBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
