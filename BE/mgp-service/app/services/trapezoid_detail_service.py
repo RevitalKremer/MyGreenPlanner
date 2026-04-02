@@ -295,9 +295,11 @@ def compute_trapezoid_details(
     punches.append({'beamType': 'slope', 'positionCm': _r(top_beam_length - profile_half), 'origin': 'outerLeg'})
 
     # innerLeg: at each inner leg position on both beams
+    # Base beam position = slope position * cos(angle) (horizontal projection)
+    # Slope beam position = slope position (along slope)
     for il in inner_legs:
         pos = il['positionCm']
-        punches.append({'beamType': 'base',  'positionCm': _r(pos), 'origin': 'innerLeg'})
+        punches.append({'beamType': 'base',  'positionCm': _r(pos * cos_a), 'origin': 'innerLeg'})
         punches.append({'beamType': 'slope', 'positionCm': _r(pos), 'origin': 'innerLeg'})
 
     # rail: one punch per cross rail at its center on the slope beam

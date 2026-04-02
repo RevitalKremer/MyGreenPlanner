@@ -881,8 +881,16 @@ async def compute_and_save_trapezoid_details(
             _upsert_computed_trapezoid(step3, tid, detail)
             result[tid] = detail
 
-    # ── Align blocks across all trapezoids in the area (after trimmed-trap pass) ──
-    tds.align_blocks(result)
+    # ── Align blocks across trapezoids within the same area (after trimmed-trap pass) ──
+    area_trap_map = {}
+    for a in areas:
+        label = a.get('label', '')
+        for tid in a.get('trapezoidIds', []):
+            area_trap_map.setdefault(label, []).append(tid)
+    for label, trap_ids in area_trap_map.items():
+        area_traps = {tid: result[tid] for tid in trap_ids if tid in result}
+        tds.align_blocks(area_traps)
+        result.update(area_traps)
 
     # ── Reassign trapezoidId on consolidated bases using topBeamLength ──────
     # Now that trapezoid details are computed, match each base's lengthCm

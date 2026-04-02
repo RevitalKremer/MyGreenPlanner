@@ -470,9 +470,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   {beBlocks.map((blk, bi) => {
                     const bx = atTrap(blk.positionCm).x
                     // Find the punch belonging to this block (within block's X range)
+                    const blkLen = beDetailData?.geometry?.blockLengthCm ?? 50
+                    const cosA = Math.cos(angle * Math.PI / 180)
+                    const blkStartBase = blk.positionCm * cosA
+                    const blkEndBase = (blk.positionCm + blkLen) * cosA
                     const blkPunch = blockPunches.find(p => {
-                      const px = p.positionCm
-                      return px >= blk.positionCm - 0.1 && px <= blk.positionCm + (beDetailData?.geometry?.blockLengthCm ?? 50) + 0.1
+                      return p.positionCm >= blkStartBase - 0.1 && p.positionCm <= blkEndBase + 0.1
                     })
                     const label = blkPunch ? fmt(reverseBlockPunches ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
@@ -735,7 +738,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const baseBeamLen = activeBaseBeamLenCm
-                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * legBW
+                const slopeBeamLen = topBeamLength
+                const baseBW = slopeBeamLen > 0 ? (baseBeamLen / slopeBeamLen) * legBW : legBW
+                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * baseBW
                 const nonDiagBasePunches = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
                   .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
@@ -753,7 +758,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g>
                     <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.baseBeamPunches')}</text>
-                    <rect x={legX0} y={ry} width={legBW} height={barH}
+                    <rect x={legX0} y={ry} width={baseBW} height={barH}
                       fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
                       style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
                       onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
