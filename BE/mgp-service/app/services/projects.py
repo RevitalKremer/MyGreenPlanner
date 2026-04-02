@@ -218,6 +218,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
         'panel_gap_cm':      app_defaults['panelGapCm'],
         'rail_spacing_v_cm': area_settings.get('railSpacingV',    app_defaults['railSpacingV']),
         'rail_spacing_h_cm': area_settings.get('railSpacingH',    app_defaults['railSpacingH']),
+        'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults.get('railRoundThresholdCm', 0)),
     }
 
 
@@ -239,7 +240,7 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
 
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
-            AppSetting.key.in_(['panelGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH'])
+            AppSetting.key.in_(['panelGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH', 'railRoundThresholdCm'])
         )
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}

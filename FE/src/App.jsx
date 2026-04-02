@@ -104,9 +104,6 @@ function App() {
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
     if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
-      setBeRailsData(null)
-      setBeBasesData(null)
-      setBeTrapezoidsData(null)
       getRails(s.cloudProjectId)
         .then(setBeRailsData)
         .catch(console.error)

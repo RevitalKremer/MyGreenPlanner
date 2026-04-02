@@ -37,6 +37,18 @@ def _rail_offset_from_spacing(panel_depth_cm: float, spacing_cm: float) -> float
     return (panel_depth_cm - spacing_cm) / 2.0
 
 
+def _split_stock_for_rounded(rounded_mm: int, stock_lengths: list[int]) -> list[int]:
+    """Stock segments when rounding up: each piece is the full stock length (no cutting)."""
+    remaining = rounded_mm
+    sorted_stocks = sorted(stock_lengths, reverse=True)
+    result = []
+    while remaining > 0:
+        chosen = next((s for s in sorted_stocks if s >= remaining), sorted_stocks[0])
+        result.append(chosen)
+        remaining -= chosen
+    return result
+
+
 def _split_into_stock_segments(length_mm: int, stock_lengths: list[int]) -> list[dict]:
     """
     Greedy largest-first stock splitting.
@@ -46,11 +58,11 @@ def _split_into_stock_segments(length_mm: int, stock_lengths: list[int]) -> list
     segments = []
     sorted_stocks = sorted(stock_lengths, reverse=True)
     while remaining > 0:
-        chosen = next((s for s in sorted_stocks if s >= remaining), sorted_stocks[-1])
+        chosen = next((s for s in sorted_stocks if s >= remaining), sorted_stocks[0])
         segments.append({'used': remaining if chosen >= remaining else chosen,
                          'leftover': max(0, chosen - remaining)})
         remaining -= chosen
-        if chosen < remaining + chosen:  # prevent infinite loop on undersized stock
+        if remaining > 0 and chosen <= 0:  # prevent infinite loop on invalid stock
             break
     return segments
 
@@ -67,6 +79,7 @@ def compute_area_rails(
     panel_gap_cm: float,
     rail_spacing_v_cm: float,
     rail_spacing_h_cm: float,
+    rail_round_threshold_cm: float = 0,
 ) -> dict:
     """
     Compute rails for one area.
@@ -129,7 +142,8 @@ def compute_area_rails(
         for offset_from_front in offsets_from_front:
             offset_from_rear = round(panel_depth_cm - offset_from_front, 4)
             segs = _split_into_stock_segments(length_mm, stock_lengths)
-            rails.append({
+            leftover_cm = round(sum(s['leftover'] for s in segs) / 10, 1)
+            rail = {
                 'railId':               f'R{rail_counter}',
                 'lineIdx':              line_idx,
                 'offsetFromLineFrontCm': round(offset_from_front, 4),
@@ -137,8 +151,14 @@ def compute_area_rails(
                 'startCm':              start_cm,
                 'lengthCm':             round(length_mm / 10, 1),
                 'stockSegmentsMm':      [s['used'] for s in segs],
-                'leftoverCm':           round(sum(s['leftover'] for s in segs) / 10, 1),
-            })
+                'leftoverCm':           leftover_cm,
+            }
+            if rail_round_threshold_cm > 0 and 0 < leftover_cm <= rail_round_threshold_cm:
+                rounded_mm = length_mm + round(leftover_cm * 10)
+                rail['roundedLengthCm'] = round(rounded_mm / 10, 1)
+                rail['stockSegmentsMm'] = _split_stock_for_rounded(rounded_mm, stock_lengths)
+                rail['leftoverCm'] = 0
+            rails.append(rail)
             rail_counter += 1
 
     return {'rails': rails, 'numLargeGaps': num_large_gaps}
