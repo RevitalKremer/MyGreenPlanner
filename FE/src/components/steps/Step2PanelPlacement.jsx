@@ -273,7 +273,7 @@ export default function Step2PanelPlacement({
   const getAreaKey = (panel) =>
     (panel.area ?? panel.row) !== undefined ? (panel.area ?? panel.row) : `manual_${panel.id}`
 
-  // Auto-derive linesPerRow + lineOrientations from panel rows.
+  // Auto-derive lineOrientations from panel rows.
   // Must be after selectedRow and getAreaKey are defined.
   const defaultTrapId = selectedRow
     ? `${rectAreas[getAreaKey(selectedRow[0])]?.label ?? String.fromCharCode(65 + getAreaKey(selectedRow[0]))}`
@@ -309,24 +309,21 @@ export default function Step2PanelPlacement({
     const autoOrients = sortedRows.map(([, p]) =>
       p.heightCm > 150 ? 'vertical' : 'horizontal'
     )
-    const autoLPR = sortedRows.length
-
     const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
     const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0
 
     const current = trapezoidConfigs?.[selectedTrapezoidId] || {}
     if (
-      current.linesPerRow === autoLPR &&
       JSON.stringify(current.lineOrientations) === JSON.stringify(autoOrients) &&
       current.angle === a &&
       current.frontHeight === fH
     ) return
 
-    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, autoLPR, appDefaults?.panelGapCm).toFixed(1))
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, appDefaults?.panelGapCm).toFixed(1))
 
     setTrapezoidConfigs(prev => ({
       ...prev,
-      [selectedTrapezoidId]: { ...current, linesPerRow: autoLPR, lineOrientations: autoOrients, backHeight: bH, angle: a, frontHeight: fH },
+      [selectedTrapezoidId]: { ...current, lineOrientations: autoOrients, backHeight: bH, angle: a, frontHeight: fH },
     }))
   }, [selectedRow, selectedTrapezoidId, _frontH, _angle]) // eslint-disable-line react-hooks/exhaustive-deps
 

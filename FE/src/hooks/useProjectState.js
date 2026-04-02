@@ -275,7 +275,7 @@ setPanelAngle('')
       if (s2.trapezoids) {
         const configs = {}
         Object.entries(s2.trapezoids).forEach(([id, t]) => {
-          configs[id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, linesPerRow: t.linesPerRow, lineOrientations: t.lineOrientations }
+          configs[id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
         })
         setTrapezoidConfigs(configs)
       }
@@ -286,7 +286,6 @@ setPanelAngle('')
           label: a.label ?? a.id,
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
-          linesPerRow: a.trapezoids?.[0]?.linesPerRow ?? 1,
           lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['vertical'],
         })))
         // Reconstruct panelGrid from per-area panelGrid fields
@@ -303,7 +302,7 @@ setPanelAngle('')
           panelType: s2.panelType,
           referenceLine: layout.referenceLine,
           referenceLineLengthCm: layout.referenceLineLengthCm,
-          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: ['vertical'] },
         })
       }
 
@@ -376,7 +375,6 @@ setPanelAngle('')
       step2Trapezoids[id] = {
         angleDeg:         cfg.angle,
         frontHeightCm:    cfg.frontHeight,
-        linesPerRow:      cfg.linesPerRow,
         lineOrientations: cfg.lineOrientations,
       }
     })
@@ -385,8 +383,8 @@ setPanelAngle('')
       return {
         id:            ra.id,
         label:         ra.label,
-        frontHeightCm: ra.frontHeight !== '' ? parseFloat(ra.frontHeight) || 0 : null,
-        angleDeg:      ra.angle !== '' ? parseFloat(ra.angle) || 0 : null,
+        frontHeightCm: parseFloat(ra.frontHeight !== '' ? ra.frontHeight : panelFrontHeight) || 0,
+        angleDeg:      parseFloat(ra.angle !== '' ? ra.angle : panelAngle) || 0,
         trapezoidIds:  areaTrapIds,
         panelGrid:     panelGrid[ra.label] ?? null,
       }
@@ -611,8 +609,8 @@ setPanelAngle('')
       const shape = sig.split('|')
       newTrapConfigs[trapId] = {
         angle: aAngle, frontHeight: aFront,
-        backHeight: computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm),
-        linesPerRow: shape.length, lineOrientations: shape,
+        backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm),
+        lineOrientations: shape,
       }
     })
 
@@ -646,7 +644,7 @@ setPanelAngle('')
     if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
-    const newArea = { angle: 0, frontHeight: 0, linesPerRow: 1, lineOrientations: ['vertical'] }
+    const newArea = { angle: 0, frontHeight: 0, lineOrientations: ['vertical'] }
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
@@ -812,7 +810,6 @@ setPanelAngle('')
         const existingPanels = panels.filter(p => p.area === areaIdx)
         const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
         areaLineConfigs[areaIdx] = {
-          linesPerRow: Math.max(1, lineRows.length),
           lineOrientations: lineRows.map(r => {
             const s = existingPanels.find(p => p.row === r)
             return s?.heightCm > 150 ? 'vertical' : 'horizontal'
@@ -851,14 +848,13 @@ setPanelAngle('')
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
-      const derivedLPR = Math.max(1, lineRows.length)
       const rowOrient = {}  // row → 'vertical'|'horizontal'
       lineRows.forEach(r => {
         const s = filtered.find(p => p.row === r)
         rowOrient[r] = s?.heightCm > 150 ? 'vertical' : 'horizontal'
       })
       const derivedOrients = lineRows.map(r => rowOrient[r])
-      areaLineConfigs[areaIdx] = { linesPerRow: derivedLPR, lineOrientations: derivedOrients }
+      areaLineConfigs[areaIdx] = { lineOrientations: derivedOrients }
 
       if (!area.manualTrapezoids) {
         // ── Auto-split: group columns by their row-presence signature ────────────
@@ -899,9 +895,9 @@ setPanelAngle('')
         // Build groupTrapConfigs for each unique trap shape
         sigToTrap.forEach((trapId, sig) => {
           const shape = sig.split('|')
-          const trapBack = computePanelBackHeight(aFront, aAngle, shape, shape.length, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+          const trapBack = computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: trapBack,
-            linesPerRow: shape.length, lineOrientations: shape }
+            lineOrientations: shape }
         })
 
         filtered.forEach(p => {
@@ -915,11 +911,11 @@ setPanelAngle('')
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
         const defaultTrap = area.label
-        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, derivedLPR, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack,
-            linesPerRow: derivedLPR, lineOrientations: derivedOrients }
+            lineOrientations: derivedOrients }
         })
         filtered.forEach(p => {
           const trapId = colToTrap[String(p.col ?? 0)] ?? defaultTrap
@@ -945,7 +941,6 @@ setPanelAngle('')
       label: a.label,
       angle: parseFloat(a.angle) || 0,
       frontHeight: parseFloat(a.frontHeight) || 0,
-      linesPerRow: areaLineConfigs[idx]?.linesPerRow ?? 1,
       lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? ['vertical'],
     })))
     setTrapezoidConfigs(prev => {
@@ -957,7 +952,7 @@ setPanelAngle('')
       polygon: roofPolygon, panelType, referenceLine,
       referenceLineLengthCm: parseFloat(referenceLineLengthCm),
       pixelToCmRatio,
-      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, lineOrientations: ['vertical'] },
     })
   }
 
@@ -1061,7 +1056,7 @@ setPanelAngle('')
         polygon: roofPolygon, panelType, referenceLine,
         referenceLineLengthCm: parseFloat(referenceLineLengthCm),
         pixelToCmRatio,
-        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, linesPerRow: 1, lineOrientations: ['vertical'] },
+        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: ['vertical'] },
       })
     }
 

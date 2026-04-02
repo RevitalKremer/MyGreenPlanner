@@ -70,7 +70,6 @@ class Step2Trapezoid(BaseModel):
     """Basic trapezoid config detected during panel placement."""
     angleDeg: float = 0
     frontHeightCm: float = 0
-    linesPerRow: int = 1
     lineOrientations: list[str] = Field(default_factory=lambda: ['vertical'])
 
 

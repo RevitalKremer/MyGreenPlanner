@@ -99,7 +99,7 @@ export function buildBOM(rowConstructions, rowLabels = []) {
     const T  = rc.numTrapezoids           // number of frames in this row
     const nS = T - 1                      // number of spans = diagonals per row
     const numRails = rc.numRails
-    const linesPerRow       = rc.linesPerRow
+    const linesPerArea       = rc.numLines
     const numLargeGaps      = rc.numLargeGaps
     const numRailConnectors = rc.numRailConnectors
     const numInnerLegsPerFrame = Math.max(0, numRails - 2)
@@ -137,7 +137,7 @@ export function buildBOM(rowConstructions, rowLabels = []) {
     rows.push({ areaLabel, element: 'jumbo_5x16',       totalLengthM: null, qty: blockQty })
 
     // ── end_panel_clamp — 2 per rail (one at each end) + 2 per large gap per rail
-    const railsPerLine   = numRails / linesPerRow
+    const railsPerLine   = numRails / linesPerArea
     const endClampQty    = 2 * numRails + 2 * numLargeGaps * railsPerLine
     rows.push({ areaLabel, element: 'end_panel_clamp', totalLengthM: null, qty: Math.round(endClampQty) })
 
@@ -149,9 +149,9 @@ export function buildBOM(rowConstructions, rowLabels = []) {
     rows.push({ areaLabel, element: 'grounding_panel_clamp', totalLengthM: null, qty: groundingQty })
 
     // ── mid_panel_clamp — 1 per normal boundary per rail, minus grounding replacements
-    // panels per line = panelCount / linesPerRow; normal boundaries = total - large gaps
-    const panelsPerLine      = rc.panelCount / linesPerRow
-    const totalBoundaries    = Math.max(0, panelsPerLine - 1) * linesPerRow  // across all lines
+    // panels per line = panelCount / linesPerArea; normal boundaries = total - large gaps
+    const panelsPerLine      = rc.panelCount / linesPerArea
+    const totalBoundaries    = Math.max(0, panelsPerLine - 1) * linesPerArea  // across all lines
     const normalBoundaries   = Math.max(0, totalBoundaries - numLargeGaps)
     const midClampQty        = Math.max(0, Math.round(normalBoundaries * railsPerLine) - groundingQty)
     if (midClampQty > 0) {

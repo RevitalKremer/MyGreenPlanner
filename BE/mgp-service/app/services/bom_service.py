@@ -101,9 +101,9 @@ def _derive_row_construction(
 
     # Panel count
     panel_count = _count_panels(panel_grid)
-    lines_per_row = _count_lines(panel_grid)
-    if lines_per_row == 0:
-        lines_per_row = 1
+    num_lines = _count_lines(panel_grid)
+    if num_lines == 0:
+        num_lines = 1
 
     # Rails
     num_rails = len(rails)
@@ -142,7 +142,7 @@ def _derive_row_construction(
         'numTrapezoids': num_trapezoids,
         'panelCount': panel_count,
         'numRails': num_rails,
-        'linesPerRow': lines_per_row,
+        'numLines': num_lines,
         'numLargeGaps': num_large_gaps,
         'numRailConnectors': num_rail_connectors,
     }
@@ -161,7 +161,7 @@ def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict
         T = rc['numTrapezoids']             # number of frames in this row
         nS = T - 1                          # number of spans = diagonals per row
         num_rails = rc.get('numRails', 2)
-        lines_per_row = rc.get('linesPerRow', 1)
+        num_lines = rc.get('numLines', 1)
         num_large_gaps = rc.get('numLargeGaps', 0)
         num_rail_connectors = rc.get('numRailConnectors', 0)
         num_inner_legs = max(0, num_rails - 2)
@@ -204,7 +204,7 @@ def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict
         rows.append({'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty})
 
         # ── end_panel_clamp ──
-        rails_per_line = num_rails / lines_per_row if lines_per_row else num_rails
+        rails_per_line = num_rails / num_lines if num_lines else num_rails
         end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
         rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
 
@@ -217,8 +217,8 @@ def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict
         rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
 
         # ── mid_panel_clamp ──
-        panels_per_line = panel_count / lines_per_row if lines_per_row else panel_count
-        total_boundaries = max(0, panels_per_line - 1) * lines_per_row
+        panels_per_line = panel_count / num_lines if num_lines else panel_count
+        total_boundaries = max(0, panels_per_line - 1) * num_lines
         normal_boundaries = max(0, total_boundaries - num_large_gaps)
         mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
         if mid_clamp_qty > 0:

@@ -148,8 +148,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
     const areaGroup = areas[areaKey] || {}
-    const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
-    return (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
   }, [refinedArea, trapezoidConfigs, areas])
 
 
@@ -332,7 +331,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const numLargeGaps = beAreaData?.numLargeGaps ?? 0
 
       const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.endCm - r.startCm)) : undefined
-      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, lineOrientations.length, panelGapCm, panelLengthCm, panelWidthCm) : undefined
+      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, panelGapCm, panelLengthCm, panelWidthCm) : undefined
       const numRailConnectors  = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegments.length - 1), 0)
 
       const computedBaseLength = computeBaseLengthFromRails(
@@ -340,7 +339,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       )
 
       const numRails    = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
-      const linesPerRow = Object.keys(lineRails).length
+      const numLines = Object.keys(lineRails).length
       const rc = computeRowConstruction(panelCount, angle, frontLegH, {
         panelGapCm,
         panelWidthCm,
@@ -354,7 +353,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
         ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
         ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
       })
-      return { ...rc, numRails, linesPerRow, numLargeGaps, numRailConnectors }
+      return { ...rc, numRails, numLines, numLargeGaps, numRailConnectors }
     })
     return assignTypes(rcs)
   }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, areas, areaTrapezoidMap, getTrapBasesSettings])
@@ -416,8 +415,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const override   = trapezoidConfigs[trapId] || {}
     const areaKey2   = rowKeys[selectedRowIdx]
     const areaGroup2 = areas[areaKey2] || {}
-    const linesPerRow = override.linesPerRow ?? areaGroup2.linesPerRow ?? globalCfg.linesPerRow ?? 1
-    const lineOrientations = (override.lineOrientations ?? areaGroup2.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+    const lineOrientations = override.lineOrientations ?? areaGroup2.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
 
     // Only include active (non-empty) lines — ghost handled by overlay of full trap
     return lineOrientations
@@ -522,8 +520,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       const areaGroup   = areas[areaKey] || {}
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
-        const linesPerRow = override.linesPerRow ?? areaGroup.linesPerRow ?? globalCfg.linesPerRow ?? 1
-        const lineOrientations = (override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']).slice(0, linesPerRow)
+        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
         map[trapId] = lineOrientations.map((o, i) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : panelGapCm,
