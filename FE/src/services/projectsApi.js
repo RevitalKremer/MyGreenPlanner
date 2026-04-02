@@ -94,6 +94,12 @@ export async function saveTab(id, tabName, step3Data = null, trapezoidConfigs = 
   return res.json()
 }
 
+export async function resetTab(id, tabName) {
+  const res = await mgpRequest(`/projects/${id}/resetTab/${tabName}`, { method: 'PUT' })
+  if (!res.ok) throw new Error(`Failed to reset tab ${tabName}`)
+  return res.json()
+}
+
 export async function updateStep(id, newStep) {
   const res = await mgpRequest(`/projects/${id}/step?new_step=${newStep}`, { method: 'PUT' })
   if (!res.ok) throw new Error('Failed to update step')

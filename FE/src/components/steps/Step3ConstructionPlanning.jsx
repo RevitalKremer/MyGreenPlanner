@@ -38,7 +38,7 @@ function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLi
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
-export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
+export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, onTabReset, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
   const panelLengthCm = panelSpec.lengthCm
@@ -170,23 +170,28 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
     })
   }, [])
 
-  const resetLineRails = useCallback((areaIdx) => {
+  const resetLineRails = useCallback(async () => {
+    // Reset FE state to defaults
     const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area'   && p.type !== 'rail-spacing')
     const railGlobalParams = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'global')
     setAreaSettings(prev => {
-      const copy = { ...(prev[areaIdx] || {}) }
-      delete copy.lineRails
-      railAreaParams.forEach(p => { copy[p.key] = p.default })
-      return { ...prev, [areaIdx]: copy }
+      const updated = { ...prev }
+      for (const key of Object.keys(updated)) {
+        const copy = { ...(updated[key] || {}) }
+        delete copy.lineRails
+        railAreaParams.forEach(p => { copy[p.key] = p.default })
+        updated[key] = copy
+      }
+      return updated
     })
     setGlobalSettings(prev => {
       const copy = { ...prev }
       railGlobalParams.forEach(p => { copy[p.key] = p.default })
       return copy
     })
-    // Immediately call saveTab to get fresh defaults from server
-    onTabSave?.('rails')
-  }, [onTabSave]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Server resets DB and recomputes with pure defaults
+    onTabReset?.('rails')
+  }, [onTabReset, PARAM_SCHEMA]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Per-trapezoid bases settings ─────────────────────────────────────────
 
@@ -708,7 +713,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                   fullTrapGhost={fullTrapGhost}
                   paramGroup={PARAM_GROUP}
                   reverseBlockPunches={globalSettings.reverseBlockPunches ?? true}
-                  onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }}
+                  onReset={() => { resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
                   onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)}
                 />
               </div>
@@ -726,7 +731,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                 keepSymmetry={getSettings(selectedRowIdx).keepSymmetry ?? true}
                 onLineRailsChange={(newRails) => updateLineRails(selectedRowIdx, newRails)}
                 onApplyRailsToAll={() => applySection(selectedRowIdx, ['lineRails'])}
-                onResetRails={() => resetLineRails(selectedRowIdx)}
+                onResetRails={resetLineRails}
                 highlightGroup={PARAM_GROUP[highlightParam] ?? null}
                 trapLineRailsMap={trapLineRailsMap}
                 trapSettingsMap={trapSettingsMap}

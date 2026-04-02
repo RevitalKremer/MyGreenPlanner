@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab, resetTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -116,6 +116,12 @@ function App() {
     }
   }, [s.cloudProjectId, s.currentStep]) // step 3 + step 5 both need BE data
 
+  const applyBeResult = (result) => {
+    if (result.rails) setBeRailsData(result.rails)
+    if (result.bases) setBeBasesData(result.bases)
+    if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+  }
+
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
     try {
@@ -135,11 +141,16 @@ function App() {
         step3SettingsRef.current,
         (tabName === 'bases' || tabName === 'trapezoids') ? trapConfigs : null,
       )
-      if (result.rails) setBeRailsData(result.rails)
-      if (result.bases) setBeBasesData(result.bases)
-      if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+      applyBeResult(result)
     } catch (e) { console.error(e) }
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTabReset = useCallback(async (tabName) => {
+    if (!s.cloudProjectId) return
+    try {
+      applyBeResult(await resetTab(s.cloudProjectId, tabName))
+    } catch (e) { console.error(e) }
+  }, [s.cloudProjectId])
 
   const handleCloudSave = async (step = null) => {
     setSaveState('saving')
@@ -419,6 +430,7 @@ function App() {
             refinedArea={s.refinedArea}
             railsComputing={railsComputing}
             onTabSave={handleTabSave}
+            onTabReset={handleTabReset}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}

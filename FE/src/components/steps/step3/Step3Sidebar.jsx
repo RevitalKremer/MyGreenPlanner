@@ -43,6 +43,30 @@ function DebouncedNumberInput({ value, min, max, step, onCommit, onFocus, onBlur
   )
 }
 
+function DebouncedArrayInput({ value, onCommit, onFocus, onBlur, placeholder, style }) {
+  const [raw, setRaw] = useState((value || []).join(', '))
+  const timerRef = useRef(null)
+  const focusedRef = useRef(false)
+
+  useEffect(() => {
+    if (!focusedRef.current) setRaw((value || []).join(', '))
+  }, [value])
+
+  const commit = (str) => {
+    clearTimeout(timerRef.current)
+    const parsed = str.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0)
+    onCommit(parsed)
+  }
+
+  return (
+    <input type="text" value={raw} placeholder={placeholder} style={style}
+      onFocus={() => { focusedRef.current = true; onFocus?.() }}
+      onChange={e => { setRaw(e.target.value); clearTimeout(timerRef.current); timerRef.current = setTimeout(() => commit(e.target.value), 500) }}
+      onBlur={e => { focusedRef.current = false; commit(e.target.value); onBlur?.() }}
+    />
+  )
+}
+
 // Small "?" bubble that shows default / min / max on hover
 function InfoTooltip({ param }) {
   const [show, setShow] = useState(false)
@@ -175,8 +199,9 @@ export default function Step3Sidebar({
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
-          <input type="number" value={value} step={1} min={min} max={maxVal}
-            onChange={e => onRailSpacingChange(orientation, Math.min(maxVal, Math.max(min, parseFloat(e.target.value) || min)))}
+          <DebouncedNumberInput
+            value={value} step={1} min={min} max={maxVal}
+            onCommit={v => onRailSpacingChange(orientation, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
@@ -219,10 +244,9 @@ export default function Step3Sidebar({
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
-          <input type="text"
-            value={(val || []).join(', ')}
-            onChange={e => updateGlobalSetting(key,
-              e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
+          <DebouncedArrayInput
+            value={val}
+            onCommit={v => updateGlobalSetting(key, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             placeholder={t('step3.sidebar.stockLengthsPlaceholder')}

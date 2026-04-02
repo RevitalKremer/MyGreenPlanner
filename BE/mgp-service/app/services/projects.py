@@ -954,6 +954,43 @@ async def save_tab(
     }
 
 
+async def reset_tab(
+    db: AsyncSession, project: Project, tab: str,
+    rs, bs, tds=None,
+) -> dict:
+    """
+    Reset a tab to server defaults: clear FE settings for the tab, recompute everything.
+    """
+    data = copy.deepcopy(project.data or {})
+    step3 = data.setdefault('step3', {})
+
+    # Clear FE-owned settings for this tab
+    if tab == 'rails':
+        # Clear area-level rail overrides and global rail settings
+        for area_settings in (step3.get('areaSettings') or {}).values():
+            if isinstance(area_settings, dict):
+                for key in ['lineRails', 'railOverhangCm', 'railSpacingV', 'railSpacingH', 'keepSymmetry']:
+                    area_settings.pop(key, None)
+        gs = step3.get('globalSettings') or {}
+        for key in ['stockLengths', 'crossRailEdgeDistMm']:
+            gs.pop(key, None)
+        step3['globalSettings'] = gs
+    elif tab == 'bases':
+        step3.pop('customBasesOffsets', None)
+        for area_settings in (step3.get('areaSettings') or {}).values():
+            if isinstance(area_settings, dict):
+                for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
+                    area_settings.pop(key, None)
+    elif tab == 'trapezoids':
+        step3.pop('customDiagonals', None)
+
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+
+    return await save_tab(db, project, tab, rs, bs, tds)
+
+
 async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool) -> Project:
     data = copy.deepcopy(project.data or {})
     step4 = data.setdefault('step4', {})
