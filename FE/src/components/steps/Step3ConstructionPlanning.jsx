@@ -330,7 +330,7 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const rails       = beAreaData?.rails ?? []
       const numLargeGaps = beAreaData?.numLargeGaps ?? 0
 
-      const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.endCm - r.startCm)) : undefined
+      const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.lengthMm / 10)) : undefined
       const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, panelGapCm, panelLengthCm, panelWidthCm) : undefined
       const numRailConnectors  = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegments.length - 1), 0)
 

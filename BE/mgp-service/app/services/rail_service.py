@@ -135,7 +135,6 @@ def compute_area_rails(
                 'offsetFromLineFrontCm': round(offset_from_front, 4),
                 'offsetFromRearEdgeCm': offset_from_rear,
                 'startCm':              start_cm,
-                'endCm':                end_cm,
                 'lengthMm':             length_mm,
                 'stockSegments':        [s['used'] for s in segs],
                 'leftoverMm':           sum(s['leftover'] for s in segs),

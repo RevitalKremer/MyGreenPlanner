@@ -96,7 +96,6 @@ class Rail(BaseModel):
     offsetFromRearEdgeCm: float
     offsetFromLineFrontCm: float = 0
     startCm: float
-    endCm: float
     lengthMm: int
     stockSegments: list[int]
     leftoverMm: int

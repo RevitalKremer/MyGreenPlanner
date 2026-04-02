@@ -115,10 +115,10 @@ def _derive_row_construction(
         if len(segs) > 1:
             num_rail_connectors += len(segs) - 1
 
-    # rowLength: max span across all rails (endCm - startCm)
+    # rowLength: max span across all rails
     row_length = 0
     if rails:
-        row_length = max((r.get('endCm', 0) - r.get('startCm', 0)) for r in rails)
+        row_length = max(r.get('lengthMm', 0) / 10 for r in rails)
 
     # numLargeGaps: stored at area level by rail computation
     num_large_gaps = area.get('numLargeGaps', 0)
