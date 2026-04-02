@@ -477,7 +477,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     const blkPunch = blockPunches.find(p => {
                       return p.positionCm >= blkStartBase - 0.1 && p.positionCm <= blkEndBase + 0.1
                     })
-                    const label = blkPunch ? fmt(reverseBlockPunches ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
+                    const label = blkPunch ? fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
                       <g key={bi}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
@@ -812,10 +812,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const atSlope2 = (posCm) => legX0 + (posCm / activeSlopeBeamLenCm) * legBW
                 const nonDiagSlopePunches = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
-                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
-                const diagSlopePunches = activeDiags.map(d => ({
-                  x: d.topX, label: fmt((d.topX - legX0) / SC), origin: 'diagonal',
-                }))
+                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: p.origin }))
+                const diagSlopePunches = activeDiags.map(d => {
+                  const pos = (d.topX - legX0) / SC
+                  const reversed = topBeamLength - pos
+                  return { x: d.topX, label: fmt(reverseBlockPunches ? reversed : pos), origin: 'diagonal' }
+                })
                 const slopePunches = [...nonDiagSlopePunches, ...diagSlopePunches].sort((a, b) => a.x - b.x)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'top') return null

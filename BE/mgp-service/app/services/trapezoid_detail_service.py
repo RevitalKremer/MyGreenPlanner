@@ -322,6 +322,13 @@ def compute_trapezoid_details(
     other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
     punches += _compute_block_punches(blocks, other_base_positions, block_length_cm, base_beam_length, block_punch_cm, beam_thick_cm)
 
+    # Add reversedPositionCm (distance from beam end) to qualifying punches
+    for p in punches:
+        if p['beamType'] == 'base' and p['origin'] == 'block':
+            p['reversedPositionCm'] = _r(base_beam_length - p['positionCm'])
+        elif p['beamType'] == 'slope' and p['origin'] != 'rail':
+            p['reversedPositionCm'] = _r(top_beam_length - p['positionCm'])
+
     return {
         'geometry': geometry,
         'legs': legs,
@@ -458,12 +465,6 @@ def _compute_block_punches(
             'positionCm': _r(punch_pos),
             'origin': 'block',
         })
-
-    # Add reversedPositionCm: reversed array of positions mapped to same indices
-    positions = [p['positionCm'] for p in result]
-    reversed_positions = list(reversed(positions))
-    for i, p in enumerate(result):
-        p['reversedPositionCm'] = reversed_positions[i]
 
     return result
 
