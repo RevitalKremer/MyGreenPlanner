@@ -30,9 +30,9 @@ export default function RailLayoutTab({
   railsComputing = false,
 }) {
   const { t } = useLang()
-  const railOverhangCm      = settings.railOverhangCm      ?? DEFAULT_RAIL_OVERHANG_CM
-  const stockLengths        = settings.stockLengths        ?? DEFAULT_STOCK_LENGTHS_MM
-  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm ?? 40
+  const railOverhangCm      = settings.railOverhangCm      
+  const stockLengths        = settings.stockLengths        
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm 
 
   const svgRef = useRef(null)
 
@@ -155,10 +155,11 @@ export default function RailLayoutTab({
 
     return (
       <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
-        <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
+        <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
         {printRailLayouts.map((rl, i) => {
           if (!rl) return null
-          const railProfileSvg = (crossRailEdgeDistMm / 10 / pixelToCmRatio) * sc
+          const pmCrossRail = crossRailEdgeDistMm ?? trapSettingsMap[trapIds[i]]?.crossRailEdgeDistMm ?? 40
+          const railProfileSvg = (pmCrossRail / 10 / pixelToCmRatio) * sc
           const annotatedLines = new Set(), annotatedRailIds = new Set()
           for (const rail of rl.rails) {
             if (!annotatedLines.has(rail.lineIdx)) { annotatedLines.add(rail.lineIdx); annotatedRailIds.add(rail.railId) }
@@ -264,7 +265,7 @@ export default function RailLayoutTab({
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
-                  <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
+                  <HatchedPanels panels={panels} selectedTrapId={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
                   {/* Rails + dimension annotations */}
                   {railLayouts.map((rl, i) => {

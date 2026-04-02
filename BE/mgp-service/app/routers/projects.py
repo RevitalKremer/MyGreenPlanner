@@ -291,7 +291,7 @@ async def get_trapezoids(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_traps = (project.data or {}).get('step3', {}).get('computedTrapezoids', [])
-    return {ct['trapId']: ct for ct in computed_traps if 'trapId' in ct}
+    return {ct['trapezoidId']: ct for ct in computed_traps if 'trapezoidId' in ct}
 
 
 @router.get("/{project_id}/rails/dimensions")

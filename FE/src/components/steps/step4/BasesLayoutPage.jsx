@@ -12,6 +12,7 @@ const PAD = 60, MAX_W = 900
 export default function BasesLayoutPage({
   panels = [], refinedArea,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
+  beBasesData = null, beTrapezoidsData = null,
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
   const { t } = useLang()
@@ -53,6 +54,8 @@ export default function BasesLayoutPage({
             trapLineRailsMap={trapLineRailsMap}
             trapRCMap={trapRCMap}
             customBasesMap={customBasesMap}
+            beBasesData={beBasesData}
+            beTrapezoidsData={beTrapezoidsData}
             printMode
           />
         </div>

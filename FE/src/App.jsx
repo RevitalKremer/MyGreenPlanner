@@ -103,7 +103,7 @@ function App() {
   // Trigger rail computation when a (different) project is loaded while on step 3.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
-    if (s.currentStep === 3 && s.cloudProjectId) {
+    if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
       setBeRailsData(null)
       setBeBasesData(null)
       setBeTrapezoidsData(null)
@@ -117,7 +117,7 @@ function App() {
         .then(setBeTrapezoidsData)
         .catch(console.error)
     }
-  }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
+  }, [s.cloudProjectId, s.currentStep]) // step 3 + step 5 both need BE data
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
@@ -466,6 +466,8 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            beBasesData={beBasesData}
+            beTrapezoidsData={beTrapezoidsData}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
             products={s.products}

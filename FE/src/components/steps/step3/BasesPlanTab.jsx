@@ -189,7 +189,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
               })}
               <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
               <g transform={`rotate(${la} ${mx} ${my})`}>
-                <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="red" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text>
+                <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text>
               </g>
             </g>
           )
