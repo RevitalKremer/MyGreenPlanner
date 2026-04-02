@@ -107,8 +107,8 @@ class Base(BaseModel):
     baseId: str
     trapezoidId: str
     offsetFromStartCm: float
-    topDepthCm: float
-    bottomDepthCm: float
+    panelLineIdx: int
+    startCm: float
     lengthCm: float
 
 

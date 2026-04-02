@@ -163,13 +163,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
           if (!tf) return null
           const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = tf
           const { angleRad: tAngle, localBounds: tLB } = tFrame
-          const tRearY = tLines?.[0]?.minY ?? tLB.minY
+          const lineY = (tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0])?.minY ?? tLB.minY
           const profThick = (4 / pixelToCmRatio) * sc
           const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
 
           const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
-          const ty = tRearY + sb.topDepthCm / pixelToCmRatio
-          const by = tRearY + sb.bottomDepthCm / pixelToCmRatio
+          const ty = lineY + sb.startCm / pixelToCmRatio
+          const by = ty + sb.lengthCm / pixelToCmRatio
           const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
           const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
           const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
@@ -354,13 +354,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   if (!tf) return null
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = tf
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const tRearY = tLines?.[0]?.minY ?? tLB.minY
+                  const lineY = (tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0])?.minY ?? tLB.minY
                   const profThick = (4 / pixelToCmRatio) * sc
                   const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
 
                   const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
-                  const ty = tRearY + sb.topDepthCm / pixelToCmRatio
-                  const by = tRearY + sb.bottomDepthCm / pixelToCmRatio
+                  const ty = lineY + sb.startCm / pixelToCmRatio
+                  const by = ty + sb.lengthCm / pixelToCmRatio
                   const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
                   const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
                   const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)

@@ -195,12 +195,12 @@ def compute_area_bases(
             b_front_leg = b_front_line['rearEdgeCm'] + (
                 b_front_rails[-1] if b_front_rails else b_front_line['depthCm']
             )
-            base['topDepthCm'] = _round2(b_rear_leg - base_overhang_cm)
-            base['bottomDepthCm'] = _round2(b_front_leg + base_overhang_cm)
-            base['lengthCm'] = _round2(base['bottomDepthCm'] - base['topDepthCm'])
+            base['panelLineIdx'] = b_rear_idx
+            base['startCm'] = _round2(b_rear_leg - base_overhang_cm - b_rear_line['rearEdgeCm'])
+            base['lengthCm'] = _round2((b_front_leg + base_overhang_cm) - (b_rear_leg - base_overhang_cm))
         else:
-            base['topDepthCm'] = _round2(base_top_depth_cm)
-            base['bottomDepthCm'] = _round2(base_bottom_depth_cm)
+            base['panelLineIdx'] = rear_idx
+            base['startCm'] = _round2(base_top_depth_cm - rear_line['rearEdgeCm'])
             base['lengthCm'] = _round2(base_length_cm)
 
     # Block positions are computed in trapezoid_detail_service (single source of truth).
