@@ -274,8 +274,9 @@ setPanelAngle('')
 
       if (s2.trapezoids) {
         const configs = {}
-        Object.entries(s2.trapezoids).forEach(([id, t]) => {
-          configs[id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
+        const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids).map(([id, t]) => ({ id, ...t }))
+        traps.forEach(t => {
+          configs[t.id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
         })
         setTrapezoidConfigs(configs)
       }
@@ -370,14 +371,12 @@ setPanelAngle('')
   }
 
   const getProjectData = () => {
-    const step2Trapezoids = {}
-    Object.entries(trapezoidConfigs).forEach(([id, cfg]) => {
-      step2Trapezoids[id] = {
-        angleDeg:         cfg.angle,
-        frontHeightCm:    cfg.frontHeight,
-        lineOrientations: cfg.lineOrientations,
-      }
-    })
+    const step2Trapezoids = Object.entries(trapezoidConfigs).map(([id, cfg]) => ({
+      id,
+      angleDeg:         cfg.angle,
+      frontHeightCm:    cfg.frontHeight,
+      lineOrientations: cfg.lineOrientations,
+    }))
     const step2Areas = rectAreas.map((ra, idx) => {
       const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
       return {

@@ -68,6 +68,7 @@ class Step2Area(BaseModel):
 
 class Step2Trapezoid(BaseModel):
     """Basic trapezoid config detected during panel placement."""
+    id: str
     angleDeg: float = 0
     frontHeightCm: float = 0
     lineOrientations: list[str] = Field(default_factory=lambda: ['vertical'])
@@ -80,7 +81,7 @@ class Step2Data(BaseModel):
     panelLengthCm: float = 238.2
     defaultAngleDeg: float = 0
     defaultFrontHeightCm: float = 0
-    trapezoids: dict[str, Step2Trapezoid] = Field(default_factory=dict)
+    trapezoids: list[Step2Trapezoid] = Field(default_factory=list)
     areas: list[Step2Area] = Field(default_factory=list)
 
 

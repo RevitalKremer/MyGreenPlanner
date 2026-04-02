@@ -139,6 +139,14 @@ def _get_computed_area(data: dict, label: str) -> dict | None:
     return None
 
 
+def _trapezoids_by_id(step2: dict) -> dict:
+    """Convert step2.trapezoids array to a dict keyed by id for fast lookup."""
+    traps = step2.get('trapezoids', [])
+    if isinstance(traps, dict):          # legacy format
+        return traps
+    return {t['id']: t for t in traps if 'id' in t}
+
+
 def _get_computed_trapezoids(data: dict) -> list:
     """Return step3.computedTrapezoids list."""
     return data.get('step3', {}).get('computedTrapezoids', [])
@@ -475,7 +483,7 @@ async def compute_and_save_bases(
     step3 = data.setdefault('step3', {})
     areas = data.get('step2', {}).get('areas', [])
     step2 = data.get('step2', {})
-    trapezoids = step2.get('trapezoids', {})
+    trapezoids = _trapezoids_by_id(step2)
     result = []
 
     rows = (await db.execute(
@@ -654,7 +662,7 @@ async def compute_and_save_trapezoid_details(
         data['step3'] = existing_step3
     step2 = data.get('step2', {})
     step3 = data.setdefault('step3', {})
-    trapezoids = step2.get('trapezoids', {})
+    trapezoids = _trapezoids_by_id(step2)
     areas = step2.get('areas', [])
     global_settings = step3.get('globalSettings', {})
 
