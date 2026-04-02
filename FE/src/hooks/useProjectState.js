@@ -1074,6 +1074,15 @@ setPanelAngle('')
     setCurrentStep(nextStep)
   }
 
+  const resetStepData = (clearedSteps) => {
+    if (!clearedSteps?.length) return
+    for (const key of clearedSteps) {
+      if (key === 'step3') { setStep3GlobalSettings(null); setStep3AreaSettings(null) }
+      if (key === 'step4') { setStep4PlanApproval(null) }
+      if (key === 'step5') { setStep5BomDeltas(null) }
+    }
+  }
+
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
@@ -1182,6 +1191,7 @@ setPanelAngle('')
     computePanels,
     handleNext,
     handleBack,
+    resetStepData,
     canProceedToNextStep,
   }
 }

@@ -513,7 +513,8 @@ function App() {
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
             if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
-            await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            if (result?.clearedSteps) s.resetStepData(result.clearedSteps)
           }
           s.handleBack()
         }} disabled={s.currentStep === 1}>
