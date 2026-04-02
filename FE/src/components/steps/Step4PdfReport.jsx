@@ -49,16 +49,8 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pa
 
   return (
     <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', borderTop: B }}>
-      <colgroup>
-        <col style={{ width: '11%' }} />  {/* col1: approval area */}
-        <col style={{ width: '10%' }} />  {/* col2: מספר פרויקט */}
-        <col style={{ width: '10%' }} />  {/* col3: approval req (rowspan) */}
-        <col style={{ width: '10%' }} />  {/* col4: הספק כולל */}
-        <col style={{ width: '10%' }} />  {/* col5: סוג פאנל / הספק */}
-        <col style={{ width: '10%' }} />  {/* col6: סוג פאנל cont. / כמות */}
-        <col style={{ width: '10%' }} />  {/* col7: שם פרויקט / תאריך */}
-        <col style={{ width: '10%' }} />  {/* col8: שם פרויקט cont. / מיקום */}
-        <col style={{ width: '19%' }} />  {/* col9: logo (rowspan) */}
+      <colgroup>{/* col widths: approval | project# | approval-req | kW | panel-type | panel-qty | project-name | location | logo */}
+        <col style={{ width: '11%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '19%' }} />
       </colgroup>
       <tbody>
 
@@ -240,6 +232,7 @@ export default function Step4PdfReport({
   panels = [], refinedArea, areas = {}, project, projectId,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
+  beBasesData = null, beTrapezoidsData = null,
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
 }) {
@@ -571,6 +564,7 @@ export default function Step4PdfReport({
               panels={panels} refinedArea={refinedArea}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
+              beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
           </ScaledPage>
@@ -593,6 +587,7 @@ export default function Step4PdfReport({
                 settings={trapSettingsMap[trapId] ?? {}}
                 lineRails={trapLineRailsMap[trapId] ?? null}
                 panelLines={trapPanelLinesMap[trapId] ?? null}
+                beDetailData={beTrapezoidsData?.[trapId]}
                 project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
               />
             </ScaledPage>

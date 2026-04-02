@@ -233,6 +233,7 @@ const he = {
   'step3.sidebar.areas':                   'אזורים',
   'step3.sidebar.stockLengthsPlaceholder': 'לדוגמה: 5000, 6000',
   'step3.sidebar.applyToAll':              'החל על כל האזורים',
+  'step3.sidebar.applyChanges':            'החל שינויים',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':    'לחץ לעריכה',
@@ -389,7 +390,8 @@ const he = {
 
   // ── Step 3 – Rails table ──────────────────────────────────────────────────
   'step3.rails.colRail':     'קושרת',
-  'step3.rails.colLine':     'קו',
+  'step3.rails.colLine':     'שןרה',
+  'step3.rails.colPanelLine': 'שורת פנלים #',
   'step3.rails.colType':     'סוג',
   'step3.rails.colLength':   'אורך (מ"מ)',
   'step3.rails.colStock':    'חתיכות מלאי',

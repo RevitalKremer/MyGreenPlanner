@@ -82,7 +82,7 @@ def _derive_row_construction(
     first_trap_id = trap_ids[0]
     detail = None
     for ct in computed_trapezoids:
-        if ct.get('trapId') == first_trap_id:
+        if ct.get('trapezoidId') == first_trap_id:
             detail = ct
             break
     geom = (detail or {}).get('geometry') or {}

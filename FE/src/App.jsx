@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab, resetTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -103,10 +103,7 @@ function App() {
   // Trigger rail computation when a (different) project is loaded while on step 3.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
-    if (s.currentStep === 3 && s.cloudProjectId) {
-      setBeRailsData(null)
-      setBeBasesData(null)
-      setBeTrapezoidsData(null)
+    if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
       getRails(s.cloudProjectId)
         .then(setBeRailsData)
         .catch(console.error)
@@ -117,7 +114,13 @@ function App() {
         .then(setBeTrapezoidsData)
         .catch(console.error)
     }
-  }, [s.cloudProjectId]) // intentionally omits s.currentStep — Next button handles that case
+  }, [s.cloudProjectId, s.currentStep]) // step 3 + step 5 both need BE data
+
+  const applyBeResult = (result) => {
+    if (result.rails) setBeRailsData(result.rails)
+    if (result.bases) setBeBasesData(result.bases)
+    if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+  }
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
@@ -138,11 +141,16 @@ function App() {
         step3SettingsRef.current,
         (tabName === 'bases' || tabName === 'trapezoids') ? trapConfigs : null,
       )
-      if (result.rails) setBeRailsData(result.rails)
-      if (result.bases) setBeBasesData(result.bases)
-      if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+      applyBeResult(result)
     } catch (e) { console.error(e) }
   }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTabReset = useCallback(async (tabName) => {
+    if (!s.cloudProjectId) return
+    try {
+      applyBeResult(await resetTab(s.cloudProjectId, tabName))
+    } catch (e) { console.error(e) }
+  }, [s.cloudProjectId])
 
   const handleCloudSave = async (step = null) => {
     setSaveState('saving')
@@ -422,6 +430,7 @@ function App() {
             refinedArea={s.refinedArea}
             railsComputing={railsComputing}
             onTabSave={handleTabSave}
+            onTabReset={handleTabReset}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
@@ -466,6 +475,8 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            beBasesData={beBasesData}
+            beTrapezoidsData={beTrapezoidsData}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
             products={s.products}
@@ -511,7 +522,8 @@ function App() {
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
             if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
-            await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            if (result?.clearedSteps) s.resetStepData(result.clearedSteps)
           }
           s.handleBack()
         }} disabled={s.currentStep === 1}>

@@ -28,11 +28,12 @@ export default function RailLayoutTab({
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
   railsComputing = false,
+  beRailsData = null,
 }) {
   const { t } = useLang()
-  const railOverhangCm      = settings.railOverhangCm
-  const stockLengths        = settings.stockLengths
-  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm
+  const railOverhangCm      = settings.railOverhangCm      
+  const stockLengths        = settings.stockLengths        
+  const crossRailEdgeDistMm = settings.crossRailEdgeDistMm 
 
   const svgRef = useRef(null)
 
@@ -53,6 +54,18 @@ export default function RailLayoutTab({
   }), [lineRails, railOverhangCm, stockLengths])
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
+
+  // BE rail lookup by area index + railId (for interactive mode) and areaLabel + railId (for print mode)
+  const beRailByKey = useMemo(() => {
+    const m = {}
+    ;(beRailsData ?? []).forEach((area, idx) => {
+      for (const r of (area.rails ?? [])) {
+        m[`${idx}:${r.railId}`] = r
+        m[`${area.areaLabel}:${r.railId}`] = r
+      }
+    })
+    return m
+  }, [beRailsData])
 
   const railLayouts = useMemo(() => {
     if (railLayoutsProp) return railLayoutsProp
@@ -155,10 +168,14 @@ export default function RailLayoutTab({
 
     return (
       <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
-        <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
+        <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
         {printRailLayouts.map((rl, i) => {
           if (!rl) return null
-          const railProfileSvg = (crossRailEdgeDistMm / 10 / pixelToCmRatio) * sc
+          const pmArea = trapIds[i].replace(/\d+$/, '')
+          const beLen = (rail) => { const be = beRailByKey[`${pmArea}:${rail.railId}`]; return be?.roundedLengthCm ?? be?.lengthCm ?? rail.lengthCm }
+          const beSegs = (rail) => { const be = beRailByKey[`${pmArea}:${rail.railId}`]; return be?.stockSegmentsMm ?? rail.stockSegmentsMm }
+          const pmCrossRail = crossRailEdgeDistMm ?? trapSettingsMap[trapIds[i]]?.crossRailEdgeDistMm ?? 40
+          const railProfileSvg = (pmCrossRail / 10 / pixelToCmRatio) * sc
           const annotatedLines = new Set(), annotatedRailIds = new Set()
           for (const rail of rl.rails) {
             if (!annotatedLines.has(rail.lineIdx)) { annotatedLines.add(rail.lineIdx); annotatedRailIds.add(rail.railId) }
@@ -184,7 +201,7 @@ export default function RailLayoutTab({
                 return (
                   <DimensionAnnotation key={`dim-${rail.railId}`}
                     measurePts={measurePts} annPts={annPts}
-                    labels={[String(Math.round(rail.lengthCm))]}
+                    labels={[String(Math.round(beLen(rail) * 10))]}
                     zoom={1} color={TEXT_SECONDARY}
                   />
                 )
@@ -194,7 +211,7 @@ export default function RailLayoutTab({
             const refRail = rl.rails[0]
             if (!refRail || !rl.panelLocalRects || !rl.frame) return null
             const counts = {}
-            for (const mm of refRail.stockSegmentsMm) counts[mm] = (counts[mm] ?? 0) + 1
+            for (const mm of beSegs(refRail)) counts[mm] = (counts[mm] ?? 0) + 1
             const text = Object.entries(counts)
               .sort((a, b) => Number(b[0]) - Number(a[0]))
               .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
@@ -264,11 +281,13 @@ export default function RailLayoutTab({
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
-                  <HatchedPanels panels={panels} rowKeys={rowKeys} selectedRowIdx={selectedRowIdx} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
+                  <HatchedPanels panels={panels} selectedTrapId={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
                   {/* Rails + dimension annotations */}
                   {railLayouts.map((rl, i) => {
                     if (!rl) return null
+                    const beLen = (rail) => { const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]; return be?.roundedLengthCm ?? be?.lengthCm ?? rail.lengthCm }
+                    const beSegs = (rail) => { const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]; return be?.stockSegmentsMm ?? rail.stockSegmentsMm }
                     const railOpacity    = (selectedRowIdx === null || i === selectedRowIdx) ? 1 : 0.2
                     const railProfileSvg = (crossRailEdgeDistMm / 10 / pixelToCmRatio) * sc
                     const overhangSvg    = (railOverhangCm / pixelToCmRatio) * sc
@@ -310,7 +329,7 @@ export default function RailLayoutTab({
                           return (
                             <DimensionAnnotation key={`dim-${rail.railId}`}
                               measurePts={measurePts} annPts={annPts}
-                              labels={[String(Math.round(rail.lengthCm))]}
+                              labels={[String(Math.round(beLen(rail) * 10))]}
                               zoom={zoom} color={color}
                             />
                           )
@@ -345,7 +364,7 @@ export default function RailLayoutTab({
                       const refRail = rl.rails[0]
                       if (!refRail || !showMaterialSummary || !rl.panelLocalRects || !rl.frame) return null
                       const counts = {}
-                      for (const mm of refRail.stockSegmentsMm) counts[mm] = (counts[mm] ?? 0) + 1
+                      for (const mm of beSegs(refRail)) counts[mm] = (counts[mm] ?? 0) + 1
                       const text = Object.entries(counts)
                         .sort((a, b) => Number(b[0]) - Number(a[0]))
                         .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
@@ -432,7 +451,6 @@ export default function RailLayoutTab({
             ]}
             summary={null}
             actions={[
-              { label: t('step3.layer.applyToAll'),    onClick: onApplyRailsToAll, style: { color: TEXT_SECONDARY, background: BG_MID, border: `1px solid ${BORDER}` } },
               { label: t('step3.layer.resetDefaults'), onClick: onResetRails,      style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } },
               { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
             ]}
@@ -462,11 +480,9 @@ export default function RailLayoutTab({
         </button>
         {tableOpen && (
           <div style={{ overflowY: 'auto', maxHeight: '260px', padding: '0.5rem 1.25rem 1rem' }}>
-            {rowKeys.map((rowKey, i) => {
-              const rl = railLayouts[i]
-              if (!rl) return null
-              return <RailsTable key={rowKey} rails={rl.rails} rowIdx={i} />
-            })}
+            {(beRailsData ?? []).map((areaData, i) => (
+              <RailsTable key={areaData.areaLabel} areaLabel={areaData.areaLabel} rails={areaData.rails ?? []} />
+            ))}
           </div>
         )}
       </div>

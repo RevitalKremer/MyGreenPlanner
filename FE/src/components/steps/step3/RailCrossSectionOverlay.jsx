@@ -33,13 +33,14 @@ export default function RailCrossSectionOverlay({
   onLineChange,
 }) {
   const dragging = useRef(null)
+  const valid = rl && rl.frame && rl.panelLocalRects?.length > 0
 
-  if (!rl) return null
+  // All hooks must be called unconditionally — guard rendering below
+  const frame = valid ? rl.frame : null
+  const panelLocalRects = valid ? rl.panelLocalRects : []
 
-  const { frame, panelLocalRects } = rl
-  if (!frame || !panelLocalRects?.length) return null
-
-  const { center, angleRad } = frame
+  const center = frame?.center ?? { x: 0, y: 0 }
+  const angleRad = frame?.angleRad ?? 0
   const cosA = Math.cos(angleRad), sinA = Math.sin(angleRad)
 
   // Bar dimensions in screen pixels (matching the local-frame unit)
@@ -153,6 +154,7 @@ export default function RailCrossSectionOverlay({
   }, [lineRails, onLineChange])
 
   // ─── Render ───────────────────────────────────────────────────────────────
+  if (!valid) return null
   return (
     <g>
       {lineIdxs.map(li => {

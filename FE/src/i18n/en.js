@@ -233,6 +233,7 @@ const en = {
   'step3.sidebar.areas':          'Areas',
   'step3.sidebar.stockLengthsPlaceholder': 'e.g. 5000, 6000',
   'step3.sidebar.applyToAll':     'Apply to all areas',
+  'step3.sidebar.applyChanges':   'Apply Changes',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',
@@ -390,6 +391,7 @@ const en = {
   // ── Step 3 – Rails table ──────────────────────────────────────────────────
   'step3.rails.colRail':     'Rail',
   'step3.rails.colLine':     'Line',
+  'step3.rails.colPanelLine': 'Panel Line #',
   'step3.rails.colType':     'Type',
   'step3.rails.colLength':   'Length (mm)',
   'step3.rails.colStock':    'Stock pieces',

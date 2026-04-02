@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -39,6 +39,30 @@ function DebouncedNumberInput({ value, min, max, step, onCommit, onFocus, onBlur
         timerRef.current = setTimeout(() => commit(e.target.value), 500)
       }}
       onBlur={(e) => { focusedRef.current = false; commit(e.target.value); onBlur?.() }}
+    />
+  )
+}
+
+function DebouncedArrayInput({ value, onCommit, onFocus, onBlur, placeholder, style }) {
+  const [raw, setRaw] = useState((value || []).join(', '))
+  const timerRef = useRef(null)
+  const focusedRef = useRef(false)
+
+  useEffect(() => {
+    if (!focusedRef.current) setRaw((value || []).join(', '))
+  }, [value])
+
+  const commit = (str) => {
+    clearTimeout(timerRef.current)
+    const parsed = str.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0)
+    onCommit(parsed)
+  }
+
+  return (
+    <input type="text" value={raw} placeholder={placeholder} style={style}
+      onFocus={() => { focusedRef.current = true; onFocus?.() }}
+      onChange={e => { setRaw(e.target.value); clearTimeout(timerRef.current); timerRef.current = setTimeout(() => commit(e.target.value), 500) }}
+      onBlur={e => { focusedRef.current = false; commit(e.target.value); onBlur?.() }}
     />
   )
 }
@@ -113,6 +137,7 @@ export default function Step3Sidebar({
   applyBasesToAll,
   paramSchema: PARAM_SCHEMA = [],
   paramGroup: PARAM_GROUP = {},
+  onApplyChanges,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -174,8 +199,9 @@ export default function Step3Sidebar({
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
-          <input type="number" value={value} step={1} min={min} max={maxVal}
-            onChange={e => onRailSpacingChange(orientation, Math.min(maxVal, Math.max(min, parseFloat(e.target.value) || min)))}
+          <DebouncedNumberInput
+            value={value} step={1} min={min} max={maxVal}
+            onCommit={v => onRailSpacingChange(orientation, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             style={{ ...baseInputStyle, border: `1px solid ${isActive ? AMBER : BORDER}` }} />
@@ -218,10 +244,9 @@ export default function Step3Sidebar({
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
-          <input type="text"
-            value={(val || []).join(', ')}
-            onChange={e => updateGlobalSetting(key,
-              e.target.value.split(',').map(v => parseInt(v.trim(), 10)).filter(n => n > 0))}
+          <DebouncedArrayInput
+            value={val}
+            onCommit={v => updateGlobalSetting(key, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
             placeholder={t('step3.sidebar.stockLengthsPlaceholder')}
@@ -400,15 +425,27 @@ export default function Step3Sidebar({
                 {areaParams.map(p => renderParam(p))}
                 {/* Apply button */}
                 {applyBtn(
-                  sec.tabKey === 'rails'  ? onApplyRailsToAllAreas :
-                  sec.tabKey === 'bases'  ? applyBasesToAll :
-                  () => applySection(selectedRowIdx, areaKeys)
+                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
+                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
+                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) }
                 )}
                 {/* Global params — rendered after the apply button */}
                 {globalParams.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
                     {globalParams.map(p => renderParam(p))}
                   </div>
+                )}
+                {/* Apply Changes — save to server and recalculate */}
+                {onApplyChanges && (
+                  <button onClick={() => onApplyChanges(sec.tabKey)}
+                    style={{
+                      width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+                      fontSize: '0.65rem', fontWeight: '600', color: PRIMARY_DARK,
+                      background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`,
+                      borderRadius: '4px', cursor: 'pointer',
+                    }}>
+                    {t('step3.sidebar.applyChanges')}
+                  </button>
                 )}
               </div>
             )}

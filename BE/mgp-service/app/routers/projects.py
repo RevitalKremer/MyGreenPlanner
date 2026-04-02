@@ -200,6 +200,24 @@ async def save_tab_trapezoids(
     )
 
 
+@router.put("/{project_id}/resetTab/{tab_name}")
+async def reset_tab(
+    project_id: uuid.UUID,
+    tab_name: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset tab to server defaults: clear FE overrides, recompute with defaults."""
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if tab_name not in ('rails', 'bases', 'trapezoids'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tab name")
+    return await project_service.reset_tab(
+        db, project, tab_name, rail_service, base_service, trapezoid_detail_service,
+    )
+
+
 @router.put("/{project_id}/rails")
 async def compute_rails(
     project_id: uuid.UUID,
@@ -291,7 +309,7 @@ async def get_trapezoids(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_traps = (project.data or {}).get('step3', {}).get('computedTrapezoids', [])
-    return {ct['trapId']: ct for ct in computed_traps if 'trapId' in ct}
+    return {ct['trapezoidId']: ct for ct in computed_traps if 'trapezoidId' in ct}
 
 
 @router.get("/{project_id}/rails/dimensions")
