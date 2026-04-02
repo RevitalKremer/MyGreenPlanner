@@ -9,7 +9,10 @@ All outputs are persisted to step3.trapezoidDetails[trapId].
 """
 
 from __future__ import annotations
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -58,7 +61,6 @@ def compute_trapezoid_details(
     # Read all settings — no hardcoded fallbacks
     block_height_cm      = _s(settings, ov, 'blockHeightCm')
     block_length_cm      = _s(settings, ov, 'blockLengthCm')
-    block_punch_cm       = _s(settings, ov, 'blockPunchCm')
     diag_top_pct         = _s(settings, ov, 'diagTopPct')
     diag_base_pct        = _s(settings, ov, 'diagBasePct')
     base_overhang_cm     = _s(settings, ov, 'baseOverhangCm')
@@ -246,7 +248,6 @@ def compute_trapezoid_details(
     # Front outer leg: block right edge at leg position (block extends left)
     # Inner legs: block centered on rail position (railPositionCm)
     # Skip if overlap with adjacent block.
-    block_punch_clamped = min(block_punch_cm, block_length_cm)
 
     raw_blocks = []
     # Rear outer leg
@@ -275,15 +276,44 @@ def compute_trapezoid_details(
         })
 
     # ── Punches ────────────────────────────────────────────────────────────
+    # All positionCm values are in the trapezoid horizontal coordinate system
+    # (same as leg positions, origin = rear outer leg).
+    profile_half = beam_thick_cm / 2
+
     punches = []
-    for block in blocks:
-        pos = block['positionCm']
-        # Punch on base beam
-        punches.append({'beamType': 'base', 'positionCm': _r(pos + block_punch_clamped)})
-        punches.append({'beamType': 'base', 'positionCm': _r(pos + block_length_cm - block_punch_clamped)})
-        # Punch on slope beam (same horizontal positions)
-        punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_punch_clamped)})
-        punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_length_cm - block_punch_clamped)})
+
+    # outerLeg: profile_half from each end of each beam
+    # base beam length = base_beam_length (horizontal), slope beam length = top_beam_length
+    punches.append({'beamType': 'base',  'positionCm': _r(profile_half), 'origin': 'outerLeg'})
+    punches.append({'beamType': 'base',  'positionCm': _r(base_beam_length - profile_half), 'origin': 'outerLeg'})
+    punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg'})
+    punches.append({'beamType': 'slope', 'positionCm': _r(top_beam_length - profile_half), 'origin': 'outerLeg'})
+
+    # innerLeg: at each inner leg position on both beams
+    for il in inner_legs:
+        pos = il['positionCm']
+        punches.append({'beamType': 'base',  'positionCm': _r(pos), 'origin': 'innerLeg'})
+        punches.append({'beamType': 'slope', 'positionCm': _r(pos), 'origin': 'innerLeg'})
+
+    # rail: one punch per cross rail at its center on the slope beam
+    for r in rail_items:
+        rail_pos = r['globalOffsetCm'] - origin
+        punches.append({'beamType': 'slope', 'positionCm': _r(rail_pos), 'origin': 'rail'})
+
+    # diagonal: top attachment on slope beam, bottom on base beam
+    for diag in diagonals:
+        si = diag['spanIdx']
+        leg_a_pos = legs[si]['positionCm']
+        leg_b_pos = legs[si + 1]['positionCm']
+        span = leg_b_pos - leg_a_pos
+        top_pos = _r(leg_a_pos + span * diag['topPct'])
+        bot_pos = _r(leg_a_pos + span * diag['botPct'])
+        punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
+        punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
+
+    # block: one punch per block, position depends on nearby punches on base beam
+    other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
+    punches += _compute_block_punches(blocks, other_base_positions, block_length_cm, base_beam_length)
 
     return {
         'geometry': geometry,
@@ -291,7 +321,6 @@ def compute_trapezoid_details(
         'blocks': blocks,
         'punches': punches,
         'diagonals': diagonals,
-        '_blockPunchCm': block_punch_cm,  # kept for align_blocks() recomputation
     }
 
 
@@ -324,7 +353,6 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         origin = geom.get('originCm', 0)
         beam_len = geom.get('topBeamLength', 0)  # slope length = local span
         block_length = geom.get('blockLengthCm', 50)
-        block_punch = min(detail.get('_blockPunchCm', 9), block_length)
 
         # Convert global positions to local, keep those within [0, beamLen]
         local_positions = []
@@ -351,16 +379,81 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
 
         detail['blocks'] = blocks
 
-        # Recompute punches from new block positions
-        block_punch_clamped = min(block_punch, block_length)
-        punches = []
-        for blk in blocks:
-            pos = blk['positionCm']
-            punches.append({'beamType': 'base', 'positionCm': _r(pos + block_punch_clamped)})
-            punches.append({'beamType': 'base', 'positionCm': _r(pos + block_length - block_punch_clamped)})
-            punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_punch_clamped)})
-            punches.append({'beamType': 'slope', 'positionCm': _r(pos + block_length - block_punch_clamped)})
-        detail['punches'] = punches
+        # Recompute block punches from new block positions; preserve all other origins
+        base_beam_len = geom.get('baseBeamLength', beam_len * cos_a)
+        non_block_punches = [p for p in detail.get('punches', []) if p.get('origin') != 'block']
+        other_base_positions = [p['positionCm'] for p in non_block_punches if p['beamType'] == 'base']
+        detail['punches'] = non_block_punches + _compute_block_punches(
+            blocks, other_base_positions, block_length, base_beam_len,
+        )
+
+
+def _compute_block_punches(
+    blocks: list[dict],
+    other_base_positions: list[float],
+    block_length_cm: float,
+    base_beam_length: float,
+) -> list[dict]:
+    """
+    Compute one punch per block on the base beam.
+
+    Outer blocks (isEnd): 7cm from the outermost other punch in the block range,
+    toward the trapezoid center.
+    Inner blocks: 2cm to the right (toward front) of the rightmost other punch
+    in the block range.
+    """
+    OUTER_OFFSET = 7   # cm
+    INNER_OFFSET = 2   # cm
+
+    result = []
+    for block in blocks:
+        pos = block['positionCm']
+        block_end = pos + block_length_cm
+
+        # Other base-beam punch positions that fall within this block's range
+        in_range = sorted(
+            p for p in other_base_positions
+            if pos - 0.1 <= p <= block_end + 0.1
+        )
+
+        if block['isEnd']:
+            is_rear = pos < base_beam_length / 2
+            if is_rear:
+                # First outer block: 7cm past the innermost punch (max) toward center
+                ref = max(in_range) if in_range else pos
+                punch_pos = ref + OUTER_OFFSET
+            else:
+                # Last outer block: 7cm past the innermost punch (min) toward center
+                ref = min(in_range) if in_range else block_end
+                punch_pos = ref - OUTER_OFFSET
+        else:
+            # Support-leg block: 2cm to the right of the rightmost punch in range
+            if in_range:
+                punch_pos = max(in_range) + INNER_OFFSET
+            else:
+                punch_pos = pos + block_length_cm / 2
+
+        # Validate within block range
+        if punch_pos < pos - 0.1 or punch_pos > block_end + 0.1:
+            logger.error(
+                'Block %s punch at %.1f outside range [%.1f, %.1f]',
+                block.get('baseId', '?'), punch_pos, pos, block_end,
+            )
+            continue
+
+        result.append({
+            'beamType': 'base',
+            'positionCm': _r(punch_pos),
+            'origin': 'block',
+        })
+
+    # Add reversedPositionCm: reversed array of positions mapped to same indices
+    positions = [p['positionCm'] for p in result]
+    reversed_positions = list(reversed(positions))
+    for i, p in enumerate(result):
+        p['reversedPositionCm'] = reversed_positions[i]
+
+    return result
 
 
 def _r(v: float) -> float:

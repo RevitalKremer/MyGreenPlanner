@@ -706,6 +706,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
                   beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
                   fullTrapGhost={fullTrapGhost}
                   paramGroup={PARAM_GROUP}
+                  reverseBlockPunches={globalSettings.reverseBlockPunches ?? true}
                   onReset={() => { resetDetailSettings(selectedRowIdx); onTabSave?.('trapezoids') }}
                   onUpdateSetting={(key, val) => updateSetting(selectedRowIdx, key, val)}
                 />

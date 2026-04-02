@@ -6,7 +6,7 @@ import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import LayersPanel from './LayersPanel'
 import RulerTool from '../../shared/RulerTool'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, onReset = null, onUpdateSetting = null, printMode = false }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false }) {
   const { t } = useLang()
   const [_showAnnotations, setShowAnnotations]  = useState(true)
   const [_showPunches,     setShowPunches]      = useState(true)
@@ -457,16 +457,25 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
-              {/* ── Blocks — rendered from BE data ── */}
+              {/* ── Blocks — rendered from BE data, with punch position label ── */}
               {(() => {
                 const beBlocks = beDetailData?.blocks ?? []
+                const blockPunches = (beDetailData?.punches ?? []).filter(p => p.origin === 'block')
                 return (<>
                   {beBlocks.map((blk, bi) => {
                     const bx = atTrap(blk.positionCm).x
+                    // Find the punch belonging to this block (within block's X range)
+                    const blkPunch = blockPunches.find(p => {
+                      const px = p.positionCm
+                      return px >= blk.positionCm - 0.1 && px <= blk.positionCm + (beDetailData?.geometry?.blockLengthCm ?? 50) + 0.1
+                    })
+                    const label = blkPunch ? fmt(reverseBlockPunches ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
                       <g key={bi}>
                         <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
-                        {showPunches && <text x={bx + blockW / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{fmt(blk.positionCm)}</text>}
+                        {showPunches && label && (
+                          <text x={bx + blockW / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                        )}
                       </g>
                     )
                   })}
@@ -618,17 +627,19 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Punches — rendered from BE data ── */}
+              {/* ── Punches on beams — rendered from BE data (all origins) ── */}
               {showPunches && (beDetailData?.punches ?? []).map((p, i) => {
                 const px = atTrap(p.positionCm).x
+                const isDiag = p.origin === 'diagonal'
+                const stroke = isDiag ? BLUE : TEXT_SECONDARY
                 if (p.beamType === 'base') {
-                  return <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
-                    fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                  return <circle key={i} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={isDiag ? 2.5 : 2}
+                    fill="white" stroke={stroke} strokeWidth="1" />
                 }
                 // slope beam: Y at this X along the slope from first to last leg
                 const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
-                return <circle key={i} cx={px} cy={slopeY} r={2}
-                  fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                return <circle key={i} cx={px} cy={slopeY} r={isDiag ? 2.5 : 2}
+                  fill="white" stroke={stroke} strokeWidth="1" />
               })}
 
               {hl('blocks') && (
@@ -712,11 +723,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const basePunches = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'base')
-                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm) }))
+                  .filter(p => p.beamType === 'base' && p.origin !== 'block')
+                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
                   .sort((a, b) => a.x - b.x)
-                const punches       = basePunches.map(e => e.x)
-                const punchLabelsCm = basePunches.map(e => e.label)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'bot') return null
                   const span = findSpan(barHover.svgX)
@@ -735,14 +744,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'bot') : undefined}
                     />
                     {/* all punch circles + labels — Punches layer */}
-                    {punches.map((px, i) => (
-                      <g key={`wp-${i}`}>
-                        <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
-                        <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                          {punchLabelsCm[i]}
-                        </text>
-                      </g>
-                    ))}
+                    {basePunches.map((p, i) => {
+                      const isDiag = p.origin === 'diagonal'
+                      return (
+                        <g key={`wp-${i}`}>
+                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
+                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
+                            {p.label}
+                          </text>
+                        </g>
+                      )
+                    })}
                     {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
                     {showDiagHandles && !printMode && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'bot' && hoverHandle?.spanIndex === d.spanIndex
@@ -778,11 +790,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barCy = ry + barH / 2
                 const activeSlopeBeamLenCm = topBeamLength
                 const slopePunches = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'slope')
-                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm) }))
+                  .filter(p => p.beamType === 'slope' && p.origin !== 'rail')
+                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
                   .sort((a, b) => a.x - b.x)
-                const punches       = slopePunches.map(e => e.x)
-                const punchLabelsCm = slopePunches.map(e => e.label)
                 const ghostX = (() => {
                   if (!showDiagHandles || barHover?.which !== 'top') return null
                   const span = findSpan(barHover.svgX)
@@ -801,14 +811,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       onClick={showDiagHandles ? (e) => handleBarClick(e, 'top') : undefined}
                     />
                     {/* all punch circles + labels — Punches layer */}
-                    {punches.map((px, i) => (
-                      <g key={`wp-${i}`}>
-                        <circle cx={px} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
-                        <text x={px} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
-                          {punchLabelsCm[i]}
-                        </text>
-                      </g>
-                    ))}
+                    {slopePunches.map((p, i) => {
+                      const isDiag = p.origin === 'diagonal'
+                      return (
+                        <g key={`wp-${i}`}>
+                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
+                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
+                            {p.label}
+                          </text>
+                        </g>
+                      )
+                    })}
                     {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
                     {showDiagHandles && !printMode && activeDiags.map((d, di) => {
                       const isHov = hoverHandle?.which === 'top' && hoverHandle?.spanIndex === d.spanIndex

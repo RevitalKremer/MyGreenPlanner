@@ -185,14 +185,25 @@ export default function Step3Sidebar({
 
     // ── boolean: toggle switch
     if (type === 'boolean') {
-      const s   = getSettings(selectedRowIdx)
-      const val = s[key] ?? param.default
+      const val = scope === 'global'
+        ? (globalSettings?.[key] ?? param.default)
+        : (getSettings(selectedRowIdx)[key] ?? param.default)
+      const onToggle = scope === 'global'
+        ? (v) => updateGlobalSetting(key, v)
+        : (v) => updateSetting(selectedRowIdx, key, v)
       return (
         <div key={key} style={{ marginBottom: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.65rem', color: TEXT_PLACEHOLDER, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{label}<InfoTooltip param={param} /></span>
+          <span style={{ fontSize: '0.65rem', color: TEXT_PLACEHOLDER, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {label}<InfoTooltip param={param} />
+            {scope === 'global' && (
+              <span style={{ fontSize: '0.55rem', color: TEXT_FAINTEST, fontWeight: '600', letterSpacing: '0.04em' }}>
+                {t('step3.sidebar.global')}
+              </span>
+            )}
+          </span>
           <label style={{ position: 'relative', display: 'inline-block', width: '32px', height: '18px', cursor: 'pointer' }}>
             <input type="checkbox" checked={val}
-              onChange={e => updateSetting(selectedRowIdx, key, e.target.checked)}
+              onChange={e => onToggle(e.target.checked)}
               style={{ opacity: 0, width: 0, height: 0 }} />
             <span style={{ position: 'absolute', inset: 0, borderRadius: '18px', transition: '0.2s', background: val ? PRIMARY : BORDER_MID }} />
             <span style={{ position: 'absolute', top: '2px', left: val ? '16px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: '0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />

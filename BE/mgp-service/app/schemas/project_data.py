@@ -149,7 +149,7 @@ class ComputedTrapezoid(BaseModel):
     blocks: list[dict] = Field(default_factory=list)
     # blocks[]: positionCm (left edge on base beam), isEnd, slopePositionCm, slopeLengthCm
     punches: list[dict] = Field(default_factory=list)
-    # punches[]: beamType ('base'|'slope'), positionCm
+    # punches[]: beamType ('base'|'slope'), positionCm, origin ('outerLeg'|'innerLeg'|'rail'|'diagonal'|'block')
     diagonals: list[dict] = Field(default_factory=list)
     # diagonals[]: spanIdx, topPct, botPct, lengthCm, isDouble, disabled
 
