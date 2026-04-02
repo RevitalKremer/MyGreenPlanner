@@ -497,7 +497,7 @@ async def compute_and_save_bases(
     app_defaults = {r.key: r.value_json for r in rows}
 
     # Persist custom offsets
-    stored_custom = step3.get('basesCustomOffsets') or {}
+    stored_custom = step3.get('customBasesOffsets') or {}
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
             co = cfg.get('customOffsets')
@@ -506,7 +506,7 @@ async def compute_and_save_bases(
                     stored_custom[trap_id] = co
                 else:
                     stored_custom.pop(trap_id, None)
-    step3['basesCustomOffsets'] = stored_custom
+    step3['customBasesOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
         label = area.get('label', str(i))

@@ -11,7 +11,7 @@ Data ownership
   Each step writes ONLY to its own node (data.stepN).
   step2 — FE-owned: panel placement, area/trapezoid basic config
   step3 — mixed: FE-owned user settings + server-computed results
-    FE-owned keys:   globalSettings, areaSettings, basesCustomOffsets, customDiagonals
+    FE-owned keys:   globalSettings, areaSettings, customBasesOffsets, customDiagonals
     Server-computed: computedAreas, computedTrapezoids
   step4 — server-owned: plan approval
   step5 — FE-owned: BOM user adjustments (bomDeltas)
@@ -159,7 +159,7 @@ class Step3Data(BaseModel):
     # FE-owned (user settings)
     globalSettings: Optional[dict] = None
     areaSettings: Optional[dict] = None
-    basesCustomOffsets: Optional[dict] = None
+    customBasesOffsets: Optional[dict] = None
     customDiagonals: Optional[dict] = None
     # Server-computed (never sent by FE, preserved during merge)
     computedAreas: list[ComputedArea] = Field(default_factory=list)
