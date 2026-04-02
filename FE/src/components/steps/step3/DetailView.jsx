@@ -151,8 +151,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const raw = beDiags.map(d => {
       if (d.spanIdx >= numSpans) return null
       const ov = diagOverrides[d.spanIdx] ?? {}
-      const topPct = ov.topPct ?? d.topPct
-      const botPct = ov.botPct ?? d.botPct
+      const reversed = numSpans > 1 && d.spanIdx === 0
+      const defTop = d.isDouble ? (reversed ? 0.90 : 0.10) : (reversed ? 1 - diagTopPct : diagTopPct)
+      const defBot = reversed ? 1 - diagBasePct : diagBasePct
+      const topPct = ov.topPct ?? defTop
+      const botPct = ov.botPct ?? defBot
       const xA = allLegXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
       const spanW = xB - xA
       const topX = xA + topPct * spanW
@@ -165,7 +168,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const _len = Math.sqrt(_dx * _dx + _dy * _dy)
       const ux = _len > 0 ? _dx / _len : 0, uy = _len > 0 ? _dy / _len : 0
       const halfCap = BEAM_THICK_PX * 0.75 / 2
-      const reversed = numSpans > 1 && d.spanIdx === 0
       return {
         xA, xB, spanW, topX, botX, topY, botY, ux, uy, halfCap,
         lenCm: d.lengthCm, isDouble: d.isDouble, reversed, skip: ov.disabled ?? d.disabled,
@@ -633,11 +635,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
               {showPunches && <>
                 {(beDetailData?.punches ?? []).filter(p => p.origin !== 'diagonal').map((p, i) => {
-                  const px = atTrap(p.positionCm).x
                   if (p.beamType === 'base') {
+                    const px = legX0 + (p.positionCm / (geom.baseBeamLength || 1)) * legBW
                     return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
                       fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                   }
+                  const px = legX0 + (p.positionCm / (topBeamLength || 1)) * legBW
                   const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
                   return <circle key={`p-${i}`} cx={px} cy={slopeY} r={2}
                     fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
@@ -731,9 +734,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const ry    = blockBotY + 130
                 const barH  = 12
                 const barCy = ry + barH / 2
+                const baseBeamLen = activeBaseBeamLenCm
+                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * legBW
                 const nonDiagBasePunches = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
-                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
+                  .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
                 const diagBasePunches = activeDiags.map(d => ({
                   x: d.botX, label: fmt((d.botX - legX0) / SC), origin: 'diagonal',
                 }))
@@ -801,9 +806,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const barH  = 12
                 const barCy = ry + barH / 2
                 const activeSlopeBeamLenCm = topBeamLength
+                const atSlope2 = (posCm) => legX0 + (posCm / activeSlopeBeamLenCm) * legBW
                 const nonDiagSlopePunches = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
-                  .map(p => ({ x: atTrap(p.positionCm).x, label: fmt(p.positionCm), origin: p.origin }))
+                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
                 const diagSlopePunches = activeDiags.map(d => ({
                   x: d.topX, label: fmt((d.topX - legX0) / SC), origin: 'diagonal',
                 }))

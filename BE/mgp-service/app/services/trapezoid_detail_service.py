@@ -220,10 +220,12 @@ def compute_trapezoid_details(
         top_pct = ov_d.get('topPct', def_top)
         bot_pct = ov_d.get('botPct', def_bot)
 
-        # Approximate length (simplified: horizontal span between legs * Pythagorean)
-        span_width_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionCm']) * math.cos(angle_rad)
-        h_diff = abs(h_b - h_a)
-        length_cm = math.sqrt(span_width_cm ** 2 + max(h_a, h_b) ** 2) if span_width_cm > 0 else 0
+        # Diagonal length: sqrt(vertical² + horizontal²)
+        # Top attachment on slope beam at topPct, bottom attachment on base beam at botPct
+        span_horiz_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionCm']) * cos_a
+        height_at_top = h_a + top_pct * (h_b - h_a)  # vertical from base beam to slope beam at topPct
+        horiz_dist = abs(top_pct - bot_pct) * span_horiz_cm  # horizontal between attachments
+        length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if span_horiz_cm > 0 else 0
 
         raw_diagonals.append({
             'spanIdx': i,
@@ -283,7 +285,8 @@ def compute_trapezoid_details(
     punches = []
 
     # outerLeg: profile_half from each end of each beam
-    # base beam length = base_beam_length (horizontal), slope beam length = top_beam_length
+    # Base beam positions in base-beam coordinates (0 to base_beam_length)
+    # Slope beam positions in slope-beam coordinates (0 to top_beam_length)
     punches.append({'beamType': 'base',  'positionCm': _r(profile_half), 'origin': 'outerLeg'})
     punches.append({'beamType': 'base',  'positionCm': _r(base_beam_length - profile_half), 'origin': 'outerLeg'})
     punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg'})
