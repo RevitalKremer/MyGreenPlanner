@@ -26,6 +26,7 @@ export default function RowSidebar({
   resetTrapezoidConfig,
   reassignToTrapezoid,
   panelGapCm,
+  lineGapCm,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -230,6 +231,7 @@ export default function RowSidebar({
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             panelGapCm={panelGapCm}
+            lineGapCm={lineGapCm}
             panelSpec={panelTypes.find(t => t.id === panelType) ?? panelTypes[0]}
           />
         </div>

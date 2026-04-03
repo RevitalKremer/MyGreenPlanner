@@ -14,19 +14,19 @@ export default function RailCrossSectionWidget({
   barHeightPx = 240,
   keepSymmetry,
   onLineChange,
-  panelGapCm,
+  lineGapCm,
 }) {
   const svgRef   = useRef(null)
   const dragging = useRef(null)
   const [hoverHandle, setHoverHandle] = useState(null)   // { lineIdx, railIdx }
   const [hoverY,      setHoverY]      = useState(null)   // { svgY, lineIdx }
 
-  // Total depth of all lines + gaps
-  const totalDepthCm = lines.reduce((s, l, i) => s + l.depthCm + (i > 0 ? panelGapCm : 0), 0)
+   // Total depth of all lines + gaps
+  const totalDepthCm = lines.reduce((s, l, i) => s + l.depthCm + (i > 0 ? lineGapCm : 0), 0)
 
   // Start offset (cm) for each line within the combined bar
   const lineStartsCm = lines.map((_, i) =>
-    lines.slice(0, i).reduce((s, l) => s + l.depthCm + panelGapCm, 0)
+    lines.slice(0, i).reduce((s, l) => s + l.depthCm + lineGapCm, 0)
   )
 
   const PAD_V = 16

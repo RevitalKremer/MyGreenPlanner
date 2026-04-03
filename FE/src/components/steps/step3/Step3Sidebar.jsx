@@ -350,7 +350,7 @@ export default function Step3Sidebar({
                     {areaLabel(areaKey, i)}
                   </span>
                   <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', background: TEXT_SECONDARY, borderRadius: '4px', padding: '1px 6px' }}>
-                    {rc.typeLetter}{rc.panelsPerSpan}
+                    {rc.typeLetter}{Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginTop: '2px' }}>

@@ -241,7 +241,7 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
 
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
-            AppSetting.key.in_(['panelGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH', 'railRoundThresholdCm'])
+            AppSetting.key.in_(['panelGapCm', 'lineGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH', 'railRoundThresholdCm'])
         )
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}
@@ -420,8 +420,9 @@ def _build_base_inputs(
         'edge_offset_mm':      trap_cfg.get('edgeOffsetMm',      app_defaults['edgeOffsetMm']),
         'spacing_mm':          trap_cfg.get('spacingMm',          app_defaults['spacingMm']),
         'base_overhang_cm':    trap_cfg.get('baseOverhangCm',     app_defaults['baseOverhangCm']),
-        'cross_rail_offset_cm': app_defaults.get('crossRailEdgeDistMm', 40) / 10,
+        'cross_rail_offset_cm': app_defaults['crossRailEdgeDistMm'] / 10,
         'panel_gap_cm':        app_defaults['panelGapCm'],
+        'line_gap_cm':         app_defaults['lineGapCm'],
         'trapezoid_id':        trapezoid_id,
         'trap_start_cm':       trap_start_cm,
         'trap_end_cm':         trap_end_cm,
@@ -491,7 +492,7 @@ async def compute_and_save_bases(
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_([
-                'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
+                'panelGapCm', 'lineGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
                 'crossRailEdgeDistMm',
             ])
         )
@@ -663,7 +664,7 @@ def _trim_trapezoid(
     line_orientations: list[str] = None,
     panel_width_cm: float = 0,
     panel_length_cm: float = 0,
-    panel_gap_cm: float = 0,
+    line_gap_cm: float = 0,
 ) -> None:
     """
     Trim a trapezoid detail to only include legs/blocks/punches/diagonals
@@ -721,7 +722,7 @@ def _trim_trapezoid(
             is_h = o == 'empty-horizontal'
             skipped_depth += panel_width_cm if is_h else panel_length_cm
             if li > 0:
-                skipped_depth += panel_gap_cm
+                skipped_depth += line_gap_cm
         sin_a = math.sin(angle * math.pi / 180)
         geom['panelFrontHeight'] = _r(geom.get('panelFrontHeight', 0) + skipped_depth * sin_a)
 
@@ -733,7 +734,7 @@ def _trim_trapezoid(
                 break
             is_h = o == 'empty-horizontal'
             skipped_rear += panel_width_cm if is_h else panel_length_cm
-            skipped_rear += panel_gap_cm
+            skipped_rear += line_gap_cm
         sin_a = math.sin(angle * math.pi / 180)
         geom['panelRearHeightCm'] = _r(geom.get('panelRearHeightCm', 0) - skipped_rear * sin_a)
 
@@ -823,7 +824,7 @@ async def compute_and_save_trapezoid_details(
     rows = (await db.execute(
         select(AppSetting.key, AppSetting.value_json).where(
             AppSetting.key.in_([
-                'panelGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
+                'panelGapCm', 'lineGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
                 'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
                 'crossRailEdgeDistMm', 'angleProfileSizeMm', 'panelThickCm',
                 'diagTopPct', 'diagBasePct',
@@ -878,7 +879,7 @@ async def compute_and_save_trapezoid_details(
                 continue  # skip empty lines — ghost handled by FE overlay
             is_h = orient == 'horizontal'
             depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
-            gap = app_defaults.get('panelGapCm', 2.5) if active_idx > 0 else 0
+            gap = app_defaults.get('lineGapCm', 2) if active_idx > 0 else 0
             # Remap: original line index li → new active index active_idx
             if str(li) in line_rails:
                 remapped_line_rails[str(active_idx)] = line_rails[str(li)]
@@ -978,7 +979,7 @@ async def compute_and_save_trapezoid_details(
             for li, orient in enumerate(local_orients):
                 is_h = orient == 'horizontal'
                 depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
-                gap = app_defaults.get('panelGapCm', 2.5) if li > 0 else 0
+                gap = app_defaults.get('lineGapCm', 2) if li > 0 else 0
                 d_cm += gap
                 if 'empty' not in orient:
                     for off in trap_all_line_rails.get(str(li), []):
@@ -988,7 +989,7 @@ async def compute_and_save_trapezoid_details(
             _trim_trapezoid(
                 detail, full_trap_detail, active_rail_positions, full_origin,
                 local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
-                app_defaults.get('panelGapCm'),
+                app_defaults.get('lineGapCm', 2),
             )
 
             _upsert_computed_trapezoid(step3, tid, detail)
