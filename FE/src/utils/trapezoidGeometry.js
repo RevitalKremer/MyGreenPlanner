@@ -10,22 +10,6 @@ export const isEmptyOrientation = (o) =>
 export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
   isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm
 
-// ─── Orientation toggles ──────────────────────────────────────────────────────
-
-/** Cycle portrait ↔ landscape (preserving empty state) */
-export const toggleOrientation = (o) =>
-  o === 'vertical'       ? 'horizontal'       :
-  o === 'horizontal'     ? 'vertical'         :
-  o === 'empty-vertical' ? 'empty-horizontal' :
-  o === 'empty-horizontal' ? 'empty-vertical' : 'vertical'
-
-/** Toggle empty on/off (preserving portrait/landscape) */
-export const toggleEmptyOrientation = (o) =>
-  o === 'vertical'         ? 'empty-vertical'   :
-  o === 'horizontal'       ? 'empty-horizontal'  :
-  o === 'empty-vertical'   ? 'vertical'          :
-  o === 'empty-horizontal' ? 'horizontal'        : 'vertical'
-
 // ─── Slope / back-height calculations ────────────────────────────────────────
 
 /**
