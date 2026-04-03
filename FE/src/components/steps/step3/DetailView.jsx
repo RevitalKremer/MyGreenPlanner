@@ -371,7 +371,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             display: 'inline-block',
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
-              {trapId ?? `${rc.typeLetter}${rc.panelsPerSpan}`} — {angle}° · Panel Front {fmt(geom.panelFrontHeight ?? 0)} cm
+              {trapId ?? `${rc.typeLetter}${Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}`} — {angle}° · Panel Front {fmt(geom.panelFrontHeight ?? 0)} cm
               <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(settings.panelWidthCm)} cm
               </span>

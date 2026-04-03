@@ -1,7 +1,7 @@
 import { TEXT, TEXT_SECONDARY, TEXT_MUTED, PRIMARY } from '../../../styles/colors'
 
 export default function TrapProfile({ rc, sc = 1.2, showLabel = true, selected = false }) {
-  const { heightRear, heightFront, baseLength, typeLetter, panelsPerSpan, diagonalLength } = rc
+  const { heightRear, heightFront, baseLength, typeLetter, panelsPerLine, diagonalLength } = rc
   const padL = 8, padR = 8, padT = 12, padB = 10
   const bW = baseLength * sc
   const hR = heightRear * sc
@@ -43,7 +43,7 @@ export default function TrapProfile({ rc, sc = 1.2, showLabel = true, selected =
       {showLabel && typeLetter && (
         <text x={(x0 + x1) / 2} y={topY1 + (topY0 - topY1) / 2 + (hF - hR) * sc / 4 + 4}
           fontSize="9" fill={selected ? PRIMARY : TEXT_SECONDARY} fontWeight="800" textAnchor="middle"
-        >{typeLetter}{panelsPerSpan}</text>
+        >{typeLetter}{Math.max(...(panelsPerLine?.length ? panelsPerLine : [1]))}</text>
       )}
     </svg>
   )
