@@ -1,6 +1,9 @@
 import copy
+import logging
 import math
 import uuid
+
+logger = logging.getLogger(__name__)
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -246,9 +249,19 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     )).all()
     app_defaults = {r.key: r.value_json for r in rows}
 
+    step2 = data.get('step2', {})
     for i, area in enumerate(areas):
         label = area.get('label', str(i))
         computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults))
+        # Round slope beam to whole cm by adjusting the last rail
+        _round_slope_beam_rails(
+            computed['rails'],
+            area.get('panelGrid') or {},
+            step2.get('panelWidthCm', 113.4),
+            step2.get('panelLengthCm', 238.2),
+            app_defaults.get('lineGapCm', 2),
+            app_defaults.get('baseOverhangCm', 5),
+        )
         _upsert_computed_area(step3, label, {
             'rails': computed['rails'],
             'numLargeGaps': computed['numLargeGaps'],
@@ -656,6 +669,42 @@ def _r(v: float) -> float:
     return round(v * 10) / 10
 
 
+def _round_slope_beam_rails(
+    rails: list[dict],
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    line_gap_cm: float,
+    base_overhang_cm: float,
+) -> None:
+    """
+    Adjust the last rail's offset so the slope beam length is a whole number.
+    Profiles are physically cut to whole centimeters — fractional mm accuracy
+    is impossible.  The last rail in the last active line absorbs the delta.
+    Modifies rails list in place.
+    """
+    if not rails:
+        return
+    rows = panel_grid.get('rows', [])
+    if not rows:
+        return
+    # Total depth = V lines × panelLength + H lines × panelWidth + gaps
+    num_v = sum(1 for cells in rows if any(c == 'V' for c in cells))
+    num_h = sum(1 for cells in rows if any(c == 'H' for c in cells) and not any(c == 'V' for c in cells))
+    num_active = num_v + num_h
+    total_depth = num_v * panel_length_cm + num_h * panel_width_cm + max(0, num_active - 1) * line_gap_cm
+    # Rails are ordered by ID — first is rails[0], last is rails[-1]
+    dist_from_start = rails[0]['offsetFromLineFrontCm']
+    dist_from_end = rails[-1]['offsetFromRearEdgeCm']
+    slope_beam = _r(total_depth - dist_from_start - dist_from_end + 2 * base_overhang_cm)
+    if slope_beam == math.floor(slope_beam):
+        return  # already a whole number
+    delta = _r(slope_beam - math.floor(slope_beam))
+    # Shift only the last rail (move it closer to reduce slope beam to whole cm)
+    rails[-1]['offsetFromLineFrontCm'] = _r(rails[-1]['offsetFromLineFrontCm'] - delta)
+    rails[-1]['offsetFromRearEdgeCm'] = _r(rails[-1]['offsetFromRearEdgeCm'] + delta)
+
+
 def _trim_trapezoid(
     detail: dict,
     full_trap_detail: dict,
@@ -897,10 +946,10 @@ async def compute_and_save_trapezoid_details(
         t_cfg = (trapezoid_configs or {}).get(trap_id, {})
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
+        base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
 
         # Derive bases_data from rail positions + overhang (independent of
         # consolidated bases — consolidation can remove bases for shallower traps).
-        base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
         bases_data = None
         if line_rails:
             # Accumulate global rail offsets across panel lines
@@ -995,7 +1044,8 @@ async def compute_and_save_trapezoid_details(
             _upsert_computed_trapezoid(step3, tid, detail)
             result[tid] = detail
 
-    # ── Align blocks across trapezoids within the same area (after trimmed-trap pass) ──
+
+    # ── Align blocks across trapezoids within the same area ──────────────
     area_trap_map = {}
     for a in areas:
         label = a.get('label', '')
