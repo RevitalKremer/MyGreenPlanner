@@ -517,9 +517,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const rearHeightCm = beLegs[0]?.heightCm ?? 0
                 return legH > 0 && (
                   <g>
-                    <rect x={legX0} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    <rect x={legX0 - BEAM_THICK_PX / 2} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
                     {rearHeightCm >= 200 && (
-                      <text x={legX0 + BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+                      <text x={legX0} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
                     )}
                   </g>
                 )
@@ -532,9 +532,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const frontHeightCm = beLegs[beLegs.length - 1]?.heightCm ?? 0
                 return legH > 0 && (
                   <g>
-                    <rect x={legX1 - BEAM_THICK_PX} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    <rect x={legX1 - BEAM_THICK_PX / 2} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
                     {frontHeightCm >= 200 && (
-                      <text x={legX1 - BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+                      <text x={legX1} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
                     )}
                   </g>
                 )
