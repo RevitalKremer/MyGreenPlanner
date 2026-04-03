@@ -51,7 +51,8 @@ def compute_area_bases(
     base_overhang_cm: float,
     cross_rail_offset_cm: float,
     panel_gap_cm: float,
-    trapezoid_id: str,
+    line_gap_cm: float,
+    trapezoid_id: str = '',
     trap_start_cm: float | None = None,
     trap_end_cm: float | None = None,
     custom_offsets: list[float] | None = None,
@@ -130,7 +131,7 @@ def compute_area_bases(
     for line_idx, cells in enumerate(rows):
         orient = _infer_row_orientation(cells)
         if line_idx > 0:
-            cumulative_cm += panel_gap_cm
+            cumulative_cm += line_gap_cm
         depth_cm = long_cm if orient == 'V' else (short_cm if orient == 'H' else 0)
         if orient:
             line_infos[line_idx] = {

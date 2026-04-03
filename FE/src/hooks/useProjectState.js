@@ -608,7 +608,7 @@ setPanelAngle('')
       const shape = sig.split('|')
       newTrapConfigs[trapId] = {
         angle: aAngle, frontHeight: aFront,
-        backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm),
+        backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm),
         lineOrientations: shape,
       }
     })
@@ -894,7 +894,7 @@ setPanelAngle('')
         // Build groupTrapConfigs for each unique trap shape
         sigToTrap.forEach((trapId, sig) => {
           const shape = sig.split('|')
-          const trapBack = computePanelBackHeight(aFront, aAngle, shape, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+          const trapBack = computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm)
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: trapBack,
             lineOrientations: shape }
         })
@@ -910,7 +910,7 @@ setPanelAngle('')
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
         const defaultTrap = area.label
-        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.lineGapCm ?? appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
           groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack,

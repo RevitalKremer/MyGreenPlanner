@@ -9,51 +9,35 @@
  * @param {object} config      - optional overrides: railOverhang, maxSpan, baseLength
  */
 export function computeRowConstruction(panelCount, angle, frontHeight, config = {}) {
-  const angleRad = angle * Math.PI / 180
   const panelGapCm     = config.panelGapCm
   const panelWidthCm   = config.panelWidthCm
-  const panelLengthCm  = config.panelLengthCm
   const railOverhang   = config.railOverhang
   const maxSpan        = config.maxSpan
 
-  // Rail length (total row width including overhang)
-  // config.rowLength can be passed from actual panel placement measurements (preferred)
-  const rowLength = config.rowLength
-    ?? (panelCount * panelWidthCm
-    + Math.max(0, panelCount - 1) * panelGapCm
-    + 2 * railOverhang)
+  // All geometry from BE — no local fallbacks
+  const topBeamLength  = config.topBeamLength
+  const baseBeamLength = config.baseBeamLength
+  const heightRear     = config.heightRear
+  const heightFront    = config.heightFront
+  const baseLength     = config.baseBeamLength  // horizontal leg-to-leg = base beam
 
-  // Trapezoid base (horizontal depth of frame, cm)
-  // Use actual measured line depth if provided (multi-line rows), else single panel length
-  const lineDepthCm  = config.lineDepthCm ?? panelLengthCm
-  const railOffsetCm = config.railOffsetCm
-  const crossRailOffsetCm = config.crossRailOffsetCm
-  // baseLength = horizontal leg-to-leg span (first rail to last rail, projected)
-  const baseLength   = config.baseLength
-    ?? Math.cos(angleRad) * (lineDepthCm - 2 * railOffsetCm)
+  // Rail length from BE (row length)
+  const rowLength      = config.rowLength
 
-  // Base/slope beam physical lengths include overhang beyond each leg.
-  // baseOverhangCm is measured ALONG THE SLOPE (same direction as lineRails offsets).
-  const baseOverhangCm = config.baseOverhangCm
-  // Slope beam = rail-to-rail distance along slope + 2 × slope overhang
-  const topBeamLength  = baseLength / Math.cos(angleRad) + 2 * baseOverhangCm
-  // Horizontal base beam = slope beam projected onto ground
-  const baseBeamLength = topBeamLength * Math.cos(angleRad)
-
-  // Trapezoid heights — use leg span (baseLength), not full beam
-  const heightRear  = frontHeight                                    // low side
-  const heightFront = frontHeight + baseLength * Math.tan(angleRad)  // high side
-
-  // Diagonal: from top of rear leg → bottom of front leg (within leg span)
-  const diagonalLength   = Math.sqrt(baseLength ** 2 + heightFront ** 2)
+  // Diagonal: from top of rear leg → bottom of front leg
+  const diagonalLength = (baseLength != null && heightFront != null)
+    ? Math.sqrt(baseLength ** 2 + heightFront ** 2)
+    : 0
 
   // Trapezoid count and spacing along row
-  const numSpans      = Math.max(1, Math.ceil(rowLength / maxSpan))
+  const numSpans      = (rowLength && maxSpan) ? Math.max(1, Math.ceil(rowLength / maxSpan)) : 1
   const numTrapezoids = numSpans + 1
-  const spacing       = rowLength / numSpans  // actual cm between adjacent trapezoid centres
+  const spacing       = rowLength ? rowLength / numSpans : 0
 
   // How many panel widths fit per span (used for type label subscript)
-  const panelsPerSpan = Math.max(1, Math.round(spacing / (panelWidthCm + panelGapCm)))
+  const panelsPerSpan = (spacing && panelWidthCm && panelGapCm != null)
+    ? Math.max(1, Math.round(spacing / (panelWidthCm + panelGapCm)))
+    : 1
 
   return {
     rowLength,      // cm
@@ -61,9 +45,9 @@ export function computeRowConstruction(panelCount, angle, frontHeight, config = 
     frontHeight,
     heightRear,
     heightFront,
-    baseLength,      // horizontal leg-to-leg span (first–last rail projection)
-    baseBeamLength,  // physical base beam = baseLength + 2×overhang
-    topBeamLength,   // physical slope beam = baseBeamLength / cos(angle)
+    baseLength,      // horizontal leg-to-leg span
+    baseBeamLength,  // physical base beam
+    topBeamLength,   // physical slope beam
     diagonalLength,
     numTrapezoids,
     spacing,        // cm between trapezoids

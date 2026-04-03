@@ -319,7 +319,7 @@ export default function Step2PanelPlacement({
       current.frontHeight === fH
     ) return
 
-    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, appDefaults?.panelGapCm).toFixed(1))
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, appDefaults?.lineGapCm).toFixed(1))
 
     setTrapezoidConfigs(prev => ({
       ...prev,
@@ -500,6 +500,7 @@ export default function Step2PanelPlacement({
             resetTrapezoidConfig={resetTrapezoidConfig}
             reassignToTrapezoid={reassignToTrapezoid}
             panelGapCm={appDefaults?.panelGapCm}
+            lineGapCm={appDefaults?.lineGapCm}
           />
         )}
 

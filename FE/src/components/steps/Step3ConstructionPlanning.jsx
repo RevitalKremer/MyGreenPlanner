@@ -8,7 +8,7 @@ import {
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import { initDefaultLineRails, railOffsetFromSpacing } from '../../utils/railLayoutService'
-import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth, computeTotalSlopeDepth } from '../../utils/trapezoidGeometry'
+import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../../utils/trapezoidGeometry'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
 import DetailView from './step3/DetailView'
@@ -16,31 +16,12 @@ import DetailView from './step3/DetailView'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Compute horizontal base-beam span from actual first-to-last rail positions across all
-// panel lines.  lineRails: { [li]: [offsetCm, ...] }, offsets measured from each line's
-// front edge.  getLineDepth(li) → slope depth (cm) for line li.
-function computeBaseLengthFromRails(lineOrientations, lineRails, angleRad, getLineDepth, panelGapCm) {
-  let dCm = 0
-  let firstRailGlobal = null
-  let lastRailGlobal  = null
-  for (let li = 0; li < lineOrientations.length; li++) {
-    if (li > 0) dCm += panelGapCm
-    for (const r of (lineRails[li] ?? [])) {
-      const g = dCm + r
-      if (firstRailGlobal === null) firstRailGlobal = g
-      lastRailGlobal = g
-    }
-    dCm += getLineDepth(li)
-  }
-  if (firstRailGlobal == null || lastRailGlobal == null || lastRailGlobal <= firstRailGlobal) return null
-  return Math.cos(angleRad) * (lastRailGlobal - firstRailGlobal)
-}
-
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
 export default function Step3ConstructionPlanning({ panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs, areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null, onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange, beRailsData = null, beBasesData = null, beTrapezoidsData = null, railsComputing = false, onTabSave, onTabReset, appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {}, paramGroup: PARAM_GROUP = {}, panelSpec }) {
   const { t } = useLang()
   const panelGapCm = appDefaults?.panelGapCm
+  const lineGapCm = appDefaults?.lineGapCm
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
   const railSpacingVParam = PARAM_SCHEMA.find(p => p.key === 'railSpacingV') || {}
@@ -336,32 +317,30 @@ export default function Step3ConstructionPlanning({ panels = [], refinedArea, tr
       const numLargeGaps = beAreaData?.numLargeGaps ?? 0
 
       const measuredRowLength  = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
-      const measuredLineDepth  = lineOrientations.length > 0 ? computeTotalSlopeDepth(lineOrientations, panelGapCm, panelLengthCm, panelWidthCm) : undefined
       const numRailConnectors  = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegmentsMm.length - 1), 0)
 
-      const computedBaseLength = computeBaseLengthFromRails(
-        lineOrientations, lineRails, angleRad0, (li) => lineSlopeDepth(lineOrientations[li], panelLengthCm, panelWidthCm), panelGapCm
-      )
+      // Use BE-computed geometry — skip if not available
+      const beTrapDetail = beTrapezoidsData?.[trapId]
+      const beGeom = beTrapDetail?.geometry
+      if (!beGeom || measuredRowLength == null) return null
 
       const numRails    = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
       const numLines = Object.keys(lineRails).length
       const rc = computeRowConstruction(panelCount, angle, frontLegH, {
         panelGapCm,
         panelWidthCm,
-        panelLengthCm,
-        railOverhang,
         maxSpan,
-        railOffsetCm,
-        baseOverhangCm: trapBases.baseOverhangCm,
-        crossRailOffsetCm: s.crossRailOffsetCm,
-        ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
-        ...(measuredRowLength != null ? { rowLength: measuredRowLength } : {}),
-        ...(measuredLineDepth != null ? { lineDepthCm: measuredLineDepth } : {}),
+        topBeamLength: beGeom.topBeamLength,
+        baseBeamLength: beGeom.baseBeamLength,
+        heightRear: beGeom.heightRear,
+        heightFront: beGeom.heightFront,
+        rowLength: measuredRowLength,
+        railOverhang,
       })
       return { ...rc, numRails, numLines, numLargeGaps, numRailConnectors }
     })
-    return assignTypes(rcs)
-  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, areas, areaTrapezoidMap, getTrapBasesSettings])
+    return assignTypes(rcs.filter(Boolean))
+  }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, areaTrapezoidMap, getTrapBasesSettings])
 
 const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
@@ -388,28 +367,29 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
     const railOffsetCm     = lineRails[0]?.[0] ?? 0
     const frontLegH        = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad1) - crossRailH1 * Math.cos(angleRad1))
 
-    const lineDepthCm = lineOrientations.reduce((sum, o, i) =>
-      sum + (isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm) + (i > 0 ? panelGapCm : 0), 0)
+    // Use BE-computed geometry — skip if not available
+    const beTrapDetail = beTrapezoidsData?.[trapId]
+    const beGeom = beTrapDetail?.geometry
+    if (!beGeom) return null
 
-    const computedBaseLength = computeBaseLengthFromRails(
-      lineOrientations, lineRails, angleRad1,
-      (li) => lineSlopeDepth(lineOrientations[li], panelLengthCm, panelWidthCm), panelGapCm
-    )
+    const beAreaData = beRailsData?.find(a => a.areaLabel === areas[areaKey]?.label)
+    const rails = beAreaData?.rails ?? []
+    const rowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
+    if (rowLength == null) return null
 
     const [rc] = assignTypes([computeRowConstruction(1, angle, frontLegH, {
       panelGapCm,
       panelWidthCm,
-      panelLengthCm,
-      railOverhang,
       maxSpan,
-      lineDepthCm,
-      railOffsetCm,
-      baseOverhangCm: trapBases1.baseOverhangCm,
-      crossRailOffsetCm: s.crossRailOffsetCm,
-      ...(computedBaseLength != null ? { baseLength: computedBaseLength } : {}),
+      topBeamLength: beGeom.topBeamLength,
+      baseBeamLength: beGeom.baseBeamLength,
+      heightRear: beGeom.heightRear,
+      heightFront: beGeom.heightFront,
+      rowLength,
+      railOverhang,
     })])
     return rc
-  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, areas, getTrapBasesSettings])
+  }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beTrapezoidsData, areas, getTrapBasesSettings])
 
   const selectedRowLineDepths = useMemo(() => {
     if (selectedRowIdx == null) return null
@@ -427,7 +407,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
       .filter(o => !isEmptyOrientation(o))
       .map((o, i) => ({
         depthCm: isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
-        gapBeforeCm: i === 0 ? 0 : panelGapCm,
+        gapBeforeCm: i === 0 ? 0 : lineGapCm,
         isEmpty: false,
         isHorizontal: isHorizontalOrientation(o),
       }))
@@ -528,7 +508,7 @@ const selectedRC = rowConstructions[selectedRowIdx] ?? null
         const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
         map[trapId] = lineOrientations.map((o, i) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
-          gapBeforeCm: i === 0 ? 0 : panelGapCm,
+          gapBeforeCm: i === 0 ? 0 : lineGapCm,
           isEmpty:     isEmptyOrientation(o),
           isHorizontal: isHorizontalOrientation(o),
         }))
