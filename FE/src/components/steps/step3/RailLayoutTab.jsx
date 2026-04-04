@@ -399,16 +399,14 @@ export default function RailLayoutTab({
                       })
                     })()
 
-                    // Material summary label — one per panel line, centered in that line's area
+                    // Material summary label — one per panel line, using that line's rail segments
                     const materialSummary = (() => {
-                      const refRail = rl.rails[0]
-                      if (!refRail || !showMaterialSummary || !rl.panelLocalRects || !rl.frame) return null
-                      const counts = {}
-                      for (const mm of beSegs(refRail)) counts[mm] = (counts[mm] ?? 0) + 1
-                      const text = Object.entries(counts)
-                        .sort((a, b) => Number(b[0]) - Number(a[0]))
-                        .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
-                        .join(' +')
+                      if (!showMaterialSummary || !rl.panelLocalRects || !rl.frame || !rl.rails.length) return null
+                      // First rail per lineIdx for segment data
+                      const railByLine = {}
+                      for (const rail of rl.rails) {
+                        if (!(rail.lineIdx in railByLine)) railByLine[rail.lineIdx] = rail
+                      }
                       const { center, angleRad } = rl.frame
                       const fontSize = Math.max(9, 13 / zoom)
                       const lineRects = {}
@@ -417,6 +415,16 @@ export default function RailLayoutTab({
                         lineRects[pr.line].push(pr)
                       }
                       return Object.entries(lineRects).map(([li, rects]) => {
+                        const lineRail = railByLine[li]
+                        if (!lineRail) return null
+                        const segs = beSegs(lineRail)
+                        if (!segs || !segs.length) return null
+                        const counts = {}
+                        for (const mm of segs) counts[mm] = (counts[mm] ?? 0) + 1
+                        const text = Object.entries(counts)
+                          .sort((a, b) => Number(b[0]) - Number(a[0]))
+                          .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
+                          .join(' +')
                         const midLX = (Math.min(...rects.map(r => r.localX)) + Math.max(...rects.map(r => r.localX + r.width))) / 2
                         const midLY = (Math.min(...rects.map(r => r.localY)) + Math.max(...rects.map(r => r.localY + r.height))) / 2
                         const sx = center.x + midLX * Math.cos(angleRad) - midLY * Math.sin(angleRad)
