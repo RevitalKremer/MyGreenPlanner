@@ -166,15 +166,16 @@ def compute_trapezoid_details(
     front_outer_pos = base_length_cm  # = baseLengthCm
 
     # Inner leg side: left half of segment → 'left'; right half → 'right'; single → 'left'
-    # Each inner leg is offset from its cross rail by cross_rail_cm (direction based on side).
+    # Each inner leg is offset from its cross rail by base_overhang_cm (same distance
+    # as outer legs from the edge rails, so trimmed traps align with the full trap).
     inner_legs = []
     for ci, r in enumerate(rail_items[1:-1], start=1):
         info = rail_pos_in_seg.get(ci, {'pos': 0, 'N': 1})
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
         # Rail position relative to origin
         rail_pos = r['globalOffsetCm'] - origin
-        # Leg position: offset from rail by cross_rail_cm
-        leg_offset = cross_rail_cm if side == 'right' else -cross_rail_cm
+        # Leg position: offset from rail by base_overhang_cm
+        leg_offset = base_overhang_cm if side == 'right' else -base_overhang_cm
         leg_pos = rail_pos + leg_offset
         # Height interpolated between outer legs
         frac = max(0.0, min(1.0, leg_pos / front_outer_pos)) if front_outer_pos > 0 else 0

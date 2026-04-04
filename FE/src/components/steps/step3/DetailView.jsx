@@ -423,9 +423,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     {GR({ key: 'g-base', x: gActualX0, y: gBaseY, width: gActualX1 - gActualX0, height: BEAM_THICK_PX })}
                     {/* Ghost slope beam */}
                     {GL({ key: 'g-slope', x1: gActualX0, y1: gBaseY - gLegHeights[0], x2: gActualX1, y2: gBaseY - gLegHeights[gLegHeights.length - 1], sw: BEAM_THICK_PX })}
-                    {/* Ghost rear leg */}
+                    {/* Ghost rear leg — extends inward from position */}
                     {GL({ key: 'g-rear', x1: gActualX0 + BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[0], x2: gActualX0 + BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
-                    {/* Ghost front leg */}
+                    {/* Ghost front leg — extends inward from position */}
                     {GL({ key: 'g-front', x1: gActualX1 - BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[gLegHeights.length - 1], x2: gActualX1 - BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
                     {/* Ghost inner legs */}
                     {gAllLegXs.slice(1, -1).map((lx, ci) => {
@@ -510,31 +510,31 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Base beam ── */}
               <rect x={legX0} y={baseY} width={legBW} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
 
-              {/* ── Rear leg ── */}
+              {/* ── Rear leg — left edge at legX0 (extends inward) ── */}
               {(() => {
                 const slopeTopY = allLegTopYs[0] - Math.cos(angleRad) * BEAM_THICK_PX / 2
                 const legH    = baseY + BEAM_THICK_PX - slopeTopY
                 const rearHeightCm = beLegs[0]?.heightCm ?? 0
                 return legH > 0 && (
                   <g>
-                    <rect x={legX0 - BEAM_THICK_PX / 2} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    <rect x={legX0} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
                     {rearHeightCm >= 200 && (
-                      <text x={legX0} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+                      <text x={legX0 + BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
                     )}
                   </g>
                 )
               })()}
 
-              {/* ── Front leg ── */}
+              {/* ── Front leg — right edge at legX1 (extends inward) ── */}
               {(() => {
                 const slopeTopY = allLegTopYs[allLegTopYs.length - 1] - Math.cos(angleRad) * BEAM_THICK_PX / 2
                 const legH    = baseY + BEAM_THICK_PX - slopeTopY
                 const frontHeightCm = beLegs[beLegs.length - 1]?.heightCm ?? 0
                 return legH > 0 && (
                   <g>
-                    <rect x={legX1 - BEAM_THICK_PX / 2} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    <rect x={legX1 - BEAM_THICK_PX} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
                     {frontHeightCm >= 200 && (
-                      <text x={legX1} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+                      <text x={legX1 - BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
                     )}
                   </g>
                 )

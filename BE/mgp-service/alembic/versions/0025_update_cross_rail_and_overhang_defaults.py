@@ -1,4 +1,4 @@
-"""update crossRailEdgeDistMm to 50 and railOverhangCm to 10
+"""update railOverhangCm default to 10
 
 Revision ID: 0025
 Revises: 0024
@@ -16,7 +16,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.execute(
-        "UPDATE app_settings SET value_json = '50' WHERE key = 'crossRailEdgeDistMm'"
+        "UPDATE app_settings SET value_json = '40' WHERE key = 'crossRailEdgeDistMm'"
     )
     op.execute(
         "UPDATE app_settings SET value_json = '10' WHERE key = 'railOverhangCm'"
@@ -24,9 +24,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE app_settings SET value_json = '40' WHERE key = 'crossRailEdgeDistMm'"
-    )
     op.execute(
         "UPDATE app_settings SET value_json = '4' WHERE key = 'railOverhangCm'"
     )
