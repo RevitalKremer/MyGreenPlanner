@@ -243,7 +243,7 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
 
     step2 = data.get('step2', {})
     for i, area in enumerate(areas):
-        label = area.get('label', str(i))
+        label = area.get('label') or area.get('id') or str(i)
         computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults))
         # Round slope beam to whole cm by adjusting the last rail
         _round_slope_beam_rails(
@@ -408,7 +408,7 @@ def _build_base_inputs(
 ) -> dict:
     """Extract base computation inputs for one trapezoid within an area."""
     step2 = data.get('step2', {})
-    label = area.get('label', str(area_idx))
+    label = area.get('label') or area.get('id') or str(area_idx)
 
     # Line rails from computed area data
     computed_area = _get_computed_area(data, label)
@@ -477,7 +477,7 @@ async def compute_and_save_bases(
     step3['customBasesOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
-        label = area.get('label', str(i))
+        label = area.get('label') or area.get('id') or str(i)
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
             trap_ids = [label]

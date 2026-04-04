@@ -13,7 +13,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, updateProject, deleteProject, getRails, getBases, getTrapezoids, updateStep, saveTab, resetTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -100,21 +100,21 @@ function App() {
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
 
-  // Trigger rail computation when a (different) project is loaded while on step 3.
+  // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
   useEffect(() => {
     if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
-      getRails(s.cloudProjectId)
-        .then(setBeRailsData)
-        .catch(console.error)
-      getBases(s.cloudProjectId)
-        .then(setBeBasesData)
-        .catch(console.error)
-      getTrapezoids(s.cloudProjectId)
-        .then(setBeTrapezoidsData)
+      getConstructionData(s.cloudProjectId)
+        .then(result => {
+          setBeRailsData(result.rails)
+          setBeBasesData(result.bases)
+          setBeTrapezoidsData(result.trapezoidDetails)
+        })
         .catch(console.error)
     }
-  }, [s.cloudProjectId, s.currentStep]) // step 3 + step 5 both need BE data
+  // Only cloudProjectId should trigger this — currentStep transitions are handled in Next button
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.cloudProjectId])
 
   const applyBeResult = (result) => {
     if (result.rails) setBeRailsData(result.rails)
@@ -157,7 +157,7 @@ function App() {
     try {
       const id = await s.handleSaveProject(step)
       setSaveState('saved')
-      fetchCloudProjects()
+      // No need to refresh projects list during wizard — will fetch fresh when returning to welcome screen
       setTimeout(() => setSaveState(null), 2500)
       return id
     } catch {
@@ -213,6 +213,20 @@ function App() {
       setTotalProjectsCount(prev => Math.max(0, prev - 1))
     } catch (err) {
       alert(t('app.deleteProjectError', { msg: err.message }))
+    }
+  }
+
+  const handleStartOver = async () => {
+    s.handleStartOver()
+    // Fetch the latest project to show on welcome screen
+    if (auth.user) {
+      try {
+        const data = await listProjects(1)
+        setCloudProjects(data.projects || [])
+        setTotalProjectsCount(data.total || 0)
+      } catch (err) {
+        console.error('Failed to fetch latest project:', err)
+      }
     }
   }
 
@@ -309,7 +323,7 @@ function App() {
 
             {/* Start Over icon button */}
             <button
-              onClick={s.handleStartOver}
+              onClick={handleStartOver}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '0.3rem 0.65rem', color: 'rgba(255,255,255,0.55)' }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
