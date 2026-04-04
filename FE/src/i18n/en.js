@@ -359,6 +359,7 @@ const en = {
   'step3.layer.rails':           'Rails',
   'step3.layer.dimensions':      'Dimensions',
   'step3.layer.materialSummary': 'Material summary',
+  'step3.layer.connectors':      'Connectors',
   'step3.layer.annotations':     'Annotations',
   'step3.layer.punches':         'Punches',
   'step3.layer.editBar':         'Edit Bar',
