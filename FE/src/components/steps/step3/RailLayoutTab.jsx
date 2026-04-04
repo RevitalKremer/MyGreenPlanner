@@ -1,16 +1,16 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, RAIL_STROKE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { computeRowRailLayout, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
+import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { computeRowRailLayout } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildRowGroups, buildTrapezoidGroups } from './tabUtils'
+import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
+import RailsOverlay from './RailsOverlay'
 import LayersPanel from './LayersPanel'
 import RailsTable from './RailsTable'
 import RailCrossSectionOverlay from './RailCrossSectionOverlay'
 import RulerTool from '../../shared/RulerTool'
-import DimensionAnnotation from './DimensionAnnotation'
 
 
 export default function RailLayoutTab({
@@ -40,6 +40,7 @@ export default function RailLayoutTab({
   const [showRails,           setShowRails]           = useState(true)
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
+  const [showConnectors,      setShowConnectors]      = useState(true)
   const [showEditBar,    setShowEditBar]    = useState(true)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
@@ -70,25 +71,22 @@ export default function RailLayoutTab({
   const railLayouts = useMemo(() => {
     if (railLayoutsProp) return railLayoutsProp
     return rowKeys.map((rowKey, i) => {
-      // Use per-area lineRails from trapLineRailsMap when available (correct for non-selected areas)
+      const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
+      // For the selected row in edit mode, use live lineRails; otherwise use stored per-area data
+      const useStored = i !== selectedRowIdx || printMode
       let areaLineRails = lineRails
-      if (i !== selectedRowIdx) {
-        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
-        if (firstTrapId && trapLineRailsMap[firstTrapId]) {
-          areaLineRails = trapLineRailsMap[firstTrapId]
-        }
+      if (useStored && firstTrapId && trapLineRailsMap[firstTrapId]) {
+        areaLineRails = trapLineRailsMap[firstTrapId]
       }
-      const cfg = { lineRails: areaLineRails, overhangCm: railOverhangCm, stockLengths }
-      // Use per-area settings for overhang if available
-      if (i !== selectedRowIdx) {
-        const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
-        if (firstTrapId && trapSettingsMap[firstTrapId]) {
-          cfg.overhangCm = trapSettingsMap[firstTrapId].railOverhangCm ?? railOverhangCm
-        }
+      const areaSettings = (firstTrapId && trapSettingsMap[firstTrapId]) ?? {}
+      const cfg = {
+        lineRails: areaLineRails,
+        overhangCm: useStored ? (areaSettings.railOverhangCm ?? railOverhangCm) : railOverhangCm,
+        stockLengths: useStored ? (areaSettings.stockLengths ?? stockLengths) : stockLengths,
       }
       return computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, cfg)
     })
-  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap])
+  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverCm, 0) ?? 0), 0)
@@ -133,7 +131,6 @@ export default function RailLayoutTab({
   }
 
   const toSvg = toSvgFn
-  const svgCentX = PAD_LEFT + (bboxW / 2) * sc, svgCentY = PAD + (bboxH / 2) * sc
 
 
   // Keep a stable ref to the latest lineRails so the overlay's drag closure always
@@ -149,112 +146,21 @@ export default function RailLayoutTab({
   // Pick the active row layout for cross-section overlay
   const activeCrossSectionRl = railLayouts[selectedRowIdx ?? 0] ?? null
 
+  const overlayProps = {
+    railLayouts, rowKeys, rowGroups, beRailByKey,
+    sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
+  }
+
   if (printMode) {
-    // Per-trap rail layouts using per-area settings
-    const { map: trapGroups, keys: trapIds } = buildTrapezoidGroups(panels)
-    const printRailLayouts = trapIds.map(trapId => {
-      const s = trapSettingsMap[trapId] ?? {}
-      return computeRowRailLayout(trapGroups[trapId], pixelToCmRatio, {
-        lineRails:    trapLineRailsMap[trapId] ?? null,
-        overhangCm:   s.railOverhangCm ?? settings.railOverhangCm,
-        stockLengths: s.stockLengths ?? settings.stockLengths,
-      })
-    })
-    // Reduced left pad — no cross-section bar
     const PM_PAD = 24
     const svgW_pm  = MAX_W + PM_PAD * 2
     const toSvg_pm = (sx, sy) => [PM_PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
-    const svgCentX_pm = PM_PAD + (bboxW / 2) * sc
 
     return (
       <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
         <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
-        {printRailLayouts.map((rl, i) => {
-          if (!rl) return null
-          const pmArea = trapIds[i].replace(/\d+$/, '')
-          const beLen = (rail) => { const be = beRailByKey[`${pmArea}:${rail.railId}`]; return be?.roundedLengthCm ?? be?.lengthCm ?? rail.lengthCm }
-          const beSegs = (rail) => { const be = beRailByKey[`${pmArea}:${rail.railId}`]; return be?.stockSegmentsMm ?? rail.stockSegmentsMm }
-          const pmCrossRail = crossRailEdgeDistMm ?? trapSettingsMap[trapIds[i]]?.crossRailEdgeDistMm ?? 40
-          const railProfileSvg = (pmCrossRail / 10 / pixelToCmRatio) * sc
-          const annotatedLines = new Set(), annotatedRailIds = new Set()
-          for (const rail of rl.rails) {
-            if (!annotatedLines.has(rail.lineIdx)) { annotatedLines.add(rail.lineIdx); annotatedRailIds.add(rail.railId) }
-          }
-          const dimAnnotations = rl.frame ? (() => {
-            const { center: fc, angleRad: ar, localBounds: lb } = rl.frame
-            const perpX = -Math.sin(ar), perpY = Math.cos(ar)
-            const [fcxSvg, fcySvg] = toSvg_pm(fc.x, fc.y)
-            const outSign = ((fcxSvg - svgCentX_pm) * perpX + (fcySvg - svgCentY) * perpY) >= 0 ? 1 : -1
-            const apX = outSign * perpX, apY = outSign * perpY
-            const extremeLocalY = outSign >= 0 ? lb.maxY : lb.minY
-            const ANN_OFF = 16, EXT_GAP = 2
-            const edgeSvgFn = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, fc, ar); return toSvg_pm(s.x, s.y) }
-            const annSvgFn  = (lx) => { const [ex, ey] = edgeSvgFn(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
-            return rl.rails
-              .filter(rail => annotatedRailIds.has(rail.railId))
-              .map(rail => {
-                const lxStart = screenToLocal(rail.screenStart, fc, ar).x
-                const lxEnd   = screenToLocal(rail.screenEnd,   fc, ar).x
-                const [esx, esy] = edgeSvgFn(lxStart), [eex, eey] = edgeSvgFn(lxEnd)
-                const measurePts = [[esx + apX * EXT_GAP, esy + apY * EXT_GAP], [eex + apX * EXT_GAP, eey + apY * EXT_GAP]]
-                const annPts     = [annSvgFn(lxStart), annSvgFn(lxEnd)]
-                return (
-                  <DimensionAnnotation key={`dim-${rail.railId}`}
-                    measurePts={measurePts} annPts={annPts}
-                    labels={[String(Math.round(beLen(rail) * 10))]}
-                    zoom={1} color={TEXT_SECONDARY}
-                  />
-                )
-              })
-          })() : null
-          const materialSummary = (() => {
-            const refRail = rl.rails[0]
-            if (!refRail || !rl.panelLocalRects || !rl.frame) return null
-            const counts = {}
-            for (const mm of beSegs(refRail)) counts[mm] = (counts[mm] ?? 0) + 1
-            const text = Object.entries(counts)
-              .sort((a, b) => Number(b[0]) - Number(a[0]))
-              .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
-              .join(' + ')
-            const { center, angleRad } = rl.frame
-            const lineRects = {}
-            for (const pr of rl.panelLocalRects) {
-              if (!lineRects[pr.line]) lineRects[pr.line] = []
-              lineRects[pr.line].push(pr)
-            }
-            return Object.entries(lineRects).map(([li, rects]) => {
-              const midLX = (Math.min(...rects.map(r => r.localX)) + Math.max(...rects.map(r => r.localX + r.width))) / 2
-              const midLY = (Math.min(...rects.map(r => r.localY)) + Math.max(...rects.map(r => r.localY + r.height))) / 2
-              const sx = center.x + midLX * Math.cos(angleRad) - midLY * Math.sin(angleRad)
-              const sy = center.y + midLX * Math.sin(angleRad) + midLY * Math.cos(angleRad)
-              const [cx, cy] = toSvg_pm(sx, sy)
-              return (
-                <text key={li} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={10} fontWeight="600" fill={RAIL_STROKE} style={{ pointerEvents: 'none' }}>
-                  {text}
-                </text>
-              )
-            })
-          })()
-          return (
-            <g key={i}>
-              {materialSummary}
-              {rl.rails.map(rail => {
-                const [x1, y1] = toSvg_pm(rail.screenStart.x, rail.screenStart.y)
-                const [x2, y2] = toSvg_pm(rail.screenEnd.x, rail.screenEnd.y)
-                const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy)
-                if (len < 2) return null
-                return (
-                  <line key={`${i}-${rail.railId}`}
-                    x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square"
-                  />
-                )
-              })}
-              {dimAnnotations}
-            </g>
-          )
-        })}
+        <RailsOverlay {...overlayProps} toSvg={toSvg_pm} zoom={1}
+          layers={{ rails: true, dimensions: true, materialSummary: true, connectors: true }} />
       </svg>
     )
   }
@@ -283,142 +189,10 @@ export default function RailLayoutTab({
 
                   <HatchedPanels panels={panels} selectedTrapId={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
-                  {/* Rails + dimension annotations */}
-                  {railLayouts.map((rl, i) => {
-                    if (!rl) return null
-                    const beLen = (rail) => { const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]; return be?.roundedLengthCm ?? be?.lengthCm ?? rail.lengthCm }
-                    const beSegs = (rail) => { const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]; return be?.stockSegmentsMm ?? rail.stockSegmentsMm }
-                    const railOpacity    = (selectedRowIdx === null || i === selectedRowIdx) ? 1 : 0.2
-                    const railProfileSvg = (crossRailEdgeDistMm / 10 / pixelToCmRatio) * sc
-                    const overhangSvg    = (railOverhangCm / pixelToCmRatio) * sc
-                    const hlW            = railProfileSvg + 6
-                    const hlRail         = highlightGroup === 'rail-ends'
-                    const hlCuts         = highlightGroup === 'rail-cuts'
-                    const hlProfile      = highlightGroup === 'cross-rails'
-                    const hlSpacingV     = highlightGroup === 'railSpacingV'
-                    const hlSpacingH     = highlightGroup === 'railSpacingH'
-
-                    // First rail per lineIdx — one dimension annotation per line
-                    const annotatedLines = new Set(), annotatedRailIds = new Set()
-                    for (const rail of rl.rails) {
-                      if (!annotatedLines.has(rail.lineIdx)) { annotatedLines.add(rail.lineIdx); annotatedRailIds.add(rail.railId) }
-                    }
-
-                    // Outward-perpendicular positioning (same logic as BasesPlanTab)
-                    const dimAnnotations = showDimensions && rl.frame ? (() => {
-                      const { center: fc, angleRad: ar, localBounds: lb } = rl.frame
-                      const perpX = -Math.sin(ar), perpY = Math.cos(ar)
-                      const [fcxSvg, fcySvg] = toSvg(fc.x, fc.y)
-                      const outSign = ((fcxSvg - svgCentX) * perpX + (fcySvg - svgCentY) * perpY) >= 0 ? 1 : -1
-                      const apX = outSign * perpX, apY = outSign * perpY
-                      const extremeLocalY = outSign >= 0 ? lb.maxY : lb.minY
-                      const ANN_OFF = 16 / zoom, EXT_GAP = 2 / zoom
-                      const edgeSvgFn = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, fc, ar); return toSvg(s.x, s.y) }
-                      const annSvgFn  = (lx) => { const [ex, ey] = edgeSvgFn(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
-                      const isSelected = selectedRowIdx === null || i === selectedRowIdx
-                      const color = isSelected ? BLUE_SELECTED : TEXT_SECONDARY
-
-                      return rl.rails
-                        .filter(rail => annotatedRailIds.has(rail.railId))
-                        .map(rail => {
-                          const lxStart = screenToLocal(rail.screenStart, fc, ar).x
-                          const lxEnd   = screenToLocal(rail.screenEnd,   fc, ar).x
-                          const [esx, esy] = edgeSvgFn(lxStart), [eex, eey] = edgeSvgFn(lxEnd)
-                          const measurePts = [[esx + apX * EXT_GAP, esy + apY * EXT_GAP], [eex + apX * EXT_GAP, eey + apY * EXT_GAP]]
-                          const annPts     = [annSvgFn(lxStart), annSvgFn(lxEnd)]
-                          return (
-                            <DimensionAnnotation key={`dim-${rail.railId}`}
-                              measurePts={measurePts} annPts={annPts}
-                              labels={[String(Math.round(beLen(rail) * 10))]}
-                              zoom={zoom} color={color}
-                            />
-                          )
-                        })
-                    })() : null
-
-                    // Gap polygons between adjacent rails of the highlighted orientation
-                    const spacingGaps = (hlSpacingV || hlSpacingH) && showRails ? (() => {
-                      const targetOrientation = hlSpacingV ? 'vertical' : 'horizontal'
-                      const sorted = rl.rails
-                        .filter(r => r.orientation === targetOrientation)
-                        .map(r => {
-                          const [x1, y1] = toSvg(r.screenStart.x, r.screenStart.y)
-                          const [x2, y2] = toSvg(r.screenEnd.x, r.screenEnd.y)
-                          return { x1, y1, x2, y2, midPerp: hlSpacingV ? (x1 + x2) / 2 : (y1 + y2) / 2 }
-                        })
-                        .sort((a, b) => a.midPerp - b.midPerp)
-                      return sorted.slice(0, -1).map((r, ri) => {
-                        const n = sorted[ri + 1]
-                        return (
-                          <polygon key={`gap-${ri}`}
-                            points={`${r.x1},${r.y1} ${r.x2},${r.y2} ${n.x2},${n.y2} ${n.x1},${n.y1}`}
-                            fill={AMBER} fillOpacity={0.35} stroke="none"
-                            style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
-                          />
-                        )
-                      })
-                    })() : null
-
-                    // Material summary label — one per panel line, centered in that line's area
-                    const materialSummary = (() => {
-                      const refRail = rl.rails[0]
-                      if (!refRail || !showMaterialSummary || !rl.panelLocalRects || !rl.frame) return null
-                      const counts = {}
-                      for (const mm of beSegs(refRail)) counts[mm] = (counts[mm] ?? 0) + 1
-                      const text = Object.entries(counts)
-                        .sort((a, b) => Number(b[0]) - Number(a[0]))
-                        .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
-                        .join(' + ')
-                      const { center, angleRad } = rl.frame
-                      const fontSize = Math.max(9, 13 / zoom)
-                      // Group panelLocalRects by line index
-                      const lineRects = {}
-                      for (const pr of rl.panelLocalRects) {
-                        if (!lineRects[pr.line]) lineRects[pr.line] = []
-                        lineRects[pr.line].push(pr)
-                      }
-                      return Object.entries(lineRects).map(([li, rects]) => {
-                        const midLX = (Math.min(...rects.map(r => r.localX)) + Math.max(...rects.map(r => r.localX + r.width))) / 2
-                        const midLY = (Math.min(...rects.map(r => r.localY)) + Math.max(...rects.map(r => r.localY + r.height))) / 2
-                        const sx = center.x + midLX * Math.cos(angleRad) - midLY * Math.sin(angleRad)
-                        const sy = center.y + midLX * Math.sin(angleRad) + midLY * Math.cos(angleRad)
-                        const [cx, cy] = toSvg(sx, sy)
-                        return (
-                          <text key={li} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={fontSize} fontWeight="600" fill={RAIL_STROKE}
-                            style={{ pointerEvents: 'none' }}>
-                            {text}
-                          </text>
-                        )
-                      })
-                    })()
-
-                    return (
-                      <g key={i} opacity={railOpacity}>
-                        {spacingGaps}
-                        {materialSummary}
-                        {rl.rails.map(rail => {
-                          const [x1, y1] = toSvg(rail.screenStart.x, rail.screenStart.y)
-                          const [x2, y2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
-                          const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy)
-                          if (len < 2) return null
-                          const ux = dx / len, uy = dy / len
-                          return (
-                            <g key={`${i}-${rail.railId}`}>
-                              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square" />}
-                              {hlRail && showRails && <>
-                                <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                                <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                              </>}
-                              {hlCuts    && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                              {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
-                            </g>
-                          )
-                        })}
-                        {dimAnnotations}
-                      </g>
-                    )
-                  })}
+                  {/* Rails + layers */}
+                  <RailsOverlay {...overlayProps} toSvg={toSvg} zoom={zoom}
+                    selectedRowIdx={selectedRowIdx} highlightGroup={highlightGroup}
+                    layers={{ rails: showRails, dimensions: showDimensions, materialSummary: showMaterialSummary, connectors: showConnectors }} />
 
                   {/* Edit bar — rendered last so it draws on top of all rails */}
                   {showEditBar && (
@@ -447,6 +221,7 @@ export default function RailLayoutTab({
               { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
               { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
               { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
+              { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
               { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
             ]}
             summary={null}

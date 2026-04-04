@@ -166,15 +166,16 @@ def compute_trapezoid_details(
     front_outer_pos = base_length_cm  # = baseLengthCm
 
     # Inner leg side: left half of segment → 'left'; right half → 'right'; single → 'left'
-    # Each inner leg is offset from its cross rail by cross_rail_cm (direction based on side).
+    # Each inner leg is offset from its cross rail by base_overhang_cm (same distance
+    # as outer legs from the edge rails, so trimmed traps align with the full trap).
     inner_legs = []
     for ci, r in enumerate(rail_items[1:-1], start=1):
         info = rail_pos_in_seg.get(ci, {'pos': 0, 'N': 1})
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
         # Rail position relative to origin
         rail_pos = r['globalOffsetCm'] - origin
-        # Leg position: offset from rail by cross_rail_cm
-        leg_offset = cross_rail_cm if side == 'right' else -cross_rail_cm
+        # Leg position: offset from rail by base_overhang_cm
+        leg_offset = base_overhang_cm if side == 'right' else -base_overhang_cm
         leg_pos = rail_pos + leg_offset
         # Height interpolated between outer legs
         frac = max(0.0, min(1.0, leg_pos / front_outer_pos)) if front_outer_pos > 0 else 0
@@ -320,7 +321,7 @@ def compute_trapezoid_details(
 
     # block: one punch per block, position depends on nearby punches on base beam
     other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
-    punches += _compute_block_punches(blocks, other_base_positions, block_length_cm, base_beam_length, block_punch_cm, beam_thick_cm)
+    punches += _compute_block_punches(blocks, other_base_positions, block_length_cm, base_beam_length, block_punch_cm, beam_thick_cm, cos_a)
 
     # Add reversedPositionCm (distance from beam end) to qualifying punches
     for p in punches:
@@ -367,6 +368,9 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         origin = geom.get('originCm', 0)
         beam_len = geom.get('topBeamLength', 0)  # slope length = local span
         block_length = geom.get('blockLengthCm', 50)
+        angle_deg = geom.get('angle', 0)
+        cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
+        base_beam_len = geom.get('baseBeamLength', beam_len * cos_a)
 
         # Convert global positions to local, keep those within [0, beamLen]
         local_positions = []
@@ -376,31 +380,35 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
                 local_positions.append(lp)
 
         # Remove overlaps + add slope projection (same logic as initial computation)
-        angle_deg = geom.get('angle', 0)
-        cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
         slope_block_length = block_length / cos_a if cos_a > 0 else block_length
         blocks = []
         for lp in local_positions:
             if blocks and lp < blocks[-1]['positionCm'] + block_length - 0.1:
                 continue
-            is_end = abs(lp) < 0.1 or abs(lp - (beam_len - block_length)) < 0.1
             blocks.append({
                 'positionCm': lp,
-                'isEnd': is_end,
+                'isEnd': False,
                 'slopePositionCm': _r(lp / cos_a) if cos_a > 0 else lp,
                 'slopeLengthCm': _r(slope_block_length),
             })
+        # First and last blocks are outer — reposition to align with legs
+        if blocks:
+            blocks[0]['isEnd'] = True
+            blocks[0]['positionCm'] = 0.0
+            blocks[0]['slopePositionCm'] = 0.0
+            blocks[-1]['isEnd'] = True
+            blocks[-1]['positionCm'] = _r(beam_len - block_length)
+            blocks[-1]['slopePositionCm'] = _r((beam_len - block_length) / cos_a) if cos_a > 0 else _r(beam_len - block_length)
 
         detail['blocks'] = blocks
 
         # Recompute block punches from new block positions; preserve all other origins
-        base_beam_len = geom.get('baseBeamLength', beam_len * cos_a)
         non_block_punches = [p for p in detail.get('punches', []) if p.get('origin') != 'block']
         other_base_positions = [p['positionCm'] for p in non_block_punches if p['beamType'] == 'base']
         block_punch = geom.get('blockPunchCm', 9)
         profile_step = geom.get('beamThickCm', 4)
         new_block_punches = _compute_block_punches(
-            blocks, other_base_positions, block_length, base_beam_len, block_punch, profile_step,
+            blocks, other_base_positions, block_length, base_beam_len, block_punch, profile_step, cos_a,
         )
         # Add reversedPositionCm (distance from beam end) to block punches
         for p in new_block_punches:
@@ -415,15 +423,14 @@ def _compute_block_punches(
     base_beam_length: float,
     block_punch_cm: float = 9,
     profile_step_cm: float = 4,
+    cos_a: float = 1.0,
 ) -> list[dict]:
     """
     Compute one punch per block on the base beam.
 
     Outer blocks (isEnd): blockPunchCm from the outer edge toward center.
-    If that overlaps an existing punch (±2cm), shift by profileStepCm
-    toward center until a free spot is found.
-    Inner blocks: 2cm to the right (toward front) of the rightmost other punch
-    in the block range.
+    Inner blocks: INNER_OFFSET past the rightmost base-beam punch within
+    the block's base-beam range. All inner-block math uses base-beam coords.
     """
     OVERLAP_MARGIN = 2   # cm — minimum distance from any existing punch
     INNER_OFFSET   = 8   # cm
@@ -432,35 +439,39 @@ def _compute_block_punches(
         return any(abs(candidate - p) < OVERLAP_MARGIN for p in existing)
 
     result = []
-    for block in blocks:
-        pos = block['positionCm']
-        block_end = pos + block_length_cm
+    for bi, block in enumerate(blocks):
+        pos = block['positionCm']          # slope coords
+        block_end = pos + block_length_cm  # slope coords
 
         if block['isEnd']:
             is_rear = pos < base_beam_length / 2
             if is_rear:
-                # First outer block: blockPunchCm from base beam start toward center
                 punch_pos = block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
                     punch_pos += profile_step_cm
             else:
-                # Last outer block: blockPunchCm from base beam end toward center
                 punch_pos = base_beam_length - block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
                     punch_pos -= profile_step_cm
+            check_lo, check_hi = pos - 0.1, block_end + 0.1
         else:
-            # Support-leg block: 2cm to the right of the rightmost punch in range
-            in_range = [p for p in other_base_positions if pos - 0.1 <= p <= block_end + 0.1]
+            # Convert block range to base-beam coords for consistent matching
+            base_lo = _r(pos * cos_a)
+            base_hi = _r(block_end * cos_a)
+            in_range = [p for p in other_base_positions if base_lo - 0.1 <= p <= base_hi + 0.1]
             if in_range:
                 punch_pos = max(in_range) + INNER_OFFSET
+                if punch_pos > base_hi + 0.1:
+                    punch_pos = (base_lo + base_hi) / 2
             else:
-                punch_pos = pos + block_length_cm / 2
+                punch_pos = (base_lo + base_hi) / 2
+            check_lo, check_hi = base_lo - 0.1, base_hi + 0.1
 
         # Validate within block range
-        if punch_pos < pos - 0.1 or punch_pos > block_end + 0.1:
+        if punch_pos < check_lo or punch_pos > check_hi:
             logger.error(
-                'Block %s punch at %.1f outside range [%.1f, %.1f]',
-                block.get('baseId', '?'), punch_pos, pos, block_end,
+                'Block %d punch at %.1f outside range [%.1f, %.1f] — DROPPED',
+                bi, punch_pos, pos, block_end,
             )
             continue
 
@@ -468,6 +479,7 @@ def _compute_block_punches(
             'beamType': 'base',
             'positionCm': _r(punch_pos),
             'origin': 'block',
+            'blockIdx': bi,
         })
 
     return result
