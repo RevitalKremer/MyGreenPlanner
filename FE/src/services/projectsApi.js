@@ -43,42 +43,9 @@ export async function getProject(id) {
   return res.json()
 }
 
-export async function computeRails(id, step3Data = null) {
-  const res = await mgpRequest(`/projects/${id}/rails`, {
-    method: 'PUT',
-    ...(step3Data != null ? { body: JSON.stringify({ step3: step3Data }) } : {}),
-  })
-  if (!res.ok) throw new Error('Failed to compute rails')
-  return res.json()
-}
-
-export async function getRails(id) {
-  const res = await mgpRequest(`/projects/${id}/rails`)
-  if (!res.ok) throw new Error('Failed to fetch rails')
-  return res.json()
-}
-
-export async function computeBases(id, step3Data = null, trapezoidConfigs = null) {
-  const body = {}
-  if (step3Data) body.step3 = step3Data
-  if (trapezoidConfigs) body.trapezoidConfigs = trapezoidConfigs
-  const res = await mgpRequest(`/projects/${id}/bases`, {
-    method: 'PUT',
-    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
-  })
-  if (!res.ok) throw new Error('Failed to compute bases')
-  return res.json()
-}
-
-export async function getBases(id) {
-  const res = await mgpRequest(`/projects/${id}/bases`)
-  if (!res.ok) throw new Error('Failed to fetch bases')
-  return res.json()
-}
-
-export async function getTrapezoids(id) {
-  const res = await mgpRequest(`/projects/${id}/trapezoids`)
-  if (!res.ok) throw new Error('Failed to fetch trapezoids')
+export async function getConstructionData(id) {
+  const res = await mgpRequest(`/projects/${id}/construction-data`)
+  if (!res.ok) throw new Error('Failed to fetch construction data')
   return res.json()
 }
 

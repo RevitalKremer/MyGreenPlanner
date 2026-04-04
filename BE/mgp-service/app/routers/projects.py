@@ -20,13 +20,6 @@ from app.services import trapezoid_detail_service
 from app.services import bom_service
 from app.routers.deps import get_current_user, require_admin
 
-class RailComputeRequest(BaseModel):
-    step3: Optional[dict] = None
-
-class BaseComputeRequest(BaseModel):
-    step3: Optional[dict] = None
-    trapezoidConfigs: Optional[dict] = None
-
 class SaveRailsTabRequest(BaseModel):
     step3: Optional[dict] = None
 
@@ -218,25 +211,32 @@ async def reset_tab(
     )
 
 
-@router.put("/{project_id}/rails")
-async def compute_rails(
+@router.get("/{project_id}/construction-data")
+async def get_construction_data(
     project_id: uuid.UUID,
-    payload: Optional[RailComputeRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Compute rail layout for all areas, persist to data.areas[i].rails, return rails."""
+    """Return all step 3 computed data (rails, bases, trapezoids) in a single call."""
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if (project.navigation or {}).get('step', 1) < 3:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute rails")
 
-    result = await project_service.compute_and_save_rails(
-        db, project, rail_service,
-        step3_data=payload.step3 if payload else None,
-    )
-    return result
+    step3_data = (project.data or {}).get('step3', {})
+    computed_areas = step3_data.get('computedAreas', [])
+    computed_traps = step3_data.get('computedTrapezoids', [])
+    
+    return {
+        'rails': [
+            {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', [])}
+            for ca in computed_areas
+        ],
+        'bases': [
+            {'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', [])}
+            for ca in computed_areas
+        ],
+        'trapezoidDetails': {ct['trapezoidId']: ct for ct in computed_traps if 'trapezoidId' in ct}
+    }
 
 
 @router.get("/{project_id}/rails")
@@ -255,28 +255,6 @@ async def get_rails(
         {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', [])}
         for ca in computed_areas
     ]
-
-
-@router.put("/{project_id}/bases")
-async def compute_bases(
-    project_id: uuid.UUID,
-    payload: Optional[BaseComputeRequest] = Body(None),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Compute base layout for all areas, persist to step3.computedAreas, return bases."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if (project.navigation or {}).get('step', 1) < 3:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute bases")
-
-    result = await project_service.compute_and_save_bases(
-        db, project, base_service,
-        step3_data=payload.step3 if payload else None,
-        trapezoid_configs=payload.trapezoidConfigs if payload else None,
-    )
-    return result
 
 
 @router.get("/{project_id}/bases")

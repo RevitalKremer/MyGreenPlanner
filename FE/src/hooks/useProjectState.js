@@ -537,6 +537,7 @@ setPanelAngle('')
 
     // Area local frame (unrotated bounding box)
     const { vertices, rotation = 0, xDir = 'ltr' } = area
+    const areaLabel = area.label || area.id || `area-${areaIdx}`
     const rotRad = (rotation * Math.PI) / 180
     const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)
     const cxAvg = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
@@ -595,11 +596,11 @@ setPanelAngle('')
     let n = 1
     ;[...colRowsMap.keys()].sort((a, b) => a - b).forEach(col => {
       const s = colSig(col)
-      if (!sigToTrap.has(s)) sigToTrap.set(s, `${area.label}${n++}`)
+      if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n++}`)
     })
     if (sigToTrap.size === 1) {
       const [[sig]] = [...sigToTrap.entries()]
-      sigToTrap.set(sig, area.label)
+      sigToTrap.set(sig, areaLabel)
     }
 
     // Compute trap configs for each trapezoid shape
@@ -619,7 +620,7 @@ setPanelAngle('')
       const updated = panelWithCols.find(pw => pw.id === p.id)
       if (!updated) return p
       const sig = colSig(updated.col)
-      const newTrapId = sigToTrap.get(sig) || area.label
+      const newTrapId = sigToTrap.get(sig) || areaLabel
       if (newTrapId === p.trapezoidId && updated.col === p.col) return p
       return { ...p, col: updated.col, coveredCols: updated.coveredCols, trapezoidId: newTrapId }
     }))
@@ -628,8 +629,8 @@ setPanelAngle('')
     setTrapezoidConfigs(prev => {
       const next = {}
       Object.entries(prev).forEach(([id, cfg]) => {
-        const rest = id.slice(area.label.length)
-        if (id !== area.label && !(id.startsWith(area.label) && /^\d/.test(rest))) next[id] = cfg
+        const rest = id.slice(areaLabel.length)
+        if (id !== areaLabel && !(id.startsWith(areaLabel) && /^\d/.test(rest))) next[id] = cfg
       })
       Object.entries(newTrapConfigs).forEach(([id, cfg]) => {
         next[id] = { ...(prev[id] || {}), ...cfg }
@@ -805,7 +806,8 @@ setPanelAngle('')
       })
       effectiveRectAreas.forEach((area, areaIdx) => {
         if (areaIdx === _onlyAreaIdx) return
-        if (panelGrid[area.label]) newPanelGrid[area.label] = panelGrid[area.label]
+        const areaLabel = area.label || area.id || `area-${areaIdx}`
+        if (panelGrid[areaLabel]) newPanelGrid[areaLabel] = panelGrid[areaLabel]
         const existingPanels = panels.filter(p => p.area === areaIdx)
         const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
         areaLineConfigs[areaIdx] = {
@@ -825,6 +827,7 @@ setPanelAngle('')
     let panelId = allPanels.length > 0 ? Math.max(...allPanels.map(p => p.id)) + 1 : 1
     effectiveRectAreas.forEach((area, areaIdx) => {
       if (_onlyAreaIdx !== undefined && areaIdx !== _onlyAreaIdx) return
+      const areaLabel = area.label || area.id || `area-${areaIdx}`
       const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
       const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
       const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
@@ -843,7 +846,7 @@ setPanelAngle('')
         filtered = [computed[0]]
       }
 
-      newPanelGrid[area.label] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
+      newPanelGrid[areaLabel] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
@@ -884,11 +887,11 @@ setPanelAngle('')
         let n = 1
         ;[...colRowsComputed.keys()].sort((a, b) => a - b).forEach(col => {
           const s = colSig(col)
-          if (!sigToTrap.has(s)) sigToTrap.set(s, `${area.label}${n++}`)
+          if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n++}`)
         })
         if (sigToTrap.size === 1) {
           const [[sig]] = [...sigToTrap.entries()]
-          sigToTrap.set(sig, area.label)
+          sigToTrap.set(sig, areaLabel)
         }
 
         // Build groupTrapConfigs for each unique trap shape
@@ -903,13 +906,13 @@ setPanelAngle('')
           const physCol = p.coveredCols?.[0] ?? p.col ?? 0
           const sig = colSig(physCol)
           allPanels.push({ ...p, id: panelId++, area: areaIdx,
-            trapezoidId: sigToTrap.get(sig) || area.label,
+            trapezoidId: sigToTrap.get(sig) || areaLabel,
             xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
         })
       } else {
         // ── Manual mode: use stored column→trapId assignments ────────────────────
         const colToTrap = area.manualColTrapezoids || {}
-        const defaultTrap = area.label
+        const defaultTrap = areaLabel
         const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.lineGapCm ?? appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
@@ -1003,9 +1006,10 @@ setPanelAngle('')
       // Rebuild panelGrid with the synced panel data
       const newGrid = {}
       rectAreas.forEach((area, areaIdx) => {
+        const areaLabel = area.label || area.id || `area-${areaIdx}`
         const computed = computePolygonPanels(area, ratio, spec, appDefaults?.panelGapCm)
         const areaFiltered = next.filter(p => p.area === areaIdx)
-        newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, ratio)
+        newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, ratio)
       })
       setPanelGrid(newGrid)
       return next
@@ -1021,9 +1025,10 @@ setPanelAngle('')
     const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
     const newGrid = {}
     rectAreas.forEach((area, areaIdx) => {
+      const areaLabel = area.label || area.id || `area-${areaIdx}`
       const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
       const areaFiltered = updatedPanels.filter(p => p.area === areaIdx)
-      newGrid[area.label] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
+      newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
     })
     setPanelGrid(newGrid)
   }
