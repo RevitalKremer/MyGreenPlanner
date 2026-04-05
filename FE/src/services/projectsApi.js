@@ -133,3 +133,16 @@ export async function getEffectiveBOM(id, lang = null) {
   if (!res.ok) throw new Error('Failed to fetch effective BOM')
   return res.json()
 }
+
+// ── Version ─────────────────────────────────────────────────────────────────
+
+export async function getBackendVersion() {
+  const res = await mgpRequest('/version')
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.version
+}
+
+export function getFrontendVersion() {
+  return '0.0.1' // Keep in sync with package.json
+}

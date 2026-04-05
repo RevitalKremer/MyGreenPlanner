@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
 import { useLang } from '../i18n/LangContext'
 import LangToggle from '../i18n/LangToggle'
+import { getBackendVersion, getFrontendVersion } from '../services/projectsApi'
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -26,6 +27,13 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const [editName, setEditName] = useState('')
   const [editLocation, setEditLocation] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [backendVersion, setBackendVersion] = useState(null)
+
+  const frontendVersion = getFrontendVersion()
+
+  useEffect(() => {
+    getBackendVersion().then(version => setBackendVersion(version)).catch(() => {})
+  }, [])
 
   const canCreate = projectName.trim().length > 0 && appDefaultsReady
 
@@ -65,11 +73,29 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <>
+      <style>{`
+        .projects-scrollable::-webkit-scrollbar {
+          width: 8px;
+        }
+        .projects-scrollable::-webkit-scrollbar-track {
+          background: #f0f0f0;
+          border-radius: 4px;
+        }
+        .projects-scrollable::-webkit-scrollbar-thumb {
+          background: #c0c0c0;
+          border-radius: 4px;
+        }
+        .projects-scrollable::-webkit-scrollbar-thumb:hover {
+          background: #a0a0a0;
+        }
+      `}</style>
+      <div style={{
+      height: '100vh',
       background: 'linear-gradient(160deg, #ebebeb 0%, #d8d8d8 100%)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: '2rem', fontFamily: 'inherit', position: 'relative'
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '1.5rem 2rem 1.5rem', fontFamily: 'inherit', position: 'relative',
+      overflowY: 'auto'
     }}>
 
       {/* Top right: lang toggle + auth */}
@@ -87,8 +113,8 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
       </div>
 
       {/* Logo + title */}
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <img src="/mgp-logo.svg" alt="MyGreenPlanner" style={{ height: '80px', width: 'auto', marginBottom: '1.1rem' }} />
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem', marginTop: '1rem' }}>
+        <img src="/mgp-logo.svg" alt="MyGreenPlanner" style={{ height: '70px', width: 'auto', marginBottom: '0.8rem' }} />
         <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: TEXT_DARKEST }}>
           {t('app.title')}
         </h1>
@@ -273,7 +299,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       {/* My Projects / All Projects — visible to logged-in users */}
       {user && (
-        <div style={{ width: '100%', maxWidth: '780px', marginTop: '1.75rem' }}>
+        <div style={{ width: '100%', maxWidth: '780px', marginTop: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {user.role === 'admin' ? t('welcome.allProjects') : t('welcome.savedProjects')}
@@ -346,7 +372,16 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           ) : filteredProjects.length === 0 ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div 
+              className="projects-scrollable"
+              style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '0.5rem', 
+                maxHeight: '300px', 
+                overflowY: 'auto',
+                paddingRight: '0.25rem'
+              }}>
               {filteredProjects.map(p => {
                 const isEditing = editingId === p.id
                 return (
@@ -478,16 +513,23 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
       )}
 
       {/* Sadot Energy branding */}
-      <div style={{ marginTop: '3.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+      <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
         <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
           {t('welcome.poweredBy')}
         </span>
         <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '32px', width: 'auto' }} />
       </div>
 
-      <p style={{ marginTop: '2rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
+      <p style={{ marginTop: '1rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
         {t('welcome.copyright')} {new Date().getFullYear()}
       </p>
+
+      {/* Version information */}
+      <div style={{ marginTop: '0.5rem', marginBottom: '1rem', fontSize: '0.62rem', color: TEXT_FAINTEST, display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+        <span>App: v{frontendVersion}</span>
+        <span>•</span>
+        <span>Srv: {backendVersion ? `v${backendVersion}` : '...'}</span>
+      </div>
 
       {showAuth && (
         <AuthModal
@@ -498,5 +540,6 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
         />
       )}
     </div>
+    </>
   )
 }
