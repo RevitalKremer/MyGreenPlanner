@@ -386,16 +386,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 <HatchedPanels panels={panels} selectedTrapId={effectiveSelectedTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-                {/* Base beam lines — from BE data + area-wide frame */}
+                {/* Base beam lines — from BE data + area-wide frame, with live drag overrides */}
                 {showBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const af = areaFrames[areaData.areaLabel ?? areaData.label]
+                  const areaLabel = areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaLabel]
                   if (!af) return null
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const profThick = (4 / pixelToCmRatio) * sc
+                  // Check for live drag overrides from customBasesMap
+                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const liveOffsets = customBasesMap[fullTrapId]  // mm from frame start, same order as bases
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-                    const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
+                    // Use live offset from drag if available, otherwise BE data
+                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
                     const depthPx = sb.startCm / pixelToCmRatio
                     const lenPx = sb.lengthCm / pixelToCmRatio
                     const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
@@ -560,11 +567,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   // Build synthetic bp
                   const { center, angleRad, localBounds } = areaFrame
                   const frameLengthPx = localBounds.maxX - localBounds.minX
-                  const syntheticBases = areaData.bases.map(sb => {
-                    const offMm = Math.round(sb.offsetFromStartCm * 10)
+                  // Use live offsets from drag if available
+                  const liveOffsets = customBasesMap[fullTrapId]
+                  const syntheticBases = areaData.bases.map((sb, sbi) => {
+                    const offMm = liveOffsets?.[sbi] ?? Math.round(sb.offsetFromStartCm * 10)
+                    const offCm = offMm / 10
                     const lx = afIsRtl
-                      ? localBounds.maxX - sb.offsetFromStartCm / pixelToCmRatio
-                      : localBounds.minX + sb.offsetFromStartCm / pixelToCmRatio
+                      ? localBounds.maxX - offCm / pixelToCmRatio
+                      : localBounds.minX + offCm / pixelToCmRatio
                     return { offsetFromStartMm: offMm, localX: lx }
                   })
                   const syntheticBp = {
