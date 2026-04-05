@@ -728,8 +728,8 @@ def _trim_trapezoid(
 
     # Rebase: shift so first leg is at position 0
     rear_pos = filtered_legs[0]['positionCm']
-    front_pos = filtered_legs[-1]['positionCm']
-    slope_len = front_pos - rear_pos
+    front_end = filtered_legs[-1]['positionEndCm']
+    slope_len = front_end - rear_pos
     angle = detail.get('geometry', {}).get('angle', 0)
     cos_a = math.cos(angle * math.pi / 180)
     base_len = slope_len * cos_a
@@ -772,6 +772,8 @@ def _trim_trapezoid(
     # Rebase legs
     for leg in filtered_legs:
         leg['positionCm'] = _r(leg['positionCm'] - rear_pos)
+        if 'positionEndCm' in leg:
+            leg['positionEndCm'] = _r(leg['positionEndCm'] - rear_pos)
         if 'railPositionCm' in leg:
             leg['railPositionCm'] = _r(leg['railPositionCm'] - rear_pos)
     detail['legs'] = filtered_legs
@@ -781,18 +783,19 @@ def _trim_trapezoid(
     if inner_rails:
         geom['railToRailCm'] = _r(max(inner_rails) - min(inner_rails))
 
-    # ── Blocks: regenerate from trimmed legs (same rules as service) ─────
+    # ── Blocks: regenerate in base-beam coords (same rules as service) ──
     block_length_cm = geom.get('blockLengthCm', 40)
     slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
     raw_blocks = []
-    # Rear outer leg — left-aligned
+    # Rear outer — left edge at base beam start
     raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
-    # Inner legs — centered on rail position
+    # Inner legs — centered on rail's base-beam position
     for leg in filtered_legs[1:-1]:
         rail_pos = leg.get('railPositionCm', leg['positionCm'])
-        raw_blocks.append({'positionCm': _r(rail_pos - block_length_cm / 2), 'isEnd': False})
-    # Front outer leg — right-aligned
-    raw_blocks.append({'positionCm': _r(slope_len - block_length_cm), 'isEnd': True})
+        rail_base = rail_pos * cos_a
+        raw_blocks.append({'positionCm': _r(rail_base - block_length_cm / 2), 'isEnd': False})
+    # Front outer — right edge at base beam end
+    raw_blocks.append({'positionCm': _r(base_len - block_length_cm), 'isEnd': True})
     # Remove overlaps (walk left-to-right)
     new_blocks = []
     for blk in raw_blocks:

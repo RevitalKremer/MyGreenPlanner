@@ -161,35 +161,39 @@ def compute_trapezoid_details(
         for pos, global_idx in enumerate(arr):
             rail_pos_in_seg[global_idx] = {'pos': pos, 'N': len(arr)}
 
-    # Outer leg positions (relative to origin, so rear = 0)
+    # Outer leg positions: positionCm = LEFT EDGE of the physical profile.
+    # Rear outer leg starts at 0; front outer leg's right edge aligns with beam end.
     rear_outer_pos = 0
-    front_outer_pos = base_length_cm  # = baseLengthCm
+    front_outer_pos = base_length_cm - beam_thick_cm
 
     # Inner leg side: left half of segment → 'left'; right half → 'right'; single → 'left'
-    # Each inner leg is offset from its cross rail by base_overhang_cm (same distance
-    # as outer legs from the edge rails, so trimmed traps align with the full trap).
+    # positionCm = left edge of profile. Left-side legs: left edge = rail - overhang.
+    # Right-side legs: left edge = rail + overhang - beam_thick (right edge at rail + overhang).
     inner_legs = []
     for ci, r in enumerate(rail_items[1:-1], start=1):
         info = rail_pos_in_seg.get(ci, {'pos': 0, 'N': 1})
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
-        # Rail position relative to origin
         rail_pos = r['globalOffsetCm'] - origin
-        # Leg position: offset from rail by base_overhang_cm
-        leg_offset = base_overhang_cm if side == 'right' else -base_overhang_cm
-        leg_pos = rail_pos + leg_offset
-        # Height interpolated between outer legs
-        frac = max(0.0, min(1.0, leg_pos / front_outer_pos)) if front_outer_pos > 0 else 0
+        if side == 'right':
+            leg_pos = rail_pos + base_overhang_cm - beam_thick_cm
+        else:
+            leg_pos = rail_pos - base_overhang_cm
+        # Height interpolated using leg center
+        leg_center = leg_pos + beam_thick_cm / 2
+        front_center = front_outer_pos + beam_thick_cm / 2
+        frac = max(0.0, min(1.0, leg_center / front_center)) if front_center > 0 else 0
         leg_height = height_rear + frac * (height_front - height_rear)
         inner_legs.append({
             'positionCm': _r(leg_pos),
+            'positionEndCm': _r(leg_pos + beam_thick_cm),
             'heightCm': _r(leg_height),
             'railPositionCm': _r(rail_pos),
         })
 
     legs = sorted([
-        {'positionCm': _r(rear_outer_pos), 'heightCm': _r(height_rear)},
+        {'positionCm': _r(rear_outer_pos), 'positionEndCm': _r(rear_outer_pos + beam_thick_cm), 'heightCm': _r(height_rear)},
         *inner_legs,
-        {'positionCm': _r(front_outer_pos), 'heightCm': _r(height_front)},
+        {'positionCm': _r(front_outer_pos), 'positionEndCm': _r(front_outer_pos + beam_thick_cm), 'heightCm': _r(height_front)},
     ], key=lambda l: l['positionCm'])
 
     # ── Active zone ────────────────────────────────────────────────────────
@@ -225,7 +229,8 @@ def compute_trapezoid_details(
 
         # Diagonal length: sqrt(vertical² + horizontal²)
         # Top attachment on slope beam at topPct, bottom attachment on base beam at botPct
-        span_horiz_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionCm']) * cos_a
+        # Span = gap between right edge of leg A and left edge of leg B
+        span_horiz_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionEndCm']) * cos_a
         height_at_top = h_a + top_pct * (h_b - h_a)  # vertical from base beam to slope beam at topPct
         horiz_dist = abs(top_pct - bot_pct) * span_horiz_cm  # horizontal between attachments
         length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if span_horiz_cm > 0 else 0
@@ -248,30 +253,27 @@ def compute_trapezoid_details(
 
     diagonals = [d for d in raw_diagonals if not d['disabled']]
 
-    # ── Blocks — one per leg ─────────────────────────────────────────────
-    # Rear outer leg: block left edge at leg position (block extends right)
-    # Front outer leg: block right edge at leg position (block extends left)
-    # Inner legs: block centered on rail position (railPositionCm)
-    # Skip if overlap with adjacent block.
+    # ── Blocks — one per leg, in base-beam coordinates ─────────────────
+    # positionCm = left edge on the base beam (horizontal).
+    # slopePositionCm / slopeLengthCm = projection onto slope beam (for top-down view).
+    # Rear outer: left edge at base beam start (0).
+    # Front outer: right edge at base beam end (base_beam_length).
+    # Inner: centered on rail's base-beam position.
 
     raw_blocks = []
-    # Rear outer leg
-    raw_blocks.append({'positionCm': _r(rear_outer_pos), 'isEnd': True, 'legIdx': 0})
-    # Inner legs — centered on rail
+    raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
     for il in inner_legs:
-        rail_pos = il['railPositionCm']
-        left_edge = rail_pos - block_length_cm / 2
-        raw_blocks.append({'positionCm': _r(left_edge), 'isEnd': False, 'legIdx': None})
-    # Front outer leg — right-aligned
-    raw_blocks.append({'positionCm': _r(front_outer_pos - block_length_cm), 'isEnd': True, 'legIdx': len(legs) - 1})
+        rail_base = il['railPositionCm'] * cos_a
+        left_edge = rail_base - block_length_cm / 2
+        raw_blocks.append({'positionCm': _r(left_edge), 'isEnd': False})
+    raw_blocks.append({'positionCm': _r(base_beam_length - block_length_cm), 'isEnd': True})
 
     # Remove overlaps: walk left-to-right, skip any block that overlaps the previous
-    # Add slope projection for bases layout (top-down view shows slope beam, blocks sit on base beam)
     slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
     blocks = []
     for blk in raw_blocks:
         if blocks and blk['positionCm'] < blocks[-1]['positionCm'] + block_length_cm - 0.1:
-            continue  # overlaps previous block — skip
+            continue
         pos = blk['positionCm']
         blocks.append({
             'positionCm': _r(pos),
@@ -295,13 +297,11 @@ def compute_trapezoid_details(
     punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg'})
     punches.append({'beamType': 'slope', 'positionCm': _r(top_beam_length - profile_half), 'origin': 'outerLeg'})
 
-    # innerLeg: at each inner leg position on both beams
-    # Base beam position = slope position * cos(angle) (horizontal projection)
-    # Slope beam position = slope position (along slope)
+    # innerLeg: punch at center of profile on both beams
     for il in inner_legs:
-        pos = il['positionCm']
-        punches.append({'beamType': 'base',  'positionCm': _r(pos * cos_a), 'origin': 'innerLeg'})
-        punches.append({'beamType': 'slope', 'positionCm': _r(pos), 'origin': 'innerLeg'})
+        center = (il['positionCm'] + il['positionEndCm']) / 2
+        punches.append({'beamType': 'base',  'positionCm': _r(center * cos_a), 'origin': 'innerLeg'})
+        punches.append({'beamType': 'slope', 'positionCm': _r(center), 'origin': 'innerLeg'})
 
     # rail: one punch per cross rail at its center on the slope beam
     for r in rail_items:
@@ -309,13 +309,14 @@ def compute_trapezoid_details(
         punches.append({'beamType': 'slope', 'positionCm': _r(rail_pos), 'origin': 'rail'})
 
     # diagonal: top attachment on slope beam, bottom on base beam
+    # Span = gap between right edge of leg A and left edge of leg B
     for diag in diagonals:
         si = diag['spanIdx']
-        leg_a_pos = legs[si]['positionCm']
-        leg_b_pos = legs[si + 1]['positionCm']
-        span = leg_b_pos - leg_a_pos
-        top_pos = _r(leg_a_pos + span * diag['topPct'])
-        bot_pos = _r(leg_a_pos + span * diag['botPct'])
+        gap_start = legs[si]['positionEndCm']
+        gap_end = legs[si + 1]['positionCm']
+        gap = gap_end - gap_start
+        top_pos = _r(gap_start + gap * diag['topPct'])
+        bot_pos = _r(gap_start + gap * diag['botPct'])
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
@@ -353,12 +354,16 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
     if len(trap_details) < 2:
         return
 
-    # Collect all block positions in global coords (positionCm + originCm)
+    # Collect all block positions in global base-beam coords
     global_positions: set[float] = set()
     for tid, detail in trap_details.items():
-        origin = detail.get('geometry', {}).get('originCm', 0)
+        geom = detail.get('geometry', {})
+        origin = geom.get('originCm', 0)
+        angle_deg = geom.get('angle', 0)
+        cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
+        origin_base = origin * cos_a
         for blk in detail.get('blocks', []):
-            global_positions.add(_r(blk['positionCm'] + origin))
+            global_positions.add(_r(blk['positionCm'] + origin_base))
 
     sorted_globals = sorted(global_positions)
 
@@ -366,20 +371,20 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
     for tid, detail in trap_details.items():
         geom = detail.get('geometry', {})
         origin = geom.get('originCm', 0)
-        beam_len = geom.get('topBeamLength', 0)  # slope length = local span
         block_length = geom.get('blockLengthCm', 50)
         angle_deg = geom.get('angle', 0)
         cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
-        base_beam_len = geom.get('baseBeamLength', beam_len * cos_a)
+        origin_base = origin * cos_a
+        base_beam_len = geom.get('baseBeamLength', 0)
 
-        # Convert global positions to local, keep those within [0, beamLen]
+        # Convert global base-beam positions to local, keep within [0, baseBeamLen]
         local_positions = []
         for gp in sorted_globals:
-            lp = _r(gp - origin)
-            if -0.1 <= lp <= beam_len + 0.1:
+            lp = _r(gp - origin_base)
+            if -0.1 <= lp <= base_beam_len + 0.1:
                 local_positions.append(lp)
 
-        # Remove overlaps + add slope projection (same logic as initial computation)
+        # Remove overlaps + add slope projection
         slope_block_length = block_length / cos_a if cos_a > 0 else block_length
         blocks = []
         for lp in local_positions:
@@ -391,14 +396,14 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
                 'slopePositionCm': _r(lp / cos_a) if cos_a > 0 else lp,
                 'slopeLengthCm': _r(slope_block_length),
             })
-        # First and last blocks are outer — reposition to align with legs
+        # First and last blocks are outer — reposition to align with beam ends
         if blocks:
             blocks[0]['isEnd'] = True
             blocks[0]['positionCm'] = 0.0
             blocks[0]['slopePositionCm'] = 0.0
             blocks[-1]['isEnd'] = True
-            blocks[-1]['positionCm'] = _r(beam_len - block_length)
-            blocks[-1]['slopePositionCm'] = _r((beam_len - block_length) / cos_a) if cos_a > 0 else _r(beam_len - block_length)
+            blocks[-1]['positionCm'] = _r(base_beam_len - block_length)
+            blocks[-1]['slopePositionCm'] = _r((base_beam_len - block_length) / cos_a) if cos_a > 0 else _r(base_beam_len - block_length)
 
         detail['blocks'] = blocks
 
