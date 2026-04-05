@@ -407,10 +407,20 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
                     const trapOpacity = (effectiveSelectedTrapId === null || sb.trapezoidId === effectiveSelectedTrapId) ? 1 : 0.2
+                    const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
+                    const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
                     return (
                       <g key={`base-${ai}-${sbi}`} opacity={trapOpacity}>
-                        <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
-                        {showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
+                        {showBlocks && trapBlocks.map((blk, bki) => {
+                          const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
+                          const blkOffsetPx = ((blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
+                          const bcy = tIsBtt ? by - blkOffsetPx : ty + blkOffsetPx
+                          const sp = localToScreen({ x: lx, y: bcy }, tFrame.center, tAngle)
+                          const [bkx, bky] = toSvg(sp.x, sp.y)
+                          return <rect key={`blk-${ai}-${sbi}-${bki}`} x={bkx - slSvg / 2} y={bky - blockWSvg / 2} width={slSvg} height={blockWSvg} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom} transform={`rotate(${la} ${bkx} ${bky})`} />
+                        })}
+                        {showBases && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />}
+                        {showBases && showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
                       </g>
                     )
                   })
