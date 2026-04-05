@@ -315,10 +315,15 @@ function App() {
       // Merge layout + data columns into the shape handleImportProject expects
       const layout = cloudProject.layout ?? {}
       const currentStep = cloudProject.navigation?.step ?? layout.currentStep ?? 1
+      const savedTab = cloudProject.navigation?.tab
+      // Treat null, "null" string, and undefined as no saved tab
+      const activeTab = (savedTab && savedTab !== 'null') 
+        ? savedTab 
+        : (currentStep === 3 ? 'areas' : null)
       const merged = {
         project:     { name: cloudProject.name, location: cloudProject.location },
         currentStep,
-        activeTab:   cloudProject.navigation?.tab ?? (currentStep === 3 ? 'areas' : null),
+        activeTab,
         layout,
         ...(cloudProject.data ?? {}),
       }
