@@ -20,21 +20,25 @@ from app.services import trapezoid_detail_service
 from app.services import bom_service
 from app.routers.deps import get_current_user, require_admin
 
-class RailComputeRequest(BaseModel):
-    step3: Optional[dict] = None
+class TabSettings(BaseModel):
+    """Settings (parameters) for a tab - global and per-area."""
+    global_: Optional[dict] = None  # Use alias to avoid Python keyword
+    areas: Optional[dict] = None
+    
+    class Config:
+        fields = {'global_': 'global'}
 
-class BaseComputeRequest(BaseModel):
-    step3: Optional[dict] = None
-    trapezoidConfigs: Optional[dict] = None
+class TabOverrides(BaseModel):
+    """User edit-mode overrides for a tab."""
+    rails: Optional[dict] = None       # { areaLabel: { lineIdx: [positions] } }
+    bases: Optional[dict] = None       # { trapId: [positions] }
+    diagonals: Optional[dict] = None   # { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
 
-class SaveRailsTabRequest(BaseModel):
-    step3: Optional[dict] = None
-
-class SaveTrapezoidsTabRequest(BaseModel):
-    step3: Optional[dict] = None
-    trapezoidConfigs: Optional[dict] = None
-
-class SaveBasesTabRequest(BaseModel):
+class SaveTabRequest(BaseModel):
+    """Unified save request for all tabs."""
+    settings: Optional[TabSettings] = None
+    overrides: Optional[TabOverrides] = None
+    # Legacy fields for backward compatibility
     step3: Optional[dict] = None
     trapezoidConfigs: Optional[dict] = None
 
@@ -141,7 +145,7 @@ async def update_step(
 @router.put("/{project_id}/saveTab/rails")
 async def save_tab_rails(
     project_id: uuid.UUID,
-    payload: Optional[SaveRailsTabRequest] = Body(None),
+    payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -152,16 +156,19 @@ async def save_tab_rails(
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
+    # Convert new format to legacy or use legacy directly
+    step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
+    
     return await project_service.save_tab(
         db, project, 'rails', rail_service, base_service, trapezoid_detail_service,
-        step3_data=payload.step3 if payload else None,
+        step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
     )
 
 
 @router.put("/{project_id}/saveTab/bases")
 async def save_tab_bases(
     project_id: uuid.UUID,
-    payload: Optional[SaveBasesTabRequest] = Body(None),
+    payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -172,17 +179,18 @@ async def save_tab_bases(
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
+    step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
+    
     return await project_service.save_tab(
         db, project, 'bases', rail_service, base_service, trapezoid_detail_service,
-        step3_data=payload.step3 if payload else None,
-        trapezoid_configs=payload.trapezoidConfigs if payload else None,
+        step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
     )
 
 
 @router.put("/{project_id}/saveTab/trapezoids")
 async def save_tab_trapezoids(
     project_id: uuid.UUID,
-    payload: Optional[SaveTrapezoidsTabRequest] = Body(None),
+    payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -193,11 +201,47 @@ async def save_tab_trapezoids(
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
+    step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
+    
     return await project_service.save_tab(
         db, project, 'trapezoids', rail_service, base_service, trapezoid_detail_service,
-        step3_data=payload.step3 if payload else None,
-        trapezoid_configs=payload.trapezoidConfigs if payload else None,
+        step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
     )
+
+
+def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | None, dict | None, dict | None]:
+    """Extract step3_data, trapezoid_configs, and overrides from unified or legacy payload."""
+    if not payload:
+        return None, None, None
+    
+    # New format
+    if payload.settings or payload.overrides:
+        step3_data = {}
+        trapezoid_configs = None
+        
+        if payload.settings:
+            if payload.settings.global_:
+                step3_data['globalSettings'] = payload.settings.global_
+            if payload.settings.areas:
+                step3_data['areaSettings'] = payload.settings.areas
+        
+        overrides = {}
+        if payload.overrides:
+            if payload.overrides.rails:
+                overrides['rails'] = payload.overrides.rails
+            if payload.overrides.bases:
+                overrides['bases'] = payload.overrides.bases
+            if payload.overrides.diagonals:
+                overrides['diagonals'] = payload.overrides.diagonals
+        
+        # Legacy trapezoidConfigs (only for backward compatibility)
+        if payload.trapezoidConfigs:
+            trapezoid_configs = payload.trapezoidConfigs
+        
+        return step3_data, trapezoid_configs, overrides if overrides else None
+    
+    # Legacy format
+    return payload.step3, payload.trapezoidConfigs, None
 
 
 @router.put("/{project_id}/resetTab/{tab_name}")
@@ -218,25 +262,18 @@ async def reset_tab(
     )
 
 
-@router.put("/{project_id}/rails")
-async def compute_rails(
+@router.get("/{project_id}/construction-data")
+async def get_construction_data(
     project_id: uuid.UUID,
-    payload: Optional[RailComputeRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Compute rail layout for all areas, persist to data.areas[i].rails, return rails."""
+    """Return all step 3 computed data in step3 wrapper."""
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if (project.navigation or {}).get('step', 1) < 3:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute rails")
 
-    result = await project_service.compute_and_save_rails(
-        db, project, rail_service,
-        step3_data=payload.step3 if payload else None,
-    )
-    return result
+    return {'step3': (project.data or {}).get('step3', {})}
 
 
 @router.get("/{project_id}/rails")
@@ -255,28 +292,6 @@ async def get_rails(
         {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', [])}
         for ca in computed_areas
     ]
-
-
-@router.put("/{project_id}/bases")
-async def compute_bases(
-    project_id: uuid.UUID,
-    payload: Optional[BaseComputeRequest] = Body(None),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Compute base layout for all areas, persist to step3.computedAreas, return bases."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if (project.navigation or {}).get('step', 1) < 3:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+ to compute bases")
-
-    result = await project_service.compute_and_save_bases(
-        db, project, base_service,
-        step3_data=payload.step3 if payload else None,
-        trapezoid_configs=payload.trapezoidConfigs if payload else None,
-    )
-    return result
 
 
 @router.get("/{project_id}/bases")

@@ -43,52 +43,16 @@ export async function getProject(id) {
   return res.json()
 }
 
-export async function computeRails(id, step3Data = null) {
-  const res = await mgpRequest(`/projects/${id}/rails`, {
-    method: 'PUT',
-    ...(step3Data != null ? { body: JSON.stringify({ step3: step3Data }) } : {}),
-  })
-  if (!res.ok) throw new Error('Failed to compute rails')
+export async function getConstructionData(id) {
+  const res = await mgpRequest(`/projects/${id}/construction-data`)
+  if (!res.ok) throw new Error('Failed to fetch construction data')
   return res.json()
 }
 
-export async function getRails(id) {
-  const res = await mgpRequest(`/projects/${id}/rails`)
-  if (!res.ok) throw new Error('Failed to fetch rails')
-  return res.json()
-}
-
-export async function computeBases(id, step3Data = null, trapezoidConfigs = null) {
-  const body = {}
-  if (step3Data) body.step3 = step3Data
-  if (trapezoidConfigs) body.trapezoidConfigs = trapezoidConfigs
-  const res = await mgpRequest(`/projects/${id}/bases`, {
-    method: 'PUT',
-    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
-  })
-  if (!res.ok) throw new Error('Failed to compute bases')
-  return res.json()
-}
-
-export async function getBases(id) {
-  const res = await mgpRequest(`/projects/${id}/bases`)
-  if (!res.ok) throw new Error('Failed to fetch bases')
-  return res.json()
-}
-
-export async function getTrapezoids(id) {
-  const res = await mgpRequest(`/projects/${id}/trapezoids`)
-  if (!res.ok) throw new Error('Failed to fetch trapezoids')
-  return res.json()
-}
-
-export async function saveTab(id, tabName, step3Data = null, trapezoidConfigs = null) {
-  const body = {}
-  if (step3Data) body.step3 = step3Data
-  if (trapezoidConfigs) body.trapezoidConfigs = trapezoidConfigs
+export async function saveTab(id, tabName, payload = null) {
   const res = await mgpRequest(`/projects/${id}/saveTab/${tabName}`, {
     method: 'PUT',
-    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
   })
   if (!res.ok) throw new Error(`Failed to save tab ${tabName}`)
   return res.json()
@@ -168,4 +132,17 @@ export async function getEffectiveBOM(id, lang = null) {
   const res = await mgpRequest(url)
   if (!res.ok) throw new Error('Failed to fetch effective BOM')
   return res.json()
+}
+
+// ── Version ─────────────────────────────────────────────────────────────────
+
+export async function getBackendVersion() {
+  const res = await mgpRequest('/version')
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.version
+}
+
+export function getFrontendVersion() {
+  return '0.0.1' // Keep in sync with package.json
 }

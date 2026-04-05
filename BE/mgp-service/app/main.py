@@ -98,6 +98,12 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/version")
+async def version():
+    """Return API version."""
+    return {"version": app.version}
+
+
 @app.get("/settings/defaults")
 async def settings_defaults(db=Depends(get_db)):
     """Public endpoint — returns full param schema for all app_settings."""

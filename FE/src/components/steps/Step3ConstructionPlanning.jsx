@@ -26,7 +26,8 @@ export default function Step3ConstructionPlanning({
   // ── UI state ───────────────────────────────────────────────────────────
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
-  const [activeTab, setActiveTab] = useState(initialTab || 'areas')
+  // Treat null, "null" string, and undefined as no saved tab - default to 'areas'
+  const [activeTab, setActiveTab] = useState((initialTab && initialTab !== 'null') ? initialTab : 'areas')
   const [highlightParam, setHighlightParam] = useState(null)
   const [customBasesMap, setCustomBasesMap] = useState({})
   const [userEditedBases, setUserEditedBases] = useState(new Set())
@@ -75,14 +76,25 @@ export default function Step3ConstructionPlanning({
     panelSpec, appDefaults, PARAM_SCHEMA,
   })
 
-  // ── Tab save on leave ──────────────────────────────────────────────────
+  // ── Tab save on switch ─────────────────────────────────────────────────
   const prevTabRef = useRef(activeTab)
   useEffect(() => {
-    if (prevTabRef.current === 'rails' && activeTab !== 'rails') onTabSave?.('rails')
-    if (prevTabRef.current === 'bases' && activeTab !== 'bases') onTabSave?.('bases')
-    if (prevTabRef.current === 'detail' && activeTab !== 'detail') onTabSave?.('trapezoids')
+    // On tab switch, save the new tab to update navigation.tab
+    if (prevTabRef.current !== activeTab) {
+      const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+      onTabSave?.(tabMap[activeTab] || activeTab)
+    }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Save initial tab to backend if it was defaulted to 'areas'
+  const initialSaveRef = useRef(false)
+  useEffect(() => {
+    if (!initialSaveRef.current && (!initialTab || initialTab === 'null') && activeTab === 'areas') {
+      onTabSave?.('areas')
+      initialSaveRef.current = true
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync effects ───────────────────────────────────────────────────────
   useEffect(() => {
