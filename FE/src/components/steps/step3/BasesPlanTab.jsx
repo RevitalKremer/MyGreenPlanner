@@ -544,25 +544,48 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 {/* Edit bars — rendered separately so they are always fully visible.
                     Only shown for the selected area (all sub-areas of that area). */}
-                {showEditBar && basePlans.map((bp, i) => {
-                  if (!bp) return null
-                  const trapId = trapIds[i]
-                  const isFullTrap = beTrapezoidsData?.[trapId]?.isFullTrap
-                  if (!isFullTrap) return null
-                  const areaKey = trapId.replace(/\d+$/, '')
+                {/* Edit bar — one per area, all bases, positioned above/below area based on yDir */}
+                {showEditBar && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
+                  const af = areaFrames[areaKey]
+                  if (!af?.frame?.center) return null
                   const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
                   if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
-                  const trapS = trapSettingsMap[trapId] ?? {}
+                  const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
+                  // Collect all bases from beBasesData for this area
+                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
+                  if (!areaData?.bases?.length) return null
+                  // Full trap for settings and onBasesChange
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const trapS = trapSettingsMap[fullTrapId] ?? {}
+                  // Build synthetic bp
+                  const { center, angleRad, localBounds } = areaFrame
+                  const frameLengthPx = localBounds.maxX - localBounds.minX
+                  const syntheticBases = areaData.bases.map(sb => {
+                    const offMm = Math.round(sb.offsetFromStartCm * 10)
+                    const lx = afIsRtl
+                      ? localBounds.maxX - sb.offsetFromStartCm / pixelToCmRatio
+                      : localBounds.minX + sb.offsetFromStartCm / pixelToCmRatio
+                    return { offsetFromStartMm: offMm, localX: lx }
+                  })
+                  const syntheticBp = {
+                    frame: { center, angleRad, localBounds, frameXMinPx: localBounds.minX, frameXMaxPx: localBounds.maxX },
+                    bases: syntheticBases,
+                    frameLengthMm: Math.round(frameLengthPx * pixelToCmRatio * 10),
+                    isRtl: afIsRtl,
+                  }
+                  // Position: above panels for TTB, below for BTT
+                  const barLocalY = afIsBtt ? localBounds.maxY + 20 / zoom : localBounds.minY - 20 / zoom
                   return (
                     <BasePlanOverlay
-                      key={`overlay-${trapId}`}
-                      bp={bp}
+                      key={`overlay-${areaKey}`}
+                      bp={syntheticBp}
                       zoom={zoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
                       svgRef={svgRef} toSvg={toSvg}
                       spacingMm={trapS.spacingMm}
                       edgeOffsetMm={trapS.edgeOffsetMm}
-                      isSelected={trapId === effectiveSelectedTrapId}
-                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(trapId, offsets) : null}
+                      isSelected={true}
+                      overrideBarLocalY={barLocalY}
+                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
                     />
                   )
                 })}
@@ -586,10 +609,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   const projected = allBases.sort((a, b) => a.localX - b.localX)
 
-                  // outSign: which side of the area the annotation bar goes
+                  // Dimensions on opposite side from edit bar: BTT → top (minY), TTB → bottom (maxY)
+                  const isBtt = af.isBtt
                   const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
-                  const [fcxSvg, fcySvg] = toSvg(refCenter.x, refCenter.y)
-                  const outSign = ((fcxSvg - svgCentX) * perpX + (fcySvg - svgCentY) * perpY) >= 0 ? 1 : -1
+                  const outSign = isBtt ? -1 : 1
                   const apX = outSign * perpX, apY = outSign * perpY
 
                   // Outermost Y from the area-wide frame

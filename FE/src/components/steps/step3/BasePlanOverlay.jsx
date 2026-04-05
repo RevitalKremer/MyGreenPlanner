@@ -59,6 +59,7 @@ export default function BasePlanOverlay({
   const endPx   = isRtl ? frameXMinPx : frameXMaxPx
   const [barX0, barY0] = lxToSvg(startPx)
   const [barX1, barY1] = lxToSvg(endPx)
+  if (isNaN(barX0) || isNaN(barY0) || isNaN(barX1) || isNaN(barY1)) return null
 
   const offsetToLocalX = (offsetMm) =>
     isRtl
