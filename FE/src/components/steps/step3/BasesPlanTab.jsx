@@ -546,18 +546,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     Only shown for the selected area (all sub-areas of that area). */}
                 {showEditBar && basePlans.map((bp, i) => {
                   if (!bp) return null
-                  const trapId     = trapIds[i]
-                  // Only show edit bar for the full trap of the selected area
+                  const trapId = trapIds[i]
+                  const isFullTrap = beTrapezoidsData?.[trapId]?.isFullTrap
+                  if (!isFullTrap) return null
                   const areaKey = trapId.replace(/\d+$/, '')
                   const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
                   if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
-                  // Skip non-full traps — only the full trap (most panels) gets the edit bar
-                  const isFullTrap = beTrapezoidsData?.[trapId]?.isFullTrap
-                  if (!isFullTrap) return null
-                  const trapS      = trapSettingsMap[trapId] ?? {}
-                  const af = areaFrames[areaKey]
-                  const areaFrame = af?.frame ?? bp.frame
-                  const areaBarLocalY = areaFrame.localBounds.minY - 20 / zoom
+                  const trapS = trapSettingsMap[trapId] ?? {}
                   return (
                     <BasePlanOverlay
                       key={`overlay-${trapId}`}
@@ -567,7 +562,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                       spacingMm={trapS.spacingMm}
                       edgeOffsetMm={trapS.edgeOffsetMm}
                       isSelected={trapId === effectiveSelectedTrapId}
-                      overrideBarLocalY={areaBarLocalY}
                       onBasesChange={onBasesChange ? (offsets) => onBasesChange(trapId, offsets) : null}
                     />
                   )
