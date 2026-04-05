@@ -205,6 +205,10 @@ function App() {
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
+    
+    // 'areas' tab is view-only, no backend save needed
+    if (tabName === 'areas') return
+    
     try {
       const payload = buildTabPayload(tabName)
 
