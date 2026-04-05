@@ -10,6 +10,7 @@ import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
+import RailsOverlay from './RailsOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
@@ -76,6 +77,22 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
     }
     return { trapAreaMap: tam, areaTrapsMap: atm }
   }, [trapIds])
+
+  // BE rail lookup keyed by trapId:railId (for RailsOverlay)
+  const beRailByKey = useMemo(() => {
+    const m = {}
+    for (const area of (beBasesData ?? [])) {
+      const areaLabel = area.areaLabel ?? area.label
+      // Map each trapId in this area to the area's rails
+      const areaTrapIds = areaTrapsMap[areaLabel] ?? []
+      for (const r of (area.rails ?? [])) {
+        for (const tid of areaTrapIds) {
+          m[`${tid}:${r.railId}`] = r
+        }
+      }
+    }
+    return m
+  }, [beBasesData, areaTrapsMap])
 
   // Object form of basePlans for consolidation lookup
   const basePlansMap = useMemo(() => {
@@ -398,7 +415,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   )
                 }))}
 
-                {/* Per-trap: rails, diagonals, edit bar */}
+                {/* Rails — shared RailsOverlay component */}
+                <RailsOverlay
+                  railLayouts={railLayouts}
+                  rowKeys={trapIds}
+                  rowGroups={trapGroups}
+                  beRailByKey={beRailByKey}
+                  toSvg={toSvg}
+                  sc={sc}
+                  pixelToCmRatio={pixelToCmRatio}
+                  zoom={zoom}
+                  layers={{ rails: showRailLines, dimensions: false, materialSummary: false, connectors: false }}
+                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
+                  selectedRowIdx={effectiveSelectedTrapId ? trapIds.indexOf(effectiveSelectedTrapId) : null}
+                  trapSettingsMap={trapSettingsMap}
+                />
+
+                {/* Per-trap: diagonals, edit bar */}
                 {basePlans.map((bp, i) => {
                   if (!bp) return null
                   const trapId     = trapIds[i]
@@ -414,7 +447,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const railOffsetCm      = trapLRails?.[rearLineIdx]?.[0] ?? 0
                   const crossRailOffsetCm = trapS.crossRailOffsetCm   ?? 5
                   const baseOverhangCm    = trapS.baseOverhangCm
-                  const crossRailEdgeMm   = trapS.crossRailEdgeDistMm
                   const railOffPx         = railOffsetCm    / pixelToCmRatio
                   const connOffPx         = crossRailOffsetCm / pixelToCmRatio
                   const baseOverhangPx    = baseOverhangCm  / pixelToCmRatio
@@ -451,18 +483,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     railLocalYs.push(lcY, rcY)
                   })
 
-                  const railProfileSvg = (crossRailEdgeMm / 10 / pixelToCmRatio) * sc
                   return (
                     <g key={`bp-${trapId}`} opacity={trapOpacity}>
-                      {/* Rails only — bases and blocks rendered in area-level loop above */}
-                      {showRailLines && railLayouts[i]?.rails.map(rail => {
-                        const [rx1, ry1] = toSvg(rail.screenStart.x, rail.screenStart.y)
-                        const [rx2, ry2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
-                        return (
-                          <line key={rail.railId} x1={rx1} y1={ry1} x2={rx2} y2={ry2}
-                            stroke={RAIL_STROKE} strokeWidth={railProfileSvg} strokeLinecap="square" />
-                        )
-                      })}
 
                       {showDiagonals && showBases && bases.length >= 2 && (() => {
                         const n = bases.length
