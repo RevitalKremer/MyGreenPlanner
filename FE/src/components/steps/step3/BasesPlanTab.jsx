@@ -185,7 +185,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
   if (!dataReady) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
-        Loading bases…
+        {t('step3.bases.loading')}
       </div>
     )
   }
@@ -693,9 +693,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
       <div style={{ flexShrink: 0, borderTop: `1px solid ${BORDER_FAINT}` }}>
         <button onClick={() => setTableOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 1.25rem', background: BG_LIGHT, border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           <span style={{ fontSize: '0.6rem' }}>{tableOpen ? '▾' : '▸'}</span>
-          Base Schedule
+          {t('step3.bases.scheduleTitle')}
           <span style={{ marginLeft: '0.5rem', fontWeight: '400', color: TEXT_PLACEHOLDER, textTransform: 'none', letterSpacing: 0 }}>
-            ({totalBases} bases)
+            ({t('step3.bases.count', { n: totalBases, s: totalBases === 1 ? '' : 's' })})
           </span>
         </button>
         {tableOpen && (

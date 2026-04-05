@@ -235,6 +235,30 @@ const en = {
   'step3.sidebar.applyToAll':     'Apply to all areas',
   'step3.sidebar.applyChanges':   'Apply Changes',
 
+  // ── Step 3 – Parameter names (translated labels) ──────────────────────────
+  'step3.param.railSpacingV':        'Spacing Vertical (cm)',
+  'step3.param.railSpacingH':        'Spacing Horizontal (cm)',
+  'step3.param.keepSymmetry':        'Keep Symmetry',
+  'step3.param.railOverhangCm':      'Rail Overhang (cm)',
+  'step3.param.crossRailEdgeDistMm': 'Rail Profile Size (mm)',
+  'step3.param.stockLengths':        'Stock Lengths (mm)',
+  'step3.param.edgeOffsetMm':        'Edge Offset (mm)',
+  'step3.param.spacingMm':           'Base Spacing (mm)',
+  'step3.param.baseOverhangCm':      'Base Overhang (cm)',
+  'step3.param.blockHeightCm':       'Block Height (cm)',
+  'step3.param.blockLengthCm':       'Block Length (cm)',
+  'step3.param.blockWidthCm':        'Block Width (cm)',
+  'step3.param.blockPunchCm':        'Block Punch Distance (cm)',
+  'step3.param.diagTopPct':          'Diagonal Top (%)',
+  'step3.param.diagBasePct':         'Diagonal Base (%)',
+  'step3.param.panelGapCm':          'Panel Gap (cm)',
+  'step3.param.lineGapCm':           'Line Gap (cm)',
+  'step3.param.angleProfileSizeMm':  'Angle Profile Size (mm)',
+  'step3.param.panelThickCm':        'Panel Thickness (cm)',
+  'step3.param.reverseBlockPunches': 'Reverse Block Punches',
+  'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
+  'step3.param.crossRailOffsetCm':   'Cross Rail Offset (cm)',
+
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',
   'bom.billOfMaterials':   'Bill of Materials',
@@ -407,6 +431,9 @@ const en = {
   'step3.bases.colSpacing':     'Spacing (mm)',
   'step3.bases.colLastGap':     'Last Gap (mm)',
   'step3.bases.mmFromEdge':     '{n} mm from left edge',
+  'step3.bases.loading':        'Loading bases…',
+  'step3.bases.scheduleTitle':  'Base Schedule',
+  'step3.bases.count':          '{n} base{s}',  // plural: 's' for n > 1
 
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   'Area {n}',

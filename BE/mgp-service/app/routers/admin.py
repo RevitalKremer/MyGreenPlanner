@@ -160,6 +160,8 @@ async def update_setting(
         setting.max_val = payload.max_val
     if payload.step_val is not None:
         setting.step_val = payload.step_val
+    if payload.visible is not None:
+        setting.visible = payload.visible
     await db.commit()
     await db.refresh(setting)
     return setting

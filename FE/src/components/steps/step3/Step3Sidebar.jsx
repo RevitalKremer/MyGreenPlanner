@@ -147,9 +147,17 @@ export default function Step3Sidebar({
 
   // ── renderParam: schema-driven input renderer ─────────────────────────────
   const renderParam = (param) => {
+    // Skip parameters marked as not visible (admin-only)
+    if (param.visible === false) return null
+
     const { key, label, type, scope, orientation, min, max, step, highlightGroup } = param
     const hlKey    = highlightGroup ?? key
     const isActive = PARAM_GROUP[highlightParam] === hlKey
+
+    // Use translated label - t() returns the key if translation not found, so we use label as final fallback
+    const translationKey = `step3.param.${key}`
+    const translatedLabel = t(translationKey)
+    const displayLabel = translatedLabel === translationKey ? label : translatedLabel
 
     const labelNode = (
       <div style={{
@@ -166,7 +174,7 @@ export default function Step3Sidebar({
             flexShrink: 0, animation: 'hlPulse 0.75s ease-in-out infinite',
           }} />
         )}
-        {label}
+        {displayLabel}
         <InfoTooltip param={param} />
         {scope === 'global' && (
           <span style={{ marginLeft: 'auto', fontSize: '0.55rem', color: TEXT_FAINTEST, fontWeight: '600', letterSpacing: '0.04em' }}>

@@ -97,6 +97,7 @@ export function useProjectState() {
       step: s.step_val,
       highlightGroup: s.highlight_group,
       orientation: s.key === 'railSpacingV' ? 'V' : s.key === 'railSpacingH' ? 'H' : undefined,
+      visible: s.visible ?? true,
     }))
   }, [appSettingsRaw])
 

@@ -13,6 +13,7 @@ class SettingRead(BaseModel):
     max_val: float | None
     step_val: float | None
     highlight_group: str | None
+    visible: bool
 
     model_config = {"from_attributes": True}
 
@@ -22,3 +23,4 @@ class SettingUpdate(BaseModel):
     min_val: float | None = None
     max_val: float | None = None
     step_val: float | None = None
+    visible: bool | None = None

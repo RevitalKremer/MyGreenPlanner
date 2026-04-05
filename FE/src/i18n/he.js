@@ -235,6 +235,30 @@ const he = {
   'step3.sidebar.applyToAll':              'החל על כל האזורים',
   'step3.sidebar.applyChanges':            'החל שינויים',
 
+  // ── Step 3 – Parameter names (translated labels) ──────────────────────────
+  'step3.param.railSpacingV':        'ריווח אנכי (ס"מ)',
+  'step3.param.railSpacingH':        'ריווח אופקי (ס"מ)',
+  'step3.param.keepSymmetry':        'שמור סימטריה',
+  'step3.param.railOverhangCm':      'הבלטת קושרת (ס"מ)',
+  'step3.param.crossRailEdgeDistMm': 'גודל פרופיל קושרת (מ"מ)',
+  'step3.param.stockLengths':        'אורכי מלאי (מ"מ)',
+  'step3.param.edgeOffsetMm':        'היסט קצה (מ"מ)',
+  'step3.param.spacingMm':           'ריווח בסיסים (מ"מ)',
+  'step3.param.baseOverhangCm':      'הבלטת בסיס (ס"מ)',
+  'step3.param.blockHeightCm':       'גובה בלוק (ס"מ)',
+  'step3.param.blockLengthCm':       'אורך בלוק (ס"מ)',
+  'step3.param.blockWidthCm':        'רוחב בלוק (ס"מ)',
+  'step3.param.blockPunchCm':        'מרחק ניקובי בלוק (ס"מ)',
+  'step3.param.diagTopPct':          'אלכסון עליון (%)',
+  'step3.param.diagBasePct':         'אלכסון תחתון (%)',
+  'step3.param.panelGapCm':          'מרווח פנלים (ס"מ)',
+  'step3.param.lineGapCm':           'מרווח שורות (ס"מ)',
+  'step3.param.angleProfileSizeMm':  'גודל פרופיל זווית (מ"מ)',
+  'step3.param.panelThickCm':        'עובי פנל (ס"מ)',
+  'step3.param.reverseBlockPunches': 'הפוך ניקובי בלוק',
+  'step3.param.railRoundThresholdCm':'סף עיגול קושרת (ס"מ)',
+  'step3.param.crossRailOffsetCm':   'היסט קושרת רוחב (ס"מ)',
+
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':    'לחץ לעריכה',
   'bom.billOfMaterials':'חומרים נדרשים',
@@ -407,6 +431,9 @@ const he = {
   'step3.bases.colSpacing':     'ריווח (מ"מ)',
   'step3.bases.colLastGap':     'פער אחרון (מ"מ)',
   'step3.bases.mmFromEdge':     'מ"מ מקצה שמאל {n}',
+  'step3.bases.loading':        'טוען בסיסים…',
+  'step3.bases.scheduleTitle':  'לוח בסיסים',
+  'step3.bases.count':          '{n} בסיסים',
 
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   '{n} אזור',
