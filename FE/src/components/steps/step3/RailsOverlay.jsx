@@ -73,9 +73,14 @@ export default function RailsOverlay({
       const sx = center.x + midLX * Math.cos(angleRad) - midLY * Math.sin(angleRad)
       const sy = center.y + midLX * Math.sin(angleRad) + midLY * Math.cos(angleRad)
       const [cx, cy] = toSvg(sx, sy)
+      // Calculate rail angle for text rotation
+      const [rx1, ry1] = toSvg(lineRail.screenStart.x, lineRail.screenStart.y)
+      const [rx2, ry2] = toSvg(lineRail.screenEnd.x, lineRail.screenEnd.y)
+      const ang = Math.atan2(ry2 - ry1, rx2 - rx1) * 180 / Math.PI
       return (
         <text key={`${prefix}-ms-${li}`} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-          fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5" 
+          fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5"
+          transform={`rotate(${ang}, ${cx}, ${cy})`}
           style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
           {text}
         </text>
@@ -197,8 +202,6 @@ export default function RailsOverlay({
       <g key={i} opacity={railOpacity}>
         {spacingGaps}
         {showMaterialSummary && renderMaterialSummary(rl, beSegs, railProfile, prefix)}
-        {showConnectors && showRails && renderConnectors(rl, beSegs, railProfile, prefix)}
-        {showDimensions && showRails && renderSegmentLabels(rl, beSegs, railProfile, prefix)}
         {rl.rails.map(rail => {
           const [x1, y1] = toSvg(rail.screenStart.x, rail.screenStart.y)
           const [x2, y2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
@@ -217,6 +220,8 @@ export default function RailsOverlay({
             </g>
           )
         })}
+        {showConnectors && showRails && renderConnectors(rl, beSegs, railProfile, prefix)}
+        {showDimensions && showRails && renderSegmentLabels(rl, beSegs, railProfile, prefix)}
       </g>
     )
   })
