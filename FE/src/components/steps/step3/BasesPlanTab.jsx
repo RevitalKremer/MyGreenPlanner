@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, RAIL_STROKE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
-import { computeRowRailLayout, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, computePanelFrame, localToScreen, screenToLocal } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, buildTrapezoidGroups } from './tabUtils'
@@ -93,22 +93,32 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
   const totalBases = trapIds.reduce((s, trapId) => s + (consolidatedBasesMap[trapId]?.length ?? 0), 0)
 
-  // Per-area frame lookup: use the FULL trap's frame (covers all panel lines).
-  // All bases in an area share the same coordinate system (startCorner, direction).
+  // Per-area frame: computed from ALL panels in the area (covers all panel lines).
   const areaFrames = useMemo(() => {
+    const areaPanels = {}
+    for (const p of panels) {
+      const areaKey = (p.trapezoidId ?? 'A1').replace(/\d+$/, '')
+      if (!areaPanels[areaKey]) areaPanels[areaKey] = []
+      areaPanels[areaKey].push(p)
+    }
     const map = {}
-    trapIds.forEach((trapId, i) => {
-      const bp = basePlans[i]
-      if (!bp) return
-      const areaKey = trapId.replace(/\d+$/, '')
-      // Prefer the full trap (isFullTrap) — it has the widest panel coverage
-      const isFullTrap = beTrapezoidsData?.[trapId]?.isFullTrap
-      if (!map[areaKey] || isFullTrap) {
-        map[areaKey] = { frame: bp.frame, lines: bp.lines, isRtl: bp.isRtl }
+    for (const [areaKey, areaPnls] of Object.entries(areaPanels)) {
+      const pf = computePanelFrame(areaPnls)
+      if (!pf) continue
+      const lineMap = {}
+      for (const pr of pf.panelLocalRects) {
+        const li = pr.line ?? 0
+        if (!lineMap[li]) lineMap[li] = { lineIdx: li, minY: Infinity, maxY: -Infinity }
+        lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
+        lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
       }
-    })
+      const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
+      const isRtl = areaPnls[0]?.xDir === 'rtl'
+      const isBtt = areaPnls[0]?.yDir === 'btt'
+      map[areaKey] = { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
+    }
     return map
-  }, [basePlans, trapIds, beTrapezoidsData])
+  }, [panels])
 
 
   const bbox = useMemo(() => {
@@ -348,19 +358,21 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 <HatchedPanels panels={panels} selectedTrapId={effectiveSelectedTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-                {/* Server-data bases + blocks — each base uses its trapezoidId's frame */}
+                {/* Server-data bases + blocks — use area frame for coordinate mapping */}
                 {(beBasesData ?? []).map(areaData => areaData.bases?.map((sb, sbi) => {
-                  const tf = areaFrames[sb.trapezoidId?.replace(/\d+$/, '')]
-                  if (!tf) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = tf
+                  const af = areaFrames[sb.trapezoidId?.replace(/\d+$/, '')]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const lineY = (tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0])?.minY ?? tLB.minY
+                  const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
                   const profThick = (4 / pixelToCmRatio) * sc
                   const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
 
                   const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
-                  const ty = lineY + sb.startCm / pixelToCmRatio
-                  const by = ty + sb.lengthCm / pixelToCmRatio
+                  const depthPx = sb.startCm / pixelToCmRatio
+                  const lenPx = sb.lengthCm / pixelToCmRatio
+                  const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                  const by = ty + lenPx
                   const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
                   const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
                   const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)

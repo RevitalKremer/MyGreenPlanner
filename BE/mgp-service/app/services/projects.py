@@ -1117,16 +1117,25 @@ async def compute_and_save_trapezoid_details(
         result.update(area_traps)
 
     # ── Reassign trapezoidId on consolidated bases using topBeamLength ──────
-    # Now that trapezoid details are computed, match each base's lengthCm
-    # to the trapezoid whose topBeamLength matches.
-    depth_to_trap: dict[float, str] = {}
-    for tid, detail in result.items():
-        tbl = detail.get('geometry', {}).get('topBeamLength', 0)
-        if tbl:
-            depth_to_trap[round(tbl, 1)] = tid
-
+    # Only reassign bases whose current trapezoidId doesn't exist in the computed
+    # results (e.g. removed during consolidation). Otherwise keep the original.
     for area_data in step3.get('computedAreas', []):
+        label = area_data.get('label', '')
+        area_tids = set(area_trap_map.get(label, []))
+        depth_to_trap: dict[float, str] = {}
+        for tid in area_tids:
+            detail = result.get(tid)
+            if not detail:
+                continue
+            tbl = detail.get('geometry', {}).get('topBeamLength', 0)
+            if tbl:
+                key = round(tbl, 1)
+                if key not in depth_to_trap or detail.get('isFullTrap'):
+                    depth_to_trap[key] = tid
         for base in area_data.get('bases', []):
+            # Only reassign if current trapezoidId is missing from results
+            if base.get('trapezoidId') in result:
+                continue
             base_len = round(base.get('lengthCm', 0), 1)
             if base_len in depth_to_trap:
                 base['trapezoidId'] = depth_to_trap[base_len]
