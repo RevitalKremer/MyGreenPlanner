@@ -449,7 +449,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const trapS      = trapSettingsMap[trapId] ?? {}
                   const trapLRails = trapLineRailsMap[trapId] ?? null
                   const trapOpacity = (effectiveSelectedTrapId === null || trapId === effectiveSelectedTrapId) ? 1 : 0.2
-                  const { frame, lines } = bp
+                  // Use area-wide frame for consistent positioning across traps
+                  const areaKey = trapId.replace(/\d+$/, '')
+                  const af = areaFrames[areaKey]
+                  const frame = af?.frame ?? bp.frame
+                  const lines = af?.lines ?? bp.lines
                   const bases = consolidatedBasesMap[trapId] ?? bp.bases
                   const { angleRad, localBounds } = frame
 
@@ -543,23 +547,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                 {showEditBar && basePlans.map((bp, i) => {
                   if (!bp) return null
                   const trapId     = trapIds[i]
+                  // Only show edit bar for the full trap of the selected area
+                  const areaKey = trapId.replace(/\d+$/, '')
                   const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
-                  if (effectiveSelectedTrapId !== null && trapId.replace(/\d+$/, '') !== selectedArea) return null
+                  if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
+                  // Skip non-full traps — only the full trap (most panels) gets the edit bar
+                  const isFullTrap = beTrapezoidsData?.[trapId]?.isFullTrap
+                  if (!isFullTrap) return null
                   const trapS      = trapSettingsMap[trapId] ?? {}
-                  const { frame }  = bp
-                  const { angleRad, localBounds } = frame
-                  const areaBarLocalY = (() => {
-                    const areaKey = trapId.replace(/\d+$/, '')
-                    const areaTraps = areaTrapsMap[areaKey] ?? [trapId]
-                    let extremeMinY = localBounds.minY
-                    for (const tid of areaTraps) {
-                      const otherBp = basePlansMap[tid]
-                      if (!otherBp) continue
-                      const cyOffset = screenToLocal(otherBp.frame.center, frame.center, angleRad).y
-                      extremeMinY = Math.min(extremeMinY, cyOffset + otherBp.frame.localBounds.minY)
-                    }
-                    return extremeMinY - 20 / zoom
-                  })()
+                  const af = areaFrames[areaKey]
+                  const areaFrame = af?.frame ?? bp.frame
+                  const areaBarLocalY = areaFrame.localBounds.minY - 20 / zoom
                   return (
                     <BasePlanOverlay
                       key={`overlay-${trapId}`}
@@ -578,25 +576,21 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                 {/* Per-area annotation bars — one bar per area at the outermost Y of the full area.
                     All consolidated bases shown; selected sub-area's bases highlighted. */}
                 {showDimensions && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  // Collect all consolidated bases for this area, tagging each with its trapId
-                  const allBases = areaTrapIds.flatMap(tid => {
-                    const bp2 = basePlansMap[tid]
-                    const b2 = consolidatedBasesMap[tid] ?? bp2?.bases ?? []
-                    return b2.map(b => ({ ...b, trapId: tid }))
-                  })
-                  if (allBases.length < 2) return null
-
-                  // Use the first available trap as the reference frame
-                  const refBp = basePlansMap[areaTrapIds.find(tid => basePlansMap[tid])]
-                  if (!refBp) return null
-                  const { frame: refFrame } = refBp
+                  // Use area-wide frame
+                  const af = areaFrames[areaKey]
+                  if (!af) return null
+                  const { frame: refFrame, isRtl: afIsRtl } = af
                   const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
 
-                  // Project every base into the reference frame's local X
-                  const projected = allBases.map(b => ({
-                    ...b,
-                    localX: screenToLocal(b.screenTop, refCenter, refAngle).x,
-                  })).sort((a, b) => a.localX - b.localX)
+                  // Collect bases from beBasesData for this area
+                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
+                  const allBases = (areaData?.bases ?? []).map(sb => ({
+                    ...sb, trapId: sb.trapezoidId,
+                    localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
+                  }))
+                  if (allBases.length < 2) return null
+
+                  const projected = allBases.sort((a, b) => a.localX - b.localX)
 
                   // outSign: which side of the area the annotation bar goes
                   const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
@@ -604,16 +598,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const outSign = ((fcxSvg - svgCentX) * perpX + (fcySvg - svgCentY) * perpY) >= 0 ? 1 : -1
                   const apX = outSign * perpX, apY = outSign * perpY
 
-                  // Outermost Y across all traps in the area (in the reference frame's local space)
-                  let extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
-                  for (const tid of areaTrapIds) {
-                    const otherBp = basePlansMap[tid]
-                    if (!otherBp) continue
-                    const cyOffset = screenToLocal(otherBp.frame.center, refCenter, refAngle).y
-                    const yMin = cyOffset + otherBp.frame.localBounds.minY
-                    const yMax = cyOffset + otherBp.frame.localBounds.maxY
-                    extremeLocalY = outSign >= 0 ? Math.max(extremeLocalY, yMax) : Math.min(extremeLocalY, yMin)
-                  }
+                  // Outermost Y from the area-wide frame
+                  const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
 
                   const ANN_OFF = 16 / zoom, EXT_GAP = 2 / zoom
                   const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
