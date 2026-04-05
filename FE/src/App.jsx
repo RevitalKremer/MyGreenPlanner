@@ -124,10 +124,11 @@ function App() {
     }))
     setBeRailsData(railsData)
     
-    // Convert to bases format
+    // Convert to bases format (include basesDataMap for frameStartCm seeding)
     const basesData = computedAreas.map(ca => ({
       areaLabel: ca.label || '',
-      bases: ca.bases || []
+      bases: ca.bases || [],
+      basesDataMap: ca.basesDataMap || {},
     }))
     setBeBasesData(basesData)
     
@@ -333,6 +334,10 @@ function App() {
       }
       setSavedActiveTab(merged.activeTab)
       s.handleImportProject(merged, cloudProject.id)
+      // Seed BE data immediately from the project's step3 data (avoids waiting for construction-data fetch)
+      if (cloudProject.data?.step3) {
+        applyBeResult({ step3: cloudProject.data.step3 })
+      }
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
     }
