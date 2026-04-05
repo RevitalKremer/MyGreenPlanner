@@ -10,6 +10,27 @@ from typing import Optional
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _round_to_5cm(length_mm: int) -> int:
+    """
+    Round rail length to nearest 5cm (0.05m) for aluminum profile cutting accuracy.
+    Max cutting accuracy is 0.05m intervals.
+    
+    Args:
+        length_mm: Rail length in millimeters
+    
+    Returns:
+        Rounded length in millimeters (to nearest 50mm)
+    
+    Examples:
+        1234 → 1250
+        1272 → 1250
+        1280 → 1300
+    """
+    length_cm = length_mm / 10
+    rounded_cm = round(length_cm / 5) * 5
+    return round(rounded_cm * 10)
+
+
 def _infer_row_orientation(cells: list[str]) -> Optional[str]:
     """Return 'V' (portrait) or 'H' (landscape) from the first non-empty cell."""
     for c in cells:
@@ -38,12 +59,25 @@ def _rail_offset_from_spacing(panel_depth_cm: float, spacing_cm: float) -> float
 
 
 def _split_stock_for_rounded(rounded_mm: int, stock_lengths: list[int]) -> list[int]:
-    """Stock segments when rounding up: each piece is the full stock length (no cutting)."""
+    """
+    Stock segments when rounding up to eliminate small leftovers: use full stock lengths (no cutting).
+    Same strategy: largest first, smallest for final piece.
+    """
     remaining = rounded_mm
-    sorted_stocks = sorted(stock_lengths, reverse=True)
+    sorted_largest = sorted(stock_lengths, reverse=True)
+    sorted_smallest = sorted(stock_lengths)
     result = []
+    
     while remaining > 0:
-        chosen = next((s for s in sorted_stocks if s >= remaining), sorted_stocks[0])
+        can_fit_in_one = any(s >= remaining for s in stock_lengths)
+        
+        if can_fit_in_one:
+            # Final piece: use smallest that fits
+            chosen = next((s for s in sorted_smallest if s >= remaining), max(stock_lengths))
+        else:
+            # Not final: use largest
+            chosen = sorted_largest[0]
+        
         result.append(chosen)
         remaining -= chosen
     return result
@@ -51,14 +85,29 @@ def _split_stock_for_rounded(rounded_mm: int, stock_lengths: list[int]) -> list[
 
 def _split_into_stock_segments(length_mm: int, stock_lengths: list[int]) -> list[dict]:
     """
-    Greedy largest-first stock splitting.
-    Returns list of { used, leftover } dicts — same logic as FE splitIntoStockSegments.
+    Optimal stock splitting:
+    - Use largest stocks first to minimize number of pieces
+    - For the final/remaining piece, use smallest stock that fits to minimize waste
+    
+    Example: 7000mm with [6000, 5000, 2300, 1150] → 6000 + 1150 (not 5000 + 2000)
+    Example: 4800mm with [6000, 5000, 4800] → 5000 (not 6000)
     """
     remaining = length_mm
     segments = []
-    sorted_stocks = sorted(stock_lengths, reverse=True)
+    sorted_largest = sorted(stock_lengths, reverse=True)  # Largest first
+    sorted_smallest = sorted(stock_lengths)  # Smallest first
+    
     while remaining > 0:
-        chosen = next((s for s in sorted_stocks if s >= remaining), sorted_stocks[0])
+        # Check if remaining can fit in one stock
+        can_fit_in_one = any(s >= remaining for s in stock_lengths)
+        
+        if can_fit_in_one:
+            # Final piece: use smallest stock that fits to minimize waste
+            chosen = next((s for s in sorted_smallest if s >= remaining), max(stock_lengths))
+        else:
+            # Not final: use largest stock to minimize number of pieces
+            chosen = sorted_largest[0]
+        
         segments.append({'used': remaining if chosen >= remaining else chosen,
                          'leftover': max(0, chosen - remaining)})
         remaining -= chosen
@@ -141,23 +190,31 @@ def compute_area_rails(
 
         for offset_from_front in offsets_from_front:
             offset_from_rear = round(panel_depth_cm - offset_from_front, 4)
-            segs = _split_into_stock_segments(length_mm, stock_lengths)
+            # Round to 5cm intervals for aluminum profile cutting accuracy
+            rounded_length_mm = _round_to_5cm(length_mm)
+            
+            # Calculate stock segments from rounded length
+            segs = _split_into_stock_segments(rounded_length_mm, stock_lengths)
             leftover_cm = round(sum(s['leftover'] for s in segs) / 10, 1)
+            
             rail = {
                 'railId':               f'R{rail_counter}',
                 'lineIdx':              line_idx,
                 'offsetFromLineFrontCm': round(offset_from_front, 4),
                 'offsetFromRearEdgeCm': offset_from_rear,
                 'startCm':              start_cm,
-                'lengthCm':             round(length_mm / 10, 1),
+                'lengthCm':             round(rounded_length_mm / 10, 1),
                 'stockSegmentsMm':      [s['used'] for s in segs],
                 'leftoverCm':           leftover_cm,
             }
+            
+            # If leftover is small, round up to use full stock segments (no cutting)
             if rail_round_threshold_cm > 0 and 0 < leftover_cm <= rail_round_threshold_cm:
-                rounded_mm = length_mm + round(leftover_cm * 10)
+                rounded_mm = rounded_length_mm + round(leftover_cm * 10)
                 rail['roundedLengthCm'] = round(rounded_mm / 10, 1)
                 rail['stockSegmentsMm'] = _split_stock_for_rounded(rounded_mm, stock_lengths)
                 rail['leftoverCm'] = 0
+            
             rails.append(rail)
             rail_counter += 1
 

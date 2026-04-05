@@ -74,6 +74,29 @@ export default function RailCrossSectionOverlay({
     }
   }
 
+  // ─── Per-line rail extents (for bar positioning) ──────────────────────────
+  const lineRailExtents = {}
+  if (rl?.rails) {
+    for (const rail of rl.rails) {
+      if (!rail.screenStart || !rail.screenEnd) continue
+      const li = rail.lineIdx
+      // Convert screen coords to local coords
+      const dx1 = rail.screenStart.x - center.x
+      const dy1 = rail.screenStart.y - center.y
+      const dx2 = rail.screenEnd.x - center.x
+      const dy2 = rail.screenEnd.y - center.y
+      const localX1 = dx1 * cosA + dy1 * sinA
+      const localX2 = dx2 * cosA + dy2 * sinA
+      
+      if (!lineRailExtents[li]) {
+        lineRailExtents[li] = { minX: Math.min(localX1, localX2), maxX: Math.max(localX1, localX2) }
+      } else {
+        lineRailExtents[li].minX = Math.min(lineRailExtents[li].minX, localX1, localX2)
+        lineRailExtents[li].maxX = Math.max(lineRailExtents[li].maxX, localX1, localX2)
+      }
+    }
+  }
+
   const lineIdxs = Object.keys(lineLocalExtents).map(Number).sort((a, b) => a - b)
 
   // ─── Drag ─────────────────────────────────────────────────────────────────
@@ -159,10 +182,12 @@ export default function RailCrossSectionOverlay({
     <g>
       {lineIdxs.map(li => {
         const ext    = lineLocalExtents[li]
+        const railExt = lineRailExtents[li]
         const stored = lineRails?.[li] ?? []
 
-        // Bar: to the left of panels in local X (screen px units)
-        const barRight = ext.minX - barGap_sc
+        // Bar: to the left of rails (or panels if no rails) in local X (screen px units)
+        const barReferenceX = railExt ? railExt.minX : ext.minX
+        const barRight = barReferenceX - barGap_sc
         const barLeft  = barRight - barW_sc
         const barMidX  = (barLeft + barRight) / 2
 
@@ -199,6 +224,8 @@ export default function RailCrossSectionOverlay({
             {/* Rail lines and handles */}
             {railPositions.map((rp, ri) => {
               const canRemove = stored.length > 2
+              // Calculate rail line angle for text rotation
+              const railAngleDeg = Math.atan2(rp.right[1] - rp.left[1], rp.right[0] - rp.left[0]) * 180 / Math.PI
               return (
                 <g key={ri} style={{ cursor: 'ns-resize' }}>
                   <line
@@ -209,6 +236,7 @@ export default function RailCrossSectionOverlay({
                   <text
                     x={rp.label[0]} y={rp.label[1] + 3}
                     textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}
+                    transform={`rotate(${railAngleDeg}, ${rp.label[0]}, ${rp.label[1] + 3})`}
                     style={{ pointerEvents: 'none' }}
                   >
                     {rp.offsetCm?.toFixed(1)}
@@ -241,13 +269,16 @@ export default function RailCrossSectionOverlay({
               const [tNbx, tNby] = toSvgLocal(annX + tickW, ext.maxY - stored[stored.length - 1] / pixelToCmRatio)
               const midX = (a0x + aNx) / 2
               const midY = (a0y + aNy) / 2
+              // Calculate annotation line angle for text rotation
+              const annAngleDeg = Math.atan2(aNy - a0y, aNx - a0x) * 180 / Math.PI
               return (
                 <g style={{ pointerEvents: 'none' }}>
                   <line x1={a0x} y1={a0y} x2={aNx} y2={aNy} stroke={BORDER_MID} strokeWidth={0.8} />
                   <line x1={t0ax} y1={t0ay} x2={t0bx} y2={t0by} stroke={BORDER_MID} strokeWidth={0.8} />
                   <line x1={tNax} y1={tNay} x2={tNbx} y2={tNby} stroke={BORDER_MID} strokeWidth={0.8} />
                   <rect x={midX - 9} y={midY - 7} width={18} height={14} rx={2} fill="white" stroke={BORDER} strokeWidth={0.5} />
-                  <text x={midX} y={midY + 3} textAnchor="middle" fontSize={7} fill={TEXT_SECONDARY} fontWeight="700">
+                  <text x={midX} y={midY + 3} textAnchor="middle" fontSize={7} fill={TEXT_SECONDARY} fontWeight="700"
+                    transform={`rotate(${annAngleDeg}, ${midX}, ${midY + 3})`}>
                     {spacing}
                   </text>
                 </g>
