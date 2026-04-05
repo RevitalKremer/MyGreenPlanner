@@ -1,10 +1,10 @@
 // ─── Orientation predicates ──────────────────────────────────────────────────
 
 export const isHorizontalOrientation = (o) =>
-  o === 'horizontal' || o === 'empty-horizontal'
+  o === 'H' || o === 'EH'
 
 export const isEmptyOrientation = (o) =>
-  o === 'empty' || o === 'empty-vertical' || o === 'empty-horizontal'
+  o === 'EV' || o === 'EH'
 
 /** Slope depth (cm) for a single line orientation */
 export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
@@ -20,7 +20,7 @@ export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
  * @param {number}   panelWidthCm
  */
 export const computeTotalSlopeDepth = (orientations, lineGapCm, panelLengthCm, panelWidthCm) => {
-  const orients = orientations || ['vertical']
+  const orients = orientations || ['V']
   const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o, panelLengthCm, panelWidthCm), 0)
   return slopeSum + Math.max(0, orients.length - 1) * lineGapCm
 }

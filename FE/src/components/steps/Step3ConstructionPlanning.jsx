@@ -44,7 +44,7 @@ export default function Step3ConstructionPlanning({
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
     const areaGroup = areas[areaKey] || {}
-    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
+    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
   }, [refinedArea, trapezoidConfigs, areas])
 
   // ── Row data hook ──────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
   const rows = allRows.map(rowIdx => {
     const cols = (rowColMap.get(rowIdx) || []).sort((a, b) => a.col - b.col)
     return cols.map(({ col, p }) => {
-      const isPortrait = p.heightCm > 150
+      const isPortrait = p.heightCm > p.widthCm
       const inFiltered = filteredKeys.has(`${rowIdx}_${col}`)
       return inFiltered ? (isPortrait ? 'V' : 'H') : (isPortrait ? 'EV' : 'EH')
     })

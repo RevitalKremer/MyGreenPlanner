@@ -40,9 +40,9 @@ export default function TrapezoidConfigEditor({
     if (!rowMap.has(r)) rowMap.set(r, p)
   })
   const derivedRows = [...rowMap.entries()].sort(([a], [b]) => Number(a) - Number(b))
-  const derivedOrients = derivedRows.map(([, p]) => p.heightCm > 150 ? 'vertical' : 'horizontal')
+  const derivedOrients = derivedRows.map(([, p]) => p.heightCm > p.widthCm ? 'V' : 'H')
 
-  // For auto-split trapezoids, use stored lineOrientations which include empty-* ghost rows.
+  // For auto-split trapezoids, use stored lineOrientations which include empty ghost rows.
   // Fall back to derived from actual panels for manual/legacy trapezoids.
   const storedOrients = trapezoidConfigs?.[selectedTrapezoidId]?.lineOrientations
   const effectiveLineOrientations = (storedOrients?.length > 0) ? storedOrients : derivedOrients
