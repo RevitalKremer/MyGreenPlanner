@@ -33,7 +33,7 @@ export default function useSelectedGeometry({
     const override   = trapezoidConfigs[trapId] || {}
     const areaKey    = rowKeys[selectedRowIdx]
     const areaGroup  = areas[areaKey] || {}
-    const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
+    const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
     return lineOrientations
       .filter(o => !isEmptyOrientation(o))
       .map((o, i) => ({
@@ -47,7 +47,7 @@ export default function useSelectedGeometry({
   // ── Selected line orientations ─────────────────────────────────────────
   const selectedLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
-    if (areaKey == null) return ['vertical']
+    if (areaKey == null) return ['V']
     const trapId = effectiveSelectedTrapId ?? `${String.fromCharCode(65 + areaKey)}1`
     return getLineOrientations(areaKey, trapId)
   }, [selectedRowIdx, rowKeys, effectiveSelectedTrapId, getLineOrientations])
@@ -73,7 +73,7 @@ export default function useSelectedGeometry({
   // ── Area-level orientations/rails (stable across trap selection) ───────
   const areaLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
-    if (areaKey == null) return ['vertical']
+    if (areaKey == null) return ['V']
     const firstTrapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
     return getLineOrientations(areaKey, firstTrapId)
   }, [selectedRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations])
@@ -157,7 +157,7 @@ export default function useSelectedGeometry({
 
   // ── Rail spacing change handler ────────────────────────────────────────
   const onRailSpacingChange = useCallback((orientation, newSpacingCm) => {
-    const isH = orientation === 'horizontal'
+    const isH = orientation === 'H'
     const minSpacing = isH ? minRailSpacingH : minRailSpacingV
     const newRails = { ...selectedLineRails }
     selectedLineOrientations.forEach((o, li) => {

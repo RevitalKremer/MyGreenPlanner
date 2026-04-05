@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Float
+from sqlalchemy import String, DateTime, Float, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -19,4 +19,5 @@ class AppSetting(Base):
     max_val: Mapped[float | None] = mapped_column(Float, nullable=True)
     step_val: Mapped[float | None] = mapped_column(Float, nullable=True)
     highlight_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default='true')
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

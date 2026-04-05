@@ -122,16 +122,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const PANEL_THICK_PX = panelThickCm * SC
   const CROSS_RAIL_GAP_PX = crossRailEdgeDistCm * SC  // cross rail profile height in px
   const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + CROSS_RAIL_GAP_PX + PANEL_THICK_PX / 2
-  const blockW  = blockLengthCm * SC
+
 
   // ── Leg positions and heights — always from BE data ─────────────────────
+  // positionCm = left edge of profile, positionEndCm = right edge
   const beLegs = beDetailData?.legs ?? []
   const allLegXs = beLegs.map(leg => atTrap(leg.positionCm).x)
+  const allLegEndXs = beLegs.map(leg => atTrap(leg.positionEndCm ?? (leg.positionCm + beamThickCm)).x)
   const allLegHeights = beLegs.map(leg => leg.heightCm * SC)
   const allLegTopYs = allLegHeights.map(h => baseY - h)
-  const innerLegXs = allLegXs.slice(1, -1)
   let legX0 = allLegXs[0] ?? (x0 - OHx)
-  let legX1 = allLegXs[allLegXs.length - 1] ?? (x1 + OHx)
+  let legX1 = allLegEndXs[allLegEndXs.length - 1] ?? (x1 + OHx)
   let legBW = legX1 - legX0
 
   // Beam Y interpolation from leg positions (pure rendering logic)
@@ -152,11 +153,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const ov = diagOverrides[d.spanIdx] ?? {}
       const topPct = ov.topPct ?? d.topPct
       const botPct = ov.botPct ?? d.botPct
-      const xA = allLegXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
+      // Diagonal spans the gap: right edge of leg A to left edge of leg B
+      const xA = allLegEndXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
       const spanW = xB - xA
       const topX = xA + topPct * spanW
       const botX = xA + botPct * spanW
-      // Interpolate slope Y from leg heights at span endpoints
+      // Interpolate slope Y between the two legs
       const hATopY = allLegTopYs[d.spanIdx], hBTopY = allLegTopYs[d.spanIdx + 1]
       const topY = hATopY + topPct * (hBTopY - hATopY)
       const botY = baseY + BEAM_THICK_PX / 2
@@ -179,10 +181,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const lastActiveLegIdx  = allLegXs.length - 1
   const hasActiveZone = firstActiveLegIdx <= lastActiveLegIdx
   const activeBeamL = hasActiveZone ? allLegXs[firstActiveLegIdx] : legX0
-  const activeBeamR = hasActiveZone ? allLegXs[lastActiveLegIdx]  : legX0
-  // Outer edges of active beam ends: outer legs already at edge; inner legs are center-based so offset by half thickness
-  const activeBoundL = hasActiveZone ? (firstActiveLegIdx === 0 ? activeBeamL : activeBeamL - BEAM_THICK_PX / 2) : legX0
-  const activeBoundR = hasActiveZone ? (lastActiveLegIdx === allLegXs.length - 1 ? activeBeamR : activeBeamR + BEAM_THICK_PX / 2) : legX0
+  const activeBeamR = hasActiveZone ? allLegEndXs[lastActiveLegIdx] : legX0
+  const activeBoundL = activeBeamL
+  const activeBoundR = activeBeamR
 
   // Ghost style: all rendered as rects using centralized ghost colors
   // Renders a thick line as a rotated rect so fill + stroke border work correctly with semi-transparent fill
@@ -400,8 +401,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const originDelta = (gOriginCm - originCm) * Math.cos(gAngleRad) * SC
                 const gLegHeights = gLegs.map(leg => leg.heightCm * SC)
                 const gLegXPositions = gLegs.map(leg => legX0 + originDelta + leg.positionCm * Math.cos(gAngleRad) * SC)
+                const gLegEndXPositions = gLegs.map(leg => legX0 + originDelta + (leg.positionEndCm ?? (leg.positionCm + beamThickCm)) * Math.cos(gAngleRad) * SC)
                 const gActualX0 = gLegXPositions[0] ?? legX0
-                const gActualX1 = gLegXPositions[gLegXPositions.length - 1] ?? legX1
+                const gActualX1 = gLegEndXPositions[gLegEndXPositions.length - 1] ?? legX1
                 const gLegBW = gActualX1 - gActualX0
                 // Interpolate Y from ghost leg heights (matches beamYFromLegs for real trap)
                 const gBeamY = (x) => {
@@ -415,7 +417,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   return { x, y: gBeamY(x) }
                 }
                 const gAtSlope = (dCm) => gAtTrap(dCm - gOriginCm)
-                const gAllLegXs = gLegXPositions
 
                 return (
                   <g pointerEvents="none">
@@ -423,33 +424,35 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     {GR({ key: 'g-base', x: gActualX0, y: gBaseY, width: gActualX1 - gActualX0, height: BEAM_THICK_PX })}
                     {/* Ghost slope beam */}
                     {GL({ key: 'g-slope', x1: gActualX0, y1: gBaseY - gLegHeights[0], x2: gActualX1, y2: gBaseY - gLegHeights[gLegHeights.length - 1], sw: BEAM_THICK_PX })}
-                    {/* Ghost rear leg — extends inward from position */}
-                    {GL({ key: 'g-rear', x1: gActualX0 + BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[0], x2: gActualX0 + BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
-                    {/* Ghost front leg — extends inward from position */}
-                    {GL({ key: 'g-front', x1: gActualX1 - BEAM_THICK_PX / 2, y1: gBaseY - gLegHeights[gLegHeights.length - 1], x2: gActualX1 - BEAM_THICK_PX / 2, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX })}
-                    {/* Ghost inner legs */}
-                    {gAllLegXs.slice(1, -1).map((lx, ci) => {
-                      const lh = gLegHeights[ci + 1] ?? 0
-                      return GL({ key: `gl${ci}`, x1: lx, y1: gBaseY - lh, x2: lx, y2: gBaseY + BEAM_THICK_PX, sw: BEAM_THICK_PX * 0.6 })
+                    {/* Ghost legs — uniform rendering */}
+                    {gLegs.map((_, li) => {
+                      const lx = gLegXPositions[li], lxEnd = gLegEndXPositions[li]
+                      const lw = lxEnd - lx
+                      const lh = gLegHeights[li] ?? 0
+                      return GR({ key: `gl${li}`, x: lx, y: gBaseY - lh, width: lw, height: lh + BEAM_THICK_PX })
                     })}
-                    {/* Ghost diagonals */}
+                    {/* Ghost diagonals — span gap between legs */}
                     {gDiags.map((d, di) => {
-                      if (d.spanIdx >= gAllLegXs.length - 1) return null
-                      const xA = gAllLegXs[d.spanIdx], xB = gAllLegXs[d.spanIdx + 1]
+                      if (d.spanIdx >= gLegs.length - 1) return null
+                      const xA = gLegEndXPositions[d.spanIdx], xB = gLegXPositions[d.spanIdx + 1]
                       const spanW = xB - xA
                       const topX = xA + d.topPct * spanW
                       const botX = xA + d.botPct * spanW
-                      // Interpolate slope Y from leg heights at span endpoints
                       const hA = gLegHeights[d.spanIdx] ?? 0, hB = gLegHeights[d.spanIdx + 1] ?? 0
-                      const topFrac = d.topPct
-                      const topY = gBaseY - (hA + topFrac * (hB - hA))
+                      const topY = gBaseY - (hA + d.topPct * (hB - hA))
                       return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: gBaseY + BEAM_THICK_PX / 2, sw: BEAM_THICK_PX * 0.75 })
                     })}
                     {/* Ghost blocks — positionCm is left edge, no centering */}
-                    {(fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) => {
-                      const bx = gAtTrap(blk.positionCm).x
-                      return GR({ key: `gb${bi}`, x: bx, y: gBlockTopY, width: blockW, height: blockH })
-                    })}
+                    {/* Ghost blocks — base-beam coords */}
+                    {(() => {
+                      const gBaseBeamLen = fullTrapGhost.beDetailData.geometry?.baseBeamLength || 1
+                      const gBW = gActualX1 - gActualX0
+                      const gAtBase = (posCm) => gActualX0 + (posCm / gBaseBeamLen) * gBW
+                      const gbw = (blockLengthCm / gBaseBeamLen) * gBW
+                      return (fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) =>
+                        GR({ key: `gb${bi}`, x: gAtBase(blk.positionCm), y: gBlockTopY, width: gbw, height: blockH })
+                      )
+                    })()}
                     {/* Ghost panels (along the slope) — vertical offset, matching main panel rendering */}
                     {(() => {
                       const gBW = gActualX1 - gActualX0
@@ -485,21 +488,23 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
-              {/* ── Blocks — rendered from BE data, with punch position label ── */}
+              {/* ── Blocks — positionCm is base-beam coords from server ── */}
               {(() => {
                 const beBlocks = beDetailData?.blocks ?? []
                 const blockPunches = (beDetailData?.punches ?? []).filter(p => p.origin === 'block')
+                const baseBeamLen = geom.baseBeamLength || 1
+                const atBase = (posCm) => legX0 + (posCm / baseBeamLen) * legBW
+                const bw = (blockLengthCm / baseBeamLen) * legBW
                 return (<>
                   {beBlocks.map((blk, bi) => {
-                    const bx = atTrap(blk.positionCm).x
-                    // Find the punch belonging to this block by index
+                    const bx = atBase(blk.positionCm)
                     const blkPunch = blockPunches.find(p => p.blockIdx === bi)
                     const label = blkPunch ? fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
                       <g key={bi}>
-                        <rect x={bx} y={blockTopY} width={blockW} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
                         {showPunches && label && (
-                          <text x={bx + blockW / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
                         )}
                       </g>
                     )
@@ -510,35 +515,23 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Base beam ── */}
               <rect x={legX0} y={baseY} width={legBW} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
 
-              {/* ── Rear leg — left edge at legX0 (extends inward) ── */}
-              {(() => {
-                const slopeTopY = allLegTopYs[0] - Math.cos(angleRad) * BEAM_THICK_PX / 2
-                const legH    = baseY + BEAM_THICK_PX - slopeTopY
-                const rearHeightCm = beLegs[0]?.heightCm ?? 0
-                return legH > 0 && (
-                  <g>
-                    <rect x={legX0} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-                    {rearHeightCm >= 200 && (
-                      <text x={legX0 + BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+              {/* ── All legs — uniform: rect from positionCm to positionEndCm ── */}
+              {beLegs.map((leg, li) => {
+                const lx = allLegXs[li]
+                const lxEnd = allLegEndXs[li]
+                const lw = lxEnd - lx
+                const slopeTopY = allLegTopYs[li] - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                const legH = baseY + BEAM_THICK_PX - slopeTopY
+                if (legH <= 0) return null
+                return (
+                  <g key={`leg-${li}`}>
+                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    {leg.heightCm >= 200 && (
+                      <text x={lx + lw / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
                     )}
                   </g>
                 )
-              })()}
-
-              {/* ── Front leg — right edge at legX1 (extends inward) ── */}
-              {(() => {
-                const slopeTopY = allLegTopYs[allLegTopYs.length - 1] - Math.cos(angleRad) * BEAM_THICK_PX / 2
-                const legH    = baseY + BEAM_THICK_PX - slopeTopY
-                const frontHeightCm = beLegs[beLegs.length - 1]?.heightCm ?? 0
-                return legH > 0 && (
-                  <g>
-                    <rect x={legX1 - BEAM_THICK_PX} y={slopeTopY} width={BEAM_THICK_PX} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-                    {frontHeightCm >= 200 && (
-                      <text x={legX1 - BEAM_THICK_PX / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
-                    )}
-                  </g>
-                )
-              })()}
+              })}
 
               {/* ── Slope beam ── */}
               {lProfileLine({ x1: legX0, y1: allLegTopYs[0], x2: legX1, y2: allLegTopYs[allLegTopYs.length - 1], strokeWidth: BEAM_THICK_PX })}
@@ -653,16 +646,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Rail support profiles (L-bracket: slope-top → base-bottom, overlaps both beams) ── */}
-              {innerLegXs.map((sx, ci) => {
+              {/* ── Inner leg height annotations ── */}
+              {showAnnotations && beLegs.slice(1, -1).map((leg, ci) => {
+                const lx = allLegXs[ci + 1]
+                const lxEnd = allLegEndXs[ci + 1]
+                const mx = (lx + lxEnd) / 2
                 const slopeTopY = allLegTopYs[ci + 1] - Math.cos(angleRad) * BEAM_THICK_PX / 2
-                const innerLegH = beLegs[ci + 1]?.heightCm ?? 0
-                return (
-                  <g key={ci}>
-                    {lProfileLine({ x1: sx, y1: slopeTopY, x2: sx, y2: blockTopY, strokeWidth: BEAM_THICK_PX })}
-                    {showAnnotations && <Dim ax1={sx} ay1={slopeTopY} ax2={sx} ay2={blockTopY} label={fmt(innerLegH)} off={14} />}
-                  </g>
-                )
+                return <Dim key={`ilh-${ci}`} ax1={mx} ay1={slopeTopY} ax2={mx} ay2={blockTopY} label={fmt(leg.heightCm)} off={14} />
               })}
 
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
@@ -690,8 +680,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {hl('blocks') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
                   {(beDetailData?.blocks ?? []).map((blk, bi) => {
-                    const bx = atTrap(blk.positionCm).x
-                    return <rect key={bi} x={bx - 5} y={blockTopY - 5} width={blockW + 10} height={blockH + 10}
+                    const baseBeamLen_hl = geom.baseBeamLength || 1
+                    const bx = legX0 + (blk.positionCm / baseBeamLen_hl) * legBW
+                    const bw = (blockLengthCm / baseBeamLen_hl) * legBW
+                    return <rect key={bi} x={bx - 5} y={blockTopY - 5} width={bw + 10} height={blockH + 10}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })}
                 </g>

@@ -3,8 +3,30 @@ export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)
 }
 
+// Compute local coordinate frame for a group of panels (no rail config needed).
+// Returns { center, angleRad, localBounds, panelLocalRects }.
+export function computePanelFrame(rowPanels) {
+  if (!rowPanels || rowPanels.length === 0) return null
+  const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
+  const center = {
+    x: rowPanels.reduce((s, p) => s + p.x + p.width / 2, 0) / rowPanels.length,
+    y: rowPanels.reduce((s, p) => s + p.y + p.height / 2, 0) / rowPanels.length,
+  }
+  const panelLocalRects = rowPanels.map(p => {
+    const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
+    return { id: p.id, localX: lc.x - p.width / 2, localY: lc.y - p.height / 2, width: p.width, height: p.height, line: p.line ?? 0 }
+  })
+  const localBounds = {
+    minX: Math.min(...panelLocalRects.map(r => r.localX)),
+    maxX: Math.max(...panelLocalRects.map(r => r.localX + r.width)),
+    minY: Math.min(...panelLocalRects.map(r => r.localY)),
+    maxY: Math.max(...panelLocalRects.map(r => r.localY + r.height)),
+  }
+  return { center, angleRad, localBounds, panelLocalRects }
+}
+
 // Build default lineRails for each panel line based on orientation and depths
-// lineOrientations: array of 'vertical'|'horizontal'|'empty'
+// lineOrientations: array of 'V'|'H'|'EV'|'EH'
 // panelDepthsCm: array of depths per line (same length)
 // railSpacingV / railSpacingH: default spacing from server app_settings
 // Returns: { [lineIdx]: [offsetCm, offsetCm] }
@@ -12,7 +34,7 @@ export function initDefaultLineRails(lineOrientations, panelDepthsCm, railSpacin
   const result = {}
   lineOrientations.forEach((orientation, i) => {
     const depth = panelDepthsCm[i]
-    const spacing = orientation === 'horizontal' ? railSpacingH : railSpacingV
+    const spacing = orientation === 'H' ? railSpacingH : railSpacingV
     const offset = railOffsetFromSpacing(depth, spacing)
     result[i] = [offset, depth - offset]
   })

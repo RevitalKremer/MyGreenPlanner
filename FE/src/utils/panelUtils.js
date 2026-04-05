@@ -40,13 +40,13 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false, pa
   const roofProjectionPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
 
   // Multi-line row configuration
-  const lineOrientations = panelConfig.lineOrientations || ['vertical']
+  const lineOrientations = panelConfig.lineOrientations || ['V']
   const linesPerRow = lineOrientations.length
 
   const lineConfigs = lineOrientations.map(orientation => {
     const isEmpty = isEmptyOrientation(orientation)
-    const base = isHorizontalOrientation(orientation) ? 'horizontal' : (isEmpty ? 'vertical' : orientation)
-    if (base === 'horizontal') {
+    const base = isHorizontalOrientation(orientation) ? 'H' : (isEmpty ? 'V' : orientation)
+    if (base === 'H') {
       return {
         widthPx: panelLengthPx,
         projectionPx: (panelWidthCm * Math.cos(angleRad)) / pixelToCmRatio,

@@ -29,10 +29,11 @@ export default function BasePlanOverlay({
   const [hoverHandle, setHoverHandle] = useState(null)
   const [ghostOffset, setGhostOffset] = useState(null)
 
-  if (!bp) return null
+  if (!bp?.frame?.center || !bp.bases?.length) return null
 
   const { frame, bases } = bp
   const { center, angleRad, localBounds, frameXMinPx, frameXMaxPx } = frame
+  if (center.x == null || isNaN(center.x) || frameXMinPx == null || isNaN(frameXMinPx)) return null
   const { frameLengthMm } = bp
   const offsets = bases.map(b => b.offsetFromStartMm)
 
@@ -58,6 +59,7 @@ export default function BasePlanOverlay({
   const endPx   = isRtl ? frameXMinPx : frameXMaxPx
   const [barX0, barY0] = lxToSvg(startPx)
   const [barX1, barY1] = lxToSvg(endPx)
+  if (isNaN(barX0) || isNaN(barY0) || isNaN(barX1) || isNaN(barY1)) return null
 
   const offsetToLocalX = (offsetMm) =>
     isRtl

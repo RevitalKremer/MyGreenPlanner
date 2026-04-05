@@ -18,6 +18,12 @@ from app.services import bom_service
 from app.services.trapezoid_detail_service import _compute_block_punches
 
 
+_EMPTY_ORIENTS = ('EV', 'EH')
+
+def _is_empty(o: str) -> bool:
+    return o in _EMPTY_ORIENTS
+
+
 async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
     """List projects. If is_admin=True, return all projects; otherwise filter by owner_id.
     Returns tuple of (projects_list, total_count).
@@ -353,7 +359,7 @@ def _compute_trap_x_range(
 
     trap_cfg = trapezoids.get(trapezoid_id, {})
     line_orients = trap_cfg.get('lineOrientations', [])
-    active_lines = [o for o in line_orients if 'empty' not in o]
+    active_lines = [o for o in line_orients if not _is_empty(o)]
     all_active = len(active_lines) == len(line_orients)
 
     row_active_counts = []
@@ -397,7 +403,7 @@ def _compute_trap_x_range(
         for t_idx, t_id in enumerate(trap_ids):
             t_cfg = trapezoids.get(t_id, {})
             t_orients = t_cfg.get('lineOrientations', [])
-            t_all_active = all(('empty' not in o) for o in t_orients)
+            t_all_active = all((not _is_empty(o)) for o in t_orients)
 
             if t_idx == trap_idx:
                 break
@@ -728,8 +734,8 @@ def _trim_trapezoid(
 
     # Rebase: shift so first leg is at position 0
     rear_pos = filtered_legs[0]['positionCm']
-    front_pos = filtered_legs[-1]['positionCm']
-    slope_len = front_pos - rear_pos
+    front_end = filtered_legs[-1]['positionEndCm']
+    slope_len = front_end - rear_pos
     angle = detail.get('geometry', {}).get('angle', 0)
     cos_a = math.cos(angle * math.pi / 180)
     base_len = slope_len * cos_a
@@ -745,12 +751,12 @@ def _trim_trapezoid(
 
     # Update panelFrontHeight if first line is empty (EV/EH)
     orients = line_orientations or []
-    if orients and 'empty' in orients[0]:
+    if orients and _is_empty(orients[0]):
         skipped_depth = 0
         for li, o in enumerate(orients):
-            if 'empty' not in o:
+            if not _is_empty(o):
                 break
-            is_h = o == 'empty-horizontal'
+            is_h = o == 'EH'
             skipped_depth += panel_width_cm if is_h else panel_length_cm
             if li > 0:
                 skipped_depth += line_gap_cm
@@ -758,12 +764,12 @@ def _trim_trapezoid(
         geom['panelFrontHeight'] = _r(geom.get('panelFrontHeight', 0) + skipped_depth * sin_a)
 
     # Update panelRearHeightCm if last line is empty (EV/EH)
-    if orients and 'empty' in orients[-1]:
+    if orients and _is_empty(orients[-1]):
         skipped_rear = 0
         for o in reversed(orients):
-            if 'empty' not in o:
+            if not _is_empty(o):
                 break
-            is_h = o == 'empty-horizontal'
+            is_h = o == 'EH'
             skipped_rear += panel_width_cm if is_h else panel_length_cm
             skipped_rear += line_gap_cm
         sin_a = math.sin(angle * math.pi / 180)
@@ -772,6 +778,8 @@ def _trim_trapezoid(
     # Rebase legs
     for leg in filtered_legs:
         leg['positionCm'] = _r(leg['positionCm'] - rear_pos)
+        if 'positionEndCm' in leg:
+            leg['positionEndCm'] = _r(leg['positionEndCm'] - rear_pos)
         if 'railPositionCm' in leg:
             leg['railPositionCm'] = _r(leg['railPositionCm'] - rear_pos)
     detail['legs'] = filtered_legs
@@ -781,18 +789,19 @@ def _trim_trapezoid(
     if inner_rails:
         geom['railToRailCm'] = _r(max(inner_rails) - min(inner_rails))
 
-    # ── Blocks: regenerate from trimmed legs (same rules as service) ─────
+    # ── Blocks: regenerate in base-beam coords (same rules as service) ──
     block_length_cm = geom.get('blockLengthCm', 40)
     slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
     raw_blocks = []
-    # Rear outer leg — left-aligned
+    # Rear outer — left edge at base beam start
     raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
-    # Inner legs — centered on rail position
+    # Inner legs — centered on rail's base-beam position
     for leg in filtered_legs[1:-1]:
         rail_pos = leg.get('railPositionCm', leg['positionCm'])
-        raw_blocks.append({'positionCm': _r(rail_pos - block_length_cm / 2), 'isEnd': False})
-    # Front outer leg — right-aligned
-    raw_blocks.append({'positionCm': _r(slope_len - block_length_cm), 'isEnd': True})
+        rail_base = rail_pos * cos_a
+        raw_blocks.append({'positionCm': _r(rail_base - block_length_cm / 2), 'isEnd': False})
+    # Front outer — right edge at base beam end
+    raw_blocks.append({'positionCm': _r(base_len - block_length_cm), 'isEnd': True})
     # Remove overlaps (walk left-to-right)
     new_blocks = []
     for blk in raw_blocks:
@@ -933,7 +942,7 @@ async def compute_and_save_trapezoid_details(
         label = area.get('label', '')
 
         # Build panel lines from trap's lineOrientations
-        line_orients = trap_cfg.get('lineOrientations', ['vertical'])
+        line_orients = trap_cfg.get('lineOrientations', ['V'])
 
         # Derive line rails — only for active (non-empty) lines of this trapezoid.
         # Ghost rendering is handled by the FE overlaying the full trap's DetailView.
@@ -941,7 +950,7 @@ async def compute_and_save_trapezoid_details(
         all_line_rails = _derive_line_rails(computed_area)
         line_rails = {
             li: offs for li, offs in all_line_rails.items()
-            if int(li) < len(line_orients) and 'empty' not in line_orients[int(li)]
+            if int(li) < len(line_orients) and not _is_empty(line_orients[int(li)])
         }
         # Build panel_lines only for active (non-empty) lines.
         # Remap line_rails keys to match the filtered panel_lines indices.
@@ -949,9 +958,9 @@ async def compute_and_save_trapezoid_details(
         remapped_line_rails = {}
         active_idx = 0
         for li, orient in enumerate(line_orients):
-            if 'empty' in orient:
+            if _is_empty(orient):
                 continue  # skip empty lines — ghost handled by FE overlay
-            is_h = orient == 'horizontal'
+            is_h = orient == 'H'
             depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
             gap = app_defaults.get('lineGapCm', 2) if active_idx > 0 else 0
             # Remap: original line index li → new active index active_idx
@@ -1026,7 +1035,7 @@ async def compute_and_save_trapezoid_details(
         )
 
         if detail:
-            is_full = all('empty' not in o for o in line_orients)
+            is_full = all(not _is_empty(o) for o in line_orients)
             detail['isFullTrap'] = is_full
             _upsert_computed_trapezoid(step3, trap_id, detail)
             result[trap_id] = detail
@@ -1047,7 +1056,7 @@ async def compute_and_save_trapezoid_details(
             if detail.get('isFullTrap'):
                 continue
             trap_cfg_local = trapezoids.get(tid, {})
-            local_orients = trap_cfg_local.get('lineOrientations', ['vertical'])
+            local_orients = trap_cfg_local.get('lineOrientations', ['V'])
             # Find the area this trap belongs to and get all line rails
             trap_area = None
             for a in areas:
@@ -1070,11 +1079,11 @@ async def compute_and_save_trapezoid_details(
             active_rail_positions = set()
             d_cm = 0.0
             for li, orient in enumerate(local_orients):
-                is_h = orient == 'horizontal'
+                is_h = orient == 'H'
                 depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
                 gap = app_defaults.get('lineGapCm', 2) if li > 0 else 0
                 d_cm += gap
-                if 'empty' not in orient:
+                if not _is_empty(orient):
                     for off in trap_all_line_rails.get(str(li), []):
                         approx = round(d_cm + off - full_origin, 1)
                         # Find the exact railPositionCm from the full trap that matches
@@ -1108,16 +1117,25 @@ async def compute_and_save_trapezoid_details(
         result.update(area_traps)
 
     # ── Reassign trapezoidId on consolidated bases using topBeamLength ──────
-    # Now that trapezoid details are computed, match each base's lengthCm
-    # to the trapezoid whose topBeamLength matches.
-    depth_to_trap: dict[float, str] = {}
-    for tid, detail in result.items():
-        tbl = detail.get('geometry', {}).get('topBeamLength', 0)
-        if tbl:
-            depth_to_trap[round(tbl, 1)] = tid
-
+    # Only reassign bases whose current trapezoidId doesn't exist in the computed
+    # results (e.g. removed during consolidation). Otherwise keep the original.
     for area_data in step3.get('computedAreas', []):
+        label = area_data.get('label', '')
+        area_tids = set(area_trap_map.get(label, []))
+        depth_to_trap: dict[float, str] = {}
+        for tid in area_tids:
+            detail = result.get(tid)
+            if not detail:
+                continue
+            tbl = detail.get('geometry', {}).get('topBeamLength', 0)
+            if tbl:
+                key = round(tbl, 1)
+                if key not in depth_to_trap or detail.get('isFullTrap'):
+                    depth_to_trap[key] = tid
         for base in area_data.get('bases', []):
+            # Only reassign if current trapezoidId is missing from results
+            if base.get('trapezoidId') in result:
+                continue
             base_len = round(base.get('lengthCm', 0), 1)
             if base_len in depth_to_trap:
                 base['trapezoidId'] = depth_to_trap[base_len]

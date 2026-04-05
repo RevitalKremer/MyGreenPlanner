@@ -294,7 +294,7 @@ export default function Step2PanelPlacement({
     if (!selectedRow || !selectedTrapezoidId) return
 
     // Auto-split areas have their trapezoid configs set by computePanels (which includes
-    // empty-* orientations for ghost rows). Don't overwrite them here.
+    // empty orientations for ghost rows). Don't overwrite them here.
     const areaKey = getAreaKey(selectedRow[0])
     if (!rectAreas[areaKey]?.manualTrapezoids) return
 
@@ -307,7 +307,7 @@ export default function Step2PanelPlacement({
     if (sortedRows.length === 0) return
 
     const autoOrients = sortedRows.map(([, p]) =>
-      p.heightCm > 150 ? 'vertical' : 'horizontal'
+      p.heightCm > p.widthCm ? 'V' : 'H'
     )
     const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
     const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0

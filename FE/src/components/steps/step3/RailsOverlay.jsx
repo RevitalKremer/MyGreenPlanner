@@ -177,7 +177,7 @@ export default function RailsOverlay({
 
     // Gap polygons between adjacent rails of the highlighted orientation
     const spacingGaps = (hlSpacingV || hlSpacingH) && showRails ? (() => {
-      const targetOrientation = hlSpacingV ? 'vertical' : 'horizontal'
+      const targetOrientation = hlSpacingV ? 'V' : 'H'
       const sorted = rl.rails
         .filter(r => r.orientation === targetOrientation)
         .map(r => {
