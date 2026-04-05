@@ -375,45 +375,58 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 <HatchedPanels panels={panels} selectedTrapId={effectiveSelectedTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-                {/* Server-data bases + blocks — use area frame for coordinate mapping */}
-                {(beBasesData ?? []).map(areaData => areaData.bases?.map((sb, sbi) => {
-                  const af = areaFrames[sb.trapezoidId?.replace(/\d+$/, '')]
-                  if (!af) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                {/* Base beam lines — from FE basePlans when available (instant drag), fallback to BE data */}
+                {showBases && (() => {
                   const profThick = (4 / pixelToCmRatio) * sc
-                  const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
-
-                  const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
-                  const depthPx = sb.startCm / pixelToCmRatio
-                  const lenPx = sb.lengthCm / pixelToCmRatio
-                  const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
-                  const by = ty + lenPx
-                  const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
-                  const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
-                  const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
-                  const [btx, bty] = toSvg(st.x, st.y)
-                  const [bbx, bby] = toSvg(sbo.x, sbo.y)
-                  const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-                  const mx = (btx + bbx) / 2, my = (bty + bby) / 2
-
-                  return (
-                    <g key={`sb-${areaData.areaLabel}-${sbi}`}>
-                      {showBlocks && trapBlocks.map((blk, bki) => {
-                        const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
-                        const bcy = ty + ((blk.slopePositionCm ?? blk.positionCm) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
-                        const sp = localToScreen({ x: lx, y: bcy }, tFrame.center, tAngle)
-                        const [bkx, bky] = toSvg(sp.x, sp.y)
-                        return <rect key={`blk-${sbi}-${bki}`} x={bkx - slSvg / 2} y={bky - blockWSvg / 2} width={slSvg} height={blockWSvg} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom} transform={`rotate(${la} ${bkx} ${bky})`} />
-                      })}
-                      {showBases && <>
-                        <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
-                        {showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
-                      </>}
-                    </g>
+                  // Collect traps that have FE basePlans
+                  const feRendered = new Set()
+                  const feElements = basePlans.map((bp, i) => {
+                    if (!bp) return null
+                    const trapId = trapIds[i]
+                    feRendered.add(trapId)
+                    const trapOpacity = (effectiveSelectedTrapId === null || trapId === effectiveSelectedTrapId) ? 1 : 0.2
+                    return bp.bases.map((base, bi) => {
+                      const [btx, bty] = toSvg(base.screenTop.x, base.screenTop.y)
+                      const [bbx, bby] = toSvg(base.screenBottom.x, base.screenBottom.y)
+                      const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                      const mx = (btx + bbx) / 2, my = (bty + bby) / 2
+                      return (
+                        <g key={`base-${trapId}-${bi}`} opacity={trapOpacity}>
+                          <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
+                          {showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{trapId}</text></g>}
+                        </g>
+                      )
+                    })
+                  })
+                  // Fallback: render from beBasesData for traps not in basePlans
+                  const beElements = (beBasesData ?? []).flatMap(areaData =>
+                    (areaData.bases ?? []).filter(sb => !feRendered.has(sb.trapezoidId)).map((sb, sbi) => {
+                      const af = areaFrames[sb.trapezoidId?.replace(/\d+$/, '')]
+                      if (!af) return null
+                      const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                      const { angleRad: tAngle, localBounds: tLB } = tFrame
+                      const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                      const lx = tIsRtl ? tLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : tLB.minX + sb.offsetFromStartCm / pixelToCmRatio
+                      const depthPx = sb.startCm / pixelToCmRatio
+                      const lenPx = sb.lengthCm / pixelToCmRatio
+                      const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                      const by = ty + lenPx
+                      const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
+                      const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
+                      const [btx, bty] = toSvg(st.x, st.y)
+                      const [bbx, bby] = toSvg(sbo.x, sbo.y)
+                      const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                      const mx = (btx + bbx) / 2, my = (bty + bby) / 2
+                      return (
+                        <g key={`be-base-${areaData.areaLabel ?? areaData.label}-${sb.trapezoidId}-${sbi}`}>
+                          <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
+                          {showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
+                        </g>
+                      )
+                    })
                   )
-                }))}
+                  return [...feElements, ...beElements]
+                })()}
 
                 {/* Rails — shared RailsOverlay component */}
                 <RailsOverlay
