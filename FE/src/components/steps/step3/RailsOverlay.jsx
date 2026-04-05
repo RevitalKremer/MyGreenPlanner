@@ -1,4 +1,4 @@
-import { AMBER, RAIL_STROKE, RAIL_CONNECTOR } from '../../../styles/colors'
+import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, TEXT_DARKEST } from '../../../styles/colors'
 
 /**
  * RailsOverlay — renders rail lines, material summary, connectors,
@@ -75,7 +75,8 @@ export default function RailsOverlay({
       const [cx, cy] = toSvg(sx, sy)
       return (
         <text key={`${prefix}-ms-${li}`} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-          fontSize={fontSize} fontWeight="600" fill={RAIL_STROKE} style={{ pointerEvents: 'none' }}>
+          fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5" 
+          style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
           {text}
         </text>
       )
@@ -127,7 +128,7 @@ export default function RailsOverlay({
       const totalMm = segs.reduce((s, v) => s + v, 0)
       const fontSize = Math.max(12, 18 / zoom)
       const perpX = -uy, perpY = ux
-      const labelOff = railProfile / 2 + 8 / zoom
+      const labelOff = railProfile / 2 + 8 + zoom * 2
       const ang = Math.atan2(dy, dx) * 180 / Math.PI
       let cumMm = 0
       return (
@@ -141,9 +142,9 @@ export default function RailsOverlay({
             const my = y1 + uy * midPx + perpY * labelOff
             return (
               <text key={si} x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                fontSize={fontSize} fontWeight="600" fill={RAIL_STROKE}
+                fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5"
                 transform={`rotate(${ang}, ${mx}, ${my})`}
-                style={{ pointerEvents: 'none' }}>
+                style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
                 {String(segMm)}
               </text>
             )
