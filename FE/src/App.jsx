@@ -105,11 +105,7 @@ function App() {
   useEffect(() => {
     if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
       getConstructionData(s.cloudProjectId)
-        .then(result => {
-          setBeRailsData(result.rails)
-          setBeBasesData(result.bases)
-          setBeTrapezoidsData(result.trapezoidDetails)
-        })
+        .then(applyBeResult)
         .catch(console.error)
     }
   // Only cloudProjectId should trigger this — currentStep transitions are handled in Next button
@@ -117,33 +113,169 @@ function App() {
   }, [s.cloudProjectId])
 
   const applyBeResult = (result) => {
-    if (result.rails) setBeRailsData(result.rails)
-    if (result.bases) setBeBasesData(result.bases)
-    if (result.trapezoidDetails) setBeTrapezoidsData(result.trapezoidDetails)
+    if (!result.step3) return
+    
+    const { computedAreas = [], computedTrapezoids = [] } = result.step3
+    
+    // Convert to rails format
+    const railsData = computedAreas.map(ca => ({
+      areaLabel: ca.label || '',
+      rails: ca.rails || []
+    }))
+    setBeRailsData(railsData)
+    
+    // Convert to bases format
+    const basesData = computedAreas.map(ca => ({
+      areaLabel: ca.label || '',
+      bases: ca.bases || []
+    }))
+    setBeBasesData(basesData)
+    
+    // Convert to trapezoidDetails format (object keyed by trapezoidId)
+    const trapDetails = {}
+    computedTrapezoids.forEach(ct => {
+      if (ct.trapezoidId) {
+        trapDetails[ct.trapezoidId] = ct
+      }
+    })
+    setBeTrapezoidsData(trapDetails)
+  }
+
+  // Build tab-specific payload to send only relevant settings and overrides
+  const buildTabPayload = (tabName) => {
+    const { globalSettings, areaSettings } = step3SettingsRef.current
+    
+    // Get parameter keys for this section from paramSchema
+    const tabSection = tabName === 'trapezoids' ? 'detail' : tabName
+    const sectionParams = (s.paramSchema || []).filter(p => p.section === tabSection)
+    
+    // Filter globalSettings to only include params for this section
+    const filteredGlobal = {}
+    sectionParams.filter(p => p.scope === 'global').forEach(p => {
+      if (globalSettings?.[p.key] != null) {
+        filteredGlobal[p.key] = globalSettings[p.key]
+      }
+    })
+
+    // Filter areaSettings to only include params for this section (excluding overrides)
+    const filteredArea = {}
+    const areaParamKeys = sectionParams.filter(p => p.scope === 'area').map(p => p.key)
+
+    Object.keys(areaSettings || {}).forEach(areaIdx => {
+      const area = areaSettings[areaIdx] || {}
+      const filtered = {}
+      areaParamKeys.forEach(key => {
+        if (area[key] != null) {
+          filtered[key] = area[key]
+        }
+      })
+      if (Object.keys(filtered).length > 0) {
+        filteredArea[areaIdx] = filtered
+      }
+    })
+
+    // Build overrides structure
+    const overrides = {}
+    
+    if (tabName === 'rails') {
+      // Rails overrides: lineRails per area
+      const railOverrides = {}
+      Object.keys(areaSettings || {}).forEach(areaIdx => {
+        const lineRails = areaSettings[areaIdx]?.lineRails
+        if (lineRails) {
+          // Convert areaIdx to areaLabel
+          const areaKey = parseInt(areaIdx)
+          const areaLabel = s.areas[areaKey]?.label || s.areas[areaKey]?.id || String(areaIdx)
+          railOverrides[areaLabel] = lineRails
+        }
+      })
+      if (Object.keys(railOverrides).length > 0) {
+        overrides.rails = railOverrides
+      }
+    }
+
+    return {
+      settings: {
+        global: Object.keys(filteredGlobal).length > 0 ? filteredGlobal : undefined,
+        areas: Object.keys(filteredArea).length > 0 ? filteredArea : undefined,
+      },
+      overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+    }
   }
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
     try {
-      // Build trapezoid configs with custom offsets for bases/trapezoids tabs
-      let trapConfigs = trapConfigsRef.current
+      const payload = buildTabPayload(tabName)
+
+      // Add tab-specific overrides
       if (tabName === 'bases') {
         const customBases = { ...customBasesRef.current }
         if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
-        trapConfigs = { ...(trapConfigs || {}) }
-        for (const [trapId, offsets] of Object.entries(customBases)) {
-          trapConfigs[trapId] = { ...(trapConfigs[trapId] || {}), customOffsets: offsets }
+        
+        payload.overrides = payload.overrides || {}
+        payload.overrides.bases = customBases
+        
+      } else if (tabName === 'trapezoids') {
+        // Trapezoids tab overrides: diagonal positions from areaSettings
+        const diagOverrides = {}
+        const { areaSettings } = step3SettingsRef.current
+        
+        // Build area -> trapezoid mapping from panels (normalize keys to strings)
+        const areaTrapMap = {}
+        s.panels.forEach(p => {
+          const areaIdx = String(p.area)  // Normalize to string
+          const trapId = p.trapezoidId
+          if (p.area != null && trapId) {
+            if (!areaTrapMap[areaIdx]) areaTrapMap[areaIdx] = []
+            if (!areaTrapMap[areaIdx].includes(trapId)) areaTrapMap[areaIdx].push(trapId)
+          }
+        })
+        
+        console.log('[DEBUG] trapezoids save - areaTrapMap:', areaTrapMap)
+        console.log('[DEBUG] trapezoids save - areaSettings keys:', Object.keys(areaSettings || {}))
+        
+        // For each area with diagOverrides, map to its trapezoid(s)
+        Object.keys(areaSettings || {}).forEach(areaIdx => {
+          console.log(`[DEBUG] checking area ${areaIdx}:`, areaSettings[areaIdx])
+          const areaDiagOverrides = areaSettings[areaIdx]?.diagOverrides
+          console.log(`[DEBUG] diagOverrides for area ${areaIdx}:`, areaDiagOverrides)
+          
+          if (!areaDiagOverrides || typeof areaDiagOverrides !== 'object') return
+          
+          // Get trapezoid ID(s) for this area (usually just one)
+          const trapIds = areaTrapMap[areaIdx] || []
+          const trapId = trapIds[0] || `${String.fromCharCode(65 + parseInt(areaIdx))}1`
+          console.log(`[DEBUG] area ${areaIdx} -> trapId: ${trapId}`)
+          
+          // Convert diagOverrides: { spanIdx: {topPct, botPct, disabled?} } 
+          // to: { spanIdx: [topPct, botPct] } or { spanIdx: {disabled: true} }
+          const diagObj = {}
+          for (const [spanIdx, diag] of Object.entries(areaDiagOverrides)) {
+            const { topPct, botPct, disabled } = diag
+            if (disabled === true) {
+              diagObj[spanIdx] = { disabled: true }
+            } else if (topPct != null && botPct != null) {
+              diagObj[spanIdx] = [topPct, botPct]
+            }
+          }
+          console.log(`[DEBUG] diagObj for trapId ${trapId}:`, diagObj)
+          if (Object.keys(diagObj).length > 0) {
+            diagOverrides[trapId] = diagObj
+          }
+        })
+        
+        console.log('[DEBUG] final diagOverrides:', diagOverrides)
+        if (Object.keys(diagOverrides).length > 0) {
+          payload.overrides = payload.overrides || {}
+          payload.overrides.diagonals = diagOverrides
         }
       }
 
-      const result = await saveTab(
-        s.cloudProjectId, tabName,
-        step3SettingsRef.current,
-        (tabName === 'bases' || tabName === 'trapezoids') ? trapConfigs : null,
-      )
+      const result = await saveTab(s.cloudProjectId, tabName, payload)
       applyBeResult(result)
     } catch (e) { console.error(e) }
-  }, [s.cloudProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [s.cloudProjectId, s.areas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabReset = useCallback(async (tabName) => {
     if (!s.cloudProjectId) return
@@ -182,10 +314,11 @@ function App() {
       const cloudProject = await getProject(projectId)
       // Merge layout + data columns into the shape handleImportProject expects
       const layout = cloudProject.layout ?? {}
+      const currentStep = cloudProject.navigation?.step ?? layout.currentStep ?? 1
       const merged = {
         project:     { name: cloudProject.name, location: cloudProject.location },
-        currentStep: cloudProject.navigation?.step ?? layout.currentStep ?? 1,
-        activeTab:   cloudProject.navigation?.tab ?? null,
+        currentStep,
+        activeTab:   cloudProject.navigation?.tab ?? (currentStep === 3 ? 'areas' : null),
         layout,
         ...(cloudProject.data ?? {}),
       }
@@ -221,7 +354,7 @@ function App() {
     // Fetch the latest project to show on welcome screen
     if (auth.user) {
       try {
-        const data = await listProjects(1)
+        const data = await listProjects(projectsLimit)
         setCloudProjects(data.projects || [])
         setTotalProjectsCount(data.total || 0)
       } catch (err) {

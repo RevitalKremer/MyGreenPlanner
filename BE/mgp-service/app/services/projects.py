@@ -66,6 +66,21 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
 _SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids'}
 
 
+def _deep_merge_settings(existing: dict, incoming: dict) -> dict:
+    """
+    Deep merge incoming settings into existing, preserving keys not in incoming.
+    Used for partial updates to globalSettings and areaSettings.
+    """
+    merged = copy.deepcopy(existing)
+    for key, val in incoming.items():
+        if isinstance(val, dict) and key in merged and isinstance(merged[key], dict):
+            # Recursively merge nested dicts
+            merged[key] = _deep_merge_settings(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
 async def update_project(db: AsyncSession, project: Project, payload: ProjectUpdate, step: int | None = None) -> Project:
     fields = payload.model_dump(exclude_none=True)
 
@@ -228,6 +243,13 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
         for k in _SERVER_COMPUTED_STEP3_KEYS:
             if k in existing_step3 and k not in step3_data:
                 step3_data[k] = existing_step3[k]
+        # Deep merge globalSettings and areaSettings to preserve unrelated keys
+        if 'globalSettings' in step3_data:
+            existing_global = existing_step3.get('globalSettings', {})
+            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
+        if 'areaSettings' in step3_data:
+            existing_area = existing_step3.get('areaSettings', {})
+            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
     step3 = data.setdefault('step3', {})
@@ -446,6 +468,13 @@ async def compute_and_save_bases(
         for k in _SERVER_COMPUTED_STEP3_KEYS:
             if k in existing_step3 and k not in step3_data:
                 step3_data[k] = existing_step3[k]
+        # Deep merge globalSettings and areaSettings to preserve unrelated keys
+        if 'globalSettings' in step3_data:
+            existing_global = existing_step3.get('globalSettings', {})
+            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
+        if 'areaSettings' in step3_data:
+            existing_area = existing_step3.get('areaSettings', {})
+            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
     step3 = data.setdefault('step3', {})
@@ -847,6 +876,13 @@ async def compute_and_save_trapezoid_details(
         for k in _SERVER_COMPUTED_STEP3_KEYS:
             if k in existing_step3 and k not in step3_data:
                 step3_data[k] = existing_step3[k]
+        # Deep merge globalSettings and areaSettings to preserve unrelated keys
+        if 'globalSettings' in step3_data:
+            existing_global = existing_step3.get('globalSettings', {})
+            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
+        if 'areaSettings' in step3_data:
+            existing_area = existing_step3.get('areaSettings', {})
+            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
     step2 = data.get('step2', {})
@@ -880,12 +916,16 @@ async def compute_and_save_trapezoid_details(
     step3['customDiagonals'] = stored_custom_diags
 
     result = {}
+    area_settings = step3.get('areaSettings', {})
+    
     for trap_id, trap_cfg in trapezoids.items():
         # Find the area this trap belongs to
         area = None
-        for a in areas:
+        area_idx = None
+        for idx, a in enumerate(areas):
             if trap_id in a.get('trapezoidIds', []):
                 area = a
+                area_idx = idx
                 break
         if not area:
             continue
@@ -959,6 +999,18 @@ async def compute_and_save_trapezoid_details(
         rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
 
         custom_diags = stored_custom_diags.get(trap_id)
+        
+        # Merge area-specific settings with trapezoid-specific config
+        # Priority: trapezoid config > area settings > app defaults
+        merged_overrides = {}
+        if area_idx is not None:
+            area_specific = area_settings.get(str(area_idx), {})
+            # Copy area settings (excluding lineRails and diagOverrides which are handled separately)
+            for k, v in area_specific.items():
+                if k not in ('lineRails', 'diagOverrides'):
+                    merged_overrides[k] = v
+        # Trapezoid-specific config overrides area settings
+        merged_overrides.update(t_cfg)
 
         detail = tds.compute_trapezoid_details(
             bases_data=bases_data,
@@ -968,7 +1020,7 @@ async def compute_and_save_trapezoid_details(
             front_height_cm=front_height,
             rail_offset_cm=rail_offset_cm,
             settings=app_defaults,
-            overrides=t_cfg,
+            overrides=merged_overrides,
             custom_diagonals=custom_diags,
             global_settings=global_settings,
         )
@@ -1085,10 +1137,14 @@ async def save_tab(
     db: AsyncSession, project: Project, tab: str,
     rs, bs, tds=None,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+    overrides: dict | None = None,
 ) -> dict:
     """
     Save data from the active tab, recompute dependents, and return all step 3 data.
     Tab dependency: rails → bases → trapezoids.
+    
+    Args:
+        overrides: New-format user edit data: {'rails': {...}, 'bases': {...}, 'diagonals': {...}}
     """
     # Update navigation.tab
     nav = dict(project.navigation or {'step': 1})
@@ -1096,6 +1152,52 @@ async def save_tab(
     project.navigation = nav
     flag_modified(project, 'navigation')
     await db.commit()
+
+    # Convert new overrides format to legacy format for backward compatibility
+    if overrides:
+        step3_data = step3_data or {}
+        
+        # Rails overrides → areaSettings[].lineRails
+        if 'rails' in overrides and overrides['rails']:
+            area_settings = step3_data.setdefault('areaSettings', {})
+            for area_label, line_rails in overrides['rails'].items():
+                # Find area index by label
+                data = copy.deepcopy(project.data or {})
+                areas = data.get('step2', {}).get('areas', [])
+                for idx, area in enumerate(areas):
+                    if (area.get('label') or area.get('id')) == area_label:
+                        area_cfg = area_settings.setdefault(str(idx), {})
+                        area_cfg['lineRails'] = line_rails
+                        break
+        
+        # Bases overrides → trapezoidConfigs[].customOffsets
+        if 'bases' in overrides and overrides['bases']:
+            trapezoid_configs = trapezoid_configs or {}
+            for trap_id, offsets in overrides['bases'].items():
+                trap_cfg = trapezoid_configs.setdefault(trap_id, {})
+                trap_cfg['customOffsets'] = offsets
+        
+        # Diagonal overrides → trapezoidConfigs[].customDiagonals
+        # New format: { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
+        # Legacy storage: { trapId: { "0": {topPct, botPct}, "1": {...} } }
+        if 'diagonals' in overrides and overrides['diagonals']:
+            trapezoid_configs = trapezoid_configs or {}
+            for trap_id, diag_obj in overrides['diagonals'].items():
+                # Convert simplified format to full object format for legacy storage
+                expanded_obj = {}
+                for span_id, value in diag_obj.items():
+                    if isinstance(value, list) and len(value) == 2:
+                        # Array format: [topPct, botPct]
+                        expanded_obj[str(span_id)] = {
+                            'topPct': value[0],
+                            'botPct': value[1]
+                        }
+                    elif isinstance(value, dict):
+                        # Object format: {disabled: true} or {topPct, botPct}
+                        expanded_obj[str(span_id)] = value
+                
+                trap_cfg = trapezoid_configs.setdefault(trap_id, {})
+                trap_cfg['customDiagonals'] = expanded_obj
 
     # Any tab change recomputes the full chain: rails → bases → trapezoid details
     rails_result = await compute_and_save_rails(db, project, rs, step3_data)
@@ -1117,12 +1219,9 @@ async def save_tab(
                     area_res['bases'] = ca.get('bases', [])
                     break
 
-    return {
-        'tab': tab,
-        'rails': rails_result,
-        'bases': bases_result,
-        'trapezoidDetails': trapezoid_details,
-    }
+    # Return full step3 data wrapped in parent key for clarity
+    await db.refresh(project)
+    return {'step3': (project.data or {}).get('step3', {})}
 
 
 async def reset_tab(
