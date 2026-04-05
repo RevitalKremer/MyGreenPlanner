@@ -4,7 +4,7 @@ export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
 }
 
 // Build default lineRails for each panel line based on orientation and depths
-// lineOrientations: array of 'vertical'|'horizontal'|'empty'
+// lineOrientations: array of 'V'|'H'|'EV'|'EH'
 // panelDepthsCm: array of depths per line (same length)
 // railSpacingV / railSpacingH: default spacing from server app_settings
 // Returns: { [lineIdx]: [offsetCm, offsetCm] }
@@ -12,7 +12,7 @@ export function initDefaultLineRails(lineOrientations, panelDepthsCm, railSpacin
   const result = {}
   lineOrientations.forEach((orientation, i) => {
     const depth = panelDepthsCm[i]
-    const spacing = orientation === 'horizontal' ? railSpacingH : railSpacingV
+    const spacing = orientation === 'H' ? railSpacingH : railSpacingV
     const offset = railOffsetFromSpacing(depth, spacing)
     result[i] = [offset, depth - offset]
   })

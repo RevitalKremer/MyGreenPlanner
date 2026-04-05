@@ -181,7 +181,7 @@ export default function useRowData({
       const areaGroup   = areas[areaKey] || {}
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
-        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['vertical']
+        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
         map[trapId] = lineOrientations.map((o, i) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : lineGapCm,
