@@ -124,11 +124,12 @@ function App() {
     }))
     setBeRailsData(railsData)
     
-    // Convert to bases format (include basesDataMap for frameStartCm seeding)
+    // Convert to bases format (include diagonals)
     const basesData = computedAreas.map(ca => ({
       areaLabel: ca.label || '',
       bases: ca.bases || [],
-      basesDataMap: ca.basesDataMap || {},
+      diagonals: ca.diagonals || [],
+      basesDataMap: ca.basesDataMap || {},  // legacy: used for customBasesMap seeding (frameStartCm)
     }))
     setBeBasesData(basesData)
     
@@ -721,7 +722,12 @@ function App() {
                 try {
                   const stepResult = await updateStep(savedId, stepBeforeNext + 1)
                   if (stepResult.rails) setBeRailsData(stepResult.rails)
-                  if (stepResult.bases) setBeBasesData(stepResult.bases)
+                  if (stepResult.bases) {
+                    // Merge diagonals (separate top-level key) into bases data
+                    const diagByArea = {}
+                    for (const d of (stepResult.diagonals || [])) diagByArea[d.areaLabel] = d.diagonals || []
+                    setBeBasesData(stepResult.bases.map(b => ({ ...b, diagonals: diagByArea[b.areaLabel] || [] })))
+                  }
                   if (stepResult.trapezoidDetails) setBeTrapezoidsData(stepResult.trapezoidDetails)
                 } catch (e) { console.error(e) }
               }

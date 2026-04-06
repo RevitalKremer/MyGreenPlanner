@@ -386,54 +386,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 <HatchedPanels panels={panels} selectedTrapId={effectiveSelectedTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-                {/* Base beam lines — from BE data + area-wide frame, with live drag overrides */}
-                {showBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaLabel = areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaLabel]
-                  if (!af) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const profThick = (4 / pixelToCmRatio) * sc
-                  // Check for live drag overrides from customBasesMap
-                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
-                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const liveOffsets = customBasesMap[fullTrapId]  // mm from frame start, same order as bases
-                  return (areaData.bases ?? []).map((sb, sbi) => {
-                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-                    // Use live offset from drag if available, otherwise BE data
-                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
-                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
-                    const depthPx = sb.startCm / pixelToCmRatio
-                    const lenPx = sb.lengthCm / pixelToCmRatio
-                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
-                    const by = ty + lenPx
-                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
-                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
-                    const [btx, bty] = toSvg(st.x, st.y)
-                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
-                    const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
-                    const mx = (btx + bbx) / 2, my = (bty + bby) / 2
-                    const trapOpacity = (effectiveSelectedTrapId === null || sb.trapezoidId === effectiveSelectedTrapId) ? 1 : 0.2
-                    const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
-                    const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
-                    return (
-                      <g key={`base-${ai}-${sbi}`} opacity={trapOpacity}>
-                        {showBlocks && trapBlocks.map((blk, bki) => {
-                          const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
-                          const blkOffsetPx = ((blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
-                          const bcy = tIsBtt ? by - blkOffsetPx : ty + blkOffsetPx
-                          const sp = localToScreen({ x: lx, y: bcy }, tFrame.center, tAngle)
-                          const [bkx, bky] = toSvg(sp.x, sp.y)
-                          return <rect key={`blk-${ai}-${sbi}-${bki}`} x={bkx - slSvg / 2} y={bky - blockWSvg / 2} width={slSvg} height={blockWSvg} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom} transform={`rotate(${la} ${bkx} ${bky})`} />
-                        })}
-                        {showBases && <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />}
-                        {showBases && showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
-                      </g>
-                    )
-                  })
-                })}
+                {/* Z-order: 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 
-                {/* Rails — shared RailsOverlay component */}
+                {/* 1. Rails */}
                 <RailsOverlay
                   railLayouts={railLayouts}
                   rowKeys={trapIds}
@@ -449,167 +404,144 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   trapSettingsMap={trapSettingsMap}
                 />
 
-                {/* Per-trap: diagonals, edit bar */}
-                {basePlans.map((bp, i) => {
-                  if (!bp) return null
-                  const trapId     = trapIds[i]
-                  const trapS      = trapSettingsMap[trapId] ?? {}
-                  const trapLRails = trapLineRailsMap[trapId] ?? null
-                  const trapOpacity = (effectiveSelectedTrapId === null || trapId === effectiveSelectedTrapId) ? 1 : 0.2
-                  // Use area-wide frame for consistent positioning across traps
-                  const areaKey = trapId.replace(/\d+$/, '')
-                  const af = areaFrames[areaKey]
-                  const frame = af?.frame ?? bp.frame
-                  const lines = af?.lines ?? bp.lines
-                  const bases = consolidatedBasesMap[trapId] ?? bp.bases
-                  const { angleRad, localBounds } = frame
-
-                  const rc                = trapRCMap[trapId]
-                  const rearLineIdx       = lines && lines.length > 0 ? lines[0].lineIdx : 0
-                  const railOffsetCm      = trapLRails?.[rearLineIdx]?.[0] ?? 0
-                  const crossRailOffsetCm = trapS.crossRailOffsetCm   ?? 5
-                  const baseOverhangCm    = trapS.baseOverhangCm
-                  const railOffPx         = railOffsetCm    / pixelToCmRatio
-                  const connOffPx         = crossRailOffsetCm / pixelToCmRatio
-                  const baseOverhangPx    = baseOverhangCm  / pixelToCmRatio
-                  const panelRearY        = lines && lines.length > 0 ? lines[0].minY : localBounds.minY
-                  const rearLegY          = panelRearY + railOffPx
-                  // frontLegY: last rail of last line (mirrors how rail layer is positioned)
-                  let frontLegY = rearLegY
-                  if (trapLRails && lines && lines.length > 0) {
-                    for (const ln of lines) {
-                      const lnRails = trapLRails[ln.lineIdx]
-                      if (lnRails && lnRails.length > 0) {
-                        const lastRailY = ln.minY + lnRails[lnRails.length - 1] / pixelToCmRatio
-                        if (lastRailY > frontLegY) frontLegY = lastRailY
-                      }
-                    }
-                  }
-                  // Base extends baseOverhangPx past each rail on both ends
-                  const baseTopY    = rearLegY  - baseOverhangPx
-                  const baseBottomY = frontLegY + baseOverhangPx
-                  const PROFILE_THICK = 4 / pixelToCmRatio * sc
-
-                  const railLocalYs = [];
-                  (lines || []).forEach((ln, si) => {
-                    const lineCenterY = (ln.minY + ln.maxY) / 2
-                    const leftEdgeY  = si === 0              ? panelRearY                  : ln.minY
-                    const rightEdgeY = si === lines.length-1 ? lines[lines.length-1].maxY  : ln.maxY
-                    let lcY = leftEdgeY  < rearLegY  ? rearLegY  + connOffPx : ln.minY + connOffPx
-                    let rcY = rightEdgeY > frontLegY ? frontLegY - connOffPx : ln.maxY - connOffPx
-                    const leftDist = lineCenterY - lcY, rightDist = rcY - lineCenterY
-                    if (leftDist >= 0 && rightDist >= 0) {
-                      if (leftDist <= rightDist) rcY = lineCenterY + leftDist
-                      else lcY = lineCenterY - rightDist
-                    }
-                    railLocalYs.push(lcY, rcY)
-                  })
-
-                  return (
-                    <g key={`bp-${trapId}`} opacity={trapOpacity}>
-
-                      {showDiagonals && showBases && bases.length >= 2 && (() => {
-                        const n = bases.length
-                        const heightAtY_mm = (localY) => {
-                          if (!rc || frontLegY <= rearLegY) return 0
-                          const t = Math.max(0, Math.min(1, (localY - rearLegY) / (frontLegY - rearLegY)))
-                          return (rc.heightRear + t * (rc.heightFront - rc.heightRear)) * 10
-                        }
-                        const pairs = n === 2 ? [[0, 1]] : [[0, 1], [n - 1, n - 2]]
-                        return pairs.flatMap(([ai, bi], pi) => {
-                          const ba = bases[ai], bb = bases[bi]
-                          const horizMm = Math.abs(bb.localX - ba.localX) * pixelToCmRatio * 10
-                          // Two lines: top-of-A→top-of-B and bottom-of-A→bottom-of-B (diagonals in vertical plane)
-                          return [baseTopY, baseBottomY].map((edgeY, di) => {
-                            const pa = localToScreen({ x: ba.localX, y: edgeY }, frame.center, angleRad)
-                            const pb = localToScreen({ x: bb.localX, y: edgeY }, frame.center, angleRad)
-                            const [x1, y1] = toSvg(pa.x, pa.y), [x2, y2] = toSvg(pb.x, pb.y)
-                            const vertMm  = heightAtY_mm(edgeY)
-                            const distMm  = Math.round(Math.sqrt(horizMm ** 2 + vertMm ** 2))
-                            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-                            const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
-                            const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
-                            const fs = 11 / zoom, bgW = String(distMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 7 / zoom
-                            return (
-                              <g key={`diag-${pi}-${di}`}>
-                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={BLUE} strokeWidth={PROFILE_THICK} />
-                                <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/zoom} />
-                                <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={BLUE} strokeWidth={2/zoom} />
-                                <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-                                  <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill={WHITE} stroke={BORDER_MID} strokeWidth={0.5/zoom} rx={1/zoom} />
-                                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{distMm}</text>
-                                </g>
-                              </g>
-                            )
-                          })
-                        })
-                      })()}
-
-                    </g>
-                  )
-                })}
-
-                {/* Edit bars — rendered separately so they are always fully visible.
-                    Only shown for the selected area (all sub-areas of that area). */}
-                {/* Edit bar — one per area, all bases, positioned above/below area based on yDir */}
-                {showEditBar && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  const af = areaFrames[areaKey]
-                  if (!af?.frame?.center) return null
-                  const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
-                  if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
-                  const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
-                  // Collect all bases from beBasesData for this area
-                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
-                  if (!areaData?.bases?.length) return null
-                  // Full trap for settings and onBasesChange
+                {/* 2. Blocks */}
+                {showBlocks && (beBasesData ?? []).map((areaData, ai) => {
+                  const areaLabel = areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const trapS = trapSettingsMap[fullTrapId] ?? {}
-                  // Build synthetic bp
-                  const { center, angleRad, localBounds } = areaFrame
-                  const frameLengthPx = localBounds.maxX - localBounds.minX
-                  // Use live offsets from drag if available
                   const liveOffsets = customBasesMap[fullTrapId]
-                  const syntheticBases = areaData.bases.map((sb, sbi) => {
-                    const offMm = liveOffsets?.[sbi] ?? Math.round(sb.offsetFromStartCm * 10)
-                    const offCm = offMm / 10
-                    const lx = afIsRtl
-                      ? localBounds.maxX - offCm / pixelToCmRatio
-                      : localBounds.minX + offCm / pixelToCmRatio
-                    return { offsetFromStartMm: offMm, localX: lx }
+                  return (areaData.bases ?? []).map((sb, sbi) => {
+                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
+                    const depthPx = sb.startCm / pixelToCmRatio
+                    const lenPx = sb.lengthCm / pixelToCmRatio
+                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                    const by = ty + lenPx
+                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
+                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
+                    const [btx, bty] = toSvg(st.x, st.y)
+                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
+                    const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                    const trapOpacity = (effectiveSelectedTrapId === null || sb.trapezoidId === effectiveSelectedTrapId) ? 1 : 0.2
+                    const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
+                    const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
+                    return trapBlocks.map((blk, bki) => {
+                      const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
+                      const blkOffsetPx = ((blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
+                      const bcy = tIsBtt ? by - blkOffsetPx : ty + blkOffsetPx
+                      const sp = localToScreen({ x: lx, y: bcy }, tFrame.center, tAngle)
+                      const [bkx, bky] = toSvg(sp.x, sp.y)
+                      return <rect key={`blk-${ai}-${sbi}-${bki}`} opacity={trapOpacity} x={bkx - slSvg / 2} y={bky - blockWSvg / 2} width={slSvg} height={blockWSvg} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / zoom} transform={`rotate(${la} ${bkx} ${bky})`} />
+                    })
                   })
-                  const syntheticBp = {
-                    frame: { center, angleRad, localBounds, frameXMinPx: localBounds.minX, frameXMaxPx: localBounds.maxX },
-                    bases: syntheticBases,
-                    frameLengthMm: Math.round(frameLengthPx * pixelToCmRatio * 10),
-                    isRtl: afIsRtl,
-                  }
-                  // Position: above panels for TTB, below for BTT
-                  const barLocalY = afIsBtt ? localBounds.maxY + 20 / zoom : localBounds.minY - 20 / zoom
-                  return (
-                    <BasePlanOverlay
-                      key={`overlay-${areaKey}`}
-                      bp={syntheticBp}
-                      zoom={zoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
-                      svgRef={svgRef} toSvg={toSvg}
-                      spacingMm={trapS.spacingMm}
-                      edgeOffsetMm={trapS.edgeOffsetMm}
-                      isSelected={true}
-                      overrideBarLocalY={barLocalY}
-                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
-                    />
-                  )
                 })}
 
-                {/* Per-area annotation bars — one bar per area at the outermost Y of the full area.
-                    All consolidated bases shown; selected sub-area's bases highlighted. */}
+                {/* 3. Bases + 4. Base IDs */}
+                {showBases && (beBasesData ?? []).map((areaData, ai) => {
+                  const areaLabel = areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const profThick = (4 / pixelToCmRatio) * sc
+                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const liveOffsets = customBasesMap[fullTrapId]
+                  return (areaData.bases ?? []).map((sb, sbi) => {
+                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
+                    const depthPx = sb.startCm / pixelToCmRatio
+                    const lenPx = sb.lengthCm / pixelToCmRatio
+                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                    const by = ty + lenPx
+                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
+                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
+                    const [btx, bty] = toSvg(st.x, st.y)
+                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
+                    const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                    const mx = (btx + bbx) / 2, my = (bty + bby) / 2
+                    const trapOpacity = (effectiveSelectedTrapId === null || sb.trapezoidId === effectiveSelectedTrapId) ? 1 : 0.2
+                    return (
+                      <g key={`base-${ai}-${sbi}`} opacity={trapOpacity}>
+                        <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
+                        {showBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill="white" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
+                      </g>
+                    )
+                  })
+                })}
+
+                {/* 5. External diagonals */}
+                {showDiagonals && showBases && (beBasesData ?? []).map((areaData, ai) => {
+                  const areaLabel = areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const PROFILE_THICK = (4 / pixelToCmRatio) * sc
+                  const diags = areaData.diagonals ?? []
+                  const allBases = areaData.bases ?? []
+                  const areaTids = areaTrapsMap[areaLabel] ?? []
+                  const fullTrapId = areaTids.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTids[0]
+                  const liveOffsets = customBasesMap[fullTrapId]
+
+                  // Derive each connection point from its base position + diagonal offset
+                  return diags.map((d, di) => {
+                    const baseA = allBases[d.startBaseIdx]
+                    const baseB = allBases[d.endBaseIdx]
+                    if (!baseA || !baseB) return null
+
+                    // X: base offsetFromStartCm (with live drag override)
+                    const xA = (liveOffsets?.[d.startBaseIdx] != null ? liveOffsets[d.startBaseIdx] / 10 : baseA.offsetFromStartCm)
+                    const xB = (liveOffsets?.[d.endBaseIdx] != null ? liveOffsets[d.endBaseIdx] / 10 : baseB.offsetFromStartCm)
+                    const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
+                    const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
+
+                    // Y: base startCm + diagonal offset along the base beam
+                    const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
+                    const lineB = tLines?.find(l => l.lineIdx === baseB.panelLineIdx) ?? tLines?.[0]
+                    const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
+                    const depthB = (baseB.startCm + (d.endBaseOffsetCm ?? 0)) / pixelToCmRatio
+                    const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
+                    const lyB = tIsBtt ? (lineB?.maxY ?? tLB.maxY) - depthB : (lineB?.minY ?? tLB.minY) + depthB
+
+                    const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
+                    const pb = localToScreen({ x: lxB, y: lyB }, tFrame.center, tAngle)
+                    const [x1, y1] = toSvg(pa.x, pa.y)
+                    const [x2, y2] = toSvg(pb.x, pb.y)
+                    if (isNaN(x1) || isNaN(y1)) return null
+
+                    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+                    const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+                    const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
+                    const fs = 11 / zoom, bgW = String(d.diagLengthMm).length * fs * 0.6 + 6 / zoom, bgH = fs + 4 / zoom, dotR = 7 / zoom
+
+                    return (
+                      <g key={`diag-${ai}-${di}`}>
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={BLUE} strokeWidth={PROFILE_THICK} />
+                          <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/zoom} />
+                          <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={BLUE} strokeWidth={2/zoom} />
+                          <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
+                            <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill={WHITE} stroke={BORDER_MID} strokeWidth={0.5/zoom} rx={1/zoom} />
+                            <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{d.diagLengthMm}</text>
+                          </g>
+                      </g>
+                    )
+                  })
+                })}
+
+                {/* 6. Dimensions */}
                 {showDimensions && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  // Use area-wide frame
                   const af = areaFrames[areaKey]
                   if (!af) return null
                   const { frame: refFrame, isRtl: afIsRtl } = af
                   const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
 
-                  // Collect bases from beBasesData for this area
                   const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
                   const allBases = (areaData?.bases ?? []).map(sb => ({
                     ...sb, trapId: sb.trapezoidId,
@@ -619,13 +551,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                   const projected = allBases.sort((a, b) => a.localX - b.localX)
 
-                  // Dimensions on opposite side from edit bar: BTT → top (minY), TTB → bottom (maxY)
                   const isBtt = af.isBtt
                   const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
                   const outSign = isBtt ? -1 : 1
                   const apX = outSign * perpX, apY = outSign * perpY
 
-                  // Outermost Y from the area-wide frame
                   const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
 
                   const ANN_OFF = 16 / zoom, EXT_GAP = 2 / zoom
@@ -650,6 +580,50 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     <g key={`area-ann-${areaKey}`} opacity={areaOpacity} style={hlStyle}>
                       <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={zoom} />
                     </g>
+                  )
+                })}
+
+                {/* 7. Edit bar */}
+                {showEditBar && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
+                  const af = areaFrames[areaKey]
+                  if (!af?.frame?.center) return null
+                  const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
+                  if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
+                  const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
+                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
+                  if (!areaData?.bases?.length) return null
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const trapS = trapSettingsMap[fullTrapId] ?? {}
+                  const { center, angleRad, localBounds } = areaFrame
+                  const frameLengthPx = localBounds.maxX - localBounds.minX
+                  const liveOffsets = customBasesMap[fullTrapId]
+                  const syntheticBases = areaData.bases.map((sb, sbi) => {
+                    const offMm = liveOffsets?.[sbi] ?? Math.round(sb.offsetFromStartCm * 10)
+                    const offCm = offMm / 10
+                    const lx = afIsRtl
+                      ? localBounds.maxX - offCm / pixelToCmRatio
+                      : localBounds.minX + offCm / pixelToCmRatio
+                    return { offsetFromStartMm: offMm, localX: lx }
+                  })
+                  const syntheticBp = {
+                    frame: { center, angleRad, localBounds, frameXMinPx: localBounds.minX, frameXMaxPx: localBounds.maxX },
+                    bases: syntheticBases,
+                    frameLengthMm: Math.round(frameLengthPx * pixelToCmRatio * 10),
+                    isRtl: afIsRtl,
+                  }
+                  const barLocalY = afIsBtt ? localBounds.maxY + 20 / zoom : localBounds.minY - 20 / zoom
+                  return (
+                    <BasePlanOverlay
+                      key={`overlay-${areaKey}`}
+                      bp={syntheticBp}
+                      zoom={zoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
+                      svgRef={svgRef} toSvg={toSvg}
+                      spacingMm={trapS.spacingMm}
+                      edgeOffsetMm={trapS.edgeOffsetMm}
+                      isSelected={true}
+                      overrideBarLocalY={barLocalY}
+                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
+                    />
                   )
                 })}
               </svg>

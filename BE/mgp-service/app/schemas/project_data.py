@@ -112,13 +112,17 @@ class Base(BaseModel):
     lengthCm: float
 
 
-class Diagonal(BaseModel):
-    """Cross-brace connecting two adjacent base beams within an area."""
-    fromBaseId: str
-    toBaseId: str
-    horizMm: int
-    vertMm: int
-    diagLengthMm: int
+class ExternalDiagonal(BaseModel):
+    """Cross-brace connecting two adjacent base beams at a frame edge."""
+    startBaseIdx: int               # area-wide index of start base (high end)
+    endBaseIdx: int                 # area-wide index of end base (low end)
+    startBaseOffsetCm: float        # offset along start base beam to connection point
+    startBaseHeightCm: float        # installation height at start connection (leg height)
+    endBaseOffsetCm: float          # offset along end base beam to connection point
+    endBaseHeightCm: float          # installation height at end connection (0 = ground)
+    horizMm: int                    # horizontal span between bases (mm)
+    vertMm: int                     # vertical height difference (mm)
+    diagLengthMm: int               # diagonal length = sqrt(horiz² + vert²) (mm)
 
 
 class ComputedArea(BaseModel):
@@ -126,7 +130,7 @@ class ComputedArea(BaseModel):
     label: str                      # matches step2.areas[].label
     rails: list[Rail] = Field(default_factory=list)
     bases: list[Base] = Field(default_factory=list)
-    diagonals: list[Diagonal] = Field(default_factory=list)
+    diagonals: list[ExternalDiagonal] = Field(default_factory=list)
     numLargeGaps: int = 0
 
 

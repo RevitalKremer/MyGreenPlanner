@@ -560,13 +560,53 @@ async def compute_and_save_bases(
         result.append({
             'areaLabel': label,
             'bases': all_bases,
-            'basesDataMap': {k: v for k, v in bases_data_map.items() if v},
+            'basesDataMap': bases_data_map,
+            'trapIds': trap_ids,
+            'consolidated': consolidated,
         })
 
     project.data = data
     flag_modified(project, 'data')
     await db.commit()
     return result
+
+
+async def compute_and_save_external_diagonals(
+    db: AsyncSession, project: Project, bs, bases_result: list,
+) -> list:
+    """
+    Compute external diagonals for all areas (step 4 in the chain).
+
+    Runs AFTER trapezoid details so heightRear/heightFront are available.
+    Reads bases_data_map from bases_result and computed trapezoids from DB.
+    Persists diagonals to step3.computedAreas[].diagonals.
+
+    Returns separate diagonals list: [{ areaLabel, diagonals }, ...]
+    """
+    await db.refresh(project)
+    data = copy.deepcopy(project.data or {})
+    step3 = data.get('step3', {})
+    computed_trapezoids = step3.get('computedTrapezoids', [])
+
+    diagonals_result = []
+    for area_res in bases_result:
+        label = area_res.get('areaLabel', '')
+        bases_data_map = area_res.get('basesDataMap', {})
+        trap_ids = area_res.get('trapIds', [])
+        consolidated = area_res.get('consolidated', {})
+        if not bases_data_map:
+            diagonals_result.append({'areaLabel': label, 'diagonals': []})
+            continue
+
+        area_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
+        _upsert_computed_area(step3, label, {'diagonals': area_diagonals})
+        diagonals_result.append({'areaLabel': label, 'diagonals': area_diagonals})
+
+    data['step3'] = step3
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+    return diagonals_result
 
 
 async def update_project_step(
@@ -612,22 +652,16 @@ async def update_project_step(
     flag_modified(project, 'data')
     await db.commit()
 
-    # ── Compute rails + bases + trapezoid details on entering step 3 ──
+    # ── Compute rails → bases → trapezoid details → external diagonals ──
     trapezoid_details = None
+    diagonals_result = None
     if new_step >= 3 and 'step3' in cleared and rs and bs:
         rails_result = await compute_and_save_rails(db, project, rs)
         bases_result = await compute_and_save_bases(db, project, bs)
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
-
-    # ── Auto-compute BOM on entering step 4 ──
-    bom_result = None
-    if new_step >= 4:
-        await db.refresh(project)
-        existing_bom = await bom_service.get_bom(db, project.id)
-        if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
-            bom_obj = await bom_service.compute_and_save_bom(db, project)
-            bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
+        # External diagonals — after trapezoid details so heights are available
+        diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 
     # Re-read bases from DB after trapezoid computation (trapezoidId reassignment updates bases)
     if trapezoid_details and bases_result:
@@ -640,11 +674,26 @@ async def update_project_step(
                     area_res['bases'] = ca.get('bases', [])
                     break
 
+    # ── Auto-compute BOM on entering step 4 ──
+    bom_result = None
+    if new_step >= 4:
+        await db.refresh(project)
+        existing_bom = await bom_service.get_bom(db, project.id)
+        if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
+            bom_obj = await bom_service.compute_and_save_bom(db, project)
+            bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
+
     result = {'currentStep': new_step, 'clearedSteps': cleared}
     if rails_result:
         result['rails'] = rails_result
     if bases_result:
-        result['bases'] = bases_result
+        # Strip internal basesDataMap before returning to API
+        result['bases'] = [
+            {'areaLabel': ar['areaLabel'], 'bases': ar['bases']}
+            for ar in bases_result
+        ]
+    if diagonals_result:
+        result['diagonals'] = diagonals_result
     if trapezoid_details:
         result['trapezoidDetails'] = trapezoid_details
     if bom_result:
@@ -1217,7 +1266,7 @@ async def save_tab(
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
-    # Any tab change recomputes the full chain: rails → bases → trapezoid details
+    # Any tab change recomputes the full chain: rails → bases → trapezoid details → external diagonals
     rails_result = await compute_and_save_rails(db, project, rs, step3_data)
     bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
     trapezoid_details = {}
@@ -1225,6 +1274,8 @@ async def save_tab(
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
+    # External diagonals — after trapezoid details so heights are available
+    diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 
     # Re-read bases from DB after trapezoid computation (trapezoidId reassignment updates bases)
     if trapezoid_details and bases_result:

@@ -307,7 +307,7 @@ async def get_bases(
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', [])}
+        {'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', []), 'diagonals': ca.get('diagonals', [])}
         for ca in computed_areas
     ]
 
