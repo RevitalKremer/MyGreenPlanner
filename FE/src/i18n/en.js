@@ -258,6 +258,11 @@ const en = {
   'step3.param.reverseBlockPunches': 'Reverse Block Punches',
   'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
   'step3.param.crossRailOffsetCm':   'Cross Rail Offset (cm)',
+  'step3.param.diagSkipBelowCm':     'Skip Diagonal Below (cm)',
+  'step3.param.diagDoubleAboveCm':   'Double Diagonal Above (cm)',
+  'step3.param.punchOverlapMarginCm':'Punch Overlap Margin (cm)',
+  'step3.param.punchInnerOffsetCm':  'Punch Inner Offset (cm)',
+  'step3.param.railRoundPrecisionCm':'Rail Rounding Precision (cm)',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',

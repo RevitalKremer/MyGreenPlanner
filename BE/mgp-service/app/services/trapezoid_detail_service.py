@@ -15,11 +15,7 @@ import math
 logger = logging.getLogger(__name__)
 
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-SKIP_BELOW_CM = 60       # skip diagonal if both adjacent legs < this
-DOUBLE_ABOVE_CM = 200    # mark diagonal ×2 if either leg ≥ this
-
+# ── Helper ────────────────────────────────────────────────────────────────────
 
 def _s(settings: dict, overrides: dict, key: str) -> float | int | list:
     """Read a setting: per-trapezoid override > app default. KeyError if missing from both."""
@@ -66,8 +62,14 @@ def compute_trapezoid_details(
     diag_base_pct        = _s(settings, ov, 'diagBasePct')
     base_overhang_cm     = _s(settings, ov, 'baseOverhangCm')
     cross_rail_edge_dist_mm = gs.get('crossRailEdgeDistMm', settings['crossRailEdgeDistMm'])
-    beam_thick_cm        = settings.get('angleProfileSizeMm', 40) / 10
-    panel_thick_cm       = settings.get('panelThickCm', 3.5)
+    beam_thick_cm        = settings['angleProfileSizeMm'] / 10
+    panel_thick_cm       = settings['panelThickCm']
+    
+    # Structural safety parameters (from app_settings)
+    skip_below_cm        = settings['diagSkipBelowCm']
+    double_above_cm      = settings['diagDoubleAboveCm']
+    punch_overlap_margin = settings['punchOverlapMarginCm']
+    punch_inner_offset   = settings['punchInnerOffsetCm']
 
     angle_rad = angle_deg * math.pi / 180
     cross_rail_cm = cross_rail_edge_dist_mm / 10
@@ -120,6 +122,9 @@ def compute_trapezoid_details(
         'blockLengthCm': _r(block_length_cm),
         'blockPunchCm': _r(block_punch_cm),
         'crossRailHeightCm': _r(cross_rail_cm),
+        # Structural safety parameters (from settings)
+        'punchOverlapMarginCm': _r(punch_overlap_margin),
+        'punchInnerOffsetCm': _r(punch_inner_offset),
     }
 
     # ── Rail items (from lineRails + panelLines) ───────────────────────────
@@ -196,7 +201,7 @@ def compute_trapezoid_details(
         {'positionCm': _r(front_outer_pos), 'positionEndCm': _r(front_outer_pos + beam_thick_cm), 'heightCm': _r(height_front)},
     ], key=lambda l: l['positionCm'])
     for leg in legs:
-        leg['isDouble'] = leg['heightCm'] >= DOUBLE_ABOVE_CM
+        leg['isDouble'] = leg['heightCm'] >= double_above_cm
 
     # ── Active zone ────────────────────────────────────────────────────────
     active_segs = [i for i, s in enumerate(panel_lines) if not s.get('isEmpty', False)]
@@ -213,10 +218,10 @@ def compute_trapezoid_details(
     for i in range(num_spans):
         h_a = legs[i]['heightCm']
         h_b = legs[i + 1]['heightCm']
-        is_double = h_a >= DOUBLE_ABOVE_CM or h_b >= DOUBLE_ABOVE_CM
+        is_double = h_a >= double_above_cm or h_b >= double_above_cm
 
         ov_d = custom.get(str(i), {})
-        skip = h_a < SKIP_BELOW_CM and h_b < SKIP_BELOW_CM
+        skip = h_a < skip_below_cm and h_b < skip_below_cm
         if ov_d.get('disabled') is True:
             skip = True
         elif ov_d.get('disabled') is False:
@@ -324,7 +329,10 @@ def compute_trapezoid_details(
 
     # block: one punch per block, position depends on nearby punches on base beam
     other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
-    punches += _compute_block_punches(blocks, other_base_positions, block_length_cm, base_beam_length, block_punch_cm, beam_thick_cm, cos_a)
+    punches += _compute_block_punches(
+        blocks, other_base_positions, block_length_cm, base_beam_length, 
+        block_punch_cm, beam_thick_cm, cos_a, punch_overlap_margin, punch_inner_offset
+    )
 
     # Add reversedPositionCm (distance from beam end) to qualifying punches
     for p in punches:
@@ -414,8 +422,11 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         other_base_positions = [p['positionCm'] for p in non_block_punches if p['beamType'] == 'base']
         block_punch = geom.get('blockPunchCm', 9)
         profile_step = geom.get('beamThickCm', 4)
+        overlap_margin = geom['punchOverlapMarginCm']
+        inner_offset = geom['punchInnerOffsetCm']
         new_block_punches = _compute_block_punches(
-            blocks, other_base_positions, block_length, base_beam_len, block_punch, profile_step, cos_a,
+            blocks, other_base_positions, block_length, base_beam_len, 
+            block_punch, profile_step, cos_a, overlap_margin, inner_offset,
         )
         # Add reversedPositionCm (distance from beam end) to block punches
         for p in new_block_punches:
@@ -428,22 +439,24 @@ def _compute_block_punches(
     other_base_positions: list[float],
     block_length_cm: float,
     base_beam_length: float,
-    block_punch_cm: float = 9,
-    profile_step_cm: float = 4,
-    cos_a: float = 1.0,
+    block_punch_cm: float,
+    profile_step_cm: float,
+    cos_a: float,
+    overlap_margin_cm: float,
+    inner_offset_cm: float,
 ) -> list[dict]:
     """
     Compute one punch per block on the base beam.
 
     Outer blocks (isEnd): blockPunchCm from the outer edge toward center.
-    Inner blocks: INNER_OFFSET past the rightmost base-beam punch within
+    Inner blocks: inner_offset_cm past the rightmost base-beam punch within
     the block's base-beam range. All inner-block math uses base-beam coords.
+    
+    overlap_margin_cm: Minimum distance from any existing punch (from settings)
+    inner_offset_cm: Offset for inner block punches (from settings)
     """
-    OVERLAP_MARGIN = 2   # cm — minimum distance from any existing punch
-    INNER_OFFSET   = 8   # cm
-
     def has_overlap(candidate, existing):
-        return any(abs(candidate - p) < OVERLAP_MARGIN for p in existing)
+        return any(abs(candidate - p) < overlap_margin_cm for p in existing)
 
     result = []
     for bi, block in enumerate(blocks):
@@ -467,7 +480,7 @@ def _compute_block_punches(
             base_hi = _r(block_end * cos_a)
             in_range = [p for p in other_base_positions if base_lo - 0.1 <= p <= base_hi + 0.1]
             if in_range:
-                punch_pos = max(in_range) + INNER_OFFSET
+                punch_pos = max(in_range) + inner_offset_cm
                 if punch_pos > base_hi + 0.1:
                     punch_pos = (base_lo + base_hi) / 2
             else:

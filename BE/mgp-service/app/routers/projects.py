@@ -18,6 +18,7 @@ from app.services import rail_service
 from app.services import base_service
 from app.services import trapezoid_detail_service
 from app.services import bom_service
+from app.services import settings_cache
 from app.routers.deps import get_current_user, require_admin
 
 class TabSettings(BaseModel):
@@ -367,11 +368,9 @@ async def get_rail_materials(
 
     data     = project.data or {}
     step3    = data.get('step3', {})
-    # Load stockLengths default from app_settings
-    row = (await db.execute(
-        select(AppSetting.value_json).where(AppSetting.key == 'stockLengths')
-    )).scalar_one()
-    stock_lengths = (step3.get('globalSettings') or {}).get('stockLengths', row)
+    # Get stockLengths from settings cache (no DB query)
+    stock_lengths_default = settings_cache.get_setting('stockLengths')
+    stock_lengths = (step3.get('globalSettings') or {}).get('stockLengths', stock_lengths_default)
     areas_rails = [ca.get('rails', []) for ca in step3.get('computedAreas', [])]
     return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 

@@ -18,6 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.bom import ProjectBOM
 from app.models.product import Product
+from app.services.settings_cache import get_setting
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +169,10 @@ def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict
         angle_rad = rc['angle'] * math.pi / 180
 
         # Average inner leg length: beam_thick + leg height at midpoint
-        BEAM_THICK_CM = 4
+        # Use angleProfileSizeMm from app_settings (converted to cm)
+        beam_thick_cm = rc['angleProfileSizeMm'] / 10
         avg_inner_leg_cm = (
-            BEAM_THICK_CM * (1 + math.cos(angle_rad) / 2)
+            beam_thick_cm * (1 + math.cos(angle_rad) / 2)
             + (rc['heightRear'] + rc['heightFront']) / 2
         )
 
@@ -321,6 +323,9 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     computed_areas = step3.get('computedAreas', [])
     computed_trapezoids = step3.get('computedTrapezoids', [])
 
+    # Get angleProfileSizeMm from settings cache (no DB call)
+    angle_profile_size_mm = get_setting('angleProfileSizeMm')
+
     # Build label → computedArea lookup
     ca_by_label = {ca.get('label'): ca for ca in computed_areas}
 
@@ -333,6 +338,8 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
         rc = _derive_row_construction(area, ca, computed_trapezoids)
         if rc is None:
             continue
+        # Add angleProfileSizeMm from app_settings to each row construction
+        rc['angleProfileSizeMm'] = angle_profile_size_mm
         row_constructions.append(rc)
         row_labels.append(label)
 

@@ -16,6 +16,7 @@ from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
 from app.services.trapezoid_detail_service import _compute_block_punches
+from app.services import settings_cache
 
 
 _EMPTY_ORIENTS = ('EV', 'EH')
@@ -251,7 +252,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
         'panel_gap_cm':      app_defaults['panelGapCm'],
         'rail_spacing_v_cm': area_settings.get('railSpacingV',    app_defaults['railSpacingV']),
         'rail_spacing_h_cm': area_settings.get('railSpacingH',    app_defaults['railSpacingH']),
-        'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults.get('railRoundThresholdCm', 0)),
+        'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults['railRoundThresholdCm']),
     }
 
 
@@ -278,12 +279,8 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     areas = data.get('step2', {}).get('areas', [])
     result = []
 
-    rows = (await db.execute(
-        select(AppSetting.key, AppSetting.value_json).where(
-            AppSetting.key.in_(['panelGapCm', 'lineGapCm', 'railOverhangCm', 'stockLengths', 'railSpacingV', 'railSpacingH', 'railRoundThresholdCm'])
-        )
-    )).all()
-    app_defaults = {r.key: r.value_json for r in rows}
+    # Get settings from cache (no DB query)
+    app_defaults = settings_cache.get_all_settings()
 
     step2 = data.get('step2', {})
     for i, area in enumerate(areas):
@@ -294,10 +291,10 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
         _round_slope_beam_rails(
             computed['rails'],
             area.get('panelGrid') or {},
-            step2.get('panelWidthCm', 113.4),
-            step2.get('panelLengthCm', 238.2),
-            app_defaults.get('lineGapCm', 2),
-            app_defaults.get('baseOverhangCm', 5),
+            step2['panelWidthCm'],
+            step2['panelLengthCm'],
+            app_defaults['lineGapCm'],
+            app_defaults['baseOverhangCm'],
         )
         _upsert_computed_area(step3, area_id, label, {
             'rails': computed['rails'],
@@ -446,15 +443,8 @@ async def compute_and_save_bases(
     trapezoids = _trapezoids_by_id(step2)
     result = []
 
-    rows = (await db.execute(
-        select(AppSetting.key, AppSetting.value_json).where(
-            AppSetting.key.in_([
-                'panelGapCm', 'lineGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
-                'crossRailEdgeDistMm',
-            ])
-        )
-    )).all()
-    app_defaults = {r.key: r.value_json for r in rows}
+    # Get settings from cache (no DB query)
+    app_defaults = settings_cache.get_all_settings()
 
     # Persist custom offsets
     stored_custom = step3.get('customBasesOffsets') or {}
@@ -484,8 +474,8 @@ async def compute_and_save_bases(
             trap_start, trap_end = _compute_trap_x_range(
                 area.get('panelGrid') or {}, trap_id, trap_ids,
                 trapezoids,
-                step2.get('panelWidthCm', 113.4), step2.get('panelLengthCm', 238.2),
-                app_defaults.get('panelGapCm', 2.5),
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
             )
 
             trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
@@ -790,7 +780,7 @@ def _trim_trapezoid(
         geom['railToRailCm'] = _r(max(inner_rails) - min(inner_rails))
 
     # ── Blocks: regenerate in base-beam coords (same rules as service) ──
-    block_length_cm = geom.get('blockLengthCm', 40)
+    block_length_cm = geom['blockLengthCm']
     slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
     raw_blocks = []
     # Rear outer — left edge at base beam start
@@ -818,7 +808,7 @@ def _trim_trapezoid(
 
     # ── Punches: filter from full trap, rebase, regenerate outer+block ──
     base_shift = rear_pos * cos_a
-    profile_half = geom.get('beamThickCm', 4) / 2
+    profile_half = geom['beamThickCm'] / 2
     # Positions of new outer legs — their innerLeg punches are replaced by outerLeg
     outer_slope_pos = {0.0, _r(slope_len)}
     outer_base_pos = {0.0, _r(base_len)}
@@ -849,9 +839,11 @@ def _trim_trapezoid(
                         'reversedPositionCm': _r(profile_half)})
     # Recompute block punches from the new blocks
     other_base_positions = [p['positionCm'] for p in new_punches if p['beamType'] == 'base']
-    block_punch_cm = geom.get('blockPunchCm', 9)
+    block_punch_cm = geom['blockPunchCm']
     block_punches = _compute_block_punches(
-        new_blocks, other_base_positions, block_length_cm, base_len, block_punch_cm, geom.get('beamThickCm', 4), cos_a,
+        new_blocks, other_base_positions, block_length_cm, base_len, 
+        block_punch_cm, geom['beamThickCm'], cos_a,
+        geom['punchOverlapMarginCm'], geom['punchInnerOffsetCm'],
     )
     for bp in block_punches:
         bp['reversedPositionCm'] = _r(base_len - bp['positionCm'])
@@ -900,17 +892,8 @@ async def compute_and_save_trapezoid_details(
     areas = step2.get('areas', [])
     global_settings = step3.get('globalSettings', {})
 
-    rows = (await db.execute(
-        select(AppSetting.key, AppSetting.value_json).where(
-            AppSetting.key.in_([
-                'panelGapCm', 'lineGapCm', 'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
-                'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
-                'crossRailEdgeDistMm', 'angleProfileSizeMm', 'panelThickCm',
-                'diagTopPct', 'diagBasePct',
-            ])
-        )
-    )).all()
-    app_defaults = {r.key: r.value_json for r in rows}
+    # Get settings from cache (no DB query)
+    app_defaults = settings_cache.get_all_settings()
 
     # Stored custom diagonals
     stored_custom_diags = step3.get('customDiagonals', {})
@@ -961,8 +944,8 @@ async def compute_and_save_trapezoid_details(
             if _is_empty(orient):
                 continue  # skip empty lines — ghost handled by FE overlay
             is_h = orient == 'H'
-            depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
-            gap = app_defaults.get('lineGapCm', 2) if active_idx > 0 else 0
+            depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
+            gap = app_defaults['lineGapCm'] if active_idx > 0 else 0
             # Remap: original line index li → new active index active_idx
             if str(li) in line_rails:
                 remapped_line_rails[str(active_idx)] = line_rails[str(li)]
@@ -1087,8 +1070,8 @@ async def compute_and_save_trapezoid_details(
         d_cm = 0.0
         for li, orient in enumerate(local_orients):
             is_h = orient == 'H'
-            depth = step2.get('panelWidthCm', 113.4) if is_h else step2.get('panelLengthCm', 238.2)
-            gap = app_defaults.get('lineGapCm', 2) if li > 0 else 0
+            depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
+            gap = app_defaults['lineGapCm'] if li > 0 else 0
             d_cm += gap
             if not _is_empty(orient):
                 for off in trap_all_line_rails.get(str(li), []):
@@ -1105,7 +1088,7 @@ async def compute_and_save_trapezoid_details(
         _trim_trapezoid(
             detail, full_trap_detail, active_rail_positions, full_origin,
             local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
-            app_defaults.get('lineGapCm', 2),
+            app_defaults['lineGapCm'],
         )
 
         _upsert_computed_trapezoid(step3, tid, detail)

@@ -16,14 +16,16 @@ from app.models.setting import AppSetting
 from app.models.user import User, UserRole
 from app.routers import auth, projects, admin, products
 from app.services.auth import get_user_by_email, hash_password
+from app.services import settings_cache
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not settings.SYSADMIN_PASSWORD:
-        print("⚠️  SYSADMIN_PASSWORD not set — skipping sysadmin bootstrap")
-    else:
-        async with AsyncSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
+        # Bootstrap sysadmin user
+        if not settings.SYSADMIN_PASSWORD:
+            print("⚠️  SYSADMIN_PASSWORD not set — skipping sysadmin bootstrap")
+        else:
             sysadmin = await get_user_by_email(db, settings.SYSADMIN_EMAIL)
             if sysadmin:
                 if not sysadmin.is_sysadmin:
@@ -43,6 +45,11 @@ async def lifespan(app: FastAPI):
                     is_active=True,
                 ))
                 await db.commit()
+        
+        # Load app_settings cache into memory
+        await settings_cache.load_settings_cache(db)
+        logger.info("✓ Settings cache loaded at startup")
+    
     yield
 
 
