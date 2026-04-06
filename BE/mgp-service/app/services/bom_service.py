@@ -355,6 +355,9 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     # Get angleProfileSizeMm from settings cache (no DB call)
     angle_profile_size_mm = get_setting('angleProfileSizeMm')
 
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+    roof_type = roof_spec.get('type', 'concrete')
+
     # Build label → computedArea lookup
     ca_by_label = {ca.get('label'): ca for ca in computed_areas}
 
@@ -369,6 +372,7 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
             continue
         # Add angleProfileSizeMm from app_settings to each row construction
         rc['angleProfileSizeMm'] = angle_profile_size_mm
+        rc['roofType'] = roof_type
         row_constructions.append(rc)
         row_labels.append(label)
 

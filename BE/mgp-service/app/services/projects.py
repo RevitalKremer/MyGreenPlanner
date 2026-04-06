@@ -387,6 +387,7 @@ def _build_base_inputs(
     data: dict, area: dict, area_idx: int, app_defaults: dict,
     trapezoid_id: str, trapezoid_configs: dict | None = None,
     trap_start_cm: float | None = None, trap_end_cm: float | None = None,
+    roof_spec: dict | None = None,
 ) -> dict:
     """Extract base computation inputs for one trapezoid within an area."""
     step2 = data.get('step2', {})
@@ -414,6 +415,7 @@ def _build_base_inputs(
         'trap_start_cm':       trap_start_cm,
         'trap_end_cm':         trap_end_cm,
         'custom_offsets':      custom_offsets,
+        'roof_spec':           roof_spec,
     }
 
 async def compute_and_save_bases(
@@ -445,6 +447,8 @@ async def compute_and_save_bases(
 
     # Get settings from cache (no DB query)
     app_defaults = settings_cache.get_all_settings()
+
+    roof_spec = project.roof_spec or {'type': 'concrete'}
 
     # Persist custom offsets
     stored_custom = step3.get('customBasesOffsets') or {}
@@ -495,7 +499,7 @@ async def compute_and_save_bases(
                 else:
                     stored_custom.pop(trap_id, None)
 
-            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end)
+            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end, roof_spec)
             bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
         consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
@@ -895,6 +899,8 @@ async def compute_and_save_trapezoid_details(
     # Get settings from cache (no DB query)
     app_defaults = settings_cache.get_all_settings()
 
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+
     # Stored custom diagonals
     stored_custom_diags = step3.get('customDiagonals', {})
     if trapezoid_configs:
@@ -1015,6 +1021,7 @@ async def compute_and_save_trapezoid_details(
             overrides=merged_overrides,
             custom_diagonals=custom_diags,
             global_settings=global_settings,
+            roof_spec=roof_spec,
         )
 
         if detail:

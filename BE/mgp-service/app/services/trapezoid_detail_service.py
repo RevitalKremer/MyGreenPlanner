@@ -281,6 +281,7 @@ def compute_trapezoid_details(
     overrides: dict | None = None,
     custom_diagonals: dict | None = None,
     global_settings: dict | None = None,
+    roof_spec: dict | None = None,
 ) -> dict | None:
     """
     Compute structural details for one trapezoid.
