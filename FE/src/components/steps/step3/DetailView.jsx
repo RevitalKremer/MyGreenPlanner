@@ -8,11 +8,11 @@ import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false }) {
   const { t } = useLang()
-  const [_showAnnotations, setShowAnnotations]  = useState(true)
+  const [_showDimensions, setShowDimensions]  = useState(true)
   const [_showPunches,     setShowPunches]      = useState(true)
-  const [_showDiagHandles, setShowDiagHandles]  = useState(true)
+  const [_showDiagHandles, setShowDiagHandles]  = useState(false)
   const [showGhost,        setShowGhost]        = useState(true)
-  const showAnnotations = _showAnnotations
+  const showDimensions = _showDimensions
   const showPunches     = _showPunches
   const showDiagHandles = _showDiagHandles
   const [rulerActive,      setRulerActive]      = useState(false)
@@ -198,7 +198,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       transform={`translate(${mx},${my}) rotate(${ang})`} />
   }
 
-  // Diagonals with both legs in the active zone (used for punch sketches + annotations)
+  // Diagonals with both legs in the active zone (used for punch sketches + dimensions)
   const activeDiags          = diagonals
   const activeSlopeBeamLenCm = topBeamLength
   const activeBaseBeamLenCm  = geom.baseBeamLength ?? (legBW / SC)
@@ -293,7 +293,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     : 0
 
   // Panel start/end positions — includes perpendicular offset to match rendered panel bar
-  // Panel bottom surface positions for height annotations
+  // Panel bottom surface positions for height dimensions
   const panelBottomPos = (dCm) => {
     const sx = atSlope(dCm).x
     return { x: sx, y: beamYFromLegs(sx) - (PANEL_OFFSET_PX - PANEL_THICK_PX / 2) }
@@ -562,7 +562,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                         stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
                         style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                     )}
-                    {showAnnotations && <Dim
+                    {showDimensions && <Dim
                       ax1={d.topX - d.ux * d.halfCap} ay1={d.topY - d.uy * d.halfCap}
                       ax2={d.botX + d.ux * d.halfCap} ay2={d.botY + d.uy * d.halfCap}
                       label={fmt(d.lenCm)} off={-16} />}
@@ -649,8 +649,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Inner leg height annotations ── */}
-              {showAnnotations && beLegs.slice(1, -1).map((leg, ci) => {
+              {/* ── Inner leg height dimensions ── */}
+              {showDimensions && beLegs.slice(1, -1).map((leg, ci) => {
                 const lx = allLegXs[ci + 1]
                 const lxEnd = allLegEndXs[ci + 1]
                 const mx = (lx + lxEnd) / 2
@@ -699,15 +699,15 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Angle label inside trapezoid ── */}
               <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
 
-              {/* ── Dimension annotations ── */}
-              {showAnnotations && <>
+              {/* ── Dimension dimensions ── */}
+              {showDimensions && <>
                 {/* Slope beam: active portion only */}
                 <Dim ax1={activeBoundL} ay1={beamYFromLegs(activeBoundL)} ax2={activeBoundR} ay2={beamYFromLegs(activeBoundR)}
                   label={fmt(activeSlopeBeamLenCm)} off={-(PANEL_OFFSET_PX + 14)} />
 
                 {(() => {
                   if (!hasActiveZone) return null
-                  // Panel distance annotations: all on the beam line (parallel to panel)
+                  // Panel distance dimensions: all on the beam line (parallel to panel)
                   const panelOff = -(PANEL_OFFSET_PX + 28)
                   const psx = atSlope(firstActiveDepth).x
                   const pex = atSlope(lastActiveDepth).x
@@ -942,8 +942,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
         layers={[
-          { label: t('step3.layer.annotations'),   checked: _showAnnotations, setter: setShowAnnotations  },
           { label: t('step3.layer.punches'),       checked: _showPunches,     setter: setShowPunches      },
+          { label: t('step3.layer.dimensions'),   checked: _showDimensions, setter: setShowDimensions  },
           { label: t('step3.layer.editBar'),      checked: _showDiagHandles, setter: setShowDiagHandles  },
           ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),
         ]}

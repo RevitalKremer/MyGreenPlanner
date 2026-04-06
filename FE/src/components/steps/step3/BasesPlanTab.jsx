@@ -23,7 +23,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
-  const [showEditBar,    setShowEditBar]    = useState(true)
+  const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
 
@@ -659,12 +659,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
         <LayersPanel
           layers={[
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
-            { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
+            { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
             { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
-            { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
-            { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
+            { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
+            { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
           ]}
           summary={null}
           actions={[

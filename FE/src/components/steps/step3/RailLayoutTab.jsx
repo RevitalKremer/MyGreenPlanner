@@ -41,7 +41,7 @@ export default function RailLayoutTab({
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
   const [showConnectors,      setShowConnectors]      = useState(true)
-  const [showEditBar,    setShowEditBar]    = useState(true)
+  const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
 
@@ -219,9 +219,9 @@ export default function RailLayoutTab({
           <LayersPanel
             layers={[
               { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
-              { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
-              { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
               { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
+              { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
+              { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
               { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
             ]}
             summary={null}

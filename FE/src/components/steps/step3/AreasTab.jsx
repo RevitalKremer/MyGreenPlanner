@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, TEXT_DARKEST } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, TEXT_DARKEST } from '../../../styles/colors'
+import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -75,6 +76,7 @@ export default function AreasTab({
   const { t } = useLang()
   const [showAreas, setShowAreas] = useState(true)
   const [showCounts, setShowCounts] = useState(true)
+  const [rulerActive, setRulerActive] = useState(false)
 
   const {
     zoom, setZoom, panOffset, panActive,
@@ -294,10 +296,15 @@ export default function AreasTab({
         </div>
       </div>
 
+      <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc} containerRef={containerRef} />
+
       <LayersPanel
         layers={[
           { label: t('step3.areas.label'), checked: showAreas, setter: setShowAreas },
           { label: t('step3.areas.panelCounts'), checked: showCounts, setter: setShowCounts },
+        ]}
+        actions={[
+          { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
       />
 
