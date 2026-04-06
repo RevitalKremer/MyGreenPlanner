@@ -187,7 +187,7 @@ export default function RailLayoutTab({
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
-                  <HatchedPanels panels={panels} selectedTrapId={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
+                  <HatchedPanels panels={panels} selectedArea={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
                   {/* Rails + layers */}
                   <RailsOverlay {...overlayProps} toSvg={toSvg} zoom={zoom}

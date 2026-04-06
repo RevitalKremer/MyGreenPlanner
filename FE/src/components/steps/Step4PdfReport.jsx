@@ -561,7 +561,7 @@ export default function Step4PdfReport({
           <ScaledPage scale={pageScale}>
             <BasesLayoutPage
               pageRef={page3Ref}
-              panels={panels} refinedArea={refinedArea}
+              panels={panels} refinedArea={refinedArea} areas={areas}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}

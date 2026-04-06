@@ -172,7 +172,7 @@ export default function RailsOverlay({
     const hlProfile = highlightGroup === 'cross-rails'
     const hlSpacingV = highlightGroup === 'railSpacingV'
     const hlSpacingH = highlightGroup === 'railSpacingH'
-    const railOpacity = (selectedRowIdx === null || i === selectedRowIdx) ? 1 : 0.2
+    const railOpacity = 1
     const prefix = `rl-${i}`
 
     // Gap polygons between adjacent rails of the highlighted orientation

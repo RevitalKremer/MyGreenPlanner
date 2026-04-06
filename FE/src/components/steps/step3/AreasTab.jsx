@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, TEXT_DARKEST } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, TEXT_DARKEST, WHITE, BLACK } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -214,10 +214,10 @@ export default function AreasTab({
               <text x={svgCx} y={svgCy}
                 textAnchor="middle" dominantBaseline="middle"
                 fill={BLUE} fontSize={fontSize} fontWeight="800"
-                stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
+                stroke={WHITE} strokeWidth={fontSize * 0.2} paintOrder="stroke"
               >{label}</text>
               <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
-                <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke="white" strokeWidth={chevH * 0.18} strokeLinejoin="round" />
+                <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke={WHITE} strokeWidth={chevH * 0.18} strokeLinejoin="round" />
               </g>
             </g>
           )

@@ -10,7 +10,7 @@ const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 const PAD = 60, MAX_W = 900
 
 export default function BasesLayoutPage({
-  panels = [], refinedArea,
+  panels = [], refinedArea, areas = [],
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   beBasesData = null, beTrapezoidsData = null,
   project, panelType, panelWp, totalKw, date, pageRef,
@@ -50,6 +50,7 @@ export default function BasesLayoutPage({
           <BasesPlanTab
             panels={panels}
             refinedArea={refinedArea}
+            areas={areas}
             trapSettingsMap={trapSettingsMap}
             trapLineRailsMap={trapLineRailsMap}
             trapRCMap={trapRCMap}
