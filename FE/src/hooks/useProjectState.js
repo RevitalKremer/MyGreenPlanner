@@ -260,9 +260,10 @@ setPanelAngle('')
 
       if (layout.rectAreas && s2.areas) {
         skipRecomputeRef.current = 'load'
-        setRectAreas(layout.rectAreas.map(ra => {
-          const s2a = s2.areas.find(a => a.id === ra.id) || {}
-          return { ...ra, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+        setRectAreas(layout.rectAreas.map((ra, idx) => {
+          // Match by index (arrays are always same order) with ID fallback
+          const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
+          return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
         }))
       } else if (layout.rectAreas) {
         skipRecomputeRef.current = 'load'
