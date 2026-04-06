@@ -229,7 +229,7 @@ export default function BasePlanOverlay({
         )
       })}
 
-      {/* Spacing annotations between adjacent bases */}
+      {/* Spacing dimensions between adjacent bases */}
       {bases.slice(0, -1).map((b1, bi) => {
         const b2 = bases[bi + 1]
         const [x1, y1] = lxToSvg(b1.localX)

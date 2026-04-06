@@ -384,7 +384,6 @@ const he = {
   'step3.layer.dimensions':      'מידות',
   'step3.layer.materialSummary': 'סיכום חומרים',
   'step3.layer.connectors':      'מחברים',
-  'step3.layer.annotations':     'מידות',
   'step3.layer.punches':         'ניקובים',
   'step3.layer.editBar':         'סרגל עריכה',
   'step3.layer.ghost':           'צל',
