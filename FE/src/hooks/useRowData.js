@@ -37,9 +37,9 @@ export default function useRowData({
   const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]
-    const label   = areas[areaKey]?.label
-    if (!label) return null
-    const beArea  = beRailsData.find(a => a.areaLabel === label)
+    const area    = areas[areaKey]
+    if (!area) return null
+    const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
     if (!beArea?.rails?.length) return null
     const map = {}
     for (const r of beArea.rails) {
@@ -108,8 +108,8 @@ export default function useRowData({
       const railOffsetCm = lineRails[0]?.[0] ?? 0
       const frontLegH    = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad) - crossRailH * Math.cos(angleRad))
 
-      const areaLbl    = areas[areaKey]?.label
-      const beAreaData = beRailsData?.find(a => a.areaLabel === areaLbl)
+      const areaObj    = areas[areaKey]
+      const beAreaData = beRailsData?.find(a => (a.areaId != null && areaObj?.id != null ? a.areaId === areaObj.id : a.areaLabel === areaObj?.label))
       const rails      = beAreaData?.rails ?? []
 
       const measuredRowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined

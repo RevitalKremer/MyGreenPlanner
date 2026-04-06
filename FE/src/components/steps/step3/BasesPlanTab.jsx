@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
   const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
@@ -70,25 +70,37 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
   const dataReady = (beBasesData && beBasesData.length > 0) || printMode
 
   // Map trapId → area key (strip trailing digits: "B1" → "B")
+  // Build area maps from areas prop (id-based) with fallback to trapId stripping
   const { trapAreaMap, areaTrapsMap } = useMemo(() => {
     const tam = {}, atm = {}
-    for (const trapId of trapIds) {
-      const area = trapId.replace(/\d+$/, '')
-      tam[trapId] = area
-      if (!atm[area]) atm[area] = []
-      atm[area].push(trapId)
+    if (areas.length > 0) {
+      // Use areas prop: key by area.id, map trapezoidIds to area id
+      for (const area of areas) {
+        const aid = area.id
+        if (!atm[aid]) atm[aid] = []
+        for (const tid of (area.trapezoidIds || [])) {
+          tam[tid] = aid
+          atm[aid].push(tid)
+        }
+      }
+    } else {
+      // Fallback for print mode (no areas prop): derive from trapezoidId
+      for (const trapId of trapIds) {
+        const area = trapId.replace(/\d+$/, '')
+        tam[trapId] = area
+        if (!atm[area]) atm[area] = []
+        atm[area].push(trapId)
+      }
     }
     return { trapAreaMap: tam, areaTrapsMap: atm }
-  }, [trapIds])
+  }, [trapIds, areas])
 
   // BE rail lookup keyed by trapId:railId (for RailsOverlay)
   const beRailByKey = useMemo(() => {
     const m = {}
-    for (const area of (beBasesData ?? [])) {
-      const areaLabel = area.areaLabel ?? area.label
-      // Map each trapId in this area to the area's rails
-      const areaTrapIds = areaTrapsMap[areaLabel] ?? []
-      for (const r of (area.rails ?? [])) {
+    for (const areaData of (beBasesData ?? [])) {
+      const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? areaTrapsMap[areaData.label] ?? []
+      for (const r of (areaData.rails ?? [])) {
         for (const tid of areaTrapIds) {
           m[`${tid}:${r.railId}`] = r
         }
@@ -114,10 +126,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
   const totalBases = trapIds.reduce((s, trapId) => s + (consolidatedBasesMap[trapId]?.length ?? 0), 0)
 
   // Per-area frame: computed from ALL panels in the area (covers all panel lines).
+  // Keyed by area id (from trapAreaMap) when available, fallback to stripped trapezoidId.
   const areaFrames = useMemo(() => {
     const areaPanels = {}
     for (const p of panels) {
-      const areaKey = (p.trapezoidId ?? 'A1').replace(/\d+$/, '')
+      const tid = p.trapezoidId ?? 'A1'
+      const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
       if (!areaPanels[areaKey]) areaPanels[areaKey] = []
       areaPanels[areaKey].push(p)
     }
@@ -137,8 +151,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
       const isBtt = areaPnls[0]?.yDir === 'btt'
       map[areaKey] = { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
     }
+    // Also key by area label so beBasesData lookups work (label may differ from id)
+    for (const area of areas) {
+      const idKey = area.id
+      if (idKey != null && map[idKey] && area.label && area.label !== String(idKey)) {
+        map[area.label] = map[idKey]
+      }
+    }
     return map
-  }, [panels])
+  }, [panels, trapAreaMap, areas])
 
 
   const bbox = useMemo(() => {
@@ -197,7 +218,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
         {/* Server-data bases + blocks — each base uses its trapezoidId's frame */}
         {(beBasesData ?? []).map(areaData => areaData.bases?.map((sb, sbi) => {
-          const tf = areaFrames[sb.trapezoidId?.replace(/\d+$/, '')]
+          const tf = areaFrames[trapAreaMap[sb.trapezoidId] ?? sb.trapezoidId?.replace(/\d+$/, '')]
           if (!tf) return null
           const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = tf
           const { angleRad: tAngle, localBounds: tLB } = tFrame
@@ -386,7 +407,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 <HatchedPanels panels={panels} selectedTrapId={effectiveSelectedTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-                {/* Z-order: 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
+                {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 
                 {/* 1. Rails */}
                 <RailsOverlay
@@ -406,12 +427,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 {/* 2. Blocks */}
                 {showBlocks && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaLabel = areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
                   if (!af) return null
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
+                  const areaTrapIds = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
                   const liveOffsets = customBasesMap[fullTrapId]
                   return (areaData.bases ?? []).map((sb, sbi) => {
@@ -428,7 +449,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                     const [bbx, bby] = toSvg(sbo.x, sbo.y)
                     const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
                     const trapOpacity = (effectiveSelectedTrapId === null || sb.trapezoidId === effectiveSelectedTrapId) ? 1 : 0.2
-                    const trapBlocks = beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? []
+                    // Only render blocks that fit within this base's actual length
+                    const trapBlocks = (beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? [])
+                      .filter(blk => (blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) <= sb.lengthCm + 1)
                     const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
                     return trapBlocks.map((blk, bki) => {
                       const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
@@ -443,13 +466,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 {/* 3. Bases + 4. Base IDs */}
                 {showBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaLabel = areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
                   if (!af) return null
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const profThick = (4 / pixelToCmRatio) * sc
-                  const areaTrapIds = areaTrapsMap[areaLabel] ?? []
+                  const areaTrapIds = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
                   const liveOffsets = customBasesMap[fullTrapId]
                   return (areaData.bases ?? []).map((sb, sbi) => {
@@ -478,15 +501,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
 
                 {/* 5. External diagonals */}
                 {showDiagonals && showBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaLabel = areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaLabel] ?? areaFrames[areaLabel.replace(/\d+$/, '')]
+                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
                   if (!af) return null
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const PROFILE_THICK = (4 / pixelToCmRatio) * sc
                   const diags = areaData.diagonals ?? []
                   const allBases = areaData.bases ?? []
-                  const areaTids = areaTrapsMap[areaLabel] ?? []
+                  const areaTids = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
                   const fullTrapId = areaTids.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTids[0]
                   const liveOffsets = customBasesMap[fullTrapId]
 
@@ -542,7 +565,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const { frame: refFrame, isRtl: afIsRtl } = af
                   const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
 
-                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
+                  const areaData = (beBasesData ?? []).find(ad => ad.areaId === areaKey || ad.areaLabel === areaKey || ad.label === areaKey)
                   const allBases = (areaData?.bases ?? []).map(sb => ({
                     ...sb, trapId: sb.trapezoidId,
                     localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
@@ -562,7 +585,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                   const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
                   const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
 
-                  const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
+                  const selectedArea = effectiveSelectedTrapId ? trapAreaMap[effectiveSelectedTrapId] : null
                   const isSelectedArea = areaKey === selectedArea
                   const areaOpacity = (effectiveSelectedTrapId === null || isSelectedArea) ? 1 : 0.2
                   const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
@@ -587,10 +610,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, effectiveSelect
                 {showEditBar && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
                   const af = areaFrames[areaKey]
                   if (!af?.frame?.center) return null
-                  const selectedArea = effectiveSelectedTrapId?.replace(/\d+$/, '')
+                  const selectedArea = effectiveSelectedTrapId ? trapAreaMap[effectiveSelectedTrapId] : null
                   if (effectiveSelectedTrapId !== null && areaKey !== selectedArea) return null
                   const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
-                  const areaData = (beBasesData ?? []).find(ad => (ad.areaLabel ?? ad.label) === areaKey)
+                  const areaData = (beBasesData ?? []).find(ad => ad.areaId === areaKey || ad.areaLabel === areaKey || ad.label === areaKey)
                   if (!areaData?.bases?.length) return null
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
                   const trapS = trapSettingsMap[fullTrapId] ?? {}

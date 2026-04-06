@@ -59,7 +59,8 @@ class PanelGrid(BaseModel):
 
 class Step2Area(BaseModel):
     """Basic area config set during panel placement. No computed data."""
-    label: str                          # 'A', 'B', 'C', …
+    id: int                             # permanent numeric id, assigned by BE, never changes
+    label: str                          # user-editable display label: 'A', 'B', 'C', …
     angleDeg: Optional[float] = None
     frontHeightCm: Optional[float] = None
     trapezoidIds: list[str] = Field(default_factory=list)
@@ -127,7 +128,8 @@ class ExternalDiagonal(BaseModel):
 
 class ComputedArea(BaseModel):
     """Server-computed construction data for one area."""
-    label: str                      # matches step2.areas[].label
+    areaId: int                     # matches step2.areas[].id (permanent)
+    label: str                      # matches step2.areas[].label (display)
     rails: list[Rail] = Field(default_factory=list)
     bases: list[Base] = Field(default_factory=list)
     diagonals: list[ExternalDiagonal] = Field(default_factory=list)

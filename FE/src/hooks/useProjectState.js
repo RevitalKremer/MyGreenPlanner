@@ -285,7 +285,9 @@ setPanelAngle('')
       if (s2.areas) {
         // Reconstruct legacy areas array (used by Step3 for label/config lookups)
         setAreas(s2.areas.map(a => ({
+          id: a.id,
           label: a.label ?? a.id,
+          trapezoidIds: a.trapezoidIds ?? [],
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
           lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['V'],

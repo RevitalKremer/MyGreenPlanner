@@ -268,12 +268,12 @@ async def get_construction_data(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return all step 3 computed data in step3 wrapper."""
+    """Return full project data."""
     project = await project_service.get_project(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    return {'step3': (project.data or {}).get('step3', {})}
+    return {'data': project.data or {}}
 
 
 @router.get("/{project_id}/rails")
@@ -307,7 +307,7 @@ async def get_bases(
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', []), 'diagonals': ca.get('diagonals', [])}
+        {'areaId': ca.get('areaId', 0), 'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', []), 'diagonals': ca.get('diagonals', [])}
         for ca in computed_areas
     ]
 

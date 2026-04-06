@@ -272,7 +272,7 @@ export default function Step3ConstructionPlanning({
 
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <BasesPlanTab
-              panels={panels} refinedArea={refinedArea}
+              panels={panels} refinedArea={refinedArea} areas={areas}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}

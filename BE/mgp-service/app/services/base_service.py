@@ -173,15 +173,14 @@ def compute_area_bases(
             panel_along_cm = short_cm if orient == 'V' else long_cm
             stored = row_positions.get(str(li))
             positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
-            active_idx = 0
-            for j, cell in enumerate(cells):
-                if cell not in ('V', 'H'):
-                    continue
-                pos = positions[active_idx]
-                active_idx += 1
-                if base_x >= pos and base_x <= pos + panel_along_cm:
-                    active_lines_for_base.append(li)
-                    break
+            if not positions:
+                continue
+            # Check if base falls within the line's overall panel extent
+            # (first panel start to last panel end), not requiring exact panel alignment
+            line_start = positions[0]
+            line_end = positions[-1] + panel_along_cm
+            if base_x >= line_start and base_x <= line_end:
+                active_lines_for_base.append(li)
 
         if active_lines_for_base:
             b_rear_idx = min(active_lines_for_base)

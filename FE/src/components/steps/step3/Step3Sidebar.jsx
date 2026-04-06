@@ -342,9 +342,11 @@ export default function Step3Sidebar({
         <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('step3.sidebar.areas')}</div>
       </div>
 
-      {/* Area / trapezoid hierarchy list */}
+      {/* Area / trapezoid hierarchy list — sorted by area label */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {rowConstructions.map((rc, i) => {
+        {rowConstructions.map((rc, i) => ({ rc, i }))
+          .sort((a, b) => (areaLabel(rowKeys[a.i], a.i)).localeCompare(areaLabel(rowKeys[b.i], b.i)))
+          .map(({ rc, i }) => {
           const areaKey = rowKeys[i]
           const trapIds = areaTrapezoidMap[areaKey] || []
           const isAreaSelected = selectedRowIdx === i
@@ -354,13 +356,8 @@ export default function Step3Sidebar({
                 onClick={() => { setSelectedRowIdx(i); setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null) }}
                 style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
-                    {areaLabel(areaKey, i)}
-                  </span>
-                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', background: TEXT_SECONDARY, borderRadius: '4px', padding: '1px 6px' }}>
-                    {rc.typeLetter}{Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}
-                  </span>
+                <div style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
+                  {areaLabel(areaKey, i)}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginTop: '2px' }}>
                   {rc.panelCount} panels · {rc.angle}° · {rc.numTrapezoids} frames

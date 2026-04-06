@@ -113,26 +113,49 @@ function App() {
   }, [s.cloudProjectId])
 
   const applyBeResult = (result) => {
-    if (!result.step3) return
-    
-    const { computedAreas = [], computedTrapezoids = [] } = result.step3
-    
+    // Unified handler: accepts { data: { step2, step3, ... } } or legacy { step3: { ... } }
+    const data = result.data || result
+    const step2 = data.step2 || {}
+    const step3 = data.step3 || {}
+    if (!step3) return
+
+    // Sync areas from step2 (includes BE-assigned IDs)
+    if (step2.areas) {
+      const trapById = {}
+      for (const t of (step2.trapezoids ?? [])) trapById[t.id] = t
+      s.setAreas(step2.areas.map(a => {
+        const firstTrap = (a.trapezoidIds ?? []).map(tid => trapById[tid]).find(Boolean)
+        return {
+          id: a.id,
+          label: a.label ?? a.id,
+          trapezoidIds: a.trapezoidIds ?? [],
+          angle: a.angleDeg ?? 0,
+          frontHeight: a.frontHeightCm ?? 0,
+          lineOrientations: firstTrap?.lineOrientations ?? ['V'],
+          panelGrid: a.panelGrid ?? null,
+        }
+      }))
+    }
+
+    const { computedAreas = [], computedTrapezoids = [] } = step3
+
     // Convert to rails format
     const railsData = computedAreas.map(ca => ({
+      areaId: ca.areaId,
       areaLabel: ca.label || '',
       rails: ca.rails || []
     }))
     setBeRailsData(railsData)
-    
+
     // Convert to bases format (include diagonals)
     const basesData = computedAreas.map(ca => ({
+      areaId: ca.areaId,
       areaLabel: ca.label || '',
       bases: ca.bases || [],
       diagonals: ca.diagonals || [],
-      basesDataMap: ca.basesDataMap || {},  // legacy: used for customBasesMap seeding (frameStartCm)
     }))
     setBeBasesData(basesData)
-    
+
     // Convert to trapezoidDetails format (object keyed by trapezoidId)
     const trapDetails = {}
     computedTrapezoids.forEach(ct => {
@@ -721,14 +744,7 @@ function App() {
                 // and computes rails+bases on 2→3 (returned in response)
                 try {
                   const stepResult = await updateStep(savedId, stepBeforeNext + 1)
-                  if (stepResult.rails) setBeRailsData(stepResult.rails)
-                  if (stepResult.bases) {
-                    // Merge diagonals (separate top-level key) into bases data
-                    const diagByArea = {}
-                    for (const d of (stepResult.diagonals || [])) diagByArea[d.areaLabel] = d.diagonals || []
-                    setBeBasesData(stepResult.bases.map(b => ({ ...b, diagonals: diagByArea[b.areaLabel] || [] })))
-                  }
-                  if (stepResult.trapezoidDetails) setBeTrapezoidsData(stepResult.trapezoidDetails)
+                  applyBeResult(stepResult)
                 } catch (e) { console.error(e) }
               }
             }
