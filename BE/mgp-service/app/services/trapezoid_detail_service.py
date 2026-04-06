@@ -195,6 +195,8 @@ def compute_trapezoid_details(
         *inner_legs,
         {'positionCm': _r(front_outer_pos), 'positionEndCm': _r(front_outer_pos + beam_thick_cm), 'heightCm': _r(height_front)},
     ], key=lambda l: l['positionCm'])
+    for leg in legs:
+        leg['isDouble'] = leg['heightCm'] >= DOUBLE_ABOVE_CM
 
     # ── Active zone ────────────────────────────────────────────────────────
     active_segs = [i for i, s in enumerate(panel_lines) if not s.get('isEmpty', False)]

@@ -526,9 +526,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 return (
                   <g key={`leg-${li}`}>
                     <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-                    {leg.heightCm >= 200 && (
+                    {leg.isDouble && (<>
+                      <line x1={lx + lw / 2} y1={slopeTopY} x2={lx + lw / 2} y2={slopeTopY + legH}
+                        stroke={DANGER} strokeWidth="1" strokeLinecap="square"
+                        strokeDasharray="4,4" opacity="0.6" />
                       <text x={lx + lw / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
-                    )}
+                    </>)}
                   </g>
                 )
               })}
