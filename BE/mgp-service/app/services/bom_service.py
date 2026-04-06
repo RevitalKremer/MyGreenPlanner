@@ -149,6 +149,104 @@ def _derive_row_construction(
     }
 
 
+def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute angle profile BOM for frame pieces (beams + legs)."""
+    T = rc['numTrapezoids']
+    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
+    angle_rad = rc['angle'] * math.pi / 180
+    beam_thick_cm = rc['angleProfileSizeMm'] / 10
+    avg_inner_leg_cm = (
+        beam_thick_cm * (1 + math.cos(angle_rad) / 2)
+        + (rc['heightRear'] + rc['heightFront']) / 2
+    )
+
+    frame_pieces = [
+        p for p in [
+            {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
+            {'qty': T, 'lenCm': rc['topBeamLength']},
+            {'qty': T, 'lenCm': rc['heightRear']},
+            {'qty': T, 'lenCm': rc['heightFront']},
+            {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
+        ]
+        if p['qty'] > 0 and p['lenCm'] > 0
+    ]
+    frame_qty = sum(p['qty'] for p in frame_pieces)
+    frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
+    return [{'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty}]
+
+
+def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute diagonal brace BOM."""
+    T = rc['numTrapezoids']
+    nS = T - 1
+    if nS > 0 and rc['diagonalLength'] > 0:
+        return [{'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS}]
+    return []
+
+
+def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute rail profiles + connectors + end caps BOM."""
+    num_rails = rc.get('numRails', 2)
+    num_rail_connectors = rc.get('numRailConnectors', 0)
+    rows = []
+    rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
+    rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
+    rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
+    if num_rail_connectors > 0:
+        rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
+    return rows
+
+
+def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute blocks + bitumen sheets + jumbo bolts BOM."""
+    T = rc['numTrapezoids']
+    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
+    block_qty = T * (2 + num_inner_legs)
+    return [
+        {'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty},
+        {'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty},
+        {'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty},
+    ]
+
+
+def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute all panel clamp types (end, grounding, mid) BOM."""
+    num_rails = rc.get('numRails', 2)
+    num_lines = rc.get('numLines', 1)
+    num_large_gaps = rc.get('numLargeGaps', 0)
+    panel_count = rc.get('panelCount', 0)
+    rows = []
+
+    rails_per_line = num_rails / num_lines if num_lines else num_rails
+    end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
+    rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
+
+    grounding_qty = math.ceil(panel_count / 2)
+    rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
+
+    panels_per_line = panel_count / num_lines if num_lines else panel_count
+    total_boundaries = max(0, panels_per_line - 1) * num_lines
+    normal_boundaries = max(0, total_boundaries - num_large_gaps)
+    mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
+    if mid_clamp_qty > 0:
+        rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
+
+    return rows
+
+
+def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute hex bolts + flange nuts BOM."""
+    T = rc['numTrapezoids']
+    num_rails = rc.get('numRails', 2)
+    num_inner_legs = max(0, num_rails - 2)
+    legs_per_trapezoid = 2 + num_inner_legs
+    hex_bolt_qty = T * (2 * legs_per_trapezoid + 2) + num_rails * T
+    return [
+        {'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hex_bolt_qty},
+        {'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hex_bolt_qty},
+    ]
+
+
 def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict]:
     """
     Build per-area bill of materials.
@@ -159,82 +257,13 @@ def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict
 
     for i, rc in enumerate(row_constructions):
         area_label = row_labels[i] if i < len(row_labels) else f'Area {i + 1}'
-        T = rc['numTrapezoids']             # number of frames in this row
-        nS = T - 1                          # number of spans = diagonals per row
-        num_rails = rc.get('numRails', 2)
-        num_lines = rc.get('numLines', 1)
-        num_large_gaps = rc.get('numLargeGaps', 0)
-        num_rail_connectors = rc.get('numRailConnectors', 0)
-        num_inner_legs = max(0, num_rails - 2)
-        angle_rad = rc['angle'] * math.pi / 180
 
-        # Average inner leg length: beam_thick + leg height at midpoint
-        # Use angleProfileSizeMm from app_settings (converted to cm)
-        beam_thick_cm = rc['angleProfileSizeMm'] / 10
-        avg_inner_leg_cm = (
-            beam_thick_cm * (1 + math.cos(angle_rad) / 2)
-            + (rc['heightRear'] + rc['heightFront']) / 2
-        )
-
-        # ── angle_profile_40x40 — frame pieces (beams + legs) ──
-        frame_pieces = [
-            p for p in [
-                {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
-                {'qty': T, 'lenCm': rc['topBeamLength']},
-                {'qty': T, 'lenCm': rc['heightRear']},
-                {'qty': T, 'lenCm': rc['heightFront']},
-                {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
-            ]
-            if p['qty'] > 0 and p['lenCm'] > 0
-        ]
-        frame_qty = sum(p['qty'] for p in frame_pieces)
-        frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
-        rows.append({'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty})
-
-        # ── angle_profile_40x40_diag — diagonal braces ──
-        if nS > 0 and rc['diagonalLength'] > 0:
-            rows.append({'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS})
-
-        # ── rail_40x40 ──
-        rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
-        rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
-
-        # ── block_50x24x15 / bitumen_sheets / jumbo_5x16 ──
-        block_qty = T * (2 + num_inner_legs)
-        rows.append({'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty})
-        rows.append({'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty})
-        rows.append({'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty})
-
-        # ── end_panel_clamp ──
-        rails_per_line = num_rails / num_lines if num_lines else num_rails
-        end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
-        rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
-
-        # ── rail_end_cap ──
-        rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
-
-        # ── grounding_panel_clamp ──
-        panel_count = rc.get('panelCount', 0)
-        grounding_qty = math.ceil(panel_count / 2)
-        rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
-
-        # ── mid_panel_clamp ──
-        panels_per_line = panel_count / num_lines if num_lines else panel_count
-        total_boundaries = max(0, panels_per_line - 1) * num_lines
-        normal_boundaries = max(0, total_boundaries - num_large_gaps)
-        mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
-        if mid_clamp_qty > 0:
-            rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
-
-        # ── rail_connector ──
-        if num_rail_connectors > 0:
-            rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
-
-        # ── hex_head_bolt_m8x20 + flange_nut_m8_stainless_steel ──
-        legs_per_trapezoid = 2 + num_inner_legs
-        hex_bolt_qty = T * (2 * legs_per_trapezoid + 2) + num_rails * T
-        rows.append({'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hex_bolt_qty})
-        rows.append({'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hex_bolt_qty})
+        rows += _compute_frame_bom(rc, area_label)
+        rows += _compute_diagonal_bom(rc, area_label)
+        rows += _compute_rail_bom(rc, area_label)
+        rows += _compute_block_bom(rc, area_label)
+        rows += _compute_panel_clamp_bom(rc, area_label)
+        rows += _compute_bolt_bom(rc, area_label)
 
     return rows
 
