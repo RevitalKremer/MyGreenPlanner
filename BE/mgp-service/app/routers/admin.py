@@ -163,6 +163,8 @@ async def update_setting(
         setting.step_val = payload.step_val
     if payload.visible is not None:
         setting.visible = payload.visible
+    if payload.roof_types is not None:
+        setting.roof_types = payload.roof_types
     await db.commit()
     await db.refresh(setting)
     

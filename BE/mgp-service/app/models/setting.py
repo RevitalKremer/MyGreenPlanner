@@ -20,4 +20,5 @@ class AppSetting(Base):
     step_val: Mapped[float | None] = mapped_column(Float, nullable=True)
     highlight_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
     visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default='true')
+    roof_types: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
