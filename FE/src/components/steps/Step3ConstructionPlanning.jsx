@@ -21,6 +21,8 @@ export default function Step3ConstructionPlanning({
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
   roofType = 'concrete',
+  purlinDistCm = 0,
+  installationOrientation = null,
 }) {
   const { t } = useLang()
 
@@ -249,6 +251,9 @@ export default function Step3ConstructionPlanning({
                   reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
                   onReset={() => { settings.resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
                   onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
+                  roofType={roofType}
+                  purlinDistCm={purlinDistCm}
+                  installationOrientation={installationOrientation}
                 />
               </div>
             )

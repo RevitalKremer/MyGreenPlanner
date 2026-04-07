@@ -636,6 +636,8 @@ function App() {
             paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}
             roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            purlinDistCm={s.currentProject?.roofSpec?.distanceBetweenPurlinsCm || 0}
+            installationOrientation={s.currentProject?.roofSpec?.installationOrientation || null}
           />
         </div>
 
