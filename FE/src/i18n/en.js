@@ -446,9 +446,9 @@ const en = {
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   'Area {n}',
   'step4.pdf.areas':  'Areas',
-  'step4.pdf.bases':  'Bases',
-  'step4.pdf.panels': 'Panels',
-  'step4.pdf.rails':  'Rails',
+  'step4.pdf.bases':  'Bases Layout',
+  'step4.pdf.panels': 'Panels Layout',
+  'step4.pdf.rails':  'Rails Layout',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':        'My Account',

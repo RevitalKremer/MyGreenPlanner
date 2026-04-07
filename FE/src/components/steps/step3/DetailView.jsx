@@ -986,7 +986,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             </svg>
 
             {/* Members table */}
-            <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
+            {!printMode && <div style={{ marginTop: '1.5rem', maxWidth: '340px' }}>
               <div style={{ fontSize: '0.7rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>{t('step3.detail.membersTitle')}</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
@@ -1015,7 +1015,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
         </div>
       </div>

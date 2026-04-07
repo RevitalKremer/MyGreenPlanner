@@ -446,9 +446,9 @@ const he = {
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   '{n} אזור',
   'step4.pdf.areas':  'אזורים',
-  'step4.pdf.bases':  'בסיסים',
-  'step4.pdf.panels': 'פנלים',
-  'step4.pdf.rails':  'קושרות',
+  'step4.pdf.bases':  'פריסת בסיסים',
+  'step4.pdf.panels': 'פריסת פנלים',
+  'step4.pdf.rails':  'פריסת קושרות',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':              'החשבון שלי',
