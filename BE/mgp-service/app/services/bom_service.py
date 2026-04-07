@@ -63,6 +63,7 @@ def _derive_row_construction(
     area: dict,
     computed_area: dict | None,
     computed_trapezoids: list[dict],
+    roof_type: str = 'concrete',
 ) -> dict | None:
     """
     Derive per-area row-construction data from step2 area + step3 computed data.
@@ -79,6 +80,38 @@ def _derive_row_construction(
     if not trap_ids:
         return None
 
+    # Panel count + lines (needed for all roof types)
+    panel_count = _count_panels(panel_grid)
+    num_lines = _count_lines(panel_grid)
+    if num_lines == 0:
+        num_lines = 1
+
+    # Rails (needed for all roof types)
+    num_rails = len(rails)
+    num_rail_connectors = 0
+    for r in rails:
+        segs = r.get('stockSegmentsMm') or []
+        if len(segs) > 1:
+            num_rail_connectors += len(segs) - 1
+    row_length = 0
+    if rails:
+        row_length = max(r.get('lengthCm', 0) for r in rails)
+    num_large_gaps = area.get('numLargeGaps', 0)
+
+    # Tiles: no frame geometry needed — only rails + clamps + hooks
+    if roof_type == 'tiles':
+        return {
+            'rowLength': row_length,
+            'angle': 0, 'frontHeight': 0, 'heightRear': 0, 'heightFront': 0,
+            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0, 'diagonalLength': 0,
+            'numTrapezoids': 0,
+            'panelCount': panel_count,
+            'numRails': num_rails,
+            'numLines': num_lines,
+            'numLargeGaps': num_large_gaps,
+            'numRailConnectors': num_rail_connectors,
+        }
+
     # Find geometry from first trapezoid's computed detail
     first_trap_id = trap_ids[0]
     detail = None
@@ -91,39 +124,6 @@ def _derive_row_construction(
     if not geom:
         return None
 
-    angle = geom.get('angle', 0)
-    front_height = geom.get('frontHeight', 0)
-    height_rear = geom.get('heightRear', 0)
-    height_front = geom.get('heightFront', 0)
-    base_beam_length = geom.get('baseBeamLength', 0)
-    top_beam_length = geom.get('topBeamLength', 0)
-    diagonal_length = geom.get('diagonalLength', 0)
-    base_length = geom.get('baseLength', 0)
-
-    # Panel count
-    panel_count = _count_panels(panel_grid)
-    num_lines = _count_lines(panel_grid)
-    if num_lines == 0:
-        num_lines = 1
-
-    # Rails
-    num_rails = len(rails)
-
-    # numRailConnectors: sum of (stockSegments.length - 1) across all rails
-    num_rail_connectors = 0
-    for r in rails:
-        segs = r.get('stockSegmentsMm') or []
-        if len(segs) > 1:
-            num_rail_connectors += len(segs) - 1
-
-    # rowLength: max span across all rails
-    row_length = 0
-    if rails:
-        row_length = max(r.get('lengthCm', 0) for r in rails)
-
-    # numLargeGaps: stored at area level by rail computation
-    num_large_gaps = area.get('numLargeGaps', 0)
-
     # numTrapezoids: count unique base positions (distinct offsetFromStartCm)
     unique_base_positions = set()
     for b in bases:
@@ -132,14 +132,14 @@ def _derive_row_construction(
 
     return {
         'rowLength': row_length,
-        'angle': angle,
-        'frontHeight': front_height,
-        'heightRear': height_rear,
-        'heightFront': height_front,
-        'baseLength': base_length,
-        'baseBeamLength': base_beam_length,
-        'topBeamLength': top_beam_length,
-        'diagonalLength': diagonal_length,
+        'angle': geom.get('angle', 0),
+        'frontHeight': geom.get('frontHeight', 0),
+        'heightRear': geom.get('heightRear', 0),
+        'heightFront': geom.get('heightFront', 0),
+        'baseLength': geom.get('baseLength', 0),
+        'baseBeamLength': geom.get('baseBeamLength', 0),
+        'topBeamLength': geom.get('topBeamLength', 0),
+        'diagonalLength': geom.get('diagonalLength', 0),
         'numTrapezoids': num_trapezoids,
         'panelCount': panel_count,
         'numRails': num_rails,
@@ -367,7 +367,7 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     for area in areas:
         label = _get_area_field(area, 'label', f'Area {len(row_labels) + 1}')
         ca = ca_by_label.get(label)
-        rc = _derive_row_construction(area, ca, computed_trapezoids)
+        rc = _derive_row_construction(area, ca, computed_trapezoids, roof_type)
         if rc is None:
             continue
         # Add angleProfileSizeMm from app_settings to each row construction

@@ -62,6 +62,7 @@ def _compute_leg_positions(
     height_rear: float,
     height_front: float,
     double_above_cm: float,
+    leg_offset: float = 0.0,
 ) -> tuple[list[dict], list[dict]]:
     """
     Compute leg positions (outer + inner).
@@ -69,6 +70,7 @@ def _compute_leg_positions(
     Returns (legs, inner_legs).
     legs is sorted by positionCm, each with isDouble flag.
     inner_legs contains extra railPositionCm for block placement.
+    leg_offset: shift all positions by this amount (for beam extension).
     """
     # Per-segment rail ordering for inner leg side logic
     seg_sorted = {}
@@ -82,16 +84,16 @@ def _compute_leg_positions(
         for pos, global_idx in enumerate(arr):
             rail_pos_in_seg[global_idx] = {'pos': pos, 'N': len(arr)}
 
-    # Outer leg positions
-    rear_outer_pos = 0
-    front_outer_pos = base_length_cm - beam_thick_cm
+    # Outer leg positions (shifted by leg_offset for beam extension)
+    rear_outer_pos = leg_offset
+    front_outer_pos = leg_offset + base_length_cm - beam_thick_cm
 
     # Inner legs
     inner_legs = []
     for ci, r in enumerate(rail_items[1:-1], start=1):
         info = rail_pos_in_seg.get(ci, {'pos': 0, 'N': 1})
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
-        rail_pos = r['globalOffsetCm'] - origin
+        rail_pos = r['globalOffsetCm'] - origin + leg_offset
         if side == 'right':
             leg_pos = rail_pos + base_overhang_cm - beam_thick_cm
         else:
@@ -298,6 +300,8 @@ def compute_trapezoid_details(
 
     ov = overrides or {}
     gs = global_settings or {}
+    rs = roof_spec or {}
+    roof_type = rs.get('type', 'concrete')
 
     # Read all settings — no hardcoded fallbacks
     block_height_cm      = _s(settings, ov, 'blockHeightCm')
@@ -330,12 +334,27 @@ def compute_trapezoid_details(
     top_beam_length = base_length_cm
     base_beam_length = base_length_cm * cos_a
 
+    # ── Iskurit / Insulated Panel: perpendicular beam extension ────────────
+    rear_ext = 0.0
+    front_ext = 0.0
+    if roof_type in ('iskurit', 'insulated_panel'):
+        orientation = rs.get('installationOrientation')
+        purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
+        if orientation == 'perpendicular' and purlin_dist_cm and purlin_dist_cm > 0:
+            buffer_cm = _s(settings, ov, 'purlinBufferCm')
+            extension = purlin_dist_cm + buffer_cm
+            extend_front = _s(settings, ov, 'extendFront')
+            extend_rear = _s(settings, ov, 'extendRear')
+            front_ext = extension if extend_front else 0
+            rear_ext = extension if extend_rear else 0
+            base_beam_length = base_beam_length + front_ext + rear_ext
+
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
     slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
     height_rear = front_height_cm - block_height_cm + slope_offset * sin_a - cross_rail_cm / cos_a
 
-    base_length_horiz = base_beam_length
+    base_length_horiz = base_length_cm * cos_a  # original (without extension) for leg placement
     height_front = height_rear + base_length_horiz * math.tan(angle_rad)
 
     diagonal_length = math.sqrt(base_length_horiz ** 2 + height_front ** 2)
@@ -360,6 +379,11 @@ def compute_trapezoid_details(
         'punchInnerOffsetCm': _r(punch_inner_offset),
     }
 
+    # Store extension info for FE rendering
+    if rear_ext > 0 or front_ext > 0:
+        geometry['rearExtensionCm'] = _r(rear_ext)
+        geometry['frontExtensionCm'] = _r(front_ext)
+
     # ── Rail items ─────────────────────────────────────────────────────────
     rail_items, total_panel_depth = _build_rail_items(panel_lines, line_rails)
 
@@ -373,9 +397,11 @@ def compute_trapezoid_details(
     geometry['panelRearHeightCm'] = _r(front_height_cm + total_panel_depth * sin_a)
 
     # ── Legs ───────────────────────────────────────────────────────────────
+    # For extended beams, legs shift by rear_ext (legs don't start at beam position 0)
     legs, inner_legs = _compute_leg_positions(
         rail_items, origin, base_overhang_cm, beam_thick_cm,
         base_length_cm, height_rear, height_front, double_above_cm,
+        leg_offset=rear_ext,
     )
 
     # ── Diagonals ──────────────────────────────────────────────────────────
@@ -385,7 +411,11 @@ def compute_trapezoid_details(
     )
 
     # ── Blocks ─────────────────────────────────────────────────────────────
-    blocks = _compute_block_positions(inner_legs, block_length_cm, base_beam_length, cos_a)
+    # Iskurit/insulated panel: no blocks (attached to purlins with screws)
+    if roof_type in ('iskurit', 'insulated_panel'):
+        blocks = []
+    else:
+        blocks = _compute_block_positions(inner_legs, block_length_cm, base_beam_length, cos_a)
 
     # ── Punches ────────────────────────────────────────────────────────────
     punches = _compute_structural_punches(
@@ -393,13 +423,14 @@ def compute_trapezoid_details(
         inner_legs, rail_items, origin, diagonals, legs,
     )
 
-    # Block punches
-    other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
-    block_punches = _compute_block_punches(
-        blocks, other_base_positions, block_length_cm, base_beam_length,
-        block_punch_cm, beam_thick_cm, cos_a, punch_overlap_margin, punch_inner_offset,
-    )
-    punches += block_punches
+    # Block punches (only for concrete)
+    if blocks:
+        other_base_positions = [p['positionCm'] for p in punches if p['beamType'] == 'base']
+        block_punches = _compute_block_punches(
+            blocks, other_base_positions, block_length_cm, base_beam_length,
+            block_punch_cm, beam_thick_cm, cos_a, punch_overlap_margin, punch_inner_offset,
+        )
+        punches += block_punches
 
     # Add reversedPositionCm (distance from beam end) to qualifying punches
     for p in punches:

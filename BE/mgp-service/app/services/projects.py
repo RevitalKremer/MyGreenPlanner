@@ -450,6 +450,13 @@ async def compute_and_save_bases(
 
     roof_spec = project.roof_spec or {'type': 'concrete'}
 
+    # Tiles: no construction frame — skip base computation entirely
+    if roof_spec.get('type') == 'tiles':
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
+        return []
+
     # Persist custom offsets
     stored_custom = step3.get('customBasesOffsets') or {}
     if trapezoid_configs:
@@ -900,6 +907,13 @@ async def compute_and_save_trapezoid_details(
     app_defaults = settings_cache.get_all_settings()
 
     roof_spec = project.roof_spec or {'type': 'concrete'}
+
+    # Tiles: no construction frame — skip trapezoid detail computation entirely
+    if roof_spec.get('type') == 'tiles':
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
+        return {}
 
     # Stored custom diagonals
     stored_custom_diags = step3.get('customDiagonals', {})

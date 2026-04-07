@@ -56,6 +56,7 @@ def compute_area_bases(
     trap_start_cm: float | None = None,
     trap_end_cm: float | None = None,
     custom_offsets: list[float] | None = None,
+    roof_spec: dict | None = None,
 ) -> dict | None:
     """
     Compute base layout for one area (or trapezoid sub-range).
@@ -94,6 +95,17 @@ def compute_area_bases(
     frame_end_cm = trap_end_cm if trap_end_cm is not None else auto_end
     frame_length_cm = frame_end_cm - frame_start_cm
     frame_length_mm = round(frame_length_cm * 10)
+
+    # ── Parallel purlin spacing snap (iskurit / insulated_panel) ────────────
+    rs = roof_spec or {}
+    roof_type = rs.get('type', 'concrete')
+    if roof_type in ('iskurit', 'insulated_panel'):
+        orientation = rs.get('installationOrientation')
+        purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
+        if orientation == 'parallel' and purlin_dist_cm and purlin_dist_cm > 0:
+            purlin_dist_mm = purlin_dist_cm * 10
+            n = max(1, math.floor(spacing_mm / purlin_dist_mm))
+            spacing_mm = n * purlin_dist_mm
 
     # ── Base X positions (cm from area start corner) ───────────────────────
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
