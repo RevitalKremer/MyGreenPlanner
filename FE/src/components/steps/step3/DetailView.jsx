@@ -707,6 +707,22 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 </g>
               )}
 
+              {hl('extension') && (geom.rearExtensionCm > 0 || geom.frontExtensionCm > 0) && (
+                <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                  {geom.rearExtensionCm > 0 && (() => {
+                    const extW = firstLegPos * SC
+                    return <rect x={legX0 - extW - 3} y={baseY - 3} width={extW + 6} height={BEAM_THICK_PX + 6}
+                      fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
+                  })()}
+                  {geom.frontExtensionCm > 0 && (() => {
+                    const bbEnd = legX0 - firstLegPos * SC + (geom.baseBeamLength ?? 0) * SC
+                    const frontExtW = (geom.frontExtensionCm ?? 0) * SC
+                    return <rect x={bbEnd - frontExtW - 3} y={baseY - 3} width={frontExtW + 6} height={BEAM_THICK_PX + 6}
+                      fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
+                  })()}
+                </g>
+              )}
+
               {/* ── Green floor / roof surface line ── */}
               {(roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'perpendicular' ? (() => {
                 // Wavy corrugated pattern representing purlin roof surface

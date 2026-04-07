@@ -192,10 +192,6 @@ export default function Step3Sidebar({
     // ── rail-spacing: derived from lineRails, written via onRailSpacingChange
     if (type === 'rail-spacing') {
       const isH = orientation === 'H'
-      const hasLine = isH
-        ? lineOrientations?.some(o => o === 'H')
-        : lineOrientations?.some(o => o !== 'H' && !isEmptyOrientation(o))
-      if (!hasLine) return null
 
       const s = getSettings(selectedRowIdx)
       const panelDepth = panelDepthsCm?.find((_, i) => {
@@ -222,9 +218,13 @@ export default function Step3Sidebar({
     if (type === 'boolean') {
       const val = scope === 'global'
         ? (globalSettings?.[key] ?? param.default)
+        : scope === 'trapezoid'
+        ? (getTrapBasesSettings?.(effectiveSelectedTrapId)?.[key] ?? param.default)
         : (getSettings(selectedRowIdx)[key] ?? param.default)
       const onToggle = scope === 'global'
         ? (v) => updateGlobalSetting(key, v)
+        : scope === 'trapezoid'
+        ? (v) => updateTrapBaseSetting?.(effectiveSelectedTrapId, key, v)
         : (v) => updateSetting(selectedRowIdx, key, v)
       return (
         <div key={key} style={{ marginBottom: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -411,9 +411,9 @@ export default function Step3Sidebar({
       {selectedRC && !settingsCollapsed && SECTIONS.map(sec => {
         const secLabel   = t(sec.labelKey)
         const isOpen     = activeTab === sec.tabKey
-        const areaParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'area')
+        const areaParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && (p.scope === 'area' || p.scope === 'trapezoid'))
         const globalParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'global')
-        const areaKeys   = areaParams.filter(p => p.type !== 'rail-spacing').map(p => p.key)
+        const areaKeys   = areaParams.filter(p => p.type !== 'rail-spacing' && p.scope === 'area').map(p => p.key)
 
         return (
           <div key={sec.tabKey} style={{ borderTop: `1px solid ${BORDER_FAINT}` }}>

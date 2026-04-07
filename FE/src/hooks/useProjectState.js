@@ -249,6 +249,9 @@ setPanelAngle('')
     resetWizardState()
     setCurrentProject(data.project)
 
+    // Refresh app settings so defaults are not stale after admin changes / migrations
+    fetchAppDefaults().then(setAppSettingsRaw).catch(() => {})
+
     if (data.version === '2.0' || data.version === '3.0') {
       // ── v2.0 format ────────────────────────────────────────────────────────
       const layout = data.layout || {}

@@ -516,6 +516,66 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                     />
                   )
                 })}
+
+                {/* Base parameter highlights (top z-order) */}
+                {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {
+                  const areaId = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaId] ?? areaFrames[String(areaId)] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const allBases = areaData.bases ?? []
+                  const areaTrapIds = areaTrapsMap[areaId] ?? areaTrapsMap[String(areaId)] ?? areaTrapsMap[areaData.areaLabel] ?? []
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const liveOffsets = customBasesMap[fullTrapId]
+                  const sw = 6 / effZoom
+
+                  const baseScreenPos = allBases.map((sb, sbi) => {
+                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
+                    const depthPx = sb.startCm / pixelToCmRatio
+                    const lenPx = sb.lengthCm / pixelToCmRatio
+                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                    const by = ty + lenPx
+                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
+                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
+                    const [btx, bty] = toSvg(st.x, st.y)
+                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
+                    return { btx, bty, bbx, bby, lx, offsetCm }
+                  })
+
+                  return (
+                    <g key={`hl-${ai}`} style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                      {highlightGroup === 'base-spacing' && baseScreenPos.length >= 2 && (() => {
+                        const b1 = baseScreenPos[0], b2 = baseScreenPos[1]
+                        const mx1 = (b1.btx + b1.bbx) / 2, my1 = (b1.bty + b1.bby) / 2
+                        const mx2 = (b2.btx + b2.bbx) / 2, my2 = (b2.bty + b2.bby) / 2
+                        return <line x1={mx1} y1={my1} x2={mx2} y2={my2} stroke={AMBER} strokeWidth={sw} strokeDasharray={`${6/effZoom} ${3/effZoom}`} />
+                      })()}
+                      {highlightGroup === 'base-edges' && baseScreenPos.length >= 1 && (() => {
+                        const b1 = baseScreenPos[0]
+                        const edgeLx = tIsRtl ? tLB.maxX : tLB.minX
+                        const edgeP = localToScreen({ x: edgeLx, y: (tLB.minY + tLB.maxY) / 2 }, tFrame.center, tAngle)
+                        const [ex, ey] = toSvg(edgeP.x, edgeP.y)
+                        const mx1 = (b1.btx + b1.bbx) / 2, my1 = (b1.bty + b1.bby) / 2
+                        return <line x1={ex} y1={ey} x2={mx1} y2={my1} stroke={AMBER} strokeWidth={sw} strokeDasharray={`${6/effZoom} ${3/effZoom}`} />
+                      })()}
+                      {highlightGroup === 'base-overhang' && baseScreenPos.map((b, bi) => {
+                        const dx = b.bbx - b.btx, dy = b.bby - b.bty
+                        const len = Math.sqrt(dx * dx + dy * dy)
+                        const ux = len > 0 ? dx / len : 0, uy = len > 0 ? dy / len : 0
+                        const ovPx = 8 / effZoom
+                        return <g key={`boh-${bi}`}>
+                          <line x1={b.btx} y1={b.bty} x2={b.btx + ux * ovPx} y2={b.bty + uy * ovPx}
+                            stroke={AMBER} strokeWidth={sw} strokeLinecap="square" />
+                          <line x1={b.bbx - ux * ovPx} y1={b.bby - uy * ovPx} x2={b.bbx} y2={b.bby}
+                            stroke={AMBER} strokeWidth={sw} strokeLinecap="square" />
+                        </g>
+                      })}
+                    </g>
+                  )
+                })}
     </>
   )
 
