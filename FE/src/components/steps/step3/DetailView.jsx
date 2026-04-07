@@ -12,6 +12,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const [_showPunches,     setShowPunches]      = useState(true)
   const [_showDiagHandles, setShowDiagHandles]  = useState(false)
   const [showGhost,        setShowGhost]        = useState(true)
+  const [showRoofLine,     setShowRoofLine]     = useState(true)
   const showDimensions = _showDimensions
   const showPunches     = _showPunches
   const showDiagHandles = _showDiagHandles
@@ -724,7 +725,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               )}
 
               {/* ── Green floor / roof surface line ── */}
-              {(roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'perpendicular' ? (() => {
+              {(showRoofLine && !printMode) && ((roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'perpendicular' ? (() => {
                 // Wavy corrugated pattern representing purlin roof surface
                 const purlinDist = purlinDistCm
                 if (!purlinDist || purlinDist <= 0) {
@@ -768,7 +769,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               })() : (
                 <line x1={panelX1 - 35} y1={blockBotY} x2={panelX2 + 45} y2={blockBotY}
                   stroke={GROUND_LINE} strokeWidth="2.5" strokeLinecap="round" />
-              )}
+              ))}
 
               {/* ── Angle label inside trapezoid ── */}
               <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
@@ -1027,6 +1028,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
           { label: t('step3.layer.punches'),       checked: _showPunches,     setter: setShowPunches      },
           { label: t('step3.layer.dimensions'),   checked: _showDimensions, setter: setShowDimensions  },
           { label: t('step3.layer.editBar'),      checked: _showDiagHandles, setter: setShowDiagHandles  },
+          { label: t('step3.layer.roofLine'),   checked: showRoofLine,    setter: setShowRoofLine     },
           ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),
         ]}
         actions={[

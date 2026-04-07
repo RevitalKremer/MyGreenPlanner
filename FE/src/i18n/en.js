@@ -405,6 +405,7 @@ const en = {
   'step3.layer.baseIDs':         'Base IDs',
   'step3.layer.railLines':       'Rail lines',
   'step3.layer.diagonals':       'Diagonals',
+  'step3.layer.roofLine':        'Roof Line',
   'step3.detail.membersTitle':   'Trapezoid Members',
   'step3.detail.element':        'Element',
   'step3.detail.length':         'Length (cm)',

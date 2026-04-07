@@ -405,6 +405,7 @@ const he = {
   'step3.layer.baseIDs':         'מזהי בסיס',
   'step3.layer.railLines':       'קווי קושרות',
   'step3.layer.diagonals':       'אלכסונים',
+  'step3.layer.roofLine':        'קו גג',
   'step3.detail.membersTitle':   'רכיבים לטרפז',
   'step3.detail.element':        'רכיב',
   'step3.detail.length':         'אורך (סמ)',
