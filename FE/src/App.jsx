@@ -350,7 +350,7 @@ function App() {
         ? savedTab 
         : (currentStep === 3 ? 'areas' : null)
       const merged = {
-        project:     { name: cloudProject.name, location: cloudProject.location },
+        project:     { name: cloudProject.name, location: cloudProject.location, roofSpec: cloudProject.roof_spec },
         currentStep,
         activeTab,
         layout,
@@ -631,7 +631,7 @@ function App() {
             beTrapezoidsData={beTrapezoidsData}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
-            paramSchema={s.paramSchema}
+            paramSchema={s.paramSchemaForRoof}
             settingsDefaults={s.settingsDefaults}
             paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}

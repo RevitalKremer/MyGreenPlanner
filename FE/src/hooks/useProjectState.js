@@ -98,8 +98,15 @@ export function useProjectState() {
       highlightGroup: s.highlight_group,
       orientation: s.key === 'railSpacingV' ? 'V' : s.key === 'railSpacingH' ? 'H' : undefined,
       visible: s.visible ?? true,
+      roofTypes: s.roof_types ?? null,
     }))
   }, [appSettingsRaw])
+
+  // Derived: paramSchema filtered by current project's roof type
+  const paramSchemaForRoof = useMemo(() => {
+    const roofType = currentProject?.roofSpec?.type || 'concrete'
+    return paramSchema.filter(p => p.roofTypes === null || (Array.isArray(p.roofTypes) && p.roofTypes.includes(roofType)))
+  }, [paramSchema, currentProject])
 
   // Derived: settings defaults {key: default_value} for seeding globalSettings
   const settingsDefaults = useMemo(() => {
@@ -1177,6 +1184,7 @@ setPanelAngle('')
     // App defaults (from app_settings DB table)
     appDefaults,
     paramSchema,
+    paramSchemaForRoof,
     settingsDefaults,
     paramGroup,
     // Products (materials for BOM)
