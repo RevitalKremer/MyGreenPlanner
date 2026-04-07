@@ -605,6 +605,7 @@ function App() {
             panelAngle={s.panelAngle}
             setPanelAngle={s.setPanelAngle}
             appDefaults={s.appDefaults}
+            roofType={s.currentProject?.roofSpec?.type}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.

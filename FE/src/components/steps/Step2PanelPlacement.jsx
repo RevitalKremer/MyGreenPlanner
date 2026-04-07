@@ -52,6 +52,7 @@ export default function Step2PanelPlacement({
   rebuildPanelGrid,
   recordPanelDeletion,
   appDefaults,
+  roofType,
 }) {
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
@@ -501,6 +502,7 @@ export default function Step2PanelPlacement({
             reassignToTrapezoid={reassignToTrapezoid}
             panelGapCm={appDefaults?.panelGapCm}
             lineGapCm={appDefaults?.lineGapCm}
+            roofType={roofType}
           />
         )}
 

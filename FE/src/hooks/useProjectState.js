@@ -1117,17 +1117,17 @@ setPanelAngle('')
         parseFloat(referenceLineLengthCm) > 0
       )
       case 2: {
+        const roofType = currentProject?.roofSpec?.type || 'concrete'
+        if (rectAreas.length === 0) return false
+        if (roofType === 'tiles') return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
-        return (
-          rectAreas.length > 0 &&
-          rectAreas.every(a => {
-            const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
-            const ang = a.angle !== '' ? a.angle : defaultAng
-            return fh !== '' && parseFloat(fh) >= 0 &&
-              ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
-          })
-        )
+        return rectAreas.every(a => {
+          const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
+          const ang = a.angle !== '' ? a.angle : defaultAng
+          return fh !== '' && parseFloat(fh) >= 0 &&
+            ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
+        })
       }
       case 3: return true
       case 4: return !!(step4PlanApproval?.strictConsent)

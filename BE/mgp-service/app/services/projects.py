@@ -613,6 +613,22 @@ async def update_project_step(
     flag_modified(project, 'data')
     await db.commit()
 
+    # ── Tiles: force angle=0, frontHeight=0 (no construction frame) ──
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+    if roof_spec.get('type') == 'tiles':
+        step2 = data.get('step2', {})
+        step2['defaultAngleDeg'] = 0
+        step2['defaultFrontHeightCm'] = 0
+        for area in step2.get('areas', []):
+            area['angleDeg'] = 0
+            area['frontHeightCm'] = 0
+        for trap in step2.get('trapezoids', []):
+            trap['angleDeg'] = 0
+            trap['frontHeightCm'] = 0
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
+
     # ── Compute rails → bases → trapezoid details → external diagonals ──
     trapezoid_details = None
     diagonals_result = None
