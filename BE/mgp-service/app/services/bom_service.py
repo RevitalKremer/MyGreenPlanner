@@ -247,23 +247,69 @@ def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
     ]
 
 
-def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict]:
+def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str) -> list[dict]:
+    """Compute screws for iskurit/insulated_panel — 2 per panel."""
+    panel_count = rc.get('panelCount', 0)
+    if panel_count <= 0:
+        return []
+    if roof_type == 'iskurit':
+        element = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal'
+    else:
+        element = 'self_drilling_screw_12_5_5_drill_with_seal'
+    return [{'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': 2 * panel_count}]
+
+
+def _compute_hook_bom(rc: dict, area_label: str, spacing_mm: float) -> list[dict]:
+    """Compute hooks + associated hardware for tiles roof."""
+    num_rails = rc.get('numRails', 0)
+    row_length_cm = rc.get('rowLength', 0)
+    if num_rails <= 0 or row_length_cm <= 0 or spacing_mm <= 0:
+        return []
+    row_length_mm = row_length_cm * 10
+    hooks_per_rail = max(1, math.ceil(row_length_mm / spacing_mm)) + 1
+    hook_count = hooks_per_rail * num_rails
+    return [
+        {'areaLabel': area_label, 'element': 'hooks', 'totalLengthM': None, 'qty': hook_count},
+        {'areaLabel': area_label, 'element': 'torx_sharp_screw_for_wood_roof_7_5cm_3', 'totalLengthM': None, 'qty': 2 * hook_count},
+        {'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hook_count},
+        {'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hook_count},
+    ]
+
+
+def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: float = 0) -> list[dict]:
     """
     Build per-area bill of materials.
     Direct port of FE constructionCalculator.js → buildBOM().
     Returns list of { areaLabel, element, totalLengthM, qty }.
+    spacing_mm: base spacing setting (used for tiles hook count).
     """
     rows: list[dict] = []
 
     for i, rc in enumerate(row_constructions):
         area_label = row_labels[i] if i < len(row_labels) else f'Area {i + 1}'
+        roof_type = rc.get('roofType', 'concrete')
 
-        rows += _compute_frame_bom(rc, area_label)
-        rows += _compute_diagonal_bom(rc, area_label)
-        rows += _compute_rail_bom(rc, area_label)
-        rows += _compute_block_bom(rc, area_label)
-        rows += _compute_panel_clamp_bom(rc, area_label)
-        rows += _compute_bolt_bom(rc, area_label)
+        if roof_type == 'tiles':
+            # Tiles: rails + clamps + hooks only (no frame, no blocks)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_hook_bom(rc, area_label, spacing_mm)
+        elif roof_type in ('iskurit', 'insulated_panel'):
+            # Full frame, no blocks, add screws
+            rows += _compute_frame_bom(rc, area_label)
+            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_bolt_bom(rc, area_label)
+            rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
+        else:
+            # Concrete (default): full BOM
+            rows += _compute_frame_bom(rc, area_label)
+            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_block_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_bolt_bom(rc, area_label)
 
     return rows
 
@@ -376,8 +422,9 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
         row_constructions.append(rc)
         row_labels.append(label)
 
-    # Build BOM
-    bom_items = build_bom(row_constructions, row_labels)
+    # Build BOM (pass spacing_mm for tiles hook count)
+    spacing_mm = get_setting('spacingMm')
+    bom_items = build_bom(row_constructions, row_labels, spacing_mm)
 
     # Enrich with product data
     products_by_type = await _load_products_by_type(db)
