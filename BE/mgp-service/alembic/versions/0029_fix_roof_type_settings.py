@@ -25,7 +25,8 @@ def upgrade() -> None:
         UPDATE app_settings SET visible = false
         WHERE key IN (
             'diagSkipBelowCm', 'diagDoubleAboveCm',
-            'crossRailEdgeDistMm', 'stockLengths', 'angleProfileSizeMm'
+            'crossRailEdgeDistMm', 'stockLengths', 'angleProfileSizeMm',
+            'punchOverlapMarginCm', 'punchInnerOffsetCm'
         )
         """
     )
@@ -85,7 +86,8 @@ def downgrade() -> None:
         UPDATE app_settings SET visible = true
         WHERE key IN (
             'diagSkipBelowCm', 'diagDoubleAboveCm',
-            'crossRailEdgeDistMm', 'stockLengths', 'angleProfileSizeMm'
+            'crossRailEdgeDistMm', 'stockLengths', 'angleProfileSizeMm',
+            'punchOverlapMarginCm', 'punchInnerOffsetCm'
         )
         """
     )
