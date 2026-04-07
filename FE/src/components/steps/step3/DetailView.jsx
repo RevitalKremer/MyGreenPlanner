@@ -402,10 +402,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const gLegs = fullTrapGhost.beDetailData.legs ?? []
                 // Ghost atSlope: offset from real trap's origin by the difference in originCm
                 const gOriginCm = fullTrapGhost.beDetailData.geometry?.originCm ?? 0
+                const gFirstLegPos = gLegs[0]?.positionCm ?? 0
                 const originDelta = (gOriginCm - originCm) * Math.cos(gAngleRad) * SC
                 const gLegHeights = gLegs.map(leg => leg.heightCm * SC)
-                const gLegXPositions = gLegs.map(leg => legX0 + originDelta + leg.positionCm * Math.cos(gAngleRad) * SC)
-                const gLegEndXPositions = gLegs.map(leg => legX0 + originDelta + (leg.positionEndCm ?? (leg.positionCm + beamThickCm)) * Math.cos(gAngleRad) * SC)
+                const gLegXPositions = gLegs.map(leg => legX0 + originDelta + (leg.positionCm - gFirstLegPos) * Math.cos(gAngleRad) * SC)
+                const gLegEndXPositions = gLegs.map(leg => legX0 + originDelta + ((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - gFirstLegPos) * Math.cos(gAngleRad) * SC)
                 const gActualX0 = gLegXPositions[0] ?? legX0
                 const gActualX1 = gLegEndXPositions[gLegEndXPositions.length - 1] ?? legX1
                 const gLegBW = gActualX1 - gActualX0
@@ -417,10 +418,14 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   return gBaseY - (h0 + frac * (h1 - h0))
                 }
                 const gAtTrap = (posCm) => {
-                  const x = legX0 + originDelta + posCm * Math.cos(gAngleRad) * SC
+                  const x = legX0 + originDelta + (posCm - gFirstLegPos) * Math.cos(gAngleRad) * SC
                   return { x, y: gBeamY(x) }
                 }
-                const gAtSlope = (dCm) => gAtTrap(dCm - gOriginCm)
+                // gAtSlope works in panel coords (no leg offset subtraction)
+                const gAtSlope = (dCm) => {
+                  const x = legX0 + originDelta + (dCm - gOriginCm) * Math.cos(gAngleRad) * SC
+                  return { x, y: gBeamY(x) }
+                }
 
                 return (
                   <g pointerEvents="none">

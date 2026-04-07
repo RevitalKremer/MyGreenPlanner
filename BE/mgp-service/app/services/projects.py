@@ -743,15 +743,11 @@ def _trim_trapezoid(
     geom = detail['geometry']
 
     # Update geometry
-    full_geom = full_trap_detail.get('geometry', {})
-    rear_ext = full_geom.get('rearExtensionCm', 0)
-    front_ext = full_geom.get('frontExtensionCm', 0)
-
-    geom['originCm'] = _r(full_origin + rear_pos - rear_ext)
+    geom['originCm'] = _r(full_origin + rear_pos)
     geom['heightRear'] = filtered_legs[0]['heightCm']
     geom['heightFront'] = filtered_legs[-1]['heightCm']
     geom['topBeamLength'] = _r(slope_len)
-    geom['baseBeamLength'] = _r(base_len + rear_ext + front_ext)
+    geom['baseBeamLength'] = _r(base_len)
     geom['baseLength'] = _r(base_len)
 
     # Update panelFrontHeight if first line is empty (EV/EH)
@@ -780,8 +776,8 @@ def _trim_trapezoid(
         sin_a = math.sin(angle * math.pi / 180)
         geom['panelRearHeightCm'] = _r(geom.get('panelRearHeightCm', 0) - skipped_rear * sin_a)
 
-    # Rebase legs: shift so positions are in base beam coords (with extension offset)
-    rebase_shift = rear_pos - rear_ext
+    # Rebase legs: shift so first leg is at position 0
+    rebase_shift = rear_pos
     for leg in filtered_legs:
         leg['positionCm'] = _r(leg['positionCm'] - rebase_shift)
         if 'positionEndCm' in leg:
@@ -826,22 +822,20 @@ def _trim_trapezoid(
         detail['blocks'] = []
 
     # Punches: filter from full trap, rebase, regenerate outer+block
-    slope_shift = rebase_shift  # slope punches are in slope coords (no extension)
-    base_punch_shift = rebase_shift * cos_a  # base punches are in base beam coords
-    base_beam_len = base_len + rear_ext + front_ext  # full base beam with extensions
+    base_shift = rear_pos * cos_a
     profile_half = geom['beamThickCm'] / 2
     # Positions of new outer legs — their innerLeg punches are replaced by outerLeg
     outer_slope_pos = {0.0, _r(slope_len)}
-    outer_base_pos = {0.0, _r(base_beam_len)}
+    outer_base_pos = {0.0, _r(base_len)}
     new_punches = []
     for p in full_trap_detail.get('punches', []):
         # Skip outerLeg and block punches — they'll be regenerated
         if p.get('origin') in ('outerLeg', 'block'):
             continue
         pp = {**p}
-        shift = slope_shift if p['beamType'] == 'slope' else base_punch_shift
+        shift = rear_pos if p['beamType'] == 'slope' else base_shift
         pp['positionCm'] = _r(p['positionCm'] - shift)
-        beam_len = slope_len if p['beamType'] == 'slope' else base_beam_len
+        beam_len = slope_len if p['beamType'] == 'slope' else base_len
         if -0.5 <= pp['positionCm'] <= beam_len + 0.5:
             # Skip innerLeg punches at outer leg positions (replaced by outerLeg)
             if p.get('origin') == 'innerLeg':
@@ -853,7 +847,7 @@ def _trim_trapezoid(
             new_punches.append(pp)
     # Fresh outerLeg punches for trimmed beam ends
     new_punches.append({'beamType': 'base',  'positionCm': _r(profile_half), 'origin': 'outerLeg'})
-    new_punches.append({'beamType': 'base',  'positionCm': _r(base_beam_len - profile_half), 'origin': 'outerLeg'})
+    new_punches.append({'beamType': 'base',  'positionCm': _r(base_len - profile_half), 'origin': 'outerLeg'})
     new_punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg',
                         'reversedPositionCm': _r(slope_len - profile_half)})
     new_punches.append({'beamType': 'slope', 'positionCm': _r(slope_len - profile_half), 'origin': 'outerLeg',
@@ -863,12 +857,12 @@ def _trim_trapezoid(
         other_base_positions = [p['positionCm'] for p in new_punches if p['beamType'] == 'base']
         block_punch_cm = geom['blockPunchCm']
         block_punches = _compute_block_punches(
-            detail['blocks'], other_base_positions, block_length_cm, base_beam_len,
+            detail['blocks'], other_base_positions, block_length_cm, base_len,
             block_punch_cm, geom['beamThickCm'], cos_a,
             geom['punchOverlapMarginCm'], geom['punchInnerOffsetCm'],
         )
         for bp in block_punches:
-            bp['reversedPositionCm'] = _r(base_beam_len - bp['positionCm'])
+            bp['reversedPositionCm'] = _r(base_len - bp['positionCm'])
         new_punches += block_punches
     detail['punches'] = new_punches
 
@@ -1081,7 +1075,22 @@ async def compute_and_save_trapezoid_details(
         full_trap_detail = area_full_trap.get(trap_area.get('label', ''))
         if not full_trap_detail:
             continue
-        full_origin = full_trap_detail.get('geometry', {}).get('originCm', 0)
+        full_geom = full_trap_detail.get('geometry', {})
+        full_origin = full_geom.get('originCm', 0)
+        full_rear_ext = full_geom.get('rearExtensionCm', 0)
+
+        # Normalize: temporarily subtract rear_ext from full trap legs so the
+        # trim logic works in the original coordinate system (first leg at 0).
+        # After trimming, _trim_trapezoid rebases and we add the offset back.
+        normalized_full = {**full_trap_detail}
+        if full_rear_ext:
+            normalized_full['legs'] = []
+            for leg in full_trap_detail.get('legs', []):
+                nl = {**leg, 'positionCm': _r(leg['positionCm'] - full_rear_ext),
+                       'positionEndCm': _r((leg.get('positionEndCm', leg['positionCm'] + full_geom.get('beamThickCm', 4)) - full_rear_ext))}
+                if 'railPositionCm' in leg:
+                    nl['railPositionCm'] = _r(leg['railPositionCm'] - full_rear_ext)
+                normalized_full['legs'].append(nl)
 
         trap_cfg_local = trapezoids.get(tid, {})
         local_orients = trap_cfg_local.get('lineOrientations', ['V'])
@@ -1089,15 +1098,13 @@ async def compute_and_save_trapezoid_details(
         trap_computed_area = _get_computed_area(data, trap_area_id)
         trap_all_line_rails = _derive_line_rails(trap_computed_area)
 
-        # Build active rail positions from the full trap's actual leg railPositionCm
-        # values — ensures exact match with the legs we're filtering against.
+        # Build active rail positions from normalized leg railPositionCm values
         full_rail_positions = {}
-        full_legs_list = full_trap_detail.get('legs', [])
-        for leg in full_legs_list[1:-1]:
+        for leg in normalized_full.get('legs', [])[1:-1]:
             rp = leg.get('railPositionCm')
             if rp is not None:
                 full_rail_positions[round(rp, 1)] = True
-        # Then determine which of those belong to this trimmed trap's active lines.
+        # Compute approx in original coords (no extension offset)
         active_rail_positions = set()
         d_cm = 0.0
         for li, orient in enumerate(local_orients):
@@ -1108,7 +1115,6 @@ async def compute_and_save_trapezoid_details(
             if not _is_empty(orient):
                 for off in trap_all_line_rails.get(str(li), []):
                     approx = round(d_cm + off - full_origin, 1)
-                    # Find the exact railPositionCm from the full trap that matches
                     for frp in full_rail_positions:
                         if abs(frp - approx) < 1.5:
                             active_rail_positions.add(frp)
@@ -1118,11 +1124,26 @@ async def compute_and_save_trapezoid_details(
             d_cm += depth
 
         _trim_trapezoid(
-            detail, full_trap_detail, active_rail_positions, full_origin,
+            detail, normalized_full, active_rail_positions, full_origin,
             local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
             app_defaults['lineGapCm'],
         )
 
+        # Re-apply extension to trimmed trap
+        if full_rear_ext or full_geom.get('frontExtensionCm', 0):
+            full_front_ext = full_geom.get('frontExtensionCm', 0)
+            geom = detail['geometry']
+            # Shift legs back into base beam coords
+            for leg in detail.get('legs', []):
+                leg['positionCm'] = _r(leg['positionCm'] + full_rear_ext)
+                if 'positionEndCm' in leg:
+                    leg['positionEndCm'] = _r(leg['positionEndCm'] + full_rear_ext)
+                if 'railPositionCm' in leg:
+                    leg['railPositionCm'] = _r(leg['railPositionCm'] + full_rear_ext)
+            # Extend base beam length and copy extension info
+            geom['baseBeamLength'] = _r(geom.get('baseBeamLength', 0) + full_rear_ext + full_front_ext)
+            geom['rearExtensionCm'] = full_rear_ext
+            geom['frontExtensionCm'] = full_front_ext
         _upsert_computed_trapezoid(step3, tid, detail)
         result[tid] = detail
 
