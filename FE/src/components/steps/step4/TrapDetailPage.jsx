@@ -48,7 +48,7 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
 
 export default function TrapDetailPage({
   trapId, rc, settings = {}, lineRails = null, panelLines = null,
-  beDetailData = null,
+  beDetailData = null, fullTrapGhost = null,
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
   if (!rc) return null
@@ -84,6 +84,7 @@ export default function TrapDetailPage({
             settings={settings}
             lineRails={lineRails}
             beDetailData={beDetailData}
+            fullTrapGhost={fullTrapGhost}
             printMode
           />
         </div>

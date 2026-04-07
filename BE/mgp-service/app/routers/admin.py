@@ -11,6 +11,7 @@ from app.schemas.user import UserRead, UserUpdate
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from app.schemas.setting import SettingRead, SettingUpdate
 from app.routers.deps import require_admin
+from app.services import settings_cache
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -162,6 +163,12 @@ async def update_setting(
         setting.step_val = payload.step_val
     if payload.visible is not None:
         setting.visible = payload.visible
+    if payload.roof_types is not None:
+        setting.roof_types = payload.roof_types
     await db.commit()
     await db.refresh(setting)
+    
+    # Refresh settings cache immediately after update
+    await settings_cache.load_settings_cache(db)
+    
     return setting

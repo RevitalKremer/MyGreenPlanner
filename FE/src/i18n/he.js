@@ -258,6 +258,14 @@ const he = {
   'step3.param.reverseBlockPunches': 'הפוך ניקובי בלוק',
   'step3.param.railRoundThresholdCm':'סף עיגול קושרת (ס"מ)',
   'step3.param.crossRailOffsetCm':   'היסט קושרת רוחב (ס"מ)',
+  'step3.param.diagSkipBelowCm':     'דלג על אלכסון מתחת (ס"מ)',
+  'step3.param.diagDoubleAboveCm':   'אלכסון כפול מעל (ס"מ)',
+  'step3.param.punchOverlapMarginCm':'שולי חפיפת ניקוב (ס"מ)',
+  'step3.param.punchInnerOffsetCm':  'היסט ניקוב פנימי (ס"מ)',
+  'step3.param.railRoundPrecisionCm':'דיוק עיגול קושרת (ס"מ)',
+  'step3.param.purlinBufferCm':     'חיץ פורלין (ס"מ)',
+  'step3.param.extendFront':        'הארכת קורת בסיס קדמית',
+  'step3.param.extendRear':         'הארכת קורת בסיס אחורית',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':    'לחץ לעריכה',
@@ -384,7 +392,6 @@ const he = {
   'step3.layer.dimensions':      'מידות',
   'step3.layer.materialSummary': 'סיכום חומרים',
   'step3.layer.connectors':      'מחברים',
-  'step3.layer.annotations':     'מידות',
   'step3.layer.punches':         'ניקובים',
   'step3.layer.editBar':         'סרגל עריכה',
   'step3.layer.ghost':           'צל',
@@ -398,6 +405,7 @@ const he = {
   'step3.layer.baseIDs':         'מזהי בסיס',
   'step3.layer.railLines':       'קווי קושרות',
   'step3.layer.diagonals':       'אלכסונים',
+  'step3.layer.roofLine':        'קו גג',
   'step3.detail.membersTitle':   'רכיבים לטרפז',
   'step3.detail.element':        'רכיב',
   'step3.detail.length':         'אורך (סמ)',
@@ -438,9 +446,9 @@ const he = {
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   '{n} אזור',
   'step4.pdf.areas':  'אזורים',
-  'step4.pdf.bases':  'בסיסים',
-  'step4.pdf.panels': 'פנלים',
-  'step4.pdf.rails':  'קושרות',
+  'step4.pdf.bases':  'פריסת בסיסים',
+  'step4.pdf.panels': 'פריסת פנלים',
+  'step4.pdf.rails':  'פריסת קושרות',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':              'החשבון שלי',

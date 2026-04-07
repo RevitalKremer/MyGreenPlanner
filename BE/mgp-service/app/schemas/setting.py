@@ -14,6 +14,7 @@ class SettingRead(BaseModel):
     step_val: float | None
     highlight_group: str | None
     visible: bool
+    roof_types: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -24,3 +25,4 @@ class SettingUpdate(BaseModel):
     max_val: float | None = None
     step_val: float | None = None
     visible: bool | None = None
+    roof_types: list[str] | None = None

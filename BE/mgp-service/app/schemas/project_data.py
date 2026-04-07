@@ -59,7 +59,8 @@ class PanelGrid(BaseModel):
 
 class Step2Area(BaseModel):
     """Basic area config set during panel placement. No computed data."""
-    label: str                          # 'A', 'B', 'C', …
+    id: int                             # permanent numeric id, assigned by BE, never changes
+    label: str                          # user-editable display label: 'A', 'B', 'C', …
     angleDeg: Optional[float] = None
     frontHeightCm: Optional[float] = None
     trapezoidIds: list[str] = Field(default_factory=list)
@@ -112,21 +113,26 @@ class Base(BaseModel):
     lengthCm: float
 
 
-class Diagonal(BaseModel):
-    """Cross-brace connecting two adjacent base beams within an area."""
-    fromBaseId: str
-    toBaseId: str
-    horizMm: int
-    vertMm: int
-    diagLengthMm: int
+class ExternalDiagonal(BaseModel):
+    """Cross-brace connecting two adjacent base beams at a frame edge."""
+    startBaseIdx: int               # area-wide index of start base (high end)
+    endBaseIdx: int                 # area-wide index of end base (low end)
+    startBaseOffsetCm: float        # offset along start base beam to connection point
+    startBaseHeightCm: float        # installation height at start connection (leg height)
+    endBaseOffsetCm: float          # offset along end base beam to connection point
+    endBaseHeightCm: float          # installation height at end connection (0 = ground)
+    horizMm: int                    # horizontal span between bases (mm)
+    vertMm: int                     # vertical height difference (mm)
+    diagLengthMm: int               # diagonal length = sqrt(horiz² + vert²) (mm)
 
 
 class ComputedArea(BaseModel):
     """Server-computed construction data for one area."""
-    label: str                      # matches step2.areas[].label
+    areaId: int                     # matches step2.areas[].id (permanent)
+    label: str                      # matches step2.areas[].label (display)
     rails: list[Rail] = Field(default_factory=list)
     bases: list[Base] = Field(default_factory=list)
-    diagonals: list[Diagonal] = Field(default_factory=list)
+    diagonals: list[ExternalDiagonal] = Field(default_factory=list)
     numLargeGaps: int = 0
 
 

@@ -98,8 +98,15 @@ export function useProjectState() {
       highlightGroup: s.highlight_group,
       orientation: s.key === 'railSpacingV' ? 'V' : s.key === 'railSpacingH' ? 'H' : undefined,
       visible: s.visible ?? true,
+      roofTypes: s.roof_types ?? null,
     }))
   }, [appSettingsRaw])
+
+  // Derived: paramSchema filtered by current project's roof type
+  const paramSchemaForRoof = useMemo(() => {
+    const roofType = currentProject?.roofSpec?.type || 'concrete'
+    return paramSchema.filter(p => p.roofTypes === null || (Array.isArray(p.roofTypes) && p.roofTypes.includes(roofType)))
+  }, [paramSchema, currentProject])
 
   // Derived: settings defaults {key: default_value} for seeding globalSettings
   const settingsDefaults = useMemo(() => {
@@ -242,6 +249,9 @@ setPanelAngle('')
     resetWizardState()
     setCurrentProject(data.project)
 
+    // Refresh app settings so defaults are not stale after admin changes / migrations
+    fetchAppDefaults().then(setAppSettingsRaw).catch(() => {})
+
     if (data.version === '2.0' || data.version === '3.0') {
       // ── v2.0 format ────────────────────────────────────────────────────────
       const layout = data.layout || {}
@@ -260,9 +270,10 @@ setPanelAngle('')
 
       if (layout.rectAreas && s2.areas) {
         skipRecomputeRef.current = 'load'
-        setRectAreas(layout.rectAreas.map(ra => {
-          const s2a = s2.areas.find(a => a.id === ra.id) || {}
-          return { ...ra, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+        setRectAreas(layout.rectAreas.map((ra, idx) => {
+          // Match by index (arrays are always same order) with ID fallback
+          const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
+          return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
         }))
       } else if (layout.rectAreas) {
         skipRecomputeRef.current = 'load'
@@ -285,7 +296,9 @@ setPanelAngle('')
       if (s2.areas) {
         // Reconstruct legacy areas array (used by Step3 for label/config lookups)
         setAreas(s2.areas.map(a => ({
+          id: a.id,
           label: a.label ?? a.id,
+          trapezoidIds: a.trapezoidIds ?? [],
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
           lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['V'],
@@ -1104,17 +1117,17 @@ setPanelAngle('')
         parseFloat(referenceLineLengthCm) > 0
       )
       case 2: {
+        const roofType = currentProject?.roofSpec?.type || 'concrete'
+        if (rectAreas.length === 0) return false
+        if (roofType === 'tiles') return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
-        return (
-          rectAreas.length > 0 &&
-          rectAreas.every(a => {
-            const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
-            const ang = a.angle !== '' ? a.angle : defaultAng
-            return fh !== '' && parseFloat(fh) >= 0 &&
-              ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
-          })
-        )
+        return rectAreas.every(a => {
+          const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
+          const ang = a.angle !== '' ? a.angle : defaultAng
+          return fh !== '' && parseFloat(fh) >= 0 &&
+            ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
+        })
       }
       case 3: return true
       case 4: return !!(step4PlanApproval?.strictConsent)
@@ -1174,6 +1187,7 @@ setPanelAngle('')
     // App defaults (from app_settings DB table)
     appDefaults,
     paramSchema,
+    paramSchemaForRoof,
     settingsDefaults,
     paramGroup,
     // Products (materials for BOM)

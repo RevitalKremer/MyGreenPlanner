@@ -310,6 +310,32 @@ export default function Step4PdfReport({
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
+  // Build ghost map: for each trapId, find the full-trap in its area (if different)
+  const fullTrapGhostMap = useMemo(() => {
+    // Group trapIds by area letter (e.g. "A1","A2" → area "A")
+    const areaMap = {}
+    for (const tid of trapIds) {
+      const area = tid.replace(/\d+$/, '')
+      if (!areaMap[area]) areaMap[area] = []
+      areaMap[area].push(tid)
+    }
+    const map = {}
+    for (const [, tids] of Object.entries(areaMap)) {
+      const fullTid = tids.find(tid => beTrapezoidsData?.[tid]?.isFullTrap)
+      if (!fullTid) continue
+      for (const tid of tids) {
+        if (tid === fullTid) continue
+        map[tid] = {
+          beDetailData: beTrapezoidsData[fullTid],
+          panelLines: trapPanelLinesMap[fullTid] ?? null,
+          lineRails: trapLineRailsMap[fullTid] ?? null,
+          rc: trapRCMap[fullTid] ?? null,
+        }
+      }
+    }
+    return map
+  }, [trapIds, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
+
   // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
   const panelWp = (() => {
     if (!panelType) return null
@@ -561,7 +587,7 @@ export default function Step4PdfReport({
           <ScaledPage scale={pageScale}>
             <BasesLayoutPage
               pageRef={page3Ref}
-              panels={panels} refinedArea={refinedArea}
+              panels={panels} refinedArea={refinedArea} areas={areas}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
@@ -588,6 +614,7 @@ export default function Step4PdfReport({
                 lineRails={trapLineRailsMap[trapId] ?? null}
                 panelLines={trapPanelLinesMap[trapId] ?? null}
                 beDetailData={beTrapezoidsData?.[trapId]}
+                fullTrapGhost={fullTrapGhostMap[trapId] ?? null}
                 project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
               />
             </ScaledPage>

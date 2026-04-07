@@ -41,7 +41,7 @@ export default function RailLayoutTab({
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
   const [showConnectors,      setShowConnectors]      = useState(true)
-  const [showEditBar,    setShowEditBar]    = useState(true)
+  const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
 
@@ -187,7 +187,7 @@ export default function RailLayoutTab({
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
-                  <HatchedPanels panels={panels} selectedTrapId={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
+                  <HatchedPanels panels={panels} selectedArea={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
                   {/* Rails + layers */}
                   <RailsOverlay {...overlayProps} toSvg={toSvg} zoom={zoom}
@@ -219,9 +219,9 @@ export default function RailLayoutTab({
           <LayersPanel
             layers={[
               { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
-              { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
-              { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
               { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
+              { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
+              { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
               { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
             ]}
             summary={null}

@@ -37,9 +37,9 @@ export default function useRowData({
   const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]
-    const label   = areas[areaKey]?.label
-    if (!label) return null
-    const beArea  = beRailsData.find(a => a.areaLabel === label)
+    const area    = areas[areaKey]
+    if (!area) return null
+    const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
     if (!beArea?.rails?.length) return null
     const map = {}
     for (const r of beArea.rails) {
@@ -108,8 +108,8 @@ export default function useRowData({
       const railOffsetCm = lineRails[0]?.[0] ?? 0
       const frontLegH    = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad) - crossRailH * Math.cos(angleRad))
 
-      const areaLbl    = areas[areaKey]?.label
-      const beAreaData = beRailsData?.find(a => a.areaLabel === areaLbl)
+      const areaObj    = areas[areaKey]
+      const beAreaData = beRailsData?.find(a => (a.areaId != null && areaObj?.id != null ? a.areaId === areaObj.id : a.areaLabel === areaObj?.label))
       const rails      = beAreaData?.rails ?? []
 
       const measuredRowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
@@ -117,10 +117,28 @@ export default function useRowData({
 
       const beTrapDetail = beTrapezoidsData?.[trapId]
       const beGeom = beTrapDetail?.geometry
-      if (!beGeom || measuredRowLength == null) return null
-
       const numRails = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
       const numLines = Object.keys(lineRails).length
+
+      // Tiles: no trapezoid geometry — build minimal row construction from rails only
+      if (!beGeom && measuredRowLength != null) {
+        return {
+          angle: 0, frontHeight: 0, panelCount,
+          rowLength: measuredRowLength,
+          baseLength: 0, diagonalLength: 0,
+          heightRear: 0, heightFront: 0,
+          topBeamLength: 0, baseBeamLength: 0,
+          numTrapezoids: 0, spacing: 0,
+          railOverhang,
+          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+          numRails, numLines,
+          numLargeGaps: beAreaData?.numLargeGaps ?? 0,
+          numRailConnectors,
+        }
+      }
+
+      if (!beGeom || measuredRowLength == null) return null
+
       const numSpans = Math.max(1, Math.ceil(measuredRowLength / maxSpan))
       return {
         ...beGeom,

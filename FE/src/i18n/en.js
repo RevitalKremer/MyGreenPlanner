@@ -258,6 +258,14 @@ const en = {
   'step3.param.reverseBlockPunches': 'Reverse Block Punches',
   'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
   'step3.param.crossRailOffsetCm':   'Cross Rail Offset (cm)',
+  'step3.param.diagSkipBelowCm':     'Skip Diagonal Below (cm)',
+  'step3.param.diagDoubleAboveCm':   'Double Diagonal Above (cm)',
+  'step3.param.punchOverlapMarginCm':'Punch Overlap Margin (cm)',
+  'step3.param.punchInnerOffsetCm':  'Punch Inner Offset (cm)',
+  'step3.param.railRoundPrecisionCm':'Rail Rounding Precision (cm)',
+  'step3.param.purlinBufferCm':     'Purlin Buffer (cm)',
+  'step3.param.extendFront':        'Extend Base Beam Front',
+  'step3.param.extendRear':         'Extend Base Beam Rear',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',
@@ -384,7 +392,6 @@ const en = {
   'step3.layer.dimensions':      'Dimensions',
   'step3.layer.materialSummary': 'Material summary',
   'step3.layer.connectors':      'Connectors',
-  'step3.layer.annotations':     'Annotations',
   'step3.layer.punches':         'Punches',
   'step3.layer.editBar':         'Edit Bar',
   'step3.layer.ghost':           'Ghost',
@@ -398,6 +405,7 @@ const en = {
   'step3.layer.baseIDs':         'Base IDs',
   'step3.layer.railLines':       'Rail lines',
   'step3.layer.diagonals':       'Diagonals',
+  'step3.layer.roofLine':        'Roof Line',
   'step3.detail.membersTitle':   'Trapezoid Members',
   'step3.detail.element':        'Element',
   'step3.detail.length':         'Length (cm)',
@@ -438,9 +446,9 @@ const en = {
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   'Area {n}',
   'step4.pdf.areas':  'Areas',
-  'step4.pdf.bases':  'Bases',
-  'step4.pdf.panels': 'Panels',
-  'step4.pdf.rails':  'Rails',
+  'step4.pdf.bases':  'Bases Layout',
+  'step4.pdf.panels': 'Panels Layout',
+  'step4.pdf.rails':  'Rails Layout',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':        'My Account',

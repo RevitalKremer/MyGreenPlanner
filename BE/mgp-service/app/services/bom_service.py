@@ -18,6 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.bom import ProjectBOM
 from app.models.product import Product
+from app.services.settings_cache import get_setting
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +63,7 @@ def _derive_row_construction(
     area: dict,
     computed_area: dict | None,
     computed_trapezoids: list[dict],
+    roof_type: str = 'concrete',
 ) -> dict | None:
     """
     Derive per-area row-construction data from step2 area + step3 computed data.
@@ -78,6 +80,38 @@ def _derive_row_construction(
     if not trap_ids:
         return None
 
+    # Panel count + lines (needed for all roof types)
+    panel_count = _count_panels(panel_grid)
+    num_lines = _count_lines(panel_grid)
+    if num_lines == 0:
+        num_lines = 1
+
+    # Rails (needed for all roof types)
+    num_rails = len(rails)
+    num_rail_connectors = 0
+    for r in rails:
+        segs = r.get('stockSegmentsMm') or []
+        if len(segs) > 1:
+            num_rail_connectors += len(segs) - 1
+    row_length = 0
+    if rails:
+        row_length = max(r.get('lengthCm', 0) for r in rails)
+    num_large_gaps = area.get('numLargeGaps', 0)
+
+    # Tiles: no frame geometry needed — only rails + clamps + hooks
+    if roof_type == 'tiles':
+        return {
+            'rowLength': row_length,
+            'angle': 0, 'frontHeight': 0, 'heightRear': 0, 'heightFront': 0,
+            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0, 'diagonalLength': 0,
+            'numTrapezoids': 0,
+            'panelCount': panel_count,
+            'numRails': num_rails,
+            'numLines': num_lines,
+            'numLargeGaps': num_large_gaps,
+            'numRailConnectors': num_rail_connectors,
+        }
+
     # Find geometry from first trapezoid's computed detail
     first_trap_id = trap_ids[0]
     detail = None
@@ -90,39 +124,6 @@ def _derive_row_construction(
     if not geom:
         return None
 
-    angle = geom.get('angle', 0)
-    front_height = geom.get('frontHeight', 0)
-    height_rear = geom.get('heightRear', 0)
-    height_front = geom.get('heightFront', 0)
-    base_beam_length = geom.get('baseBeamLength', 0)
-    top_beam_length = geom.get('topBeamLength', 0)
-    diagonal_length = geom.get('diagonalLength', 0)
-    base_length = geom.get('baseLength', 0)
-
-    # Panel count
-    panel_count = _count_panels(panel_grid)
-    num_lines = _count_lines(panel_grid)
-    if num_lines == 0:
-        num_lines = 1
-
-    # Rails
-    num_rails = len(rails)
-
-    # numRailConnectors: sum of (stockSegments.length - 1) across all rails
-    num_rail_connectors = 0
-    for r in rails:
-        segs = r.get('stockSegmentsMm') or []
-        if len(segs) > 1:
-            num_rail_connectors += len(segs) - 1
-
-    # rowLength: max span across all rails
-    row_length = 0
-    if rails:
-        row_length = max(r.get('lengthCm', 0) for r in rails)
-
-    # numLargeGaps: stored at area level by rail computation
-    num_large_gaps = area.get('numLargeGaps', 0)
-
     # numTrapezoids: count unique base positions (distinct offsetFromStartCm)
     unique_base_positions = set()
     for b in bases:
@@ -131,14 +132,14 @@ def _derive_row_construction(
 
     return {
         'rowLength': row_length,
-        'angle': angle,
-        'frontHeight': front_height,
-        'heightRear': height_rear,
-        'heightFront': height_front,
-        'baseLength': base_length,
-        'baseBeamLength': base_beam_length,
-        'topBeamLength': top_beam_length,
-        'diagonalLength': diagonal_length,
+        'angle': geom.get('angle', 0),
+        'frontHeight': geom.get('frontHeight', 0),
+        'heightRear': geom.get('heightRear', 0),
+        'heightFront': geom.get('heightFront', 0),
+        'baseLength': geom.get('baseLength', 0),
+        'baseBeamLength': geom.get('baseBeamLength', 0),
+        'topBeamLength': geom.get('topBeamLength', 0),
+        'diagonalLength': geom.get('diagonalLength', 0),
         'numTrapezoids': num_trapezoids,
         'panelCount': panel_count,
         'numRails': num_rails,
@@ -148,91 +149,167 @@ def _derive_row_construction(
     }
 
 
-def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict]:
+def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute angle profile BOM for frame pieces (beams + legs)."""
+    T = rc['numTrapezoids']
+    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
+    angle_rad = rc['angle'] * math.pi / 180
+    beam_thick_cm = rc['angleProfileSizeMm'] / 10
+    avg_inner_leg_cm = (
+        beam_thick_cm * (1 + math.cos(angle_rad) / 2)
+        + (rc['heightRear'] + rc['heightFront']) / 2
+    )
+
+    frame_pieces = [
+        p for p in [
+            {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
+            {'qty': T, 'lenCm': rc['topBeamLength']},
+            {'qty': T, 'lenCm': rc['heightRear']},
+            {'qty': T, 'lenCm': rc['heightFront']},
+            {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
+        ]
+        if p['qty'] > 0 and p['lenCm'] > 0
+    ]
+    frame_qty = sum(p['qty'] for p in frame_pieces)
+    frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
+    return [{'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty}]
+
+
+def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute diagonal brace BOM."""
+    T = rc['numTrapezoids']
+    nS = T - 1
+    if nS > 0 and rc['diagonalLength'] > 0:
+        return [{'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS}]
+    return []
+
+
+def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute rail profiles + connectors + end caps BOM."""
+    num_rails = rc.get('numRails', 2)
+    num_rail_connectors = rc.get('numRailConnectors', 0)
+    rows = []
+    rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
+    rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
+    rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
+    if num_rail_connectors > 0:
+        rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
+    return rows
+
+
+def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute blocks + bitumen sheets + jumbo bolts BOM."""
+    T = rc['numTrapezoids']
+    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
+    block_qty = T * (2 + num_inner_legs)
+    return [
+        {'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty},
+        {'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty},
+        {'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty},
+    ]
+
+
+def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute all panel clamp types (end, grounding, mid) BOM."""
+    num_rails = rc.get('numRails', 2)
+    num_lines = rc.get('numLines', 1)
+    num_large_gaps = rc.get('numLargeGaps', 0)
+    panel_count = rc.get('panelCount', 0)
+    rows = []
+
+    rails_per_line = num_rails / num_lines if num_lines else num_rails
+    end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
+    rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
+
+    grounding_qty = math.ceil(panel_count / 2)
+    rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
+
+    panels_per_line = panel_count / num_lines if num_lines else panel_count
+    total_boundaries = max(0, panels_per_line - 1) * num_lines
+    normal_boundaries = max(0, total_boundaries - num_large_gaps)
+    mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
+    if mid_clamp_qty > 0:
+        rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
+
+    return rows
+
+
+def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
+    """Compute hex bolts + flange nuts BOM."""
+    T = rc['numTrapezoids']
+    num_rails = rc.get('numRails', 2)
+    num_inner_legs = max(0, num_rails - 2)
+    legs_per_trapezoid = 2 + num_inner_legs
+    hex_bolt_qty = T * (2 * legs_per_trapezoid + 2) + num_rails * T
+    return [
+        {'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hex_bolt_qty},
+        {'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hex_bolt_qty},
+    ]
+
+
+def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str) -> list[dict]:
+    """Compute screws for iskurit/insulated_panel — 2 per panel."""
+    panel_count = rc.get('panelCount', 0)
+    if panel_count <= 0:
+        return []
+    if roof_type == 'iskurit':
+        element = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal'
+    else:
+        element = 'self_drilling_screw_12_5_5_drill_with_seal'
+    return [{'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': 2 * panel_count}]
+
+
+def _compute_hook_bom(rc: dict, area_label: str, spacing_mm: float) -> list[dict]:
+    """Compute hooks + associated hardware for tiles roof."""
+    num_rails = rc.get('numRails', 0)
+    row_length_cm = rc.get('rowLength', 0)
+    if num_rails <= 0 or row_length_cm <= 0 or spacing_mm <= 0:
+        return []
+    row_length_mm = row_length_cm * 10
+    hooks_per_rail = max(1, math.ceil(row_length_mm / spacing_mm)) + 1
+    hook_count = hooks_per_rail * num_rails
+    return [
+        {'areaLabel': area_label, 'element': 'hooks', 'totalLengthM': None, 'qty': hook_count},
+        {'areaLabel': area_label, 'element': 'torx_sharp_screw_for_wood_roof_7_5cm_3', 'totalLengthM': None, 'qty': 2 * hook_count},
+        {'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hook_count},
+        {'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hook_count},
+    ]
+
+
+def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: float = 0) -> list[dict]:
     """
     Build per-area bill of materials.
     Direct port of FE constructionCalculator.js → buildBOM().
     Returns list of { areaLabel, element, totalLengthM, qty }.
+    spacing_mm: base spacing setting (used for tiles hook count).
     """
     rows: list[dict] = []
 
     for i, rc in enumerate(row_constructions):
         area_label = row_labels[i] if i < len(row_labels) else f'Area {i + 1}'
-        T = rc['numTrapezoids']             # number of frames in this row
-        nS = T - 1                          # number of spans = diagonals per row
-        num_rails = rc.get('numRails', 2)
-        num_lines = rc.get('numLines', 1)
-        num_large_gaps = rc.get('numLargeGaps', 0)
-        num_rail_connectors = rc.get('numRailConnectors', 0)
-        num_inner_legs = max(0, num_rails - 2)
-        angle_rad = rc['angle'] * math.pi / 180
+        roof_type = rc.get('roofType', 'concrete')
 
-        # Average inner leg length: beam_thick + leg height at midpoint
-        BEAM_THICK_CM = 4
-        avg_inner_leg_cm = (
-            BEAM_THICK_CM * (1 + math.cos(angle_rad) / 2)
-            + (rc['heightRear'] + rc['heightFront']) / 2
-        )
-
-        # ── angle_profile_40x40 — frame pieces (beams + legs) ──
-        frame_pieces = [
-            p for p in [
-                {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
-                {'qty': T, 'lenCm': rc['topBeamLength']},
-                {'qty': T, 'lenCm': rc['heightRear']},
-                {'qty': T, 'lenCm': rc['heightFront']},
-                {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
-            ]
-            if p['qty'] > 0 and p['lenCm'] > 0
-        ]
-        frame_qty = sum(p['qty'] for p in frame_pieces)
-        frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
-        rows.append({'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty})
-
-        # ── angle_profile_40x40_diag — diagonal braces ──
-        if nS > 0 and rc['diagonalLength'] > 0:
-            rows.append({'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS})
-
-        # ── rail_40x40 ──
-        rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
-        rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
-
-        # ── block_50x24x15 / bitumen_sheets / jumbo_5x16 ──
-        block_qty = T * (2 + num_inner_legs)
-        rows.append({'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty})
-        rows.append({'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty})
-        rows.append({'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty})
-
-        # ── end_panel_clamp ──
-        rails_per_line = num_rails / num_lines if num_lines else num_rails
-        end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
-        rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
-
-        # ── rail_end_cap ──
-        rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
-
-        # ── grounding_panel_clamp ──
-        panel_count = rc.get('panelCount', 0)
-        grounding_qty = math.ceil(panel_count / 2)
-        rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
-
-        # ── mid_panel_clamp ──
-        panels_per_line = panel_count / num_lines if num_lines else panel_count
-        total_boundaries = max(0, panels_per_line - 1) * num_lines
-        normal_boundaries = max(0, total_boundaries - num_large_gaps)
-        mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
-        if mid_clamp_qty > 0:
-            rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
-
-        # ── rail_connector ──
-        if num_rail_connectors > 0:
-            rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
-
-        # ── hex_head_bolt_m8x20 + flange_nut_m8_stainless_steel ──
-        legs_per_trapezoid = 2 + num_inner_legs
-        hex_bolt_qty = T * (2 * legs_per_trapezoid + 2) + num_rails * T
-        rows.append({'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hex_bolt_qty})
-        rows.append({'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hex_bolt_qty})
+        if roof_type == 'tiles':
+            # Tiles: rails + clamps + hooks only (no frame, no blocks)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_hook_bom(rc, area_label, spacing_mm)
+        elif roof_type in ('iskurit', 'insulated_panel'):
+            # Full frame, no blocks, add screws
+            rows += _compute_frame_bom(rc, area_label)
+            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_bolt_bom(rc, area_label)
+            rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
+        else:
+            # Concrete (default): full BOM
+            rows += _compute_frame_bom(rc, area_label)
+            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_rail_bom(rc, area_label)
+            rows += _compute_block_bom(rc, area_label)
+            rows += _compute_panel_clamp_bom(rc, area_label)
+            rows += _compute_bolt_bom(rc, area_label)
 
     return rows
 
@@ -321,6 +398,12 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     computed_areas = step3.get('computedAreas', [])
     computed_trapezoids = step3.get('computedTrapezoids', [])
 
+    # Get angleProfileSizeMm from settings cache (no DB call)
+    angle_profile_size_mm = get_setting('angleProfileSizeMm')
+
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+    roof_type = roof_spec.get('type', 'concrete')
+
     # Build label → computedArea lookup
     ca_by_label = {ca.get('label'): ca for ca in computed_areas}
 
@@ -330,14 +413,18 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     for area in areas:
         label = _get_area_field(area, 'label', f'Area {len(row_labels) + 1}')
         ca = ca_by_label.get(label)
-        rc = _derive_row_construction(area, ca, computed_trapezoids)
+        rc = _derive_row_construction(area, ca, computed_trapezoids, roof_type)
         if rc is None:
             continue
+        # Add angleProfileSizeMm from app_settings to each row construction
+        rc['angleProfileSizeMm'] = angle_profile_size_mm
+        rc['roofType'] = roof_type
         row_constructions.append(rc)
         row_labels.append(label)
 
-    # Build BOM
-    bom_items = build_bom(row_constructions, row_labels)
+    # Build BOM (pass spacing_mm for tiles hook count)
+    spacing_mm = get_setting('spacingMm')
+    bom_items = build_bom(row_constructions, row_labels, spacing_mm)
 
     # Enrich with product data
     products_by_type = await _load_products_by_type(db)

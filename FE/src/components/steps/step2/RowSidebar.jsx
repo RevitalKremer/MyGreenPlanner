@@ -27,6 +27,7 @@ export default function RowSidebar({
   reassignToTrapezoid,
   panelGapCm,
   lineGapCm,
+  roofType = 'concrete',
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -76,8 +77,8 @@ export default function RowSidebar({
         </select>
       </div>
 
-      {/* Default mounting settings */}
-      {(
+      {/* Default mounting settings (hidden for tiles — flat, no frame) */}
+      {roofType !== 'tiles' && (
         <div style={{ marginBottom: '1rem', padding: '0.6rem 0.7rem 0.5rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BORDER_FAINT}` }}>
           <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
             {t('step2.sidebar.defaultMounting')}
@@ -213,8 +214,8 @@ export default function RowSidebar({
         </>
       )}
 
-      {/* Trapezoid config — shown below areas when a row/trapezoid is selected */}
-      {selectedRow && (
+      {/* Trapezoid config — shown below areas when a row/trapezoid is selected (not tiles) */}
+      {selectedRow && roofType !== 'tiles' && (
         <div style={{ marginTop: '0.75rem', borderTop: `1px solid ${BORDER_FAINT}`, paddingTop: '0.75rem' }}>
           <TrapezoidConfigEditor
             selectedRow={selectedRow}

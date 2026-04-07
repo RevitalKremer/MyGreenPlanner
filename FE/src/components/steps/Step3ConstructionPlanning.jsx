@@ -20,6 +20,9 @@ export default function Step3ConstructionPlanning({
   railsComputing = false, onTabSave, onTabReset,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
+  roofType = 'concrete',
+  purlinDistCm = 0,
+  installationOrientation = null,
 }) {
   const { t } = useLang()
 
@@ -143,12 +146,16 @@ export default function Step3ConstructionPlanning({
   }, [geo.applyRailsToAllAreas, rowKeys, areaTrapezoidMap, settings.setAreaSettings, settings.getSettings])
 
   // ── Tabs ───────────────────────────────────────────────────────────────
-  const tabs = [
+  const allTabs = [
     { key: 'areas',  label: t('step3.tabs.areas') },
     { key: 'rails',  label: t('step3.tabs.rails') },
     { key: 'bases',  label: t('step3.tabs.bases') },
     { key: 'detail', label: t('step3.tabs.detail') },
   ]
+  // Tiles: no construction frame — hide bases and detail tabs
+  const tabs = roofType === 'tiles'
+    ? allTabs.filter(t => t.key === 'areas' || t.key === 'rails')
+    : allTabs
 
   if (rowKeys.length === 0) {
     return (
@@ -244,6 +251,9 @@ export default function Step3ConstructionPlanning({
                   reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
                   onReset={() => { settings.resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
                   onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
+                  roofType={roofType}
+                  purlinDistCm={purlinDistCm}
+                  installationOrientation={installationOrientation}
                 />
               </div>
             )
@@ -272,7 +282,7 @@ export default function Step3ConstructionPlanning({
 
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <BasesPlanTab
-              panels={panels} refinedArea={refinedArea}
+              panels={panels} refinedArea={refinedArea} areas={areas}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}
@@ -291,6 +301,9 @@ export default function Step3ConstructionPlanning({
                   setUserEditedBases(prev => { const s = new Set(prev); s.delete(tid); return s })
                 }
               })}
+              roofType={roofType}
+              purlinDistCm={purlinDistCm}
+              installationOrientation={installationOrientation}
             />
           </div>
         </div>

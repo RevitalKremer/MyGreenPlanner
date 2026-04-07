@@ -56,15 +56,14 @@ def compute_area_bases(
     trap_start_cm: float | None = None,
     trap_end_cm: float | None = None,
     custom_offsets: list[float] | None = None,
-    rc: dict | None = None,
+    roof_spec: dict | None = None,
 ) -> dict | None:
     """
     Compute base layout for one area (or trapezoid sub-range).
 
     panel_grid  — { rows: list[list[str]], rowPositions?: dict[str, list[float]] }
     line_rails  — { str(lineIdx): [offsetFromLineFrontCm, ...] }
-    rc          — { heightRear, heightFront } in cm (optional, for diagonal height)
-    Returns     — dict with bases[], blockDepthOffsetsCm[], diagonals[], etc.
+    Returns     — dict with bases[], frame extents, leg depths, etc.
     """
     rows = panel_grid.get('rows', [])
     if not rows:
@@ -97,11 +96,33 @@ def compute_area_bases(
     frame_length_cm = frame_end_cm - frame_start_cm
     frame_length_mm = round(frame_length_cm * 10)
 
+    # ── Parallel purlin spacing snap (iskurit / insulated_panel) ────────────
+    rs = roof_spec or {}
+    roof_type = rs.get('type', 'concrete')
+    if roof_type in ('iskurit', 'insulated_panel'):
+        orientation = rs.get('installationOrientation')
+        purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
+        if orientation == 'parallel' and purlin_dist_cm and purlin_dist_cm > 0:
+            purlin_dist_mm = purlin_dist_cm * 10
+            n = max(1, math.floor(spacing_mm / purlin_dist_mm))
+            spacing_mm = n * purlin_dist_mm
+
     # ── Base X positions (cm from area start corner) ───────────────────────
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
+    is_purlin_parallel = roof_type in ('iskurit', 'insulated_panel') and rs.get('installationOrientation') == 'parallel' and spacing_mm > 0
 
     if custom_offsets and len(custom_offsets) > 0:
         base_offsets_cm = [mm / 10 for mm in custom_offsets]
+    elif is_purlin_parallel:
+        # Purlin-aligned: fixed spacing, adjust edge offset to center within frame
+        num_spans = max(1, math.floor(inner_span_mm / spacing_mm))
+        total_bases_span = num_spans * spacing_mm
+        adjusted_edge_mm = (frame_length_mm - total_bases_span) / 2
+        num_bases = num_spans + 1
+        base_offsets_cm = [
+            _round2(adjusted_edge_mm / 10 + i * (spacing_mm / 10))
+            for i in range(num_bases)
+        ]
     else:
         num_spans = max(1, math.ceil(inner_span_mm / spacing_mm))
         actual_spacing_cm = (inner_span_mm / num_spans) / 10
@@ -175,15 +196,14 @@ def compute_area_bases(
             panel_along_cm = short_cm if orient == 'V' else long_cm
             stored = row_positions.get(str(li))
             positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
-            active_idx = 0
-            for j, cell in enumerate(cells):
-                if cell not in ('V', 'H'):
-                    continue
-                pos = positions[active_idx]
-                active_idx += 1
-                if base_x >= pos and base_x <= pos + panel_along_cm:
-                    active_lines_for_base.append(li)
-                    break
+            if not positions:
+                continue
+            # Check if base falls within the line's overall panel extent
+            # (first panel start to last panel end), not requiring exact panel alignment
+            line_start = positions[0]
+            line_end = positions[-1] + panel_along_cm
+            if base_x >= line_start and base_x <= line_end:
+                active_lines_for_base.append(li)
 
         if active_lines_for_base:
             b_rear_idx = min(active_lines_for_base)
@@ -207,30 +227,6 @@ def compute_area_bases(
     # Block positions are computed in trapezoid_detail_service (single source of truth).
     # The FE bases view reads blocks from computedTrapezoids[trapId].blocks.
 
-    # ── Diagonals ──────────────────────────────────────────────────────────
-    n = len(bases)
-    diag_pairs = [[0, 1]] if n == 2 else ([[0, 1], [n - 1, n - 2]] if n > 2 else [])
-
-    diagonals = []
-    for ai, bi in diag_pairs:
-        horiz_mm = round(abs(base_offsets_cm[bi] - base_offsets_cm[ai]) * 10)
-        for edge_depth_cm in [base_top_depth_cm, base_bottom_depth_cm]:
-            vert_mm = 0
-            if rc and front_leg_depth_cm > rear_leg_depth_cm:
-                t = max(0.0, min(1.0,
-                    (edge_depth_cm - rear_leg_depth_cm) / (front_leg_depth_cm - rear_leg_depth_cm)
-                ))
-                vert_mm = round((rc.get('heightRear', 0) + t * (rc.get('heightFront', 0) - rc.get('heightRear', 0))) * 10)
-            diagonals.append({
-                'baseIdxA': ai,
-                'baseIdxB': bi,
-                'edgeDepthCm': _round2(edge_depth_cm),
-                'isRearEdge': edge_depth_cm == base_top_depth_cm,
-                'horizMm': horiz_mm,
-                'vertMm': vert_mm,
-                'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
-            })
-
     return {
         'trapezoidId': trapezoid_id,
         'bases': bases,
@@ -241,10 +237,98 @@ def compute_area_bases(
         'baseTopDepthCm': _round2(base_top_depth_cm),
         'baseBottomDepthCm': _round2(base_bottom_depth_cm),
         'baseLengthCm': _round2(base_length_cm),
-        'diagonals': diagonals,
         'actualSpacingMm': actual_spacing_mm,
         'baseCount': len(bases),
     }
+
+
+# ── External diagonals (runs after trapezoid details) ────────────────────────
+
+def compute_external_diagonals(
+    trap_ids: list[str],
+    bases_data_map: dict[str, dict],
+    consolidated: dict[str, list[dict]],
+    computed_trapezoids: list[dict],
+) -> list[dict]:
+    """
+    Compute external diagonals for all trapezoids in one area.
+
+    Runs AFTER trapezoid details so heightRear/heightFront are available.
+
+    trap_ids             — ordered list of trapezoid IDs for this area
+    bases_data_map       — { trapId: compute_area_bases() result } (for frame data)
+    consolidated         — { trapId: [base, ...] } post-consolidation bases
+    computed_trapezoids  — list of ComputedTrapezoid dicts (with geometry.heightRear/Front)
+
+    Returns flat list of diagonal dicts with area-wide baseIdxA/baseIdxB.
+    """
+    trap_geom = {}
+    for ct in computed_trapezoids:
+        tid = ct.get('trapezoidId', '')
+        geom = ct.get('geometry', {})
+        if geom:
+            trap_geom[tid] = geom
+
+    # Build area-wide offset per trap (matches how all_bases is built)
+    trap_area_offset = {}
+    offset = 0
+    for tid in trap_ids:
+        trap_area_offset[tid] = offset
+        offset += len(consolidated.get(tid, []))
+
+    result: list[dict] = []
+    for trap_id in trap_ids:
+        bd = bases_data_map.get(trap_id)
+        if not bd:
+            continue
+        # Use consolidated bases (post-consolidation) for diagonal pairs
+        trap_bases = consolidated.get(trap_id, [])
+        n = len(trap_bases)
+        if n < 2:
+            continue
+
+        diag_pairs = [[0, 1]] if n == 2 else [[0, 1], [n - 1, n - 2]]
+        area_offset = trap_area_offset.get(trap_id, 0)
+
+        base_top_depth_cm = bd.get('baseTopDepthCm', 0)
+        base_bottom_depth_cm = bd.get('baseBottomDepthCm', 0)
+        rear_leg_depth_cm = bd.get('rearLegDepthCm', 0)
+        front_leg_depth_cm = bd.get('frontLegDepthCm', 0)
+
+        geom = trap_geom.get(trap_id, {})
+        height_rear = geom.get('heightRear', 0)
+        height_front = geom.get('heightFront', 0)
+
+        # Base offsets relative to frame start
+        frame_start = bd.get('frameStartCm', 0)
+        base_offsets_cm = [b['offsetFromStartCm'] - frame_start for b in trap_bases]
+
+        for ai, bi in diag_pairs:
+            horiz_mm = round(abs(base_offsets_cm[bi] - base_offsets_cm[ai]) * 10)
+            base_a = trap_bases[ai]
+            base_b = trap_bases[bi]
+            for edge_depth_cm in [base_top_depth_cm, base_bottom_depth_cm]:
+                is_rear = edge_depth_cm == base_top_depth_cm
+                height_at_edge_cm = 0.0
+                if height_rear > 0 and front_leg_depth_cm > rear_leg_depth_cm:
+                    t = max(0.0, min(1.0,
+                        (edge_depth_cm - rear_leg_depth_cm) / (front_leg_depth_cm - rear_leg_depth_cm)
+                    ))
+                    height_at_edge_cm = height_rear + t * (height_front - height_rear)
+                vert_mm = round(height_at_edge_cm * 10)
+                result.append({
+                    'startBaseIdx': area_offset + ai,
+                    'endBaseIdx': area_offset + bi,
+                    'startBaseOffsetCm': 0.0 if is_rear else _round2(base_a.get('lengthCm', 0)),
+                    'startBaseHeightCm': _round2(height_at_edge_cm),
+                    'endBaseOffsetCm': 0.0 if is_rear else _round2(base_b.get('lengthCm', 0)),
+                    'endBaseHeightCm': 0.0,
+                    'horizMm': horiz_mm,
+                    'vertMm': vert_mm,
+                    'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
+                })
+
+    return result
 
 
 # ── Consolidation ─────────────────────────────────────────────────────────────

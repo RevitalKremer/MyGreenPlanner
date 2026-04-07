@@ -172,12 +172,12 @@ export default function RailsOverlay({
     const hlProfile = highlightGroup === 'cross-rails'
     const hlSpacingV = highlightGroup === 'railSpacingV'
     const hlSpacingH = highlightGroup === 'railSpacingH'
-    const railOpacity = (selectedRowIdx === null || i === selectedRowIdx) ? 1 : 0.2
+    const railOpacity = 1
     const prefix = `rl-${i}`
 
     // Gap polygons between adjacent rails of the highlighted orientation
     const spacingGaps = (hlSpacingV || hlSpacingH) && showRails ? (() => {
-      const targetOrientation = hlSpacingV ? 'V' : 'H'
+      const targetOrientation = hlSpacingV ? 'PORTRAIT' : 'LANDSCAPE'
       const sorted = rl.rails
         .filter(r => r.orientation === targetOrientation)
         .map(r => {
@@ -186,16 +186,18 @@ export default function RailsOverlay({
           return { x1, y1, x2, y2, midPerp: hlSpacingV ? (x1 + x2) / 2 : (y1 + y2) / 2 }
         })
         .sort((a, b) => a.midPerp - b.midPerp)
-      return sorted.slice(0, -1).map((r, ri) => {
-        const n = sorted[ri + 1]
-        return (
-          <polygon key={`gap-${ri}`}
-            points={`${r.x1},${r.y1} ${r.x2},${r.y2} ${n.x2},${n.y2} ${n.x1},${n.y1}`}
-            fill={AMBER} fillOpacity={0.35} stroke="none"
-            style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
-          />
-        )
-      })
+      if (sorted.length < 2) return null
+      const sw = 6 / zoom
+      const r = sorted[0], n = sorted[1]
+      const mx1 = (r.x1 + r.x2) / 2, my1 = (r.y1 + r.y2) / 2
+      const mx2 = (n.x1 + n.x2) / 2, my2 = (n.y1 + n.y2) / 2
+      return (
+        <line key="gap-0"
+          x1={mx1} y1={my1} x2={mx2} y2={my2}
+          stroke={AMBER} strokeWidth={sw} strokeDasharray={`${6/zoom} ${3/zoom}`}
+          style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
+        />
+      )
     })() : null
 
     return (

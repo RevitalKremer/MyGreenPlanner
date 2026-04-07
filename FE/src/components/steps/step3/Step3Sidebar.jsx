@@ -192,10 +192,6 @@ export default function Step3Sidebar({
     // ── rail-spacing: derived from lineRails, written via onRailSpacingChange
     if (type === 'rail-spacing') {
       const isH = orientation === 'H'
-      const hasLine = isH
-        ? lineOrientations?.some(o => o === 'H')
-        : lineOrientations?.some(o => o !== 'H' && !isEmptyOrientation(o))
-      if (!hasLine) return null
 
       const s = getSettings(selectedRowIdx)
       const panelDepth = panelDepthsCm?.find((_, i) => {
@@ -222,9 +218,13 @@ export default function Step3Sidebar({
     if (type === 'boolean') {
       const val = scope === 'global'
         ? (globalSettings?.[key] ?? param.default)
+        : scope === 'trapezoid'
+        ? (getTrapBasesSettings?.(effectiveSelectedTrapId)?.[key] ?? param.default)
         : (getSettings(selectedRowIdx)[key] ?? param.default)
       const onToggle = scope === 'global'
         ? (v) => updateGlobalSetting(key, v)
+        : scope === 'trapezoid'
+        ? (v) => updateTrapBaseSetting?.(effectiveSelectedTrapId, key, v)
         : (v) => updateSetting(selectedRowIdx, key, v)
       return (
         <div key={key} style={{ marginBottom: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -342,9 +342,11 @@ export default function Step3Sidebar({
         <div style={{ fontSize: '0.65rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('step3.sidebar.areas')}</div>
       </div>
 
-      {/* Area / trapezoid hierarchy list */}
+      {/* Area / trapezoid hierarchy list — sorted by area label */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {rowConstructions.map((rc, i) => {
+        {rowConstructions.map((rc, i) => ({ rc, i }))
+          .sort((a, b) => (areaLabel(rowKeys[a.i], a.i)).localeCompare(areaLabel(rowKeys[b.i], b.i)))
+          .map(({ rc, i }) => {
           const areaKey = rowKeys[i]
           const trapIds = areaTrapezoidMap[areaKey] || []
           const isAreaSelected = selectedRowIdx === i
@@ -354,13 +356,8 @@ export default function Step3Sidebar({
                 onClick={() => { setSelectedRowIdx(i); setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null) }}
                 style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
-                    {areaLabel(areaKey, i)}
-                  </span>
-                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'white', background: TEXT_SECONDARY, borderRadius: '4px', padding: '1px 6px' }}>
-                    {rc.typeLetter}{Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}
-                  </span>
+                <div style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
+                  {areaLabel(areaKey, i)}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginTop: '2px' }}>
                   {rc.panelCount} panels · {rc.angle}° · {rc.numTrapezoids} frames
@@ -414,9 +411,9 @@ export default function Step3Sidebar({
       {selectedRC && !settingsCollapsed && SECTIONS.map(sec => {
         const secLabel   = t(sec.labelKey)
         const isOpen     = activeTab === sec.tabKey
-        const areaParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'area')
+        const areaParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && (p.scope === 'area' || p.scope === 'trapezoid'))
         const globalParams = PARAM_SCHEMA.filter(p => p.section === sec.tabKey && p.scope === 'global')
-        const areaKeys   = areaParams.filter(p => p.type !== 'rail-spacing').map(p => p.key)
+        const areaKeys   = areaParams.filter(p => p.type !== 'rail-spacing' && p.scope === 'area').map(p => p.key)
 
         return (
           <div key={sec.tabKey} style={{ borderTop: `1px solid ${BORDER_FAINT}` }}>
