@@ -98,9 +98,9 @@ def _compute_leg_positions(
             leg_pos = rail_pos + base_overhang_cm - beam_thick_cm
         else:
             leg_pos = rail_pos - base_overhang_cm
-        # Height interpolated using leg center
-        leg_center = leg_pos + beam_thick_cm / 2
-        front_center = front_outer_pos + beam_thick_cm / 2
+        # Height interpolated using leg center relative to structural span (rear to front leg)
+        leg_center = leg_pos + beam_thick_cm / 2 - rear_outer_pos
+        front_center = front_outer_pos + beam_thick_cm / 2 - rear_outer_pos
         frac = max(0.0, min(1.0, leg_center / front_center)) if front_center > 0 else 0
         leg_height = height_rear + frac * (height_front - height_rear)
         inner_legs.append({
@@ -230,9 +230,13 @@ def _compute_structural_punches(
     origin: float,
     diagonals: list[dict],
     legs: list[dict],
+    leg_offset: float = 0.0,
 ) -> list[dict]:
     """
     Compute punches for outer legs, inner legs, rails, and diagonals (not blocks).
+
+    leg_offset: offset applied to legs (rear extension). Slope beam punches from legs/diagonals
+    must subtract this to convert from base beam coords to slope beam coords.
 
     Returns list of punch dicts.
     """
@@ -249,21 +253,22 @@ def _compute_structural_punches(
     for il in inner_legs:
         center = (il['positionCm'] + il['positionEndCm']) / 2
         punches.append({'beamType': 'base',  'positionCm': _r(center * cos_a), 'origin': 'innerLeg'})
-        punches.append({'beamType': 'slope', 'positionCm': _r(center), 'origin': 'innerLeg'})
+        # Slope beam: convert from base beam coords to slope coords
+        punches.append({'beamType': 'slope', 'positionCm': _r(center - leg_offset), 'origin': 'innerLeg'})
 
     # rail: one punch per cross rail at its center on the slope beam
     for r in rail_items:
         rail_pos = r['globalOffsetCm'] - origin
         punches.append({'beamType': 'slope', 'positionCm': _r(rail_pos), 'origin': 'rail'})
 
-    # diagonal: top attachment on slope beam, bottom on base beam
+    # diagonal: top on slope beam (slope coords), bottom on base beam (base beam coords)
     for diag in diagonals:
         si = diag['spanIdx']
         gap_start = legs[si]['positionEndCm']
         gap_end = legs[si + 1]['positionCm']
         gap = gap_end - gap_start
-        top_pos = _r(gap_start + gap * diag['topPct'])
-        bot_pos = _r(gap_start + gap * diag['botPct'])
+        top_pos = _r(gap_start + gap * diag['topPct'] - leg_offset)  # slope coords
+        bot_pos = _r(gap_start + gap * diag['botPct'])                # base beam coords
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
@@ -352,7 +357,9 @@ def compute_trapezoid_details(
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
     slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
-    height_rear = front_height_cm - block_height_cm + slope_offset * sin_a - cross_rail_cm / cos_a
+    # For purlin types: no blocks, base beam sits on roof surface
+    effective_block_height = 0 if roof_type in ('iskurit', 'insulated_panel') else block_height_cm
+    height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
     base_length_horiz = base_length_cm * cos_a  # original (without extension) for leg placement
     height_front = height_rear + base_length_horiz * math.tan(angle_rad)
@@ -371,9 +378,7 @@ def compute_trapezoid_details(
         'originCm': _r(origin),
         'beamThickCm': _r(beam_thick_cm),
         'panelThickCm': _r(panel_thick_cm),
-        'blockHeightCm': _r(block_height_cm),
-        'blockLengthCm': _r(block_length_cm),
-        'blockPunchCm': _r(block_punch_cm),
+        **({'blockHeightCm': _r(effective_block_height), 'blockLengthCm': _r(block_length_cm), 'blockPunchCm': _r(block_punch_cm)} if roof_type == 'concrete' else {}),
         'crossRailHeightCm': _r(cross_rail_cm),
         'punchOverlapMarginCm': _r(punch_overlap_margin),
         'punchInnerOffsetCm': _r(punch_inner_offset),
@@ -397,7 +402,7 @@ def compute_trapezoid_details(
     geometry['panelRearHeightCm'] = _r(front_height_cm + total_panel_depth * sin_a)
 
     # ── Legs ───────────────────────────────────────────────────────────────
-    # For extended beams, legs shift by rear_ext (legs don't start at beam position 0)
+    # For extended beams, legs shift by rear_ext so position 0 = base beam start
     legs, inner_legs = _compute_leg_positions(
         rail_items, origin, base_overhang_cm, beam_thick_cm,
         base_length_cm, height_rear, height_front, double_above_cm,
@@ -421,6 +426,7 @@ def compute_trapezoid_details(
     punches = _compute_structural_punches(
         beam_thick_cm, base_beam_length, top_beam_length, cos_a,
         inner_legs, rail_items, origin, diagonals, legs,
+        leg_offset=rear_ext,
     )
 
     # Block punches (only for concrete)
