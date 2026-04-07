@@ -301,6 +301,9 @@ export default function Step3ConstructionPlanning({
                   setUserEditedBases(prev => { const s = new Set(prev); s.delete(tid); return s })
                 }
               })}
+              roofType={roofType}
+              purlinDistCm={purlinDistCm}
+              installationOrientation={installationOrientation}
             />
           </div>
         </div>

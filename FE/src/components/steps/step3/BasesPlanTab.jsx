@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
@@ -224,6 +224,57 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   const svgLayers = (
     <>
       <HatchedPanels panels={panels} selectedTrapId={effTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
+
+      {/* Purlin lines for parallel installation — parallel to bases, starting from first base */}
+      {(roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'parallel' && purlinDistCm > 0 && (beBasesData ?? []).map((areaData, ai) => {
+        const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+        const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
+        if (!af) return null
+        const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = af
+        const { angleRad: tAngle, localBounds: tLB } = tFrame
+        const allBases = areaData.bases ?? []
+        if (!allBases.length) return null
+        // First base position as anchor
+        const firstBaseOffsetCm = allBases[0].offsetFromStartCm
+        const purlinStepPx = purlinDistCm / pixelToCmRatio
+        // Base depth extent (Y range) for line length
+        const firstLine = tLines?.[0]
+        const yMin = firstLine?.minY ?? tLB.minY
+        const yMax = firstLine?.maxY ?? tLB.maxY
+        const yPad = 15 / pixelToCmRatio
+        const pLines = []
+        // Draw lines at purlin intervals from first base, in both directions
+        const firstBasePx = firstBaseOffsetCm / pixelToCmRatio
+        const anchorX = tIsRtl ? tLB.maxX - firstBasePx : tLB.minX + firstBasePx
+        for (let step = 0; ; step++) {
+          const offsetPx = step * purlinStepPx
+          const lx = tIsRtl ? anchorX + offsetPx : anchorX - offsetPx
+          if (lx < tLB.minX - yPad && step > 0) break
+          if (lx > tLB.maxX + yPad && step > 0) break
+          const p1 = localToScreen({ x: lx, y: yMin - yPad }, tFrame.center, tAngle)
+          const p2 = localToScreen({ x: lx, y: yMax + yPad }, tFrame.center, tAngle)
+          const [x1, y1] = toSvg(p1.x, p1.y)
+          const [x2, y2] = toSvg(p2.x, p2.y)
+          if (!isNaN(x1) && !isNaN(y1)) pLines.push({ x1, y1, x2, y2 })
+          if (step === 0) continue  // anchor drawn, now go forward
+        }
+        // Also draw forward from anchor
+        for (let step = 1; ; step++) {
+          const offsetPx = step * purlinStepPx
+          const lx = tIsRtl ? anchorX - offsetPx : anchorX + offsetPx
+          if (lx < tLB.minX - yPad) break
+          if (lx > tLB.maxX + yPad) break
+          const p1 = localToScreen({ x: lx, y: yMin - yPad }, tFrame.center, tAngle)
+          const p2 = localToScreen({ x: lx, y: yMax + yPad }, tFrame.center, tAngle)
+          const [x1, y1] = toSvg(p1.x, p1.y)
+          const [x2, y2] = toSvg(p2.x, p2.y)
+          if (!isNaN(x1) && !isNaN(y1)) pLines.push({ x1, y1, x2, y2 })
+        }
+        return pLines.map((l, i) => (
+          <line key={`purlin-${ai}-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+            stroke="#4a7c59" strokeWidth={1.5 / effZoom} strokeDasharray={`${4 / effZoom} ${3 / effZoom}`} opacity={0.5} />
+        ))
+      })}
 
       {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 

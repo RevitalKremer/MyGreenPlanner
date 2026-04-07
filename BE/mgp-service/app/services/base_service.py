@@ -109,9 +109,20 @@ def compute_area_bases(
 
     # ── Base X positions (cm from area start corner) ───────────────────────
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
+    is_purlin_parallel = roof_type in ('iskurit', 'insulated_panel') and rs.get('installationOrientation') == 'parallel' and spacing_mm > 0
 
     if custom_offsets and len(custom_offsets) > 0:
         base_offsets_cm = [mm / 10 for mm in custom_offsets]
+    elif is_purlin_parallel:
+        # Purlin-aligned: fixed spacing, adjust edge offset to center within frame
+        num_spans = max(1, math.floor(inner_span_mm / spacing_mm))
+        total_bases_span = num_spans * spacing_mm
+        adjusted_edge_mm = (frame_length_mm - total_bases_span) / 2
+        num_bases = num_spans + 1
+        base_offsets_cm = [
+            _round2(adjusted_edge_mm / 10 + i * (spacing_mm / 10))
+            for i in range(num_bases)
+        ]
     else:
         num_spans = max(1, math.ceil(inner_span_mm / spacing_mm))
         actual_spacing_cm = (inner_span_mm / num_spans) / 10
