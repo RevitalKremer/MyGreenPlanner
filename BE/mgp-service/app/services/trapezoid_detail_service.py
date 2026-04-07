@@ -243,16 +243,23 @@ def _compute_structural_punches(
     profile_half = beam_thick_cm / 2
     punches = []
 
-    # outerLeg: profile_half from each end of each beam
-    punches.append({'beamType': 'base',  'positionCm': _r(profile_half), 'origin': 'outerLeg'})
-    punches.append({'beamType': 'base',  'positionCm': _r(base_beam_length - profile_half), 'origin': 'outerLeg'})
+    # outerLeg: at leg center on base beam.
+    # Leg positions include leg_offset (extension). Separate extension from structural
+    # position: extension is flat (not projected), structural part is cos_a-projected.
+    rear_leg_center = legs[0]['positionCm'] + profile_half if legs else leg_offset + profile_half
+    front_leg_center = (legs[-1]['positionEndCm'] - profile_half) if legs else leg_offset + base_beam_length - profile_half
+    rear_base = leg_offset + (rear_leg_center - leg_offset) * cos_a
+    front_base = leg_offset + (front_leg_center - leg_offset) * cos_a
+    punches.append({'beamType': 'base',  'positionCm': _r(rear_base), 'origin': 'outerLeg'})
+    punches.append({'beamType': 'base',  'positionCm': _r(front_base), 'origin': 'outerLeg'})
     punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg'})
     punches.append({'beamType': 'slope', 'positionCm': _r(top_beam_length - profile_half), 'origin': 'outerLeg'})
 
     # innerLeg: punch at center of profile on both beams
     for il in inner_legs:
         center = (il['positionCm'] + il['positionEndCm']) / 2
-        punches.append({'beamType': 'base',  'positionCm': _r(center * cos_a), 'origin': 'innerLeg'})
+        base_pos = leg_offset + (center - leg_offset) * cos_a
+        punches.append({'beamType': 'base',  'positionCm': _r(base_pos), 'origin': 'innerLeg'})
         # Slope beam: convert from base beam coords to slope coords
         punches.append({'beamType': 'slope', 'positionCm': _r(center - leg_offset), 'origin': 'innerLeg'})
 
@@ -268,7 +275,8 @@ def _compute_structural_punches(
         gap_end = legs[si + 1]['positionCm']
         gap = gap_end - gap_start
         top_pos = _r(gap_start + gap * diag['topPct'] - leg_offset)  # slope coords
-        bot_pos = _r(gap_start + gap * diag['botPct'])                # base beam coords
+        bot_raw = gap_start + gap * diag['botPct']                     # in leg coords (with offset)
+        bot_pos = _r(leg_offset + (bot_raw - leg_offset) * cos_a)      # base beam coords
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
