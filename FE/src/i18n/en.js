@@ -263,6 +263,9 @@ const en = {
   'step3.param.punchOverlapMarginCm':'Punch Overlap Margin (cm)',
   'step3.param.punchInnerOffsetCm':  'Punch Inner Offset (cm)',
   'step3.param.railRoundPrecisionCm':'Rail Rounding Precision (cm)',
+  'step3.param.purlinBufferCm':     'Purlin Buffer (cm)',
+  'step3.param.extendFront':        'Extend Base Beam Front',
+  'step3.param.extendRear':         'Extend Base Beam Rear',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':       'Click to edit',

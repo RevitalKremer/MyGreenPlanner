@@ -350,7 +350,7 @@ function App() {
         ? savedTab 
         : (currentStep === 3 ? 'areas' : null)
       const merged = {
-        project:     { name: cloudProject.name, location: cloudProject.location },
+        project:     { name: cloudProject.name, location: cloudProject.location, roofSpec: cloudProject.roof_spec },
         currentStep,
         activeTab,
         layout,
@@ -605,6 +605,7 @@ function App() {
             panelAngle={s.panelAngle}
             setPanelAngle={s.setPanelAngle}
             appDefaults={s.appDefaults}
+            roofType={s.currentProject?.roofSpec?.type}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
@@ -631,10 +632,13 @@ function App() {
             beTrapezoidsData={beTrapezoidsData}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
-            paramSchema={s.paramSchema}
+            paramSchema={s.paramSchemaForRoof}
             settingsDefaults={s.settingsDefaults}
             paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            purlinDistCm={s.currentProject?.roofSpec?.distanceBetweenPurlinsCm || 0}
+            installationOrientation={s.currentProject?.roofSpec?.installationOrientation || null}
           />
         </div>
 

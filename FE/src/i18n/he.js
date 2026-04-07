@@ -263,6 +263,9 @@ const he = {
   'step3.param.punchOverlapMarginCm':'שולי חפיפת ניקוב (ס"מ)',
   'step3.param.punchInnerOffsetCm':  'היסט ניקוב פנימי (ס"מ)',
   'step3.param.railRoundPrecisionCm':'דיוק עיגול קושרת (ס"מ)',
+  'step3.param.purlinBufferCm':     'חיץ פורלין (ס"מ)',
+  'step3.param.extendFront':        'הארכת קורת בסיס קדמית',
+  'step3.param.extendRear':         'הארכת קורת בסיס אחורית',
 
   // ── BOM view ─────────────────────────────────────────────────────────────
   'bom.clickToEdit':    'לחץ לעריכה',

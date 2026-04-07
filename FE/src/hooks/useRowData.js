@@ -117,10 +117,28 @@ export default function useRowData({
 
       const beTrapDetail = beTrapezoidsData?.[trapId]
       const beGeom = beTrapDetail?.geometry
-      if (!beGeom || measuredRowLength == null) return null
-
       const numRails = Object.values(lineRails).reduce((sum, arr) => sum + arr.length, 0)
       const numLines = Object.keys(lineRails).length
+
+      // Tiles: no trapezoid geometry — build minimal row construction from rails only
+      if (!beGeom && measuredRowLength != null) {
+        return {
+          angle: 0, frontHeight: 0, panelCount,
+          rowLength: measuredRowLength,
+          baseLength: 0, diagonalLength: 0,
+          heightRear: 0, heightFront: 0,
+          topBeamLength: 0, baseBeamLength: 0,
+          numTrapezoids: 0, spacing: 0,
+          railOverhang,
+          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+          numRails, numLines,
+          numLargeGaps: beAreaData?.numLargeGaps ?? 0,
+          numRailConnectors,
+        }
+      }
+
+      if (!beGeom || measuredRowLength == null) return null
+
       const numSpans = Math.max(1, Math.ceil(measuredRowLength / maxSpan))
       return {
         ...beGeom,

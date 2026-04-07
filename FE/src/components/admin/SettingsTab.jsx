@@ -6,6 +6,8 @@ import {
 } from '../../styles/colors'
 
 const SECTION_LABELS = { global: 'Global', rails: 'Rails', bases: 'Bases', detail: 'Block & Detail' }
+const ROOF_TYPES = ['concrete', 'iskurit', 'insulated_panel', 'tiles']
+const ROOF_TYPE_SHORT = { concrete: 'C', iskurit: 'I', insulated_panel: 'IP', tiles: 'T' }
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState([])
@@ -14,6 +16,7 @@ export default function SettingsTab() {
   const [maxEdits, setMaxEdits] = useState({})  // key → new max_val string
   const [stepEdits, setStepEdits] = useState({}) // key → new step_val string
   const [visibleEdits, setVisibleEdits] = useState({}) // key → new visible boolean
+  const [roofTypesEdits, setRoofTypesEdits] = useState({}) // key → new roof_types array or null
   const [saving, setSaving] = useState({})
   const [saved, setSaved] = useState({})
   const [error, setError] = useState(null)
@@ -26,7 +29,7 @@ export default function SettingsTab() {
   }, [])
 
   const getValue = (s) => edits[s.key] !== undefined ? edits[s.key] : s.value_json
-  const isDirty = (s) => edits[s.key] !== undefined || minEdits[s.key] !== undefined || maxEdits[s.key] !== undefined || stepEdits[s.key] !== undefined || visibleEdits[s.key] !== undefined
+  const isDirty = (s) => edits[s.key] !== undefined || minEdits[s.key] !== undefined || maxEdits[s.key] !== undefined || stepEdits[s.key] !== undefined || visibleEdits[s.key] !== undefined || roofTypesEdits[s.key] !== undefined
 
   const handleSave = async (s) => {
     setSaving(prev => ({ ...prev, [s.key]: true }))
@@ -42,6 +45,7 @@ export default function SettingsTab() {
       if (maxEdits[s.key] !== undefined) payload.max_val = maxEdits[s.key] === '' ? null : Number(maxEdits[s.key])
       if (stepEdits[s.key] !== undefined) payload.step_val = stepEdits[s.key] === '' ? null : Number(stepEdits[s.key])
       if (visibleEdits[s.key] !== undefined) payload.visible = visibleEdits[s.key]
+      if (roofTypesEdits[s.key] !== undefined) payload.roof_types = roofTypesEdits[s.key]
 
       const updated = await updateSetting(s.key, payload)
       setSettings(prev => prev.map(x => x.key === s.key ? updated : x))
@@ -50,6 +54,7 @@ export default function SettingsTab() {
       setMaxEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setStepEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setVisibleEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
+      setRoofTypesEdits(prev => { const n = { ...prev }; delete n[s.key]; return n })
       setSaved(prev => ({ ...prev, [s.key]: true }))
       setTimeout(() => setSaved(prev => { const n = { ...prev }; delete n[s.key]; return n }), 2000)
     } catch {
@@ -77,7 +82,7 @@ export default function SettingsTab() {
           </div>
           {/* Column headers */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px auto',
+            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px auto',
             alignItems: 'center', gap: '0.5rem',
             padding: '0.3rem 0.85rem',
             borderRadius: '8px 8px 0 0',
@@ -88,6 +93,7 @@ export default function SettingsTab() {
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Max</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Step</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Visible</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Roof Types</div>
             <div />
           </div>
           <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: '10px', overflow: 'hidden' }}>
@@ -108,7 +114,7 @@ export default function SettingsTab() {
 
               return (
                 <div key={s.key} style={{
-                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px auto',
+                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px auto',
                   alignItems: 'center', gap: '0.5rem',
                   padding: '0.6rem 0.85rem',
                   background: i % 2 === 0 ? 'white' : BG_SUBTLE,
@@ -157,6 +163,39 @@ export default function SettingsTab() {
                       }}
                       title={currentVisible ? 'Visible in Step3 Sidebar' : 'Hidden (admin only)'}
                     />
+                  </div>
+                  <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                    {ROOF_TYPES.map(rt => {
+                      const current = roofTypesEdits[s.key] !== undefined ? roofTypesEdits[s.key] : s.roof_types
+                      const isAll = current === null || current === undefined
+                      const isActive = isAll || (Array.isArray(current) && current.includes(rt))
+                      return (
+                        <button
+                          key={rt}
+                          onClick={() => {
+                            const prev = roofTypesEdits[s.key] !== undefined ? roofTypesEdits[s.key] : s.roof_types
+                            let arr = prev === null || prev === undefined ? [...ROOF_TYPES] : [...prev]
+                            if (arr.includes(rt)) {
+                              arr = arr.filter(x => x !== rt)
+                            } else {
+                              arr.push(rt)
+                            }
+                            const newVal = arr.length === ROOF_TYPES.length ? null : arr
+                            setRoofTypesEdits(p => ({ ...p, [s.key]: newVal }))
+                          }}
+                          style={{
+                            padding: '1px 5px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '600',
+                            border: `1px solid ${isActive ? PRIMARY : BORDER_LIGHT}`,
+                            background: isActive ? PRIMARY : 'white',
+                            color: isActive ? 'white' : TEXT_VERY_LIGHT,
+                            cursor: 'pointer', lineHeight: '1.4',
+                          }}
+                          title={rt}
+                        >
+                          {ROOF_TYPE_SHORT[rt]}
+                        </button>
+                      )
+                    })}
                   </div>
                   <button
                     onClick={() => handleSave(s)}

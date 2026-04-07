@@ -56,6 +56,7 @@ def compute_area_bases(
     trap_start_cm: float | None = None,
     trap_end_cm: float | None = None,
     custom_offsets: list[float] | None = None,
+    roof_spec: dict | None = None,
 ) -> dict | None:
     """
     Compute base layout for one area (or trapezoid sub-range).
@@ -95,11 +96,33 @@ def compute_area_bases(
     frame_length_cm = frame_end_cm - frame_start_cm
     frame_length_mm = round(frame_length_cm * 10)
 
+    # ── Parallel purlin spacing snap (iskurit / insulated_panel) ────────────
+    rs = roof_spec or {}
+    roof_type = rs.get('type', 'concrete')
+    if roof_type in ('iskurit', 'insulated_panel'):
+        orientation = rs.get('installationOrientation')
+        purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
+        if orientation == 'parallel' and purlin_dist_cm and purlin_dist_cm > 0:
+            purlin_dist_mm = purlin_dist_cm * 10
+            n = max(1, math.floor(spacing_mm / purlin_dist_mm))
+            spacing_mm = n * purlin_dist_mm
+
     # ── Base X positions (cm from area start corner) ───────────────────────
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
+    is_purlin_parallel = roof_type in ('iskurit', 'insulated_panel') and rs.get('installationOrientation') == 'parallel' and spacing_mm > 0
 
     if custom_offsets and len(custom_offsets) > 0:
         base_offsets_cm = [mm / 10 for mm in custom_offsets]
+    elif is_purlin_parallel:
+        # Purlin-aligned: fixed spacing, adjust edge offset to center within frame
+        num_spans = max(1, math.floor(inner_span_mm / spacing_mm))
+        total_bases_span = num_spans * spacing_mm
+        adjusted_edge_mm = (frame_length_mm - total_bases_span) / 2
+        num_bases = num_spans + 1
+        base_offsets_cm = [
+            _round2(adjusted_edge_mm / 10 + i * (spacing_mm / 10))
+            for i in range(num_bases)
+        ]
     else:
         num_spans = max(1, math.ceil(inner_span_mm / spacing_mm))
         actual_spacing_cm = (inner_span_mm / num_spans) / 10

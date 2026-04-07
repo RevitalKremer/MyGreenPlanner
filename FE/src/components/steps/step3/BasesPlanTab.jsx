@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
@@ -224,6 +224,57 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   const svgLayers = (
     <>
       <HatchedPanels panels={panels} selectedTrapId={effTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
+
+      {/* Purlin lines for parallel installation — parallel to bases, starting from first base */}
+      {(roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'parallel' && purlinDistCm > 0 && (beBasesData ?? []).map((areaData, ai) => {
+        const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+        const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
+        if (!af) return null
+        const { frame: tFrame, lines: tLines, isRtl: tIsRtl } = af
+        const { angleRad: tAngle, localBounds: tLB } = tFrame
+        const allBases = areaData.bases ?? []
+        if (!allBases.length) return null
+        // First base position as anchor
+        const firstBaseOffsetCm = allBases[0].offsetFromStartCm
+        const purlinStepPx = purlinDistCm / pixelToCmRatio
+        // Base depth extent (Y range) for line length
+        const firstLine = tLines?.[0]
+        const yMin = firstLine?.minY ?? tLB.minY
+        const yMax = firstLine?.maxY ?? tLB.maxY
+        const yPad = 15 / pixelToCmRatio
+        const pLines = []
+        // Draw lines at purlin intervals from first base, in both directions
+        const firstBasePx = firstBaseOffsetCm / pixelToCmRatio
+        const anchorX = tIsRtl ? tLB.maxX - firstBasePx : tLB.minX + firstBasePx
+        for (let step = 0; ; step++) {
+          const offsetPx = step * purlinStepPx
+          const lx = tIsRtl ? anchorX + offsetPx : anchorX - offsetPx
+          if (lx < tLB.minX - yPad && step > 0) break
+          if (lx > tLB.maxX + yPad && step > 0) break
+          const p1 = localToScreen({ x: lx, y: yMin - yPad }, tFrame.center, tAngle)
+          const p2 = localToScreen({ x: lx, y: yMax + yPad }, tFrame.center, tAngle)
+          const [x1, y1] = toSvg(p1.x, p1.y)
+          const [x2, y2] = toSvg(p2.x, p2.y)
+          if (!isNaN(x1) && !isNaN(y1)) pLines.push({ x1, y1, x2, y2 })
+          if (step === 0) continue  // anchor drawn, now go forward
+        }
+        // Also draw forward from anchor
+        for (let step = 1; ; step++) {
+          const offsetPx = step * purlinStepPx
+          const lx = tIsRtl ? anchorX - offsetPx : anchorX + offsetPx
+          if (lx < tLB.minX - yPad) break
+          if (lx > tLB.maxX + yPad) break
+          const p1 = localToScreen({ x: lx, y: yMin - yPad }, tFrame.center, tAngle)
+          const p2 = localToScreen({ x: lx, y: yMax + yPad }, tFrame.center, tAngle)
+          const [x1, y1] = toSvg(p1.x, p1.y)
+          const [x2, y2] = toSvg(p2.x, p2.y)
+          if (!isNaN(x1) && !isNaN(y1)) pLines.push({ x1, y1, x2, y2 })
+        }
+        return pLines.map((l, i) => (
+          <line key={`purlin-${ai}-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+            stroke="#4a7c59" strokeWidth={1.5 / effZoom} strokeDasharray={`${4 / effZoom} ${3 / effZoom}`} opacity={0.5} />
+        ))
+      })}
 
       {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 
@@ -463,6 +514,66 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                       overrideBarLocalY={barLocalY}
                       onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
                     />
+                  )
+                })}
+
+                {/* Base parameter highlights (top z-order) */}
+                {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {
+                  const areaId = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+                  const af = areaFrames[areaId] ?? areaFrames[String(areaId)] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
+                  if (!af) return null
+                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const allBases = areaData.bases ?? []
+                  const areaTrapIds = areaTrapsMap[areaId] ?? areaTrapsMap[String(areaId)] ?? areaTrapsMap[areaData.areaLabel] ?? []
+                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
+                  const liveOffsets = customBasesMap[fullTrapId]
+                  const sw = 6 / effZoom
+
+                  const baseScreenPos = allBases.map((sb, sbi) => {
+                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
+                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
+                    const depthPx = sb.startCm / pixelToCmRatio
+                    const lenPx = sb.lengthCm / pixelToCmRatio
+                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                    const by = ty + lenPx
+                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
+                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
+                    const [btx, bty] = toSvg(st.x, st.y)
+                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
+                    return { btx, bty, bbx, bby, lx, offsetCm }
+                  })
+
+                  return (
+                    <g key={`hl-${ai}`} style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                      {highlightGroup === 'base-spacing' && baseScreenPos.length >= 2 && (() => {
+                        const b1 = baseScreenPos[0], b2 = baseScreenPos[1]
+                        const mx1 = (b1.btx + b1.bbx) / 2, my1 = (b1.bty + b1.bby) / 2
+                        const mx2 = (b2.btx + b2.bbx) / 2, my2 = (b2.bty + b2.bby) / 2
+                        return <line x1={mx1} y1={my1} x2={mx2} y2={my2} stroke={AMBER} strokeWidth={sw} strokeDasharray={`${6/effZoom} ${3/effZoom}`} />
+                      })()}
+                      {highlightGroup === 'base-edges' && baseScreenPos.length >= 1 && (() => {
+                        const b1 = baseScreenPos[0]
+                        const edgeLx = tIsRtl ? tLB.maxX : tLB.minX
+                        const edgeP = localToScreen({ x: edgeLx, y: (tLB.minY + tLB.maxY) / 2 }, tFrame.center, tAngle)
+                        const [ex, ey] = toSvg(edgeP.x, edgeP.y)
+                        const mx1 = (b1.btx + b1.bbx) / 2, my1 = (b1.bty + b1.bby) / 2
+                        return <line x1={ex} y1={ey} x2={mx1} y2={my1} stroke={AMBER} strokeWidth={sw} strokeDasharray={`${6/effZoom} ${3/effZoom}`} />
+                      })()}
+                      {highlightGroup === 'base-overhang' && baseScreenPos.map((b, bi) => {
+                        const dx = b.bbx - b.btx, dy = b.bby - b.bty
+                        const len = Math.sqrt(dx * dx + dy * dy)
+                        const ux = len > 0 ? dx / len : 0, uy = len > 0 ? dy / len : 0
+                        const ovPx = 8 / effZoom
+                        return <g key={`boh-${bi}`}>
+                          <line x1={b.btx} y1={b.bty} x2={b.btx + ux * ovPx} y2={b.bty + uy * ovPx}
+                            stroke={AMBER} strokeWidth={sw} strokeLinecap="square" />
+                          <line x1={b.bbx - ux * ovPx} y1={b.bby - uy * ovPx} x2={b.bbx} y2={b.bby}
+                            stroke={AMBER} strokeWidth={sw} strokeLinecap="square" />
+                        </g>
+                      })}
+                    </g>
                   )
                 })}
     </>
