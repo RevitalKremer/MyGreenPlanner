@@ -73,10 +73,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     : [{ depthCm: panelLengthCm ?? 0, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const frontExtPx = (geom.frontExtensionCm ?? 0) * SC
-  const padL = Math.max(120, railOffH + OHx + (geom.rearExtensionCm ?? 0) * SC + 40)
+  const rearExtPx = (geom.rearExtensionCm ?? 0) * SC
+  const padL = Math.max(120, railOffH + OHx + (geom.frontExtensionCm ?? 0) * SC + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
-  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, frontExtPx) + 70)
+  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
   const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
@@ -708,17 +708,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 </g>
               )}
 
-              {hl('extension') && (geom.rearExtensionCm > 0 || geom.frontExtensionCm > 0) && (
+              {hl('extension') && (geom.frontExtensionCm > 0 || geom.rearExtensionCm > 0) && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                  {geom.rearExtensionCm > 0 && (() => {
+                  {geom.frontExtensionCm > 0 && (() => {
                     const extW = firstLegPos * SC
                     return <rect x={legX0 - extW - 3} y={baseY - 3} width={extW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}
-                  {geom.frontExtensionCm > 0 && (() => {
+                  {geom.rearExtensionCm > 0 && (() => {
                     const bbEnd = legX0 - firstLegPos * SC + (geom.baseBeamLength ?? 0) * SC
-                    const frontExtW = (geom.frontExtensionCm ?? 0) * SC
-                    return <rect x={bbEnd - frontExtW - 3} y={baseY - 3} width={frontExtW + 6} height={BEAM_THICK_PX + 6}
+                    const rearExtW = (geom.rearExtensionCm ?? 0) * SC
+                    return <rect x={bbEnd - rearExtW - 3} y={baseY - 3} width={rearExtW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}
                 </g>

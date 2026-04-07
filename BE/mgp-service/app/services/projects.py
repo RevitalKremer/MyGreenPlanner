@@ -1093,19 +1093,19 @@ async def compute_and_save_trapezoid_details(
             continue
         full_geom = full_trap_detail.get('geometry', {})
         full_origin = full_geom.get('originCm', 0)
-        full_rear_ext = full_geom.get('rearExtensionCm', 0)
+        full_front_ext = full_geom.get('frontExtensionCm', 0)
 
         # Normalize: temporarily subtract rear_ext from full trap legs so the
         # trim logic works in the original coordinate system (first leg at 0).
         # After trimming, _trim_trapezoid rebases and we add the offset back.
         normalized_full = {**full_trap_detail}
-        if full_rear_ext:
+        if full_front_ext:
             normalized_full['legs'] = []
             for leg in full_trap_detail.get('legs', []):
-                nl = {**leg, 'positionCm': _r(leg['positionCm'] - full_rear_ext),
-                       'positionEndCm': _r((leg.get('positionEndCm', leg['positionCm'] + full_geom.get('beamThickCm', 4)) - full_rear_ext))}
+                nl = {**leg, 'positionCm': _r(leg['positionCm'] - full_front_ext),
+                       'positionEndCm': _r((leg.get('positionEndCm', leg['positionCm'] + full_geom.get('beamThickCm', 4)) - full_front_ext))}
                 if 'railPositionCm' in leg:
-                    nl['railPositionCm'] = _r(leg['railPositionCm'] - full_rear_ext)
+                    nl['railPositionCm'] = _r(leg['railPositionCm'] - full_front_ext)
                 normalized_full['legs'].append(nl)
 
         trap_cfg_local = trapezoids.get(tid, {})
@@ -1146,24 +1146,24 @@ async def compute_and_save_trapezoid_details(
         )
 
         # Re-apply extension to trimmed trap
-        if full_rear_ext or full_geom.get('frontExtensionCm', 0):
-            full_front_ext = full_geom.get('frontExtensionCm', 0)
+        if full_front_ext or full_geom.get('rearExtensionCm', 0):
+            full_rear_ext = full_geom.get('rearExtensionCm', 0)
             geom = detail['geometry']
             # Shift legs back into base beam coords
             for leg in detail.get('legs', []):
-                leg['positionCm'] = _r(leg['positionCm'] + full_rear_ext)
+                leg['positionCm'] = _r(leg['positionCm'] + full_front_ext)
                 if 'positionEndCm' in leg:
-                    leg['positionEndCm'] = _r(leg['positionEndCm'] + full_rear_ext)
+                    leg['positionEndCm'] = _r(leg['positionEndCm'] + full_front_ext)
                 if 'railPositionCm' in leg:
-                    leg['railPositionCm'] = _r(leg['railPositionCm'] + full_rear_ext)
+                    leg['railPositionCm'] = _r(leg['railPositionCm'] + full_front_ext)
             # Shift base beam punches by rear extension offset
             for p in detail.get('punches', []):
                 if p['beamType'] == 'base':
-                    p['positionCm'] = _r(p['positionCm'] + full_rear_ext)
+                    p['positionCm'] = _r(p['positionCm'] + full_front_ext)
             # Extend base beam length and copy extension info
-            geom['baseBeamLength'] = _r(geom.get('baseBeamLength', 0) + full_rear_ext + full_front_ext)
-            geom['rearExtensionCm'] = full_rear_ext
+            geom['baseBeamLength'] = _r(geom.get('baseBeamLength', 0) + full_front_ext + full_rear_ext)
             geom['frontExtensionCm'] = full_front_ext
+            geom['rearExtensionCm'] = full_rear_ext
         _upsert_computed_trapezoid(step3, tid, detail)
         result[tid] = detail
 

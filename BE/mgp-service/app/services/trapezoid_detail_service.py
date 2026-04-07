@@ -348,19 +348,19 @@ def compute_trapezoid_details(
     base_beam_length = base_length_cm * cos_a
 
     # ── Iskurit / Insulated Panel: perpendicular beam extension ────────────
-    rear_ext = 0.0
     front_ext = 0.0
+    rear_ext = 0.0
     if roof_type in ('iskurit', 'insulated_panel'):
         orientation = rs.get('installationOrientation')
         purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
         if orientation == 'perpendicular' and purlin_dist_cm and purlin_dist_cm > 0:
             buffer_cm = _s(settings, ov, 'purlinBufferCm')
             extension = purlin_dist_cm + buffer_cm
-            extend_front = _s(settings, ov, 'extendFront')
-            extend_rear = _s(settings, ov, 'extendRear')
+            extend_front = _s(settings, ov, 'extendFront')  # label: "Extend Base Beam Rear"
+            extend_rear = _s(settings, ov, 'extendRear')   # label: "Extend Base Beam Front"
             front_ext = extension if extend_front else 0
             rear_ext = extension if extend_rear else 0
-            base_beam_length = base_beam_length + front_ext + rear_ext
+            base_beam_length = base_beam_length + rear_ext + front_ext
 
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
@@ -393,9 +393,9 @@ def compute_trapezoid_details(
     }
 
     # Store extension info for FE rendering
-    if rear_ext > 0 or front_ext > 0:
-        geometry['rearExtensionCm'] = _r(rear_ext)
+    if front_ext > 0 or rear_ext > 0:
         geometry['frontExtensionCm'] = _r(front_ext)
+        geometry['rearExtensionCm'] = _r(rear_ext)
 
     # ── Rail items ─────────────────────────────────────────────────────────
     rail_items, total_panel_depth = _build_rail_items(panel_lines, line_rails)
@@ -410,11 +410,11 @@ def compute_trapezoid_details(
     geometry['panelRearHeightCm'] = _r(front_height_cm + total_panel_depth * sin_a)
 
     # ── Legs ───────────────────────────────────────────────────────────────
-    # For extended beams, legs shift by rear_ext so position 0 = base beam start
+    # For extended beams, legs shift by front_ext so position 0 = base beam start
     legs, inner_legs = _compute_leg_positions(
         rail_items, origin, base_overhang_cm, beam_thick_cm,
         base_length_cm, height_rear, height_front, double_above_cm,
-        leg_offset=rear_ext,
+        leg_offset=front_ext,
     )
 
     # ── Diagonals ──────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ def compute_trapezoid_details(
     punches = _compute_structural_punches(
         beam_thick_cm, base_beam_length, top_beam_length, cos_a,
         inner_legs, rail_items, origin, diagonals, legs,
-        leg_offset=rear_ext,
+        leg_offset=front_ext,
     )
 
     # Block punches (only for concrete)
