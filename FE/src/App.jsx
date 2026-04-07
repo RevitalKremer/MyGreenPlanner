@@ -635,6 +635,7 @@ function App() {
             settingsDefaults={s.settingsDefaults}
             paramGroup={s.paramGroup}
             panelSpec={s.panelSpec}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
           />
         </div>
 

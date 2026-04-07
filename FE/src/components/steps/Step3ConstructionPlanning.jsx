@@ -20,6 +20,7 @@ export default function Step3ConstructionPlanning({
   railsComputing = false, onTabSave, onTabReset,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
+  roofType = 'concrete',
 }) {
   const { t } = useLang()
 
@@ -143,12 +144,16 @@ export default function Step3ConstructionPlanning({
   }, [geo.applyRailsToAllAreas, rowKeys, areaTrapezoidMap, settings.setAreaSettings, settings.getSettings])
 
   // ── Tabs ───────────────────────────────────────────────────────────────
-  const tabs = [
+  const allTabs = [
     { key: 'areas',  label: t('step3.tabs.areas') },
     { key: 'rails',  label: t('step3.tabs.rails') },
     { key: 'bases',  label: t('step3.tabs.bases') },
     { key: 'detail', label: t('step3.tabs.detail') },
   ]
+  // Tiles: no construction frame — hide bases and detail tabs
+  const tabs = roofType === 'tiles'
+    ? allTabs.filter(t => t.key === 'areas' || t.key === 'rails')
+    : allTabs
 
   if (rowKeys.length === 0) {
     return (
