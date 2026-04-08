@@ -35,6 +35,9 @@ export default function useRowData({
   )
 
   // ── Line rails resolution ──────────────────────────────────────────────
+  // lineRails convention: keys are numeric integers (0, 1, 2...) representing line indices.
+  // BE responses may return string keys after JSON serialization. Consumers should handle
+  // both via dual fallback: lineRails[si] ?? lineRails[String(si)].
   const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]

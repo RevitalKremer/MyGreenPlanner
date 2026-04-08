@@ -30,7 +30,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
-  // Rail offset = first rail of first line (derived from lineRails)
+  // Rail offset = first rail of first line (derived from lineRails).
+  // Dual key fallback: lineRails keys are numeric from FE hooks, but may become
+  // string keys after JSON round-tripping (e.g. from BE responses or localStorage).
   const railOffsetCm   = lineRails?.[0]?.[0] ?? lineRails?.['0']?.[0] ?? 0
   const panelLengthCm  = settings.panelLengthCm
   const diagOverrides  = settings.diagOverrides ?? {}
@@ -109,7 +111,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const seg = segments[si]
       dCm += (seg.gapBeforeCm ?? 0)
       if (seg.isEmpty) { dCm += (seg.depthCm ?? 0); continue }
-      const segRails = lineRails?.[si] ?? lineRails?.[String(si)] ?? []
+      const segRails = lineRails?.[si] ?? lineRails?.[String(si)] ?? [] // dual key: see comment at railOffsetCm
       for (const offsetCm of segRails) {
         items.push({ cx: atSlope(dCm + offsetCm).x, segIdx: si, offsetCm, globalOffsetCm: dCm + offsetCm })
       }
