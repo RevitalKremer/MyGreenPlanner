@@ -73,6 +73,36 @@ export function useProjectState() {
   const step5BomDeltas = pState.data.step5.bomDeltas
   const setStep5BomDeltas = (v) => pDispatch({ type: 'SET_BOM_DELTAS', value: v })
 
+  // ── Sync step2 useState values into reducer (bridge until full migration) ──
+  useEffect(() => {
+    const spec = panelTypes?.find(t => t.id === panelType) ?? panelTypes?.[0] ?? DEFAULT_PANEL_TYPE
+    // Convert trapezoidConfigs object to array for reducer
+    const trapezoids = Object.entries(trapezoidConfigs).map(([id, cfg]) => ({
+      id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
+    }))
+    // Build step2.areas from rectAreas + panels (same as getProjectData)
+    const step2Areas = rectAreas.map((ra, idx) => {
+      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
+      return {
+        ...areas[idx],
+        id: ra.id, label: ra.label,
+        frontHeightCm: parseFloat(ra.frontHeight !== '' ? ra.frontHeight : panelFrontHeight) || 0,
+        angleDeg: parseFloat(ra.angle !== '' ? ra.angle : panelAngle) || 0,
+        trapezoidIds: areas[idx]?.trapezoidIds?.length > 0 ? areas[idx].trapezoidIds : areaTrapIds,
+        panelGrid: panelGrid[ra.label] ?? null,
+      }
+    })
+    pDispatch({ type: 'SYNC_STEP2', payload: {
+      panelType,
+      panelWidthCm: spec?.widthCm,
+      panelLengthCm: spec?.lengthCm,
+      defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
+      defaultAngleDeg: parseFloat(panelAngle) || 0,
+      trapezoids,
+      areas: step2Areas,
+    }})
+  }, [areas, trapezoidConfigs, panelGrid, rectAreas, panels, panelType, panelFrontHeight, panelAngle])
+
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
 
@@ -391,44 +421,9 @@ setPanelAngle('')
   }
 
   const getProjectData = () => {
-    const step2Trapezoids = Object.entries(trapezoidConfigs).map(([id, cfg]) => ({
-      id,
-      angleDeg:         cfg.angle,
-      frontHeightCm:    cfg.frontHeight,
-      lineOrientations: cfg.lineOrientations,
-    }))
-    const step2Areas = rectAreas.map((ra, idx) => {
-      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
-      return {
-        id:            ra.id,
-        label:         ra.label,
-        frontHeightCm: parseFloat(ra.frontHeight !== '' ? ra.frontHeight : panelFrontHeight) || 0,
-        angleDeg:      parseFloat(ra.angle !== '' ? ra.angle : panelAngle) || 0,
-        trapezoidIds:  areaTrapIds,
-        panelGrid:     panelGrid[ra.label] ?? null,
-      }
-    })
+    // Read directly from reducer — step2 synced by effect, step3-5 live in reducer
     return {
-      version: '3.0',
-      step2: {
-        panelType,
-        panelWidthCm:  panelSpec.widthCm,
-        panelLengthCm: panelSpec.lengthCm,
-        defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
-        defaultAngleDeg:      parseFloat(panelAngle) || 0,
-        trapezoids: step2Trapezoids,
-        areas: step2Areas,
-      },
-      step3: {
-        globalSettings: step3GlobalSettings,
-        areaSettings:   step3AreaSettings,
-      },
-      step4: {
-        planApproval: step4PlanApproval,
-      },
-      step5: {
-        bomDeltas: step5BomDeltas,
-      },
+      ...pState.data,
     }
   }
 

@@ -99,6 +99,16 @@ export function projectReducer(state, action) {
     case 'SET_TAB':
       return { ...state, navigation: { ...state.navigation, tab: action.tab } }
 
+    // ── Step 2 data ──
+
+    case 'SYNC_STEP2':
+      // Sync individual useState values into the reducer's step2 node.
+      // Used until these states are fully migrated into the reducer.
+      return {
+        ...state,
+        data: { ...state.data, step2: { ...state.data.step2, ...action.payload } },
+      }
+
     // ── Step 3 settings ──
 
     case 'SET_STEP3_GLOBAL_SETTINGS':
