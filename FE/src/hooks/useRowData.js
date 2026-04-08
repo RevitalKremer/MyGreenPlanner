@@ -65,17 +65,25 @@ export default function useRowData({
   }, [areaSettings, getLineRailsFromBE, railSpacingV, railSpacingH])
 
   // ── Trapezoid map ──────────────────────────────────────────────────────
+  // Source of truth: step2.areas.trapezoidIds (from DB via areas prop).
+  // Fallback to panel-derived IDs only when areas data is not available.
   const areaTrapezoidMap = useMemo(() => {
     const map = {}
     rowKeys.forEach(areaKey => {
       const letter = String.fromCharCode(65 + areaKey)
-      const ids = [...new Set(
-        panels.filter(p => (p.area ?? p.row) === areaKey).map(p => p.trapezoidId).filter(Boolean)
-      )].sort()
-      map[areaKey] = ids.length > 0 ? ids : [`${letter}1`]
+      const areaObj = areas[areaKey]
+      const serverIds = areaObj?.trapezoidIds
+      if (serverIds?.length > 0) {
+        map[areaKey] = serverIds
+      } else {
+        const ids = [...new Set(
+          panels.filter(p => (p.area ?? p.row) === areaKey).map(p => p.trapezoidId).filter(Boolean)
+        )].sort()
+        map[areaKey] = ids.length > 0 ? ids : [`${letter}1`]
+      }
     })
     return map
-  }, [panels, rowKeys])
+  }, [panels, rowKeys, areas])
 
   // ── Apply bases to all traps ───────────────────────────────────────────
   const applyBasesToAll = useCallback((effectiveSelectedTrapId) => {

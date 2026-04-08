@@ -262,24 +262,14 @@ function App() {
           }
         })
         
-        console.log('[DEBUG] trapezoids save - areaTrapMap:', areaTrapMap)
-        console.log('[DEBUG] trapezoids save - areaSettings keys:', Object.keys(areaSettings || {}))
-        
         // For each area with diagOverrides, map to its trapezoid(s)
         Object.keys(areaSettings || {}).forEach(areaIdx => {
-          console.log(`[DEBUG] checking area ${areaIdx}:`, areaSettings[areaIdx])
           const areaDiagOverrides = areaSettings[areaIdx]?.diagOverrides
-          console.log(`[DEBUG] diagOverrides for area ${areaIdx}:`, areaDiagOverrides)
-          
           if (!areaDiagOverrides || typeof areaDiagOverrides !== 'object') return
-          
-          // Get trapezoid ID(s) for this area (usually just one)
+
           const trapIds = areaTrapMap[areaIdx] || []
           const trapId = trapIds[0] || `${String.fromCharCode(65 + parseInt(areaIdx))}1`
-          console.log(`[DEBUG] area ${areaIdx} -> trapId: ${trapId}`)
-          
-          // Convert diagOverrides: { spanIdx: {topPct, botPct, disabled?} } 
-          // to: { spanIdx: [topPct, botPct] } or { spanIdx: {disabled: true} }
+
           const diagObj = {}
           for (const [spanIdx, diag] of Object.entries(areaDiagOverrides)) {
             const { topPct, botPct, disabled } = diag
@@ -289,13 +279,10 @@ function App() {
               diagObj[spanIdx] = [topPct, botPct]
             }
           }
-          console.log(`[DEBUG] diagObj for trapId ${trapId}:`, diagObj)
           if (Object.keys(diagObj).length > 0) {
             diagOverrides[trapId] = diagObj
           }
         })
-        
-        console.log('[DEBUG] final diagOverrides:', diagOverrides)
         if (Object.keys(diagOverrides).length > 0) {
           payload.overrides = payload.overrides || {}
           payload.overrides.diagonals = diagOverrides
@@ -742,6 +729,9 @@ function App() {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
             const stepBeforeNext = s.currentStep
             s.handleNext(TOTAL_STEPS)
+            // Wait for React to flush state updates from handleNext
+            // (refreshAreaTrapezoids + rebuildPanelGrid update panels/configs/grid)
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
               if (savedId) {

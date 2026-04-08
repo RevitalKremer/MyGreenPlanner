@@ -954,7 +954,8 @@ setPanelAngle('')
     setPanelGrid(newPanelGrid)
 
     setPanels(allPanels)
-    setAreas(effectiveRectAreas.map((a, idx) => ({
+    setAreas(prev => effectiveRectAreas.map((a, idx) => ({
+      ...prev[idx],  // preserve existing fields like id, trapezoidIds from server
       label: a.label,
       angle: parseFloat(a.angle) || 0,
       frontHeight: parseFloat(a.frontHeight) || 0,
@@ -1050,6 +1051,7 @@ setPanelAngle('')
 
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
   // Skipped once after a project load so imported panel positions (including moves) are preserved.
+  // Only runs on step 1-2; step 3+ uses frozen data from the step 2→3 transition.
   useEffect(() => {
     if (skipRecomputeRef.current) {
       const reason = skipRecomputeRef.current
@@ -1057,6 +1059,7 @@ setPanelAngle('')
       if (reason === 'load') reSyncLoadedPanelCols()
       return
     }
+    if (currentStep > 2) return  // don't recompute panels after step 2
     computePanels()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults])
