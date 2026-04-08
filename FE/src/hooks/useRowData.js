@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { initDefaultLineRails } from '../utils/railLayoutService'
+import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 
 /**
  * Derives row-level data: panel counts, row keys, line rails,
@@ -130,7 +131,7 @@ export default function useRowData({
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
           railOverhang,
-          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
           numRails, numLines,
           numLargeGaps: beAreaData?.numLargeGaps ?? 0,
           numRailConnectors,
@@ -149,7 +150,7 @@ export default function useRowData({
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,
-        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
         numRails, numLines,
         numLargeGaps: beAreaData?.numLargeGaps ?? 0,
         numRailConnectors,
@@ -199,7 +200,7 @@ export default function useRowData({
       const areaGroup   = areas[areaKey] || {}
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
-        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
+        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
         map[trapId] = lineOrientations.map((o, i) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : lineGapCm,

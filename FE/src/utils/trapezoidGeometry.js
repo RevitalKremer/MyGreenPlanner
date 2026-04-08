@@ -1,10 +1,7 @@
-// ─── Orientation predicates ──────────────────────────────────────────────────
+import { isHorizontalOrientation, isEmptyOrientation, PANEL_V } from './panelCodes.js'
 
-export const isHorizontalOrientation = (o) =>
-  o === 'H' || o === 'EH'
-
-export const isEmptyOrientation = (o) =>
-  o === 'EV' || o === 'EH'
+// Re-export for backward compatibility with existing imports
+export { isHorizontalOrientation, isEmptyOrientation }
 
 /** Slope depth (cm) for a single line orientation */
 export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
@@ -20,7 +17,7 @@ export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
  * @param {number}   panelWidthCm
  */
 export const computeTotalSlopeDepth = (orientations, lineGapCm, panelLengthCm, panelWidthCm) => {
-  const orients = orientations || ['V']
+  const orients = orientations || [PANEL_V]
   const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o, panelLengthCm, panelWidthCm), 0)
   return slopeSum + Math.max(0, orients.length - 1) * lineGapCm
 }

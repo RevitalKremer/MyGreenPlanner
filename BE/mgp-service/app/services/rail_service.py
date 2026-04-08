@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from app.utils.math_helpers import round_to_5cm
-from app.utils.panel_geometry import infer_row_orientation, default_panel_positions
+from app.utils.panel_geometry import infer_row_orientation, default_panel_positions, PANEL_V, PANEL_H
 
 
 def _rail_offset_from_spacing(panel_depth_cm: float, spacing_cm: float) -> float:
@@ -111,8 +111,8 @@ def compute_area_rails(
         # Panel dimensions along the row and across the slope
         # Portrait (V): short side across row, long side up slope
         # Landscape (H): long side across row, short side up slope
-        panel_along_cm = panel_width_cm  if orient == 'V' else panel_length_cm
-        panel_depth_cm = panel_length_cm if orient == 'V' else panel_width_cm
+        panel_along_cm = panel_width_cm  if orient == PANEL_V else panel_length_cm
+        panel_depth_cm = panel_length_cm if orient == PANEL_V else panel_width_cm
 
         # Leading-edge positions of real panels from area start corner
         stored = row_positions.get(str(line_idx))
@@ -133,7 +133,7 @@ def compute_area_rails(
         if len(stored_offsets) >= 2:
             offsets_from_front = stored_offsets
         else:
-            spacing = rail_spacing_h_cm if orient == 'H' else rail_spacing_v_cm
+            spacing = rail_spacing_h_cm if orient == PANEL_H else rail_spacing_v_cm
             front_offset = _rail_offset_from_spacing(panel_depth_cm, spacing)
             offsets_from_front = [
                 round(front_offset, 4),

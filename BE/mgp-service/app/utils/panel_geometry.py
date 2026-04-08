@@ -7,10 +7,18 @@ Shared utilities for working with panel grids across rail and base services.
 from typing import Optional
 
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ── Panel Code Constants ──────────────────────────────────────────────────────
 
-EMPTY_ORIENTATIONS = ('EV', 'EH')  # Empty vertical, Empty horizontal (ghost slots)
-PANEL_CODES = {'V', 'H', 'EV', 'EH'}  # All valid panel orientation codes
+# Individual panel codes
+PANEL_V = 'V'    # Vertical/portrait panel
+PANEL_H = 'H'    # Horizontal/landscape panel
+PANEL_EV = 'EV'  # Empty vertical slot (ghost)
+PANEL_EH = 'EH'  # Empty horizontal slot (ghost)
+
+# Composite constants
+EMPTY_ORIENTATIONS = (PANEL_EV, PANEL_EH)  # Ghost panel slots
+REAL_PANELS = (PANEL_V, PANEL_H)           # Real panel codes (non-ghost)
+PANEL_CODES = (PANEL_V, PANEL_H, PANEL_EV, PANEL_EH)  # All valid codes
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,16 +47,16 @@ def is_empty_orientation(code: str) -> bool:
 
 def infer_row_orientation(cells: list[str]) -> Optional[str]:
     """
-    Return 'V' (portrait) or 'H' (landscape) from the first non-empty cell.
+    Return PANEL_V (portrait) or PANEL_H (landscape) from the first non-empty cell.
     
     Assumes all real panels in a row have the same orientation. Skips empty
-    slots ('EV', 'EH') to find the first real panel.
+    slots (PANEL_EV, PANEL_EH) to find the first real panel.
     
     Args:
         cells: List of orientation codes for a row
     
     Returns:
-        'V' for vertical/portrait, 'H' for horizontal/landscape, None if all empty
+        PANEL_V for vertical/portrait, PANEL_H for horizontal/landscape, None if all empty
     
     Examples:
         ['V', 'V', 'EV'] → 'V'
@@ -56,10 +64,10 @@ def infer_row_orientation(cells: list[str]) -> Optional[str]:
         ['EV', 'EH'] → None
     """
     for c in cells:
-        if c in ('V', 'EV'):
-            return 'V'
-        if c in ('H', 'EH'):
-            return 'H'
+        if c in (PANEL_V, PANEL_EV):
+            return PANEL_V
+        if c in (PANEL_H, PANEL_EH):
+            return PANEL_H
     return None
 
 
@@ -72,7 +80,7 @@ def default_panel_positions(
     Leading-edge positions (cm from area start corner) for real panels.
     
     Assumes uniform spacing. Used when explicit rowPositions are not stored.
-    Only computes positions for real panels (excludes 'EV', 'EH' ghost slots).
+    Only computes positions for real panels (excludes PANEL_EV, PANEL_EH ghost slots).
     
     Args:
         cells: List of orientation codes
@@ -92,5 +100,5 @@ def default_panel_positions(
     return [
         i * (panel_along_cm + panel_gap_cm)
         for i, cell in enumerate(cells)
-        if cell in ('V', 'H')
+        if cell in REAL_PANELS
     ]

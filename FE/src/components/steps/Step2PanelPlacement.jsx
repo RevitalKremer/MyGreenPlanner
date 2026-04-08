@@ -3,6 +3,7 @@ import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
+import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
 // panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
 // so this null sentinel should never actually be used at render time.
 const _FALLBACK_PANEL_TYPE = null
@@ -308,7 +309,7 @@ export default function Step2PanelPlacement({
     if (sortedRows.length === 0) return
 
     const autoOrients = sortedRows.map(([, p]) =>
-      p.heightCm > p.widthCm ? 'V' : 'H'
+      p.heightCm > p.widthCm ? PANEL_V : PANEL_H
     )
     const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
     const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0

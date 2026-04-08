@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { PRIMARY, AREA_PALETTE } from './styles/colors'
+import { PANEL_V } from './utils/panelCodes'
 import { useLang } from './i18n/LangContext'
 import LangToggle from './i18n/LangToggle'
 import Step1RoofAllocation from './components/steps/Step1RoofAllocation'
@@ -131,7 +132,7 @@ function App() {
           trapezoidIds: a.trapezoidIds ?? [],
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
-          lineOrientations: firstTrap?.lineOrientations ?? ['V'],
+          lineOrientations: firstTrap?.lineOrientations ?? [PANEL_V],
           panelGrid: a.panelGrid ?? null,
         }
       }))

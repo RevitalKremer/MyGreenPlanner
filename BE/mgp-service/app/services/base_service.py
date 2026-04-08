@@ -14,7 +14,7 @@ import math
 from typing import Optional
 
 from app.utils.math_helpers import round_to_2dp
-from app.utils.panel_geometry import infer_row_orientation, default_panel_positions
+from app.utils.panel_geometry import infer_row_orientation, default_panel_positions, PANEL_V, PANEL_H
 
 
 # ── Main computation ──────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ def compute_area_bases(
         orient = infer_row_orientation(cells)
         if not orient:
             continue
-        panel_along_cm = short_cm if orient == 'V' else long_cm
+        panel_along_cm = short_cm if orient == PANEL_V else long_cm
         stored = row_positions.get(str(line_idx))
         positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
         if not positions:
@@ -131,7 +131,7 @@ def compute_area_bases(
         orient = infer_row_orientation(cells)
         if line_idx > 0:
             cumulative_cm += line_gap_cm
-        depth_cm = long_cm if orient == 'V' else (short_cm if orient == 'H' else 0)
+        depth_cm = long_cm if orient == PANEL_V else (short_cm if orient == PANEL_H else 0)
         if orient:
             line_infos[line_idx] = {
                 'rearEdgeCm': cumulative_cm,
@@ -171,7 +171,7 @@ def compute_area_bases(
             orient = infer_row_orientation(cells)
             if not orient or li not in line_infos:
                 continue
-            panel_along_cm = short_cm if orient == 'V' else long_cm
+            panel_along_cm = short_cm if orient == PANEL_V else long_cm
             stored = row_positions.get(str(li))
             positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
             if not positions:

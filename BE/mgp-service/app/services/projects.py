@@ -18,7 +18,9 @@ from app.services import bom_service
 from app.services.trapezoid_detail_service import _compute_block_punches
 from app.services import settings_cache
 from app.utils.math_helpers import round_to_1dp
-from app.utils.panel_geometry import is_empty_orientation
+from app.utils.panel_geometry import (
+    is_empty_orientation, PANEL_V, PANEL_H, PANEL_EH, REAL_PANELS
+)
 
 
 async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
@@ -186,10 +188,6 @@ def _trapezoids_by_id(step2: dict) -> dict:
     return {t['id']: t for t in traps if 'id' in t}
 
 
-def _get_computed_trapezoids(data: dict) -> list:
-    """Return step3.computedTrapezoids list."""
-    return data.get('step3', {}).get('computedTrapezoids', [])
-
 def _upsert_computed_area(step3: dict, area_id: int, label: str, updates: dict) -> None:
     """Insert or update a computed area entry by numeric id."""
     computed = step3.setdefault('computedAreas', [])
@@ -353,18 +351,18 @@ def _compute_trap_x_range(
         if line_idx >= len(rows):
             continue
         cells = rows[line_idx]
-        is_h = orient == 'H'
+        is_h = orient == PANEL_H
         panel_along = long_cm if is_h else short_cm
         stored = row_positions.get(str(line_idx))
         if stored:
             positions = stored
         else:
-            row_orient = 'H' if any(c in ('H', 'EH') for c in cells) else 'V'
-            row_along = long_cm if row_orient == 'H' else short_cm
+            row_orient = PANEL_H if any(c in (PANEL_H, PANEL_EH) for c in cells) else PANEL_V
+            row_along = long_cm if row_orient == PANEL_H else short_cm
             positions = [
                 i * (row_along + panel_gap_cm)
                 for i, cell in enumerate(cells)
-                if cell in ('V', 'H')
+                if cell in REAL_PANELS
             ]
         if positions:
             x_min = min(x_min, positions[0])
@@ -684,8 +682,8 @@ def _round_slope_beam_rails(
     if not rows:
         return
     # Total depth = V lines × panelLength + H lines × panelWidth + gaps
-    num_v = sum(1 for cells in rows if any(c == 'V' for c in cells))
-    num_h = sum(1 for cells in rows if any(c == 'H' for c in cells) and not any(c == 'V' for c in cells))
+    num_v = sum(1 for cells in rows if any(c == PANEL_V for c in cells))
+    num_h = sum(1 for cells in rows if any(c == PANEL_H for c in cells) and not any(c == PANEL_V for c in cells))
     num_active = num_v + num_h
     total_depth = num_v * panel_length_cm + num_h * panel_width_cm + max(0, num_active - 1) * line_gap_cm
     # Rails are ordered by ID — first is rails[0], last is rails[-1]
@@ -765,7 +763,7 @@ def _trim_trapezoid(
         for li, o in enumerate(orients):
             if not is_empty_orientation(o):
                 break
-            is_h = o == 'EH'
+            is_h = o == PANEL_EH
             skipped_depth += panel_width_cm if is_h else panel_length_cm
             if li > 0:
                 skipped_depth += line_gap_cm
@@ -778,7 +776,7 @@ def _trim_trapezoid(
         for o in reversed(orients):
             if not is_empty_orientation(o):
                 break
-            is_h = o == 'EH'
+            is_h = o == PANEL_EH
             skipped_rear += panel_width_cm if is_h else panel_length_cm
             skipped_rear += line_gap_cm
         sin_a = math.sin(angle * math.pi / 180)
@@ -958,7 +956,7 @@ async def compute_and_save_trapezoid_details(
         area_id = area.get('id', 0)
 
         # Build panel lines from trap's lineOrientations
-        line_orients = trap_cfg.get('lineOrientations', ['V'])
+        line_orients = trap_cfg.get('lineOrientations', [PANEL_V])
 
         # Derive line rails — only for active (non-empty) lines of this trapezoid.
         # Ghost rendering is handled by the FE overlaying the full trap's DetailView.
@@ -976,7 +974,7 @@ async def compute_and_save_trapezoid_details(
         for li, orient in enumerate(line_orients):
             if is_empty_orientation(orient):
                 continue  # skip empty lines — ghost handled by FE overlay
-            is_h = orient == 'H'
+            is_h = orient == PANEL_H
             depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
             gap = app_defaults['lineGapCm'] if active_idx > 0 else 0
             # Remap: original line index li → new active index active_idx
@@ -1101,7 +1099,7 @@ async def compute_and_save_trapezoid_details(
                 normalized_full['legs'].append(nl)
 
         trap_cfg_local = trapezoids.get(tid, {})
-        local_orients = trap_cfg_local.get('lineOrientations', ['V'])
+        local_orients = trap_cfg_local.get('lineOrientations', [PANEL_V])
         trap_area_id = trap_area.get('id', 0)
         trap_computed_area = _get_computed_area(data, trap_area_id)
         trap_all_line_rails = _derive_line_rails(trap_computed_area)
@@ -1116,7 +1114,7 @@ async def compute_and_save_trapezoid_details(
         active_rail_positions = set()
         d_cm = 0.0
         for li, orient in enumerate(local_orients):
-            is_h = orient == 'H'
+            is_h = orient == PANEL_H
             depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
             gap = app_defaults['lineGapCm'] if li > 0 else 0
             d_cm += gap

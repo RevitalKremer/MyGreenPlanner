@@ -1,3 +1,5 @@
+import { PANEL_H } from './panelCodes.js'
+
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)
@@ -26,7 +28,7 @@ export function computePanelFrame(rowPanels) {
 }
 
 // Build default lineRails for each panel line based on orientation and depths
-// lineOrientations: array of 'V'|'H'|'EV'|'EH'
+// lineOrientations: array of panel orientation codes (see panelCodes.js)
 // panelDepthsCm: array of depths per line (same length)
 // railSpacingV / railSpacingH: default spacing from server app_settings
 // Returns: { [lineIdx]: [offsetCm, offsetCm] }
@@ -34,7 +36,7 @@ export function initDefaultLineRails(lineOrientations, panelDepthsCm, railSpacin
   const result = {}
   lineOrientations.forEach((orientation, i) => {
     const depth = panelDepthsCm[i]
-    const spacing = orientation === 'H' ? railSpacingH : railSpacingV
+    const spacing = orientation === PANEL_H ? railSpacingH : railSpacingV
     const offset = railOffsetFromSpacing(depth, spacing)
     result[i] = [offset, depth - offset]
   })

@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.trapezoid_detail_service import compute_trapezoid_details, align_blocks
 from app.utils.math_helpers import round_to_1dp
+from app.utils.panel_geometry import PANEL_V, PANEL_H, EMPTY_ORIENTATIONS
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
@@ -39,8 +40,6 @@ APP_DEFAULTS = {
     'extendRear': True,
 }
 
-_EMPTY_ORIENTS = ('EV', 'EH')
-
 
 def _derive_line_rails(computed_area: dict | None) -> dict[str, list[float]]:
     if not computed_area:
@@ -65,7 +64,7 @@ def _build_inputs_for_trap(data: dict, trap_id: str, trap_cfg: dict, area: dict)
     """Replicate the input derivation from projects.compute_and_save_trapezoid_details."""
     step2 = data.get('step2', {})
     area_id = area.get('id', 0)
-    line_orients = trap_cfg.get('lineOrientations', ['V'])
+    line_orients = trap_cfg.get('lineOrientations', [PANEL_V])
 
     computed_area = _get_computed_area(data, area_id)
     all_line_rails = _derive_line_rails(computed_area)
@@ -73,7 +72,7 @@ def _build_inputs_for_trap(data: dict, trap_id: str, trap_cfg: dict, area: dict)
     # Filter to active lines only
     line_rails = {
         li: offs for li, offs in all_line_rails.items()
-        if int(li) < len(line_orients) and line_orients[int(li)] not in _EMPTY_ORIENTS
+        if int(li) < len(line_orients) and line_orients[int(li)] not in EMPTY_ORIENTATIONS
     }
 
     # Build panel_lines and remap line_rails
@@ -81,9 +80,9 @@ def _build_inputs_for_trap(data: dict, trap_id: str, trap_cfg: dict, area: dict)
     remapped = {}
     active_idx = 0
     for li, orient in enumerate(line_orients):
-        if orient in _EMPTY_ORIENTS:
+        if orient in EMPTY_ORIENTATIONS:
             continue
-        is_h = orient == 'H'
+        is_h = orient == PANEL_H
         depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
         gap = APP_DEFAULTS['lineGapCm'] if active_idx > 0 else 0
         if str(li) in line_rails:

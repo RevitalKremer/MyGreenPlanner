@@ -5,6 +5,7 @@ import { computePanelBackHeight } from '../utils/trapezoidGeometry'
 import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
+import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
 
 
 const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
@@ -96,7 +97,7 @@ export function useProjectState() {
       max: s.max_val,
       step: s.step_val,
       highlightGroup: s.highlight_group,
-      orientation: s.key === 'railSpacingV' ? 'V' : s.key === 'railSpacingH' ? 'H' : undefined,
+      orientation: s.key === 'railSpacingV' ? PANEL_V : s.key === 'railSpacingH' ? PANEL_H : undefined,
       visible: s.visible ?? true,
       roofTypes: s.roof_types ?? null,
     }))
@@ -301,7 +302,7 @@ setPanelAngle('')
           trapezoidIds: a.trapezoidIds ?? [],
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
-          lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? ['V'],
+          lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
         })))
         // Reconstruct panelGrid from per-area panelGrid fields
         const grid = {}
@@ -317,7 +318,7 @@ setPanelAngle('')
           panelType: s2.panelType,
           referenceLine: layout.referenceLine,
           referenceLineLengthCm: layout.referenceLineLengthCm,
-          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: ['V'] },
+          panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: [PANEL_V] },
         })
       }
 
@@ -592,7 +593,7 @@ setPanelAngle('')
     const rowOrient = {}
     panelWithCols.forEach(p => {
       const row = p.row ?? 0
-      rowOrient[row] = p.heightCm > p.widthCm ? 'V' : 'H'
+      rowOrient[row] = p.heightCm > p.widthCm ? PANEL_V : PANEL_H
       const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
       cols.forEach(c => {
         if (!colRowsMap.has(c)) colRowsMap.set(c, new Set())
@@ -603,7 +604,7 @@ setPanelAngle('')
     const allRows = [...new Set(panelWithCols.map(p => p.row ?? 0))].sort((a, b) => a - b)
     const colSig = (col) =>
       allRows.map(r =>
-        colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === 'H' ? 'EH' : 'EV')
+        colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
       ).join('|')
 
     const sigToTrap = new Map()
@@ -658,7 +659,7 @@ setPanelAngle('')
     if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
-    const newArea = { angle: 0, frontHeight: 0, lineOrientations: ['V'] }
+    const newArea = { angle: 0, frontHeight: 0, lineOrientations: [PANEL_V] }
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
@@ -827,7 +828,7 @@ setPanelAngle('')
         areaLineConfigs[areaIdx] = {
           lineOrientations: lineRows.map(r => {
             const s = existingPanels.find(p => p.row === r)
-            return s?.heightCm > s?.widthCm ? 'V' : 'H'
+            return s?.heightCm > s?.widthCm ? PANEL_V : PANEL_H
           }),
         }
         existingPanels.forEach(p => {
@@ -864,10 +865,10 @@ setPanelAngle('')
 
       // Area-level orientation (all rows, no empties) — used for areas state and step 4
       const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
-      const rowOrient = {}  // row → 'V'|'H'
+      const rowOrient = {}  // row → PANEL_V|PANEL_H
       lineRows.forEach(r => {
         const s = filtered.find(p => p.row === r)
-        rowOrient[r] = s?.heightCm > s?.widthCm ? 'V' : 'H'
+        rowOrient[r] = s?.heightCm > s?.widthCm ? PANEL_V : PANEL_H
       })
       const derivedOrients = lineRows.map(r => rowOrient[r])
       areaLineConfigs[areaIdx] = { lineOrientations: derivedOrients }
@@ -878,7 +879,7 @@ setPanelAngle('')
         const computedRowOrient = {}
         computedAllRows.forEach(r => {
           const s = computed.find(p => p.row === r)
-          computedRowOrient[r] = s?.heightCm > s?.widthCm ? 'V' : 'H'
+          computedRowOrient[r] = s?.heightCm > s?.widthCm ? PANEL_V : PANEL_H
         })
 
         const colRowsComputed = new Map()
@@ -893,7 +894,7 @@ setPanelAngle('')
         // Signature = per-row orientation string, EV/EH for rows absent in the polygon
         const colSig = (col) =>
           computedAllRows.map(r =>
-            colRowsComputed.get(col)?.has(r) ? computedRowOrient[r] : (computedRowOrient[r] === 'H' ? 'EH' : 'EV')
+            colRowsComputed.get(col)?.has(r) ? computedRowOrient[r] : (computedRowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
           ).join('|')
 
         // Assign trapezoid IDs grouped by signature (left-to-right column order)
@@ -957,7 +958,7 @@ setPanelAngle('')
       label: a.label,
       angle: parseFloat(a.angle) || 0,
       frontHeight: parseFloat(a.frontHeight) || 0,
-      lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? ['V'],
+      lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? [PANEL_V],
     })))
     setTrapezoidConfigs(prev => {
       const next = {}
@@ -968,7 +969,7 @@ setPanelAngle('')
       polygon: roofPolygon, panelType, referenceLine,
       referenceLineLengthCm: parseFloat(referenceLineLengthCm),
       pixelToCmRatio,
-      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, lineOrientations: ['V'] },
+      panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, lineOrientations: [PANEL_V] },
     })
   }
 
@@ -1074,7 +1075,7 @@ setPanelAngle('')
         polygon: roofPolygon, panelType, referenceLine,
         referenceLineLengthCm: parseFloat(referenceLineLengthCm),
         pixelToCmRatio,
-        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: ['V'] },
+        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: [PANEL_V] },
       })
     }
 
