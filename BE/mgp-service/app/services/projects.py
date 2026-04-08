@@ -887,59 +887,26 @@ def _trim_trapezoid(
     detail['diagonals'] = new_diags
 
 
-async def compute_and_save_trapezoid_details(
-    db: AsyncSession, project: Project, tds,
-    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+def _compute_all_trapezoid_details(
+    trapezoids: dict,
+    areas: list,
+    step2: dict,
+    step3: dict,
+    data: dict,
+    app_defaults: dict,
+    trapezoid_configs: dict | None,
+    stored_custom_diags: dict,
+    tds,
+    roof_spec: dict,
 ) -> dict:
-    """Compute trapezoid details for all traps, persist to step3.computedTrapezoids, return results."""
-    await db.refresh(project)
-    data = copy.deepcopy(project.data or {})
-    if step3_data is not None:
-        existing_step3 = data.get('step3', {})
-        for k in _SERVER_COMPUTED_STEP3_KEYS:
-            if k in existing_step3 and k not in step3_data:
-                step3_data[k] = existing_step3[k]
-        # Deep merge globalSettings and areaSettings to preserve unrelated keys
-        if 'globalSettings' in step3_data:
-            existing_global = existing_step3.get('globalSettings', {})
-            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
-        if 'areaSettings' in step3_data:
-            existing_area = existing_step3.get('areaSettings', {})
-            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
-        existing_step3.update(step3_data)
-        data['step3'] = existing_step3
-    step2 = data.get('step2', {})
-    step3 = data.setdefault('step3', {})
-    trapezoids = _trapezoids_by_id(step2)
-    areas = step2.get('areas', [])
-    global_settings = step3.get('globalSettings', {})
-
-    # Get settings from cache (no DB query)
-    app_defaults = settings_cache.get_all_settings()
-
-    roof_spec = project.roof_spec or {'type': 'concrete'}
-
-    # Tiles: no construction frame — skip trapezoid detail computation entirely
-    if roof_spec.get('type') == 'tiles':
-        project.data = data
-        flag_modified(project, 'data')
-        await db.commit()
-        return {}
-
-    # Stored custom diagonals
-    stored_custom_diags = step3.get('customDiagonals', {})
-    if trapezoid_configs:
-        for trap_id, cfg in trapezoid_configs.items():
-            cd = cfg.get('customDiagonals')
-            if cd is not None:
-                if cd:
-                    stored_custom_diags[trap_id] = cd
-                else:
-                    stored_custom_diags.pop(trap_id, None)
-    step3['customDiagonals'] = stored_custom_diags
-
+    """
+    Compute structural details for all trapezoids (first pass — full trap computation).
+    
+    Returns dict of {trapId: detail_dict}.
+    """
     result = {}
     area_settings = step3.get('areaSettings', {})
+    global_settings = step3.get('globalSettings', {})
     
     for trap_id, trap_cfg in trapezoids.items():
         # Find the area this trap belongs to
@@ -1052,12 +1019,25 @@ async def compute_and_save_trapezoid_details(
         if detail:
             is_full = all(not is_empty_orientation(o) for o in line_orients)
             detail['isFullTrap'] = is_full
-            _upsert_computed_trapezoid(step3, trap_id, detail)
             result[trap_id] = detail
+    
+    return result
 
-    # ── Second pass: for trimmed traps, derive legs from the area's full trap ──
-    # Each area has one full trap. Trimmed traps in the same area keep only
-    # the legs whose positions match their active rail offsets.
+
+def _trim_non_full_trapezoids(
+    result: dict,
+    trapezoids: dict,
+    areas: list,
+    step2: dict,
+    data: dict,
+    app_defaults: dict,
+    tds,
+) -> None:
+    """
+    Second pass: trim non-full trapezoids to include only legs for active panel lines.
+    
+    Modifies result dict in place.
+    """
     # Build per-area full trap lookup
     area_full_trap: dict[str, dict] = {}  # area label → full trap detail
     for a in areas:
@@ -1154,11 +1134,18 @@ async def compute_and_save_trapezoid_details(
             geom['baseBeamLength'] = round_to_1dp(geom.get('baseBeamLength', 0) + full_front_ext + full_rear_ext)
             geom['frontExtensionCm'] = full_front_ext
             geom['rearExtensionCm'] = full_rear_ext
-        _upsert_computed_trapezoid(step3, tid, detail)
-        result[tid] = detail
 
 
-    # ── Align blocks across trapezoids within the same area ──────────────
+def _align_blocks_across_trapezoids(
+    result: dict,
+    areas: list,
+    tds,
+) -> dict[str, list[str]]:
+    """
+    Align block positions across trapezoids in same area (shared physical base beams).
+    
+    Returns area_trap_map: {area_label: [trapId, ...]}
+    """
     area_trap_map = {}
     for a in areas:
         label = a.get('label', '')
@@ -1168,11 +1155,20 @@ async def compute_and_save_trapezoid_details(
         area_traps = {tid: result[tid] for tid in trap_ids if tid in result}
         tds.align_blocks(area_traps)
         result.update(area_traps)
+    return area_trap_map
 
-    # ── Reassign trapezoidId on consolidated bases using topBeamLength ──────
-    # Match each base's lengthCm to the trapezoid whose topBeamLength matches.
-    # This ensures bases with different depths (e.g. shorter bases at the edge
-    # of a multi-trap area) get the correct trapezoid assignment.
+
+def _reassign_base_trapezoid_ids(
+    step3: dict,
+    result: dict,
+    area_trap_map: dict[str, list[str]],
+) -> None:
+    """
+    Reassign trapezoidId on consolidated bases using topBeamLength matching.
+    
+    Ensures bases with different depths get correct trap assignment in multi-trap areas.
+    Modifies step3.computedAreas[].bases in place.
+    """
     for area_data in step3.get('computedAreas', []):
         label = area_data.get('label', '')
         area_tids = set(area_trap_map.get(label, []))
@@ -1199,7 +1195,84 @@ async def compute_and_save_trapezoid_details(
                 if base_len in depth_to_trap:
                     base['trapezoidId'] = depth_to_trap[base_len]
 
-    # Persist aligned blocks + reassigned bases
+
+async def compute_and_save_trapezoid_details(
+    db: AsyncSession, project: Project, tds,
+    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+) -> dict:
+    """Compute trapezoid details for all traps, persist to step3.computedTrapezoids, return results."""
+    await db.refresh(project)
+    data = copy.deepcopy(project.data or {})
+    if step3_data is not None:
+        existing_step3 = data.get('step3', {})
+        for k in _SERVER_COMPUTED_STEP3_KEYS:
+            if k in existing_step3 and k not in step3_data:
+                step3_data[k] = existing_step3[k]
+        # Deep merge globalSettings and areaSettings to preserve unrelated keys
+        if 'globalSettings' in step3_data:
+            existing_global = existing_step3.get('globalSettings', {})
+            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
+        if 'areaSettings' in step3_data:
+            existing_area = existing_step3.get('areaSettings', {})
+            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
+        existing_step3.update(step3_data)
+        data['step3'] = existing_step3
+    step2 = data.get('step2', {})
+    step3 = data.setdefault('step3', {})
+    trapezoids = _trapezoids_by_id(step2)
+    areas = step2.get('areas', [])
+    global_settings = step3.get('globalSettings', {})
+
+    # Get settings from cache (no DB query)
+    app_defaults = settings_cache.get_all_settings()
+
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+
+    # Tiles: no construction frame — skip trapezoid detail computation entirely
+    if roof_spec.get('type') == 'tiles':
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
+        return {}
+
+    # Stored custom diagonals
+    stored_custom_diags = step3.get('customDiagonals', {})
+    if trapezoid_configs:
+        for trap_id, cfg in trapezoid_configs.items():
+            cd = cfg.get('customDiagonals')
+            if cd is not None:
+                if cd:
+                    stored_custom_diags[trap_id] = cd
+                else:
+                    stored_custom_diags.pop(trap_id, None)
+    step3['customDiagonals'] = stored_custom_diags
+
+    # ── Compute all trapezoids (first pass — full trap computation) ────────────
+    result = _compute_all_trapezoid_details(
+        trapezoids, areas, step2, step3, data, app_defaults,
+        trapezoid_configs, stored_custom_diags, tds, roof_spec,
+    )
+    
+    # Persist first pass results
+    for tid, detail in result.items():
+        _upsert_computed_trapezoid(step3, tid, detail)
+
+    # ── Trim non-full trapezoids (second pass) ──────────────────────────────────
+    _trim_non_full_trapezoids(
+        result, trapezoids, areas, step2, data, app_defaults, tds,
+    )
+    
+    # Persist trimmed results
+    for tid, detail in result.items():
+        _upsert_computed_trapezoid(step3, tid, detail)
+
+    # ── Align blocks across area trapezoids (extracted) ─────────────────────────
+    area_trap_map = _align_blocks_across_trapezoids(result, areas, tds)
+
+    # ── Reassign base trapezoid IDs (extracted) ─────────────────────────────────
+    _reassign_base_trapezoid_ids(step3, result, area_trap_map)
+
+    # ── Persist aligned blocks + reassigned bases ──────────────────────────────
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
 
