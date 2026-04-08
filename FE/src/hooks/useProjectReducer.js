@@ -69,8 +69,10 @@ export const initialProjectState = {
 
 export function projectReducer(state, action) {
   // ── Step enforcement ──
-  // Actions with a step ID are rejected if that step is past the current step
-  if (action.step != null && action.step > state.navigation.step) {
+  // Data-write actions with a step ID are rejected if that step is past the current step.
+  // Navigation and lifecycle actions are always allowed.
+  const EXEMPT_ACTIONS = ['SET_STEP', 'SET_TAB', 'LOAD_PROJECT', 'RESET']
+  if (action.step != null && action.step > state.navigation.step && !EXEMPT_ACTIONS.includes(action.type)) {
     return state  // silently reject — wrong step
   }
 

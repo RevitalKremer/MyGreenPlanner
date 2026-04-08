@@ -6,17 +6,22 @@ import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchP
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
+import { projectReducer, initialProjectState } from './useProjectReducer'
 
 
 const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
 
 export function useProjectState() {
+  // ── Structured state (mirrors server JSON) ──
+  const [pState, pDispatch] = useReducer(projectReducer, initialProjectState)
+
   // App-level screen
   const [appScreen, setAppScreen] = useState('welcome') // 'welcome' | 'wizard'
   const [currentProject, setCurrentProject] = useState(null)
 
-  // Wizard state
-  const [currentStep, setCurrentStep] = useState(1)
+  // Wizard state — now reads from reducer
+  const currentStep = pState.navigation.step
+  const setCurrentStep = (step) => pDispatch({ type: 'SET_STEP', step })
 
   // Step 1: Roof allocation
   const [selectedPoint, setSelectedPoint] = useState(null)
@@ -58,15 +63,15 @@ export function useProjectState() {
   // 'load' → also run reSyncLoadedPanelCols; 'reset' → just skip the recompute.
   const skipRecomputeRef = useRef(null)
 
-  // Step 4: Construction planning settings (persisted for export)
-  const [step3GlobalSettings, setStep3GlobalSettings] = useState(null)
-  const [step3AreaSettings,   setStep3AreaSettings]   = useState(null)
-  // Step 4: Plan approval
-  const [step4PlanApproval, setStep4PlanApproval] = useState(null)
-  // { name: string, date: string (ISO), strictConsent: bool }
-
-  // Step 5: BOM user overrides (deltas on top of auto-generated BOM)
-  const [step5BomDeltas, setStep5BomDeltas] = useState(null)
+  // Step 3-5: reads from reducer, writes via dispatch
+  const step3GlobalSettings = pState.data.step3.globalSettings
+  const setStep3GlobalSettings = (v) => pDispatch({ type: 'SET_STEP3_GLOBAL_SETTINGS', value: v })
+  const step3AreaSettings = pState.data.step3.areaSettings
+  const setStep3AreaSettings = (v) => pDispatch({ type: 'SET_STEP3_AREA_SETTINGS', value: v })
+  const step4PlanApproval = pState.data.step4.planApproval
+  const setStep4PlanApproval = (v) => pDispatch({ type: 'SET_PLAN_APPROVAL', value: v })
+  const step5BomDeltas = pState.data.step5.bomDeltas
+  const setStep5BomDeltas = (v) => pDispatch({ type: 'SET_BOM_DELTAS', value: v })
 
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
