@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
+import { PANEL_V } from '../../utils/panelCodes'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -47,7 +48,7 @@ export default function Step3ConstructionPlanning({
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
     const areaGroup = areas[areaKey] || {}
-    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
+    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
   }, [refinedArea, trapezoidConfigs, areas])
 
   // ── Row data hook ──────────────────────────────────────────────────────

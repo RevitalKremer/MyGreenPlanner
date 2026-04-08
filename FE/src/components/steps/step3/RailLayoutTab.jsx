@@ -89,7 +89,7 @@ export default function RailLayoutTab({
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
-  const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + r.leftoverCm, 0) ?? 0), 0)
+  const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
 
   const bbox = useMemo(() => {
     if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }

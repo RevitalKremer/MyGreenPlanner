@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { isEmptyOrientation } from '../../../utils/trapezoidGeometry'
+import { PANEL_H } from '../../../utils/panelCodes.js'
 import { useLang } from '../../../i18n/LangContext'
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
@@ -191,12 +192,12 @@ export default function Step3Sidebar({
 
     // ── rail-spacing: derived from lineRails, written via onRailSpacingChange
     if (type === 'rail-spacing') {
-      const isH = orientation === 'H'
+      const isH = orientation === PANEL_H
 
       const s = getSettings(selectedRowIdx)
       const panelDepth = panelDepthsCm?.find((_, i) => {
         const o = lineOrientations?.[i]
-        return isH ? o === 'H' : (o !== 'H' && !isEmptyOrientation(o))
+        return isH ? o === PANEL_H : (o !== PANEL_H && !isEmptyOrientation(o))
       }) ?? (isH ? s.panelWidthCm : s.panelLengthCm)
       const maxVal = Math.round(0.9 * panelDepth)
       const value  = (isH ? derivedRailSpacings?.horizontal : derivedRailSpacings?.vertical) ?? param.default

@@ -33,7 +33,7 @@ export default function RailsOverlay({
 
   const beSegsFor = (i) => (rail) => {
     const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]
-    return be?.stockSegmentsMm ?? rail.stockSegmentsMm
+    return be?.stockSegmentsMm ?? []
   }
 
   const railProfileFor = (i) => {

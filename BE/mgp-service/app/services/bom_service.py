@@ -19,6 +19,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.models.bom import ProjectBOM
 from app.models.product import Product
 from app.services.settings_cache import get_setting
+from app.utils.panel_geometry import REAL_PANELS
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ def _count_panels(panel_grid: dict) -> int:
     total = 0
     for row in (panel_grid.get('rows') or []):
         for cell in row:
-            if cell in ('V', 'H'):
+            if cell in REAL_PANELS:
                 total += 1
     return total
 

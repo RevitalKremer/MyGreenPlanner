@@ -3,6 +3,7 @@ import {
   computeTotalSlopeDepth,
   isHorizontalOrientation, isEmptyOrientation,
 } from '../../../utils/trapezoidGeometry'
+import { PANEL_V, PANEL_H } from '../../../utils/panelCodes'
 
 export default function TrapezoidConfigEditor({
   selectedRow, selectedTrapezoidId, selectedAreaLabel,
@@ -40,7 +41,7 @@ export default function TrapezoidConfigEditor({
     if (!rowMap.has(r)) rowMap.set(r, p)
   })
   const derivedRows = [...rowMap.entries()].sort(([a], [b]) => Number(a) - Number(b))
-  const derivedOrients = derivedRows.map(([, p]) => p.heightCm > p.widthCm ? 'V' : 'H')
+  const derivedOrients = derivedRows.map(([, p]) => p.heightCm > p.widthCm ? PANEL_V : PANEL_H)
 
   // For auto-split trapezoids, use stored lineOrientations which include empty ghost rows.
   // Fall back to derived from actual panels for manual/legacy trapezoids.

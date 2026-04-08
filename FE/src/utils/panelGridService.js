@@ -1,3 +1,5 @@
+import { PANEL_V, PANEL_H, PANEL_EV, PANEL_EH } from './panelCodes.js'
+
 /**
  * Builds the panelGrid entry for a single area.
  *
@@ -21,7 +23,7 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
     return cols.map(({ col, p }) => {
       const isPortrait = p.heightCm > p.widthCm
       const inFiltered = filteredKeys.has(`${rowIdx}_${col}`)
-      return inFiltered ? (isPortrait ? 'V' : 'H') : (isPortrait ? 'EV' : 'EH')
+      return inFiltered ? (isPortrait ? PANEL_V : PANEL_H) : (isPortrait ? PANEL_EV : PANEL_EH)
     })
   })
   const xCode = area.xDir === 'rtl' ? 'R' : 'L'
