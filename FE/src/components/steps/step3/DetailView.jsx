@@ -8,14 +8,11 @@ import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
-  const [_showDimensions, setShowDimensions]  = useState(true)
-  const [_showPunches,     setShowPunches]      = useState(true)
-  const [_showDiagHandles, setShowDiagHandles]  = useState(false)
-  const [showGhost,        setShowGhost]        = useState(true)
-  const [showRoofLine,     setShowRoofLine]     = useState(true)
-  const showDimensions = _showDimensions
-  const showPunches     = _showPunches
-  const showDiagHandles = _showDiagHandles
+  const [showDimensions,  setShowDimensions]  = useState(true)
+  const [showPunches,     setShowPunches]      = useState(true)
+  const [showDiagHandles, setShowDiagHandles]  = useState(false)
+  const [showGhost,       setShowGhost]        = useState(true)
+  const [showRoofLine,    setShowRoofLine]     = useState(true)
   const [rulerActive,      setRulerActive]      = useState(false)
   const [barHover,         setBarHover]         = useState(null) // { which: 'top'|'bot', svgX } | null
   const [hoverHandle,      setHoverHandle]      = useState(null) // { which, spanIndex } | null
@@ -40,10 +37,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const hl = (group) => hlGroup === group
 
   // Use BE-computed geometry when available, fall back to FE rc
-  const geom = beDetailData?.geometry ?? rc
-  if (!geom) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
-  // Require BE legs data — without it, rendering produces NaN
-  if (!beDetailData?.legs?.length) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
+  // Require BE data — geometry and legs must come from server
+  if (!beDetailData?.geometry || !beDetailData?.legs?.length) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
+  const geom = beDetailData.geometry
 
   const baseOverhangCm = settings.baseOverhangCm
   const { heightRear, heightFront, baseLength, angle, topBeamLength } = geom
@@ -1025,9 +1021,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
         layers={[
-          { label: t('step3.layer.punches'),       checked: _showPunches,     setter: setShowPunches      },
-          { label: t('step3.layer.dimensions'),   checked: _showDimensions, setter: setShowDimensions  },
-          { label: t('step3.layer.editBar'),      checked: _showDiagHandles, setter: setShowDiagHandles  },
+          { label: t('step3.layer.punches'),       checked: showPunches,      setter: setShowPunches      },
+          { label: t('step3.layer.dimensions'),   checked: showDimensions,  setter: setShowDimensions  },
+          { label: t('step3.layer.editBar'),      checked: showDiagHandles, setter: setShowDiagHandles  },
           { label: t('step3.layer.roofLine'),   checked: showRoofLine,    setter: setShowRoofLine     },
           ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),
         ]}
