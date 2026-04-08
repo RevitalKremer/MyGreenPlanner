@@ -103,6 +103,25 @@ export function useProjectState() {
     }})
   }, [areas, trapezoidConfigs, panelGrid, rectAreas, panels, panelType, panelFrontHeight, panelAngle])
 
+  // ── Sync layout useState values into reducer ──
+  useEffect(() => {
+    pDispatch({ type: 'SYNC_LAYOUT', payload: {
+      uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
+      roofPolygon,
+      referenceLine,
+      referenceLineLengthCm,
+      pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
+      baseline,
+      rectAreas: rectAreas.map(ra => ({
+        id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
+        color: ra.color, xDir: ra.xDir, yDir: ra.yDir,
+        manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
+      })),
+      panels,
+      deletedPanelKeys,
+    }})
+  }, [uploadedImageData, roofPolygon, referenceLine, referenceLineLengthCm, refinedArea, baseline, rectAreas, panels, deletedPanelKeys])
+
   // Cloud project ID — set after first cloud save, used for subsequent saves
   const [cloudProjectId, setCloudProjectId] = useState(null)
 
@@ -395,29 +414,8 @@ setPanelAngle('')
   }
 
   const getLayoutData = () => {
-    const layoutRectAreas = rectAreas.map(ra => ({
-      id:                   ra.id,
-      vertices:             ra.vertices,
-      rotation:             ra.rotation,
-      mode:                 ra.mode,
-      color:                ra.color,
-      xDir:                 ra.xDir,
-      yDir:                 ra.yDir,
-      manualTrapezoids:     ra.manualTrapezoids,
-      manualColTrapezoids:  ra.manualColTrapezoids,
-    }))
-    return {
-      currentStep,
-      uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
-      roofPolygon,
-      referenceLine,
-      referenceLineLengthCm,
-      pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
-      baseline,
-      rectAreas: layoutRectAreas,
-      panels,
-      deletedPanelKeys,
-    }
+    // Read directly from reducer — layout synced by effect
+    return { ...pState.layout, currentStep }
   }
 
   const getProjectData = () => {

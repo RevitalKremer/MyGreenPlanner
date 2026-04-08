@@ -139,6 +139,11 @@ export function projectReducer(state, action) {
         data: { ...state.data, step5: { ...state.data.step5, bomDeltas: action.value } },
       }
 
+    // ── Layout ──
+
+    case 'SYNC_LAYOUT':
+      return { ...state, layout: { ...state.layout, ...action.payload } }
+
     // ── UI (ephemeral) ──
 
     case 'SET_UI':
