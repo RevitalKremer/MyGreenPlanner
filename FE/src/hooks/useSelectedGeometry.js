@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { railOffsetFromSpacing } from '../utils/railLayoutService'
+import { PANEL_H, PANEL_V, REAL_PANELS } from '../utils/panelCodes.js'
 
 /**
  * Derives geometry for the currently selected row/trapezoid:
@@ -33,7 +34,7 @@ export default function useSelectedGeometry({
     const override   = trapezoidConfigs[trapId] || {}
     const areaKey    = rowKeys[selectedRowIdx]
     const areaGroup  = areas[areaKey] || {}
-    const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
+    const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
     return lineOrientations
       .filter(o => !isEmptyOrientation(o))
       .map((o, i) => ({
@@ -47,7 +48,7 @@ export default function useSelectedGeometry({
   // ── Selected line orientations ─────────────────────────────────────────
   const selectedLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
-    if (areaKey == null) return ['V']
+    if (areaKey == null) return [PANEL_V]
     const trapId = effectiveSelectedTrapId ?? `${String.fromCharCode(65 + areaKey)}1`
     return getLineOrientations(areaKey, trapId)
   }, [selectedRowIdx, rowKeys, effectiveSelectedTrapId, getLineOrientations])
@@ -73,7 +74,7 @@ export default function useSelectedGeometry({
   // ── Area-level orientations/rails (stable across trap selection) ───────
   const areaLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
-    if (areaKey == null) return ['V']
+    if (areaKey == null) return [PANEL_V]
     const firstTrapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
     return getLineOrientations(areaKey, firstTrapId)
   }, [selectedRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations])
@@ -133,7 +134,7 @@ export default function useSelectedGeometry({
       numTrapezoids: numSpans + 1,
       spacing: rowLength / numSpans,
       railOverhang,
-      panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+      panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
       typeLetter: 'A', // will be overridden by row-level assignTypes if shown in context
     }
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, getTrapBasesSettings])
@@ -157,7 +158,7 @@ export default function useSelectedGeometry({
 
   // ── Rail spacing change handler ────────────────────────────────────────
   const onRailSpacingChange = useCallback((orientation, newSpacingCm) => {
-    const isH = orientation === 'H'
+    const isH = orientation === PANEL_H
     const minSpacing = isH ? minRailSpacingH : minRailSpacingV
     const newRails = { ...selectedLineRails }
     selectedLineOrientations.forEach((o, li) => {

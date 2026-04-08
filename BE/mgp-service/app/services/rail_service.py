@@ -8,49 +8,8 @@ project data (cm measurements, no pixel coordinates).
 from __future__ import annotations
 from typing import Optional
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _round_to_5cm(length_mm: int) -> int:
-    """
-    Round rail length to nearest 5cm (0.05m) for aluminum profile cutting accuracy.
-    Max cutting accuracy is 0.05m intervals.
-    
-    Args:
-        length_mm: Rail length in millimeters
-    
-    Returns:
-        Rounded length in millimeters (to nearest 50mm)
-    
-    Examples:
-        1234 → 1250
-        1272 → 1250
-        1280 → 1300
-    """
-    length_cm = length_mm / 10
-    rounded_cm = round(length_cm / 5) * 5
-    return round(rounded_cm * 10)
-
-
-def _infer_row_orientation(cells: list[str]) -> Optional[str]:
-    """Return 'V' (portrait) or 'H' (landscape) from the first non-empty cell."""
-    for c in cells:
-        if c in ('V', 'EV'):
-            return 'V'
-        if c in ('H', 'EH'):
-            return 'H'
-    return None
-
-
-def _default_positions(cells: list[str], panel_along_cm: float, panel_gap_cm: float) -> list[float]:
-    """
-    Leading-edge positions (cm from area start corner) for real panels,
-    assuming uniform spacing — matches rectPanelService layout.
-    """
-    return [
-        i * (panel_along_cm + panel_gap_cm)
-        for i, cell in enumerate(cells)
-        if cell in ('V', 'H')
-    ]
+from app.utils.math_helpers import round_to_5cm
+from app.utils.panel_geometry import infer_row_orientation, default_panel_positions, PANEL_V, PANEL_H
 
 
 def _rail_offset_from_spacing(panel_depth_cm: float, spacing_cm: float) -> float:
@@ -145,19 +104,19 @@ def compute_area_rails(
     num_large_gaps = 0
 
     for line_idx, cells in enumerate(rows):
-        orient = _infer_row_orientation(cells)
+        orient = infer_row_orientation(cells)
         if not orient:
             continue  # all ghost slots — skip
 
         # Panel dimensions along the row and across the slope
         # Portrait (V): short side across row, long side up slope
         # Landscape (H): long side across row, short side up slope
-        panel_along_cm = panel_width_cm  if orient == 'V' else panel_length_cm
-        panel_depth_cm = panel_length_cm if orient == 'V' else panel_width_cm
+        panel_along_cm = panel_width_cm  if orient == PANEL_V else panel_length_cm
+        panel_depth_cm = panel_length_cm if orient == PANEL_V else panel_width_cm
 
         # Leading-edge positions of real panels from area start corner
         stored = row_positions.get(str(line_idx))
-        positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
         if not positions:
             continue
 
@@ -174,7 +133,7 @@ def compute_area_rails(
         if len(stored_offsets) >= 2:
             offsets_from_front = stored_offsets
         else:
-            spacing = rail_spacing_h_cm if orient == 'H' else rail_spacing_v_cm
+            spacing = rail_spacing_h_cm if orient == PANEL_H else rail_spacing_v_cm
             front_offset = _rail_offset_from_spacing(panel_depth_cm, spacing)
             offsets_from_front = [
                 round(front_offset, 4),
@@ -191,7 +150,7 @@ def compute_area_rails(
         for offset_from_front in offsets_from_front:
             offset_from_rear = round(panel_depth_cm - offset_from_front, 4)
             # Round to 5cm intervals for aluminum profile cutting accuracy
-            rounded_length_mm = _round_to_5cm(length_mm)
+            rounded_length_mm = round_to_5cm(length_mm)
             
             # Calculate stock segments from rounded length
             segs = _split_into_stock_segments(rounded_length_mm, stock_lengths)

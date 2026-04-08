@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { initDefaultLineRails } from '../utils/railLayoutService'
+import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 
 /**
  * Derives row-level data: panel counts, row keys, line rails,
@@ -34,6 +35,9 @@ export default function useRowData({
   )
 
   // ── Line rails resolution ──────────────────────────────────────────────
+  // lineRails convention: keys are numeric integers (0, 1, 2...) representing line indices.
+  // BE responses may return string keys after JSON serialization. Consumers should handle
+  // both via dual fallback: lineRails[si] ?? lineRails[String(si)].
   const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]
@@ -61,17 +65,25 @@ export default function useRowData({
   }, [areaSettings, getLineRailsFromBE, railSpacingV, railSpacingH])
 
   // ── Trapezoid map ──────────────────────────────────────────────────────
+  // Source of truth: step2.areas.trapezoidIds (from DB via areas prop).
+  // Fallback to panel-derived IDs only when areas data is not available.
   const areaTrapezoidMap = useMemo(() => {
     const map = {}
     rowKeys.forEach(areaKey => {
       const letter = String.fromCharCode(65 + areaKey)
-      const ids = [...new Set(
-        panels.filter(p => (p.area ?? p.row) === areaKey).map(p => p.trapezoidId).filter(Boolean)
-      )].sort()
-      map[areaKey] = ids.length > 0 ? ids : [`${letter}1`]
+      const areaObj = areas[areaKey]
+      const serverIds = areaObj?.trapezoidIds
+      if (serverIds?.length > 0) {
+        map[areaKey] = serverIds
+      } else {
+        const ids = [...new Set(
+          panels.filter(p => (p.area ?? p.row) === areaKey).map(p => p.trapezoidId).filter(Boolean)
+        )].sort()
+        map[areaKey] = ids.length > 0 ? ids : [`${letter}1`]
+      }
     })
     return map
-  }, [panels, rowKeys])
+  }, [panels, rowKeys, areas])
 
   // ── Apply bases to all traps ───────────────────────────────────────────
   const applyBasesToAll = useCallback((effectiveSelectedTrapId) => {
@@ -130,7 +142,7 @@ export default function useRowData({
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
           railOverhang,
-          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
           numRails, numLines,
           numLargeGaps: beAreaData?.numLargeGaps ?? 0,
           numRailConnectors,
@@ -149,7 +161,7 @@ export default function useRowData({
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,
-        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => c === 'V' || c === 'H').length),
+        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
         numRails, numLines,
         numLargeGaps: beAreaData?.numLargeGaps ?? 0,
         numRailConnectors,
@@ -199,7 +211,7 @@ export default function useRowData({
       const areaGroup   = areas[areaKey] || {}
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
-        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? ['V']
+        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
         map[trapId] = lineOrientations.map((o, i) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : lineGapCm,

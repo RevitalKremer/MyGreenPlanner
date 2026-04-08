@@ -13,6 +13,7 @@ import BasePlanOverlay from './BasePlanOverlay'
 import RailsOverlay from './RailsOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
+import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
 export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
@@ -296,27 +297,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 2. Blocks */}
                 {sBlocks && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
-                  if (!af) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
-                  const areaTrapIds = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
-                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const liveOffsets = customBasesMap[fullTrapId]
+                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
+                  if (!ctx) return null
+                  const { af, liveOffsets } = ctx
+                  const { isBtt: tIsBtt } = af
                   return (areaData.bases ?? []).map((sb, sbi) => {
-                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
-                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
+                    const { lx, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    const line = af.lines?.find(l => l.lineIdx === sb.panelLineIdx) ?? af.lines?.[0]
                     const depthPx = sb.startCm / pixelToCmRatio
                     const lenPx = sb.lengthCm / pixelToCmRatio
-                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
+                    const ty = tIsBtt ? (line?.maxY ?? af.frame.localBounds.maxY) - depthPx - lenPx : (line?.minY ?? af.frame.localBounds.minY) + depthPx
                     const by = ty + lenPx
-                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
-                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
-                    const [btx, bty] = toSvg(st.x, st.y)
-                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
-                    const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
                     // Only render blocks that fit within this base's actual length
                     const trapBlocks = (beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? [])
                       .filter(blk => (blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) <= sb.lengthCm + 1)
@@ -325,7 +316,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                       const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
                       const blkOffsetPx = ((blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
                       const bcy = tIsBtt ? by - blkOffsetPx : ty + blkOffsetPx
-                      const sp = localToScreen({ x: lx, y: bcy }, tFrame.center, tAngle)
+                      const sp = localToScreen({ x: lx, y: bcy }, af.frame.center, af.frame.angleRad)
                       const [bkx, bky] = toSvg(sp.x, sp.y)
                       return <rect key={`blk-${ai}-${sbi}-${bki}`} x={bkx - slSvg / 2} y={bky - blockWSvg / 2} width={slSvg} height={blockWSvg} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth={0.5 / effZoom} transform={`rotate(${la} ${bkx} ${bky})`} />
                     })
@@ -334,28 +325,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 3. Bases + 4. Base IDs */}
                 {sBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
-                  if (!af) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
+                  if (!ctx) return null
+                  const { af, liveOffsets } = ctx
                   const profThick = (4 / pixelToCmRatio) * sc
-                  const areaTrapIds = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
-                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const liveOffsets = customBasesMap[fullTrapId]
                   return (areaData.bases ?? []).map((sb, sbi) => {
-                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
-                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
-                    const depthPx = sb.startCm / pixelToCmRatio
-                    const lenPx = sb.lengthCm / pixelToCmRatio
-                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
-                    const by = ty + lenPx
-                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
-                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
-                    const [btx, bty] = toSvg(st.x, st.y)
-                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
-                    const la = Math.atan2(bby - bty, bbx - btx) * 180 / Math.PI
+                    const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
                     return (
                       <g key={`base-${ai}-${sbi}`}>
@@ -368,17 +343,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 5. External diagonals */}
                 {sDiags && sBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
-                  if (!af) return null
+                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
+                  if (!ctx) return null
+                  const { af, liveOffsets } = ctx
                   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const PROFILE_THICK = (4 / pixelToCmRatio) * sc
                   const diags = areaData.diagonals ?? []
                   const allBases = areaData.bases ?? []
-                  const areaTids = areaTrapsMap[areaKey] ?? areaTrapsMap[areaData.areaLabel] ?? []
-                  const fullTrapId = areaTids.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTids[0]
-                  const liveOffsets = customBasesMap[fullTrapId]
 
                   // Derive each connection point from its base position + diagonal offset
                   return diags.map((d, di) => {
@@ -519,31 +491,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* Base parameter highlights (top z-order) */}
                 {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {
-                  const areaId = areaData.areaId ?? areaData.areaLabel ?? areaData.label
-                  const af = areaFrames[areaId] ?? areaFrames[String(areaId)] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
-                  if (!af) return null
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
+                  if (!ctx) return null
+                  const { af, liveOffsets } = ctx
+                  const { frame: tFrame, isRtl: tIsRtl } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const allBases = areaData.bases ?? []
-                  const areaTrapIds = areaTrapsMap[areaId] ?? areaTrapsMap[String(areaId)] ?? areaTrapsMap[areaData.areaLabel] ?? []
-                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const liveOffsets = customBasesMap[fullTrapId]
                   const sw = 6 / effZoom
 
-                  const baseScreenPos = allBases.map((sb, sbi) => {
-                    const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-                    const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
-                    const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
-                    const depthPx = sb.startCm / pixelToCmRatio
-                    const lenPx = sb.lengthCm / pixelToCmRatio
-                    const ty = tIsBtt ? (line?.maxY ?? tLB.maxY) - depthPx - lenPx : (line?.minY ?? tLB.minY) + depthPx
-                    const by = ty + lenPx
-                    const st = localToScreen({ x: lx, y: ty }, tFrame.center, tAngle)
-                    const sbo = localToScreen({ x: lx, y: by }, tFrame.center, tAngle)
-                    const [btx, bty] = toSvg(st.x, st.y)
-                    const [bbx, bby] = toSvg(sbo.x, sbo.y)
-                    return { btx, bty, bbx, bby, lx, offsetCm }
-                  })
+                  const baseScreenPos = allBases.map((sb, sbi) =>
+                    baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                  )
 
                   return (
                     <g key={`hl-${ai}`} style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>

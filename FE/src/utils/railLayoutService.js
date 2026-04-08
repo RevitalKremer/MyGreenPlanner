@@ -1,3 +1,5 @@
+import { PANEL_H } from './panelCodes.js'
+
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)
@@ -26,7 +28,7 @@ export function computePanelFrame(rowPanels) {
 }
 
 // Build default lineRails for each panel line based on orientation and depths
-// lineOrientations: array of 'V'|'H'|'EV'|'EH'
+// lineOrientations: array of panel orientation codes (see panelCodes.js)
 // panelDepthsCm: array of depths per line (same length)
 // railSpacingV / railSpacingH: default spacing from server app_settings
 // Returns: { [lineIdx]: [offsetCm, offsetCm] }
@@ -34,7 +36,7 @@ export function initDefaultLineRails(lineOrientations, panelDepthsCm, railSpacin
   const result = {}
   lineOrientations.forEach((orientation, i) => {
     const depth = panelDepthsCm[i]
-    const spacing = orientation === 'H' ? railSpacingH : railSpacingV
+    const spacing = orientation === PANEL_H ? railSpacingH : railSpacingV
     const offset = railOffsetFromSpacing(depth, spacing)
     result[i] = [offset, depth - offset]
   })
@@ -65,7 +67,8 @@ export function getPanelOrientation(panel) {
 }
 
 // Split a length in mm into stock segments (greedy, largest-first)
-export function splitIntoStockSegments(lengthMm, stockLengths) {
+// Internal only — stock splitting for FE preview; BE is source of truth
+function splitIntoStockSegments(lengthMm, stockLengths) {
   const sorted = [...stockLengths].sort((a, b) => b - a)
   const segments = []
   let remaining = Math.round(lengthMm)
@@ -192,36 +195,4 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
   }
 
   return { frame: { center, angleRad, localBounds }, panelLocalRects, rails }
-}
-
-/**
- * Count panel boundaries where the gap exceeds the default, using pre-transformed local rects.
- * Accepts panelLocalRects from computeRowRailLayout (each has .localX, .width, .line).
- * Returns total count across all lines.
- * @param {object[]} panelLocalRects  - from rl.panelLocalRects
- * @param {number}   pixelToCmRatio
- * @param {number}   defaultGapCm     - expected gap (panelGapCm from app_settings)
- */
-export function countLargeGaps(panelLocalRects, pixelToCmRatio, defaultGapCm) {
-  if (!panelLocalRects || panelLocalRects.length < 2 || !pixelToCmRatio) return 0
-
-  const threshold = defaultGapCm + 0.5   // 0.5 cm tolerance for float noise
-
-  // Group by line
-  const lineGroups = {}
-  for (const pr of panelLocalRects) {
-    const li = pr.line ?? 0
-    if (!lineGroups[li]) lineGroups[li] = []
-    lineGroups[li].push(pr)
-  }
-
-  let count = 0
-  for (const linePanels of Object.values(lineGroups)) {
-    const sorted = [...linePanels].sort((a, b) => a.localX - b.localX)
-    for (let j = 1; j < sorted.length; j++) {
-      const gapCm = (sorted[j].localX - (sorted[j - 1].localX + sorted[j - 1].width)) * pixelToCmRatio
-      if (gapCm > threshold) count++
-    }
-  }
-  return count
 }

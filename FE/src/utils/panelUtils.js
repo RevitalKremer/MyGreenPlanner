@@ -1,5 +1,6 @@
 // Panel utility functions for solar panel layout generation and row management
 import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry'
+import { PANEL_H, PANEL_V } from './panelCodes.js'
 
 /**
  * Generate panel layout based on refined area, baseline, and panel configuration
@@ -40,13 +41,13 @@ export const generatePanelLayout = (refinedArea, baseline, singleRow = false, pa
   const roofProjectionPx = (panelLengthCm * Math.cos(angleRad)) / pixelToCmRatio
 
   // Multi-line row configuration
-  const lineOrientations = panelConfig.lineOrientations || ['V']
+  const lineOrientations = panelConfig.lineOrientations || [PANEL_V]
   const linesPerRow = lineOrientations.length
 
   const lineConfigs = lineOrientations.map(orientation => {
     const isEmpty = isEmptyOrientation(orientation)
-    const base = isHorizontalOrientation(orientation) ? 'H' : (isEmpty ? 'V' : orientation)
-    if (base === 'H') {
+    const base = isHorizontalOrientation(orientation) ? PANEL_H : (isEmpty ? PANEL_V : orientation)
+    if (base === PANEL_H) {
       return {
         widthPx: panelLengthPx,
         projectionPx: (panelWidthCm * Math.cos(angleRad)) / pixelToCmRatio,
