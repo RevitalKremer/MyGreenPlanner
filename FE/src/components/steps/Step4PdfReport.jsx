@@ -229,7 +229,7 @@ function ScaledPage({ scale, children }) {
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step4PdfReport({
-  panels = [], refinedArea, areas = {}, project, projectId,
+  panels = [], refinedArea, areas = [], project, projectId,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
   beBasesData = null, beTrapezoidsData = null,
@@ -312,29 +312,28 @@ export default function Step4PdfReport({
 
   // Build ghost map: for each trapId, find the full-trap in its area (if different)
   const fullTrapGhostMap = useMemo(() => {
-    // Group trapIds by area letter (e.g. "A1","A2" → area "A")
-    const areaMap = {}
-    for (const tid of trapIds) {
-      const area = tid.replace(/\d+$/, '')
-      if (!areaMap[area]) areaMap[area] = []
-      areaMap[area].push(tid)
+    // Group trapIds by area using actual area data (not string manipulation)
+    const areaGroupMap = {}
+    for (const area of (areas ?? [])) {
+      for (const tid of (area.trapezoidIds ?? [])) {
+        areaGroupMap[tid] = area.trapezoidIds
+      }
     }
     const map = {}
-    for (const [, tids] of Object.entries(areaMap)) {
-      const fullTid = tids.find(tid => beTrapezoidsData?.[tid]?.isFullTrap)
-      if (!fullTid) continue
-      for (const tid of tids) {
-        if (tid === fullTid) continue
-        map[tid] = {
-          beDetailData: beTrapezoidsData[fullTid],
-          panelLines: trapPanelLinesMap[fullTid] ?? null,
-          lineRails: trapLineRailsMap[fullTid] ?? null,
-          rc: trapRCMap[fullTid] ?? null,
-        }
+    for (const tid of trapIds) {
+      const areaTids = areaGroupMap[tid] ?? [tid]
+      if (areaTids.length < 2) continue  // single-trap area — no ghost needed
+      const fullTid = areaTids.find(t => beTrapezoidsData?.[t]?.isFullTrap)
+      if (!fullTid || fullTid === tid) continue
+      map[tid] = {
+        beDetailData: beTrapezoidsData[fullTid],
+        panelLines: trapPanelLinesMap[fullTid] ?? null,
+        lineRails: trapLineRailsMap[fullTid] ?? null,
+        rc: trapRCMap[fullTid] ?? null,
       }
     }
     return map
-  }, [trapIds, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
+  }, [trapIds, areas, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
 
   // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
   const panelWp = (() => {
