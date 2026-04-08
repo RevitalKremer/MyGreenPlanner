@@ -13,30 +13,8 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-
-# ── Helpers (shared with rail_service) ────────────────────────────────────────
-
-def _infer_row_orientation(cells: list[str]) -> Optional[str]:
-    """Return 'V' (portrait) or 'H' (landscape) from the first non-empty cell."""
-    for c in cells:
-        if c in ('V', 'EV'):
-            return 'V'
-        if c in ('H', 'EH'):
-            return 'H'
-    return None
-
-
-def _default_positions(cells: list[str], panel_along_cm: float, panel_gap_cm: float) -> list[float]:
-    """Leading-edge positions (cm from area start corner) for real panels."""
-    return [
-        i * (panel_along_cm + panel_gap_cm)
-        for i, cell in enumerate(cells)
-        if cell in ('V', 'H')
-    ]
-
-
-def _round2(v: float) -> float:
-    return round(v * 100) / 100
+from app.utils.math_helpers import round_to_2dp
+from app.utils.panel_geometry import infer_row_orientation, default_panel_positions
 
 
 # ── Main computation ──────────────────────────────────────────────────────────
@@ -77,12 +55,12 @@ def compute_area_bases(
     auto_start = float('inf')
     auto_end = float('-inf')
     for line_idx, cells in enumerate(rows):
-        orient = _infer_row_orientation(cells)
+        orient = infer_row_orientation(cells)
         if not orient:
             continue
         panel_along_cm = short_cm if orient == 'V' else long_cm
         stored = row_positions.get(str(line_idx))
-        positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
         if not positions:
             continue
         auto_start = min(auto_start, positions[0])
@@ -120,7 +98,7 @@ def compute_area_bases(
         adjusted_edge_mm = (frame_length_mm - total_bases_span) / 2
         num_bases = num_spans + 1
         base_offsets_cm = [
-            _round2(adjusted_edge_mm / 10 + i * (spacing_mm / 10))
+            round_to_2dp(adjusted_edge_mm / 10 + i * (spacing_mm / 10))
             for i in range(num_bases)
         ]
     else:
@@ -128,7 +106,7 @@ def compute_area_bases(
         actual_spacing_cm = (inner_span_mm / num_spans) / 10
         num_bases = num_spans + 1
         base_offsets_cm = [
-            _round2(edge_offset_mm / 10 + i * actual_spacing_cm)
+            round_to_2dp(edge_offset_mm / 10 + i * actual_spacing_cm)
             for i in range(num_bases)
         ]
 
@@ -140,7 +118,7 @@ def compute_area_bases(
     bases = [
         {
             'baseId': f'B{i + 1}',
-            'offsetFromStartCm': _round2(frame_start_cm + off),
+            'offsetFromStartCm': round_to_2dp(frame_start_cm + off),
             'trapezoidId': trapezoid_id,
         }
         for i, off in enumerate(base_offsets_cm)
@@ -150,7 +128,7 @@ def compute_area_bases(
     line_infos: dict[int, dict] = {}
     cumulative_cm = 0.0
     for line_idx, cells in enumerate(rows):
-        orient = _infer_row_orientation(cells)
+        orient = infer_row_orientation(cells)
         if line_idx > 0:
             cumulative_cm += line_gap_cm
         depth_cm = long_cm if orient == 'V' else (short_cm if orient == 'H' else 0)
@@ -190,12 +168,12 @@ def compute_area_bases(
         active_lines_for_base = []
 
         for li, cells in enumerate(rows):
-            orient = _infer_row_orientation(cells)
+            orient = infer_row_orientation(cells)
             if not orient or li not in line_infos:
                 continue
             panel_along_cm = short_cm if orient == 'V' else long_cm
             stored = row_positions.get(str(li))
-            positions = stored if stored else _default_positions(cells, panel_along_cm, panel_gap_cm)
+            positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
             if not positions:
                 continue
             # Check if base falls within the line's overall panel extent
@@ -217,12 +195,12 @@ def compute_area_bases(
                 b_front_rails[-1] if b_front_rails else b_front_line['depthCm']
             )
             base['panelLineIdx'] = b_rear_idx
-            base['startCm'] = _round2(b_rear_leg - base_overhang_cm - b_rear_line['rearEdgeCm'])
-            base['lengthCm'] = _round2((b_front_leg + base_overhang_cm) - (b_rear_leg - base_overhang_cm))
+            base['startCm'] = round_to_2dp(b_rear_leg - base_overhang_cm - b_rear_line['rearEdgeCm'])
+            base['lengthCm'] = round_to_2dp((b_front_leg + base_overhang_cm) - (b_rear_leg - base_overhang_cm))
         else:
             base['panelLineIdx'] = rear_idx
-            base['startCm'] = _round2(base_top_depth_cm - rear_line['rearEdgeCm'])
-            base['lengthCm'] = _round2(base_length_cm)
+            base['startCm'] = round_to_2dp(base_top_depth_cm - rear_line['rearEdgeCm'])
+            base['lengthCm'] = round_to_2dp(base_length_cm)
 
     # Block positions are computed in trapezoid_detail_service (single source of truth).
     # The FE bases view reads blocks from computedTrapezoids[trapId].blocks.
@@ -230,13 +208,13 @@ def compute_area_bases(
     return {
         'trapezoidId': trapezoid_id,
         'bases': bases,
-        'frameStartCm': _round2(frame_start_cm),
-        'frameLengthCm': _round2(frame_length_cm),
-        'rearLegDepthCm': _round2(rear_leg_depth_cm),
-        'frontLegDepthCm': _round2(front_leg_depth_cm),
-        'baseTopDepthCm': _round2(base_top_depth_cm),
-        'baseBottomDepthCm': _round2(base_bottom_depth_cm),
-        'baseLengthCm': _round2(base_length_cm),
+        'frameStartCm': round_to_2dp(frame_start_cm),
+        'frameLengthCm': round_to_2dp(frame_length_cm),
+        'rearLegDepthCm': round_to_2dp(rear_leg_depth_cm),
+        'frontLegDepthCm': round_to_2dp(front_leg_depth_cm),
+        'baseTopDepthCm': round_to_2dp(base_top_depth_cm),
+        'baseBottomDepthCm': round_to_2dp(base_bottom_depth_cm),
+        'baseLengthCm': round_to_2dp(base_length_cm),
         'actualSpacingMm': actual_spacing_mm,
         'baseCount': len(bases),
     }
@@ -319,9 +297,9 @@ def compute_external_diagonals(
                 result.append({
                     'startBaseIdx': area_offset + ai,
                     'endBaseIdx': area_offset + bi,
-                    'startBaseOffsetCm': 0.0 if is_rear else _round2(base_a.get('lengthCm', 0)),
-                    'startBaseHeightCm': _round2(height_at_edge_cm),
-                    'endBaseOffsetCm': 0.0 if is_rear else _round2(base_b.get('lengthCm', 0)),
+                    'startBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_a.get('lengthCm', 0)),
+                    'startBaseHeightCm': round_to_2dp(height_at_edge_cm),
+                    'endBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_b.get('lengthCm', 0)),
                     'endBaseHeightCm': 0.0,
                     'horizMm': horiz_mm,
                     'vertMm': vert_mm,

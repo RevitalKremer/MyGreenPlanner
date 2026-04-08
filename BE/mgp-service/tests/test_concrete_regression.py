@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.trapezoid_detail_service import compute_trapezoid_details, align_blocks
+from app.utils.math_helpers import round_to_1dp
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
@@ -112,9 +113,9 @@ def _build_inputs_for_trap(data: dict, trap_id: str, trap_cfg: dict, area: dict)
             first_rail = min(all_rail_offsets)
             last_rail = max(all_rail_offsets)
             bases_data = {
-                'baseLengthCm': round((last_rail + base_overhang - (first_rail - base_overhang)) * 10) / 10,
-                'rearLegDepthCm': round(first_rail * 10) / 10,
-                'frontLegDepthCm': round(last_rail * 10) / 10,
+                'baseLengthCm': round_to_1dp(last_rail + base_overhang - (first_rail - base_overhang)),
+                'rearLegDepthCm': round_to_1dp(first_rail),
+                'frontLegDepthCm': round_to_1dp(last_rail),
             }
 
     rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0

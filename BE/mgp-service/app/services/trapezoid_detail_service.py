@@ -12,21 +12,10 @@ from __future__ import annotations
 import logging
 import math
 
+from app.utils.math_helpers import round_to_1dp as _r
+from app.utils.settings_helpers import get_setting_or_override as _s
+
 logger = logging.getLogger(__name__)
-
-
-# ── Helper ────────────────────────────────────────────────────────────────────
-
-def _s(settings: dict, overrides: dict, key: str) -> float | int | list:
-    """Read a setting: per-trapezoid override > app default. KeyError if missing from both."""
-    if key in overrides:
-        return overrides[key]
-    return settings[key]
-
-
-def _r(v: float) -> float:
-    """Round to 1 decimal."""
-    return round(v * 10) / 10
 
 
 # ── Sub-computations ─────────────────────────────────────────────────────────
