@@ -873,11 +873,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     />
                     {/* all punch circles + labels — Punches layer */}
                     {basePunches.map((p, i) => {
-                      const isDiag = p.origin === 'diagonal'
+
                       return (
                         <g key={`wp-${i}`}>
-                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
-                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
+                          <circle cx={p.x} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
                             {p.label}
                           </text>
                         </g>
@@ -946,11 +946,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     />
                     {/* all punch circles + labels — Punches layer */}
                     {slopePunches.map((p, i) => {
-                      const isDiag = p.origin === 'diagonal'
+
                       return (
                         <g key={`wp-${i}`}>
-                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
-                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
+                          <circle cx={p.x} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
                             {p.label}
                           </text>
                         </g>
