@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import LayersPanel from './LayersPanel'
 import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
+import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
@@ -701,148 +702,46 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
 
               {/* ── Base beam punch sketch ── */}
               {showPunches && (() => {
-                const ry    = blockBotY + 130
-                const barH  = 12
-                const barCy = ry + barH / 2
                 const baseBeamLen = activeBaseBeamLenCm
-                const firstLegPos = beLegs[0]?.positionCm ?? 0
-                const baseBarX0 = legX0 - firstLegPos * SC
-                const baseBarW = baseBeamLen * SC
-                const atBase = (posCm) => baseBarX0 + (posCm / baseBeamLen) * baseBarW
-                const nonDiagBasePunches = (beDetailData?.punches ?? [])
+                const flp = beLegs[0]?.positionCm ?? 0
+                const bbX0 = legX0 - flp * SC
+                const bbW = baseBeamLen * SC
+                const atBase = (posCm) => bbX0 + (posCm / baseBeamLen) * bbW
+                const nonDiag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
                   .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
-                const diagBasePunches = activeDiags.map(d => ({
-                  x: d.botX, label: fmt((d.botX - baseBarX0) / SC), origin: 'diagonal',
-                }))
-                const basePunches = [...nonDiagBasePunches, ...diagBasePunches].sort((a, b) => a.x - b.x)
-                const ghostX = (() => {
-                  if (!showDiagHandles || barHover?.which !== 'bot') return null
-                  const span = findSpan(barHover.svgX)
-                  if (!span || activeSpanSet.has(span.spanIndex)) return null
-                  if (activeDiags.some(d => Math.abs(d.botX - barHover.svgX) < 8)) return null
-                  return barHover.svgX
-                })()
-                return (
-                  <g>
-                    <text x={baseBarX0} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.baseBeamPunches')}</text>
-                    <rect x={baseBarX0} y={ry} width={baseBarW} height={barH}
-                      fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
-                      style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
-                      onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'bot') : undefined}
-                      onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
-                      onClick={showDiagHandles ? (e) => handleBarClick(e, 'bot') : undefined}
-                    />
-                    {/* all punch circles + labels — Punches layer */}
-                    {basePunches.map((p, i) => {
-                      const isDiag = p.origin === 'diagonal'
-                      return (
-                        <g key={`wp-${i}`}>
-                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
-                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
-                            {p.label}
-                          </text>
-                        </g>
-                      )
-                    })}
-                    {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
-                    {showDiagHandles && !printMode && activeDiags.map((d, di) => {
-                      const isHov = hoverHandle?.which === 'bot' && hoverHandle?.spanIndex === d.spanIndex
-                      return (
-                        <g key={`bh-${di}`}>
-                          <circle cx={d.botX} cy={barCy} r={5.5}
-                            fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
-                            style={{ cursor: 'pointer' }}
-                            onMouseEnter={() => setHoverHandle({ which: 'bot', spanIndex: d.spanIndex })}
-                            onMouseLeave={() => setHoverHandle(null)}
-                            onMouseDown={(e) => startHandleDrag(e, 'bot', d)}
-                          />
-                          {isHov && <text x={d.botX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
-                        </g>
-                      )
-                    })}
-                    {/* "+" ghost follower */}
-                    {ghostX !== null && (
-                      <g opacity="0.5" style={{ pointerEvents: 'none' }}>
-                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke={ADD_GREEN} strokeWidth="1.5" strokeDasharray="3,2" />
-                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
-                      </g>
-                    )}
-                    <Dim ax1={baseBarX0} ay1={ry + barH + 22} ax2={baseBarX0 + baseBarW} ay2={ry + barH + 22} label={fmt(baseBeamLen)} off={10} />
-                  </g>
-                )
+                const diag = activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - bbX0) / SC), origin: 'diagonal' }))
+                return <DetailPunchSketch which="bot" ry={blockBotY + 130}
+                  barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
+                  punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
+                  showDiagHandles={showDiagHandles} printMode={printMode}
+                  barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
+                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
+                  findSpan={findSpan} activeSpanSet={activeSpanSet}
+                  activeBoundL={bbX0} activeBoundR={bbX0 + bbW}
+                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.baseBeamPunches" />
               })()}
 
               {/* ── Slope beam punch sketch ── */}
               {showPunches && (() => {
-                const ry    = blockBotY + 52
-                const barH  = 12
-                const barCy = ry + barH / 2
-                const activeSlopeBeamLenCm = topBeamLength
-                const atSlope2 = (posCm) => legX0 + (posCm / activeSlopeBeamLenCm) * legBW
-                const nonDiagSlopePunches = (beDetailData?.punches ?? [])
+                const slopeLen = topBeamLength
+                const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
+                const nonDiag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
                   .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: p.origin }))
-                const diagSlopePunches = activeDiags.map(d => {
+                const diag = activeDiags.map(d => {
                   const pos = (d.topX - legX0) / SC
-                  const reversed = topBeamLength - pos
-                  return { x: d.topX, label: fmt(reverseBlockPunches ? reversed : pos), origin: 'diagonal' }
+                  return { x: d.topX, label: fmt(reverseBlockPunches ? slopeLen - pos : pos), origin: 'diagonal' }
                 })
-                const slopePunches = [...nonDiagSlopePunches, ...diagSlopePunches].sort((a, b) => a.x - b.x)
-                const ghostX = (() => {
-                  if (!showDiagHandles || barHover?.which !== 'top') return null
-                  const span = findSpan(barHover.svgX)
-                  if (!span || activeSpanSet.has(span.spanIndex)) return null
-                  if (activeDiags.some(d => Math.abs(d.topX - barHover.svgX) < 8)) return null
-                  return barHover.svgX
-                })()
-                return (
-                  <g>
-                    <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t('step3.detail.slopeBeamPunches')}</text>
-                    <rect x={legX0} y={ry} width={legBW} height={barH}
-                      fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
-                      style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
-                      onMouseMove={showDiagHandles ? (e) => handleBarMouseMove(e, 'top') : undefined}
-                      onMouseLeave={showDiagHandles ? () => setBarHover(null) : undefined}
-                      onClick={showDiagHandles ? (e) => handleBarClick(e, 'top') : undefined}
-                    />
-                    {/* all punch circles + labels — Punches layer */}
-                    {slopePunches.map((p, i) => {
-                      const isDiag = p.origin === 'diagonal'
-                      return (
-                        <g key={`wp-${i}`}>
-                          <circle cx={p.x} cy={barCy} r={isDiag ? 2.5 : 2} fill="white" stroke={isDiag ? BLUE : TEXT_SECONDARY} strokeWidth="1" />
-                          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={isDiag ? BLUE : TEXT_SECONDARY} fontWeight="600">
-                            {p.label}
-                          </text>
-                        </g>
-                      )
-                    })}
-                    {/* diagonal handles — Edit Bar layer (blue circles on top, no duplicate labels) */}
-                    {showDiagHandles && !printMode && activeDiags.map((d, di) => {
-                      const isHov = hoverHandle?.which === 'top' && hoverHandle?.spanIndex === d.spanIndex
-                      return (
-                        <g key={`sh-${di}`}>
-                          <circle cx={d.topX} cy={barCy} r={5.5}
-                            fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
-                            style={{ cursor: 'pointer' }}
-                            onMouseEnter={() => setHoverHandle({ which: 'top', spanIndex: d.spanIndex })}
-                            onMouseLeave={() => setHoverHandle(null)}
-                            onMouseDown={(e) => startHandleDrag(e, 'top', d)}
-                          />
-                          {isHov && <text x={d.topX} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
-                        </g>
-                      )
-                    })}
-                    {ghostX !== null && (
-                      <g opacity="0.5" style={{ pointerEvents: 'none' }}>
-                        <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke={ADD_GREEN} strokeWidth="1.5" strokeDasharray="3,2" />
-                        <text x={ghostX + 5} y={barCy + 1} dominantBaseline="middle" fontSize="9" fontWeight="800" fill={ADD_GREEN}>+</text>
-                      </g>
-                    )}
-                    <Dim ax1={activeBoundL} ay1={ry + barH + 22} ax2={activeBoundR} ay2={ry + barH + 22} label={fmt(activeSlopeBeamLenCm)} off={10} />
-                  </g>
-                )
+                return <DetailPunchSketch which="top" ry={blockBotY + 52}
+                  barX0={legX0} barW={legBW} beamLenCm={slopeLen}
+                  punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
+                  showDiagHandles={showDiagHandles} printMode={printMode}
+                  barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
+                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
+                  findSpan={findSpan} activeSpanSet={activeSpanSet}
+                  activeBoundL={activeBoundL} activeBoundR={activeBoundR}
+                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.slopeBeamPunches" />
               })()}
 
             </svg>
