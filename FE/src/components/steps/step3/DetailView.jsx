@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, GROUND_LINE, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, GHOST_FILL, GHOST_STROKE, GHOST_DASH, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import LayersPanel from './LayersPanel'
+import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import RulerTool from '../../shared/RulerTool'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
@@ -721,51 +722,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               )}
 
               {/* ── Green floor / roof surface line ── */}
-              {(showRoofLine && !printMode) && ((roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'perpendicular' ? (() => {
-                // Wavy corrugated pattern representing purlin roof surface
-                const purlinDist = purlinDistCm
-                if (!purlinDist || purlinDist <= 0) {
-                  return <line x1={panelX1 - 35} y1={blockBotY} x2={panelX2 + 45} y2={blockBotY}
-                    stroke={GROUND_LINE} strokeWidth="2.5" strokeLinecap="round" />
-                }
-                const waveH = BEAM_THICK_PX*1.5  // peak height = beam thickness
-                const dropW = 3 * SC        // sharp drop width ~5cm
-                const flatBotW = 33 * SC - 2 * dropW  // valley: 33cm between peaks minus drops
-                const flatTopW = 3 * SC      // flat top between waves ~3cm
-                const bbX0 = legX0 - firstLegPos * SC
-                const bbW = (geom.baseBeamLength ?? (legBW / SC)) * SC
-                const x1w = bbX0 - 20
-                const x2w = bbX0 + bbW + 20
-                // Wave top touches base beam bottom surface
-                const yTop = baseY + BEAM_THICK_PX  // base beam bottom
-                const yBot = yTop + waveH            // valley below
-                // Trapezoidal corrugated sheet: flat top (touching beam) → sharp drop → flat bottom → sharp rise
-                let d = `M ${x1w} ${yTop}`
-                let x = x1w
-                while (x < x2w) {
-                  // flat top (touching base beam)
-                  const ft = Math.min(Math.max(flatTopW, 0), x2w - x)
-                  d += ` L ${x + ft} ${yTop}`
-                  x += ft
-                  if (x >= x2w) break
-                  // sharp drop
-                  d += ` L ${Math.min(x + dropW, x2w)} ${yBot}`
-                  x += dropW
-                  if (x >= x2w) break
-                  // flat bottom (valley)
-                  const fb = Math.min(flatBotW, x2w - x)
-                  d += ` L ${x + fb} ${yBot}`
-                  x += fb
-                  if (x >= x2w) break
-                  // sharp rise
-                  d += ` L ${Math.min(x + dropW, x2w)} ${yTop}`
-                  x += dropW
-                }
-                return <path d={d} fill="none" stroke={GROUND_LINE} strokeWidth="2" strokeLinecap="round" />
-              })() : (
-                <line x1={panelX1 - 35} y1={blockBotY} x2={panelX2 + 45} y2={blockBotY}
-                  stroke={GROUND_LINE} strokeWidth="2.5" strokeLinecap="round" />
-              ))}
+              {(showRoofLine && !printMode) && (
+                <DetailCorrugatedRoof
+                  roofType={roofType} installationOrientation={installationOrientation} purlinDistCm={purlinDistCm}
+                  panelX1={panelX1} panelX2={panelX2} blockBotY={blockBotY} baseY={baseY}
+                  BEAM_THICK_PX={BEAM_THICK_PX} SC={SC} legX0={legX0} firstLegPos={firstLegPos} geom={geom} legBW={legBW}
+                />
+              )}
 
               {/* ── Angle label inside trapezoid ── */}
               <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
