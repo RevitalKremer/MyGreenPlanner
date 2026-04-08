@@ -91,7 +91,6 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
   if (!railConfig.stockLengths || !railConfig.overhangCm) return null
 
   const railOverhangCm = railConfig.overhangCm
-  const stockLengths   = railConfig.stockLengths
   const lineRails      = railConfig.lineRails      ?? null   // { [lineIdx]: [offsetCm, ...] }
   const railSpacingV   = railConfig.railSpacingV
   const railSpacingH   = railConfig.railSpacingH
@@ -173,11 +172,6 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
 
       const lengthPx  = xMax - xMin
       const lengthCm  = lengthPx * pixelToCmRatio
-      const lengthMm  = Math.round(lengthCm * 10)
-
-      const segments     = splitIntoStockSegments(lengthMm, stockLengths)
-      const stockPieces  = segments.map(s => s.used)
-      const totalLeftover = segments.reduce((s, seg) => s + seg.leftover, 0)
 
       const localStart  = { x: xMin, y: railY }
       const localEnd    = { x: xMax, y: railY }
@@ -193,8 +187,6 @@ export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {})
         screenStart,
         screenEnd,
         lengthCm: Math.round(lengthCm * 10) / 10,
-        stockSegmentsMm: stockPieces,
-        leftoverCm: Math.round(totalLeftover) / 10,
       })
     }
   }
