@@ -31,8 +31,8 @@ export const initialProjectState = {
       trapezoids: [],
     },
     step3: {
-      globalSettings: null,
-      areaSettings: null,
+      globalSettings: {},
+      areaSettings: {},
       customDiagonals: {},
       customBasesOffsets: {},
     },

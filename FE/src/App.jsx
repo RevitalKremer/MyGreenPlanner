@@ -321,7 +321,6 @@ function App() {
     else await auth.register(email, password, fullName, phone)
     setShowAuthGate(false)
     if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
-    else if (pendingAction === 'export') s.handleExportProject()
     else if (pendingAction === 'save') handleCloudSave()
     setPendingAction(null)
   }
@@ -550,7 +549,6 @@ function App() {
             setShowDistances={s.setShowDistances}
             distanceMeasurement={s.distanceMeasurement}
             setDistanceMeasurement={s.setDistanceMeasurement}
-            generatePanelLayoutHandler={s.computePanels}
             regenerateSingleRowHandler={s.regenerateSingleRowHandler}
             refreshAreaTrapezoids={s.refreshAreaTrapezoids}
             rebuildPanelGrid={s.rebuildPanelGrid}
