@@ -22,13 +22,14 @@ export const initialProjectState = {
   data: {
     version: '3.0',
     step2: {
-      panelType: null,
+      panelType: 'AIKO-G670-MCH72Mw',
       panelWidthCm: null,
       panelLengthCm: null,
       defaultFrontHeightCm: 0,
       defaultAngleDeg: 0,
       areas: [],
-      trapezoids: [],
+      trapezoidConfigs: {},
+      panelGrid: {},
     },
     step3: {
       globalSettings: {},
@@ -101,13 +102,26 @@ export function projectReducer(state, action) {
 
     // ── Step 2 data ──
 
-    case 'SYNC_STEP2':
-      // Sync individual useState values into the reducer's step2 node.
-      // Used until these states are fully migrated into the reducer.
+    case 'SET_STEP2':
       return {
         ...state,
         data: { ...state.data, step2: { ...state.data.step2, ...action.payload } },
       }
+
+    case 'SET_AREAS': {
+      const areas = typeof action.value === 'function' ? action.value(state.data.step2.areas) : action.value
+      return { ...state, data: { ...state.data, step2: { ...state.data.step2, areas } } }
+    }
+
+    case 'SET_TRAPEZOID_CONFIGS': {
+      const trapezoidConfigs = typeof action.value === 'function' ? action.value(state.data.step2.trapezoidConfigs) : action.value
+      return { ...state, data: { ...state.data, step2: { ...state.data.step2, trapezoidConfigs } } }
+    }
+
+    case 'SET_PANEL_GRID': {
+      const panelGrid = typeof action.value === 'function' ? action.value(state.data.step2.panelGrid) : action.value
+      return { ...state, data: { ...state.data, step2: { ...state.data.step2, panelGrid } } }
+    }
 
     // ── Step 3 settings ──
 

@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
+import { useState, useEffect, useRef, useReducer } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
-import { createProject, updateProject, fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
+import { createProject, updateProject } from '../services/projectsApi'
+import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
-import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState } from './useProjectReducer'
 import { computePanelsAction } from './computePanelsAction'
-
-
-const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
+import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
   // ── Structured state (mirrors server JSON) ──
@@ -27,7 +25,6 @@ export function useProjectState() {
   // Step 1: Roof allocation
   const [selectedPoint, setSelectedPoint] = useState(null)
   const [roofPolygon, setRoofPolygon] = useState(null)
-  const [backendStatus, setBackendStatus] = useState({ status: 'checking', model_loaded: false })
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadedImageMode, setUploadedImageMode] = useState(true)
   const [uploadedImageData, setUploadedImageData] = useState(null)
@@ -35,11 +32,14 @@ export function useProjectState() {
 
   // Step 2: PV area refinement
   const [refinedArea, setRefinedArea] = useState(null)
-  const [panelType, setPanelType] = useState('AIKO-G670-MCH72Mw')
+  const panelType = pState.data.step2.panelType
+  const setPanelType = (v) => pDispatch({ type: 'SET_STEP2', payload: { panelType: v } })
   const [referenceLine, setReferenceLine] = useState(null)
   const [referenceLineLengthCm, setReferenceLineLengthCm] = useState('')
-  const [panelFrontHeight, setPanelFrontHeight] = useState('')
-  const [panelAngle, setPanelAngle] = useState('')
+  const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm || '')
+  const setPanelFrontHeight = (v) => pDispatch({ type: 'SET_STEP2', payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
+  const panelAngle = String(pState.data.step2.defaultAngleDeg || '')
+  const setPanelAngle = (v) => pDispatch({ type: 'SET_STEP2', payload: { defaultAngleDeg: parseFloat(v) || 0 } })
   const [isDrawingLine, setIsDrawingLine] = useState(false)
   const [lineStart, setLineStart] = useState(null)
 
@@ -49,14 +49,17 @@ export function useProjectState() {
   const [showDistances, setShowDistances] = useState(true)
   const [distanceMeasurement, setDistanceMeasurement] = useState(null)
   const [panels, setPanels] = useState([])
-  const [areas, setAreas] = useState([])
+  const areas = pState.data.step2.areas
+  const setAreas = (v) => pDispatch({ type: 'SET_AREAS', value: v })
   const [rectAreas, setRectAreas] = useState([])
   const [selectedPanels, setSelectedPanels] = useState([])
   const [dragState, setDragState] = useState(null)
   const [rotationState, setRotationState] = useState(null)
   const [viewZoom, setViewZoom] = useState(1)
-  const [trapezoidConfigs, setTrapezoidConfigs] = useState({})
-  const [panelGrid, setPanelGrid] = useState({})
+  const trapezoidConfigs = pState.data.step2.trapezoidConfigs
+  const setTrapezoidConfigs = (v) => pDispatch({ type: 'SET_TRAPEZOID_CONFIGS', value: v })
+  const panelGrid = pState.data.step2.panelGrid
+  const setPanelGrid = (v) => pDispatch({ type: 'SET_PANEL_GRID', value: v })
   // Tracks manually deleted panel positions per area so computePanels can skip them.
   // Shape: { [areaIdx: number]: string[] }  where each string is "row_col".
   const [deletedPanelKeys, setDeletedPanelKeys] = useState({})
@@ -74,35 +77,23 @@ export function useProjectState() {
   const step5BomDeltas = pState.data.step5.bomDeltas
   const setStep5BomDeltas = (v) => pDispatch({ type: 'SET_BOM_DELTAS', value: v })
 
-  // ── Sync step2 useState values into reducer (bridge until full migration) ──
+  // Cloud project ID — set after first cloud save, used for subsequent saves
+  const [cloudProjectId, setCloudProjectId] = useState(null)
+
+  // ── App config (panel types, settings, products, backend) ──
+  const {
+    panelTypes, panelSpec,
+    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup,
+    products, productByType, altsByType,
+    backendStatus,
+    refreshAppSettings,
+  } = useAppConfig({ panelType, currentProject })
+
+  // ── Sync panelSpec dimensions into reducer when panelType changes ──
   useEffect(() => {
-    const spec = panelTypes?.find(t => t.id === panelType) ?? panelTypes?.[0] ?? DEFAULT_PANEL_TYPE
-    // Convert trapezoidConfigs object to array for reducer
-    const trapezoids = Object.entries(trapezoidConfigs).map(([id, cfg]) => ({
-      id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
-    }))
-    // Build step2.areas from rectAreas + panels (same as getProjectData)
-    const step2Areas = rectAreas.map((ra, idx) => {
-      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
-      return {
-        ...areas[idx],
-        id: ra.id, label: ra.label,
-        frontHeightCm: parseFloat(ra.frontHeight !== '' ? ra.frontHeight : panelFrontHeight) || 0,
-        angleDeg: parseFloat(ra.angle !== '' ? ra.angle : panelAngle) || 0,
-        trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (areas[idx]?.trapezoidIds ?? []),
-        panelGrid: panelGrid[ra.label] ?? null,
-      }
-    })
-    pDispatch({ type: 'SYNC_STEP2', payload: {
-      panelType,
-      panelWidthCm: spec?.widthCm,
-      panelLengthCm: spec?.lengthCm,
-      defaultFrontHeightCm: parseFloat(panelFrontHeight) || 0,
-      defaultAngleDeg: parseFloat(panelAngle) || 0,
-      trapezoids,
-      areas: step2Areas,
-    }})
-  }, [areas, trapezoidConfigs, panelGrid, rectAreas, panels, panelType, panelFrontHeight, panelAngle])
+    const spec = panelTypes?.find(t => t.id === panelType) ?? panelTypes?.[0]
+    if (spec) pDispatch({ type: 'SET_STEP2', payload: { panelWidthCm: spec.widthCm, panelLengthCm: spec.lengthCm } })
+  }, [panelType, panelTypes])
 
   // ── Sync layout useState values into reducer ──
   useEffect(() => {
@@ -122,108 +113,6 @@ export function useProjectState() {
       deletedPanelKeys,
     }})
   }, [uploadedImageData, roofPolygon, referenceLine, referenceLineLengthCm, refinedArea, baseline, rectAreas, panels, deletedPanelKeys])
-
-  // Cloud project ID — set after first cloud save, used for subsequent saves
-  const [cloudProjectId, setCloudProjectId] = useState(null)
-
-  // Panel types — fetched from server, falls back to hardcoded list
-  const [panelTypes, setPanelTypes] = useState([])
-
-  // App settings — full param schema fetched from app_settings table (single source of truth)
-  const [appSettingsRaw, setAppSettingsRaw] = useState(null)
-
-  // Derived: {key: value} map for backward compat (used by appDefaults?.panelGapCm etc.)
-  const appDefaults = useMemo(() => {
-    if (!appSettingsRaw) return null
-    return Object.fromEntries(appSettingsRaw.map(s => [s.key, s.value_json]))
-  }, [appSettingsRaw])
-
-  // Derived: param schema array for sidebar rendering
-  const paramSchema = useMemo(() => {
-    if (!appSettingsRaw) return []
-    return appSettingsRaw.map(s => ({
-      key: s.key,
-      label: s.label,
-      section: s.section,
-      scope: s.scope,
-      type: s.param_type,
-      default: s.value_json,
-      min: s.min_val,
-      max: s.max_val,
-      step: s.step_val,
-      highlightGroup: s.highlight_group,
-      orientation: s.key === 'railSpacingV' ? PANEL_V : s.key === 'railSpacingH' ? PANEL_H : undefined,
-      visible: s.visible ?? true,
-      roofTypes: s.roof_types ?? null,
-    }))
-  }, [appSettingsRaw])
-
-  // Derived: paramSchema filtered by current project's roof type
-  const paramSchemaForRoof = useMemo(() => {
-    const roofType = currentProject?.roofSpec?.type || 'concrete'
-    return paramSchema.filter(p => p.roofTypes === null || (Array.isArray(p.roofTypes) && p.roofTypes.includes(roofType)))
-  }, [paramSchema, currentProject])
-
-  // Derived: settings defaults {key: default_value} for seeding globalSettings
-  const settingsDefaults = useMemo(() => {
-    if (!paramSchema.length) return {}
-    return Object.fromEntries(
-      paramSchema.filter(p => p.type !== 'rail-spacing').map(p => [p.key, p.default])
-    )
-  }, [paramSchema])
-
-  // Derived: param key → highlight group mapping
-  const paramGroup = useMemo(() => {
-    return Object.fromEntries(
-      paramSchema.filter(p => p.highlightGroup != null).map(p => [p.key, p.highlightGroup])
-    )
-  }, [paramSchema])
-
-  // Products — fetched from server (materials for BOM)
-  const [products, setProducts] = useState([])
-  const productByType = useMemo(() => Object.fromEntries(products.map(p => [p.type, p])), [products])
-  const altsByType = useMemo(() => {
-    const groups = {}
-    products.forEach(p => {
-      if (p.altGroup != null) {
-        if (!groups[p.altGroup]) groups[p.altGroup] = []
-        groups[p.altGroup].push(p)
-      }
-    })
-    return Object.fromEntries(
-      products
-        .filter(p => p.altGroup != null)
-        .map(p => [p.type, groups[p.altGroup].filter(a => a.type !== p.type)])
-    )
-  }, [products])
-
-  // Resolved panel spec — always available (falls back to hardcoded list, then DEFAULT_PANEL_TYPE)
-  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
-
-  // ── Backend ───────────────────────────────────────────────────────────────
-
-  useEffect(() => { checkBackend() }, [])
-
-  useEffect(() => {
-    fetchPanelTypes()
-      .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
-      .catch(() => { /* keep hardcoded fallback */ })
-    fetchAppDefaults()
-      .then(setAppSettingsRaw)
-      .catch(() => { /* keep null — callers must handle */ })
-    fetchProducts()
-      .then(items => setProducts(items.map(p => ({
-        type: p.type_key, pn: p.part_number ?? '', name: p.name,
-        extraPct: p.extra ? parseInt(p.extra) || 0 : 0,
-        altGroup: p.alt_group, isDefault: p.is_default,
-      }))))
-      .catch(() => { /* products stay empty */ })
-  }, [])
-
-  const checkBackend = async () => {
-    const status = await SAM2Service.checkHealth()
-    setBackendStatus(status)
-  }
 
   // ── Wizard lifecycle ──────────────────────────────────────────────────────
 
@@ -306,7 +195,7 @@ setPanelAngle('')
     setCurrentProject(data.project)
 
     // Refresh app settings so defaults are not stale after admin changes / migrations
-    fetchAppDefaults().then(setAppSettingsRaw).catch(() => {})
+    refreshAppSettings()
 
     const layout = data.layout || {}
     const s2     = data.step2  || {}
@@ -314,11 +203,41 @@ setPanelAngle('')
     const s4     = data.step4  || {}
     const s5     = data.step5  || {}
 
-    // ── Load reducer data + navigation in one shot ──
+    // ── Convert server trapezoids array → FE trapezoidConfigs object ──
+    const trapezoidConfigs = {}
+    if (s2.trapezoids) {
+      const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids).map(([id, t]) => ({ id, ...t }))
+      traps.forEach(t => {
+        trapezoidConfigs[t.id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
+      })
+    }
+
+    // ── Convert server areas → FE areas format + extract panelGrid ──
+    const feAreas = (s2.areas || []).map(a => ({
+      id: a.id,
+      label: a.label ?? a.id,
+      trapezoidIds: a.trapezoidIds ?? [],
+      angle: a.angleDeg ?? 0,
+      frontHeight: a.frontHeightCm ?? 0,
+      lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
+    }))
+    const grid = {}
+    ;(s2.areas || []).forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
+
+    // ── Load all reducer data in one shot ──
     pDispatch({ type: 'LOAD_PROJECT',
       data: {
         version: '3.0',
-        step2: s2,
+        step2: {
+          panelType: s2.panelType || 'AIKO-G670-MCH72Mw',
+          panelWidthCm: s2.panelWidthCm ?? null,
+          panelLengthCm: s2.panelLengthCm ?? null,
+          defaultFrontHeightCm: s2.defaultFrontHeightCm ?? 0,
+          defaultAngleDeg: s2.defaultAngleDeg ?? 0,
+          areas: feAreas,
+          trapezoidConfigs,
+          panelGrid: grid,
+        },
         step3: { globalSettings: s3.globalSettings || {}, areaSettings: s3.areaSettings || {},
                  customDiagonals: s3.customDiagonals || {}, customBasesOffsets: s3.customBasesOffsets || {} },
         step4: { planApproval: s4.planApproval ?? null },
@@ -347,34 +266,6 @@ setPanelAngle('')
       setRectAreas(layout.rectAreas)
     }
 
-    // ── Step 2 useState (still source of truth for rendering) ──
-    if (s2.panelType)                       setPanelType(s2.panelType)
-    if (s2.defaultFrontHeightCm !== undefined) setPanelFrontHeight(String(s2.defaultFrontHeightCm))
-    if (s2.defaultAngleDeg      !== undefined) setPanelAngle(String(s2.defaultAngleDeg))
-
-    if (s2.trapezoids) {
-      const configs = {}
-      const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids).map(([id, t]) => ({ id, ...t }))
-      traps.forEach(t => {
-        configs[t.id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
-      })
-      setTrapezoidConfigs(configs)
-    }
-
-    if (s2.areas) {
-      setAreas(s2.areas.map(a => ({
-        id: a.id,
-        label: a.label ?? a.id,
-        trapezoidIds: a.trapezoidIds ?? [],
-        angle: a.angleDeg ?? 0,
-        frontHeight: a.frontHeightCm ?? 0,
-        lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
-      })))
-      const grid = {}
-      s2.areas.forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
-      setPanelGrid(grid)
-    }
-
     if (layout.pixelToCmRatio) {
       setRefinedArea({
         pixelToCmRatio: layout.pixelToCmRatio,
@@ -396,9 +287,28 @@ setPanelAngle('')
   }
 
   const getProjectData = () => {
-    // Read directly from reducer — step2 synced by effect, step3-5 live in reducer
+    const d = pState.data
+    // Convert FE trapezoidConfigs object to server trapezoids array
+    const trapezoids = Object.entries(d.step2.trapezoidConfigs).map(([id, cfg]) => ({
+      id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
+    }))
+    // Enrich areas with rectAreas geometry + panel-derived trapezoidIds
+    const enrichedAreas = d.step2.areas.map((a, idx) => {
+      const ra = rectAreas[idx]
+      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
+      return {
+        ...a,
+        id: ra?.id ?? a.id, label: ra?.label ?? a.label,
+        frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
+        angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
+        trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (a.trapezoidIds ?? []),
+        panelGrid: d.step2.panelGrid[ra?.label ?? a.label] ?? null,
+      }
+    })
+    const { trapezoidConfigs: _tc, panelGrid: _pg, ...step2Rest } = d.step2
     return {
-      ...pState.data,
+      ...d,
+      step2: { ...step2Rest, areas: enrichedAreas, trapezoids },
     }
   }
 
