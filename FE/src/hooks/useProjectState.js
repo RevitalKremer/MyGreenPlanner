@@ -305,8 +305,8 @@ export function useProjectState() {
       step2: {
         ...step2Rest,
         // Ensure panel dimensions are always present (fallback to panelSpec if sync effect hasn't fired)
-        panelWidthCm: step2Rest.panelWidthCm ?? panelSpec.widthCm,
-        panelLengthCm: step2Rest.panelLengthCm ?? panelSpec.lengthCm,
+        panelWidthCm: step2Rest.panelWidthCm ?? panelSpec?.widthCm ?? null,
+        panelLengthCm: step2Rest.panelLengthCm ?? panelSpec?.lengthCm ?? null,
         areas: enrichedAreas,
         trapezoids,
       },
@@ -672,7 +672,7 @@ export function useProjectState() {
     const pixelLength = Math.sqrt(dx * dx + dy * dy)
     if (pixelLength <= 0) return
     const ratio = parseFloat(referenceLineLengthCm) / pixelLength
-    const spec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+    const spec = panelSpec
 
     setPanels(prev => {
       const next = [...prev]

@@ -3,7 +3,6 @@ import { SAM2Service } from '../services/sam2Service'
 import { fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
 import { PANEL_V, PANEL_H } from '../utils/panelCodes.js'
 
-const DEFAULT_PANEL_TYPE = { id: 'AIKO-G670-MCH72Mw', name: 'AIKO G670', lengthCm: 238.2, widthCm: 113.4, kw: 670 }
 
 /**
  * App-level configuration: panel types, app settings (param schema), products, backend status.
@@ -81,7 +80,7 @@ export default function useAppConfig({ panelType, currentProject }) {
   }, [products])
 
   // ── Resolved panel spec ──
-  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? DEFAULT_PANEL_TYPE
+  const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? null
 
   // ── Backend health ──
   const [backendStatus, setBackendStatus] = useState({ status: 'checking', model_loaded: false })

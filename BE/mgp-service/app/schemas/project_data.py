@@ -78,8 +78,8 @@ class Step2Trapezoid(BaseModel):
 class Step2Data(BaseModel):
     """Panel placement — FE-owned, locked after step 2."""
     panelType: str = 'AIKO-G670-MCH72Mw'
-    panelWidthCm: float = 113.4
-    panelLengthCm: float = 238.2
+    panelWidthCm: float | None = None
+    panelLengthCm: float | None = None
     defaultAngleDeg: float = 0
     defaultFrontHeightCm: float = 0
     trapezoids: list[Step2Trapezoid] = Field(default_factory=list)
