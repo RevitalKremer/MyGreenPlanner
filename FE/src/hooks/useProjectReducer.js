@@ -51,6 +51,13 @@ export const initialProjectState = {
     tab: null,
   },
 
+  // ── Project-level (not per-step) ──
+  project: {
+    appScreen: 'welcome',   // 'welcome' | 'wizard'
+    currentProject: null,    // { name, location, roofSpec }
+    cloudProjectId: null,    // set after first cloud save
+  },
+
   // ── FE-only ephemeral state (not persisted) ──
   ui: {
     selectedPanels: [],
@@ -157,6 +164,11 @@ export function projectReducer(state, action) {
 
     case 'SYNC_LAYOUT':
       return { ...state, layout: { ...state.layout, ...action.payload } }
+
+    // ── Project-level ──
+
+    case 'SET_PROJECT':
+      return { ...state, project: { ...state.project, ...action.payload } }
 
     // ── UI (ephemeral) ──
 

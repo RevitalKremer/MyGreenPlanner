@@ -14,9 +14,11 @@ export function useProjectState() {
   // ── Structured state (mirrors server JSON) ──
   const [pState, pDispatch] = useReducer(projectReducer, initialProjectState)
 
-  // App-level screen
-  const [appScreen, setAppScreen] = useState('welcome') // 'welcome' | 'wizard'
-  const [currentProject, setCurrentProject] = useState(null)
+  // App-level screen — reads from reducer
+  const appScreen = pState.project.appScreen
+  const setAppScreen = (v) => pDispatch({ type: 'SET_PROJECT', payload: { appScreen: v } })
+  const currentProject = pState.project.currentProject
+  const setCurrentProject = (v) => pDispatch({ type: 'SET_PROJECT', payload: { currentProject: v } })
 
   // Wizard state — now reads from reducer
   const currentStep = pState.navigation.step
@@ -77,8 +79,8 @@ export function useProjectState() {
   const step5BomDeltas = pState.data.step5.bomDeltas
   const setStep5BomDeltas = (v) => pDispatch({ type: 'SET_BOM_DELTAS', value: v })
 
-  // Cloud project ID — set after first cloud save, used for subsequent saves
-  const [cloudProjectId, setCloudProjectId] = useState(null)
+  const cloudProjectId = pState.project.cloudProjectId
+  const setCloudProjectId = (v) => pDispatch({ type: 'SET_PROJECT', payload: { cloudProjectId: v } })
 
   // ── App config (panel types, settings, products, backend) ──
   const {
