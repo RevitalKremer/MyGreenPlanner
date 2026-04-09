@@ -102,6 +102,16 @@ export default function Step1RoofAllocation({
   }
 
   const localImgRef = useRef(null)
+  const imgContainerRef = useRef(null)
+
+  // Attach non-passive wheel listener to allow preventDefault (Chrome marks React onWheel as passive)
+  useEffect(() => {
+    const el = imgContainerRef.current
+    if (!el) return
+    const handler = (e) => { e.preventDefault(); setViewZoom(z => Math.max(0.5, Math.min(3, z + (e.deltaY > 0 ? -0.1 : 0.1)))) }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [setViewZoom])
 
   // Escape cancels drawing
   useEffect(() => {
@@ -220,8 +230,8 @@ export default function Step1RoofAllocation({
             <div className="uploaded-image-view" ref={viewportRef} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative' }}>
               <div
                 className="uploaded-image-container"
+                ref={imgContainerRef}
                 style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: isAnyDrawing ? 'crosshair' : panActive ? 'grabbing' : 'grab' }}
-                onWheel={(e) => { e.preventDefault(); setViewZoom(z => Math.max(0.5, Math.min(3, z + (e.deltaY > 0 ? -0.1 : 0.1)))) }}
                 onMouseDown={handleContainerMouseDown}
                 onMouseMove={handleContainerMouseMove}
                 onMouseUp={handleContainerMouseUp}

@@ -71,11 +71,16 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
 _SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids'}
 
 
-def _deep_merge_settings(existing: dict, incoming: dict) -> dict:
+def _deep_merge_settings(existing: dict | None, incoming: dict | None) -> dict:
     """
     Deep merge incoming settings into existing, preserving keys not in incoming.
     Used for partial updates to globalSettings and areaSettings.
+    Handles None gracefully — DB records may store null for settings that haven't been set yet.
     """
+    if not incoming:
+        return copy.deepcopy(existing) if existing else {}
+    if not existing:
+        return copy.deepcopy(incoming)
     merged = copy.deepcopy(existing)
     for key, val in incoming.items():
         if isinstance(val, dict) and key in merged and isinstance(merged[key], dict):
@@ -262,10 +267,10 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
                 step3_data[k] = existing_step3[k]
         # Deep merge globalSettings and areaSettings to preserve unrelated keys
         if 'globalSettings' in step3_data:
-            existing_global = existing_step3.get('globalSettings', {})
+            existing_global = existing_step3.get('globalSettings') or {}
             step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
         if 'areaSettings' in step3_data:
-            existing_area = existing_step3.get('areaSettings', {})
+            existing_area = existing_step3.get('areaSettings') or {}
             step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
@@ -426,10 +431,10 @@ async def compute_and_save_bases(
                 step3_data[k] = existing_step3[k]
         # Deep merge globalSettings and areaSettings to preserve unrelated keys
         if 'globalSettings' in step3_data:
-            existing_global = existing_step3.get('globalSettings', {})
+            existing_global = existing_step3.get('globalSettings') or {}
             step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
         if 'areaSettings' in step3_data:
-            existing_area = existing_step3.get('areaSettings', {})
+            existing_area = existing_step3.get('areaSettings') or {}
             step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
@@ -1022,10 +1027,10 @@ async def compute_and_save_trapezoid_details(
                 step3_data[k] = existing_step3[k]
         # Deep merge globalSettings and areaSettings to preserve unrelated keys
         if 'globalSettings' in step3_data:
-            existing_global = existing_step3.get('globalSettings', {})
+            existing_global = existing_step3.get('globalSettings') or {}
             step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
         if 'areaSettings' in step3_data:
-            existing_area = existing_step3.get('areaSettings', {})
+            existing_area = existing_step3.get('areaSettings') or {}
             step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
         existing_step3.update(step3_data)
         data['step3'] = existing_step3
