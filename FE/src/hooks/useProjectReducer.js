@@ -94,6 +94,7 @@ export function projectReducer(state, action) {
         layout: action.layout ?? state.layout,
         data: action.data ?? state.data,
         navigation: action.navigation ?? state.navigation,
+        project: action.project ?? state.project,
       }
 
     case 'RESET':
@@ -162,8 +163,23 @@ export function projectReducer(state, action) {
 
     // ── Layout ──
 
-    case 'SYNC_LAYOUT':
+    case 'SET_LAYOUT':
       return { ...state, layout: { ...state.layout, ...action.payload } }
+
+    case 'SET_PANELS': {
+      const panels = typeof action.value === 'function' ? action.value(state.layout.panels) : action.value
+      return { ...state, layout: { ...state.layout, panels } }
+    }
+
+    case 'SET_RECT_AREAS': {
+      const rectAreas = typeof action.value === 'function' ? action.value(state.layout.rectAreas) : action.value
+      return { ...state, layout: { ...state.layout, rectAreas } }
+    }
+
+    case 'SET_DELETED_PANEL_KEYS': {
+      const deletedPanelKeys = typeof action.value === 'function' ? action.value(state.layout.deletedPanelKeys) : action.value
+      return { ...state, layout: { ...state.layout, deletedPanelKeys } }
+    }
 
     // ── Project-level ──
 

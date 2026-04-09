@@ -26,18 +26,32 @@ export function useProjectState() {
 
   // Step 1: Roof allocation
   const [selectedPoint, setSelectedPoint] = useState(null)
-  const [roofPolygon, setRoofPolygon] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadedImageMode, setUploadedImageMode] = useState(true)
-  const [uploadedImageData, setUploadedImageData] = useState(null)
   const [imageRef, setImageRef] = useState(null)
+
+  // Layout — reads from reducer
+  const uploadedImageData = pState.layout.uploadedImageData
+  const setUploadedImageData = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { uploadedImageData: v } })
+  const roofPolygon = pState.layout.roofPolygon
+  const setRoofPolygon = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { roofPolygon: v } })
+  const referenceLine = pState.layout.referenceLine
+  const setReferenceLine = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { referenceLine: v } })
+  const referenceLineLengthCm = pState.layout.referenceLineLengthCm ?? ''
+  const setReferenceLineLengthCm = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { referenceLineLengthCm: v } })
+  const baseline = pState.layout.baseline
+  const setBaseline = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { baseline: v } })
+  const panels = pState.layout.panels
+  const setPanels = (v) => pDispatch({ type: 'SET_PANELS', value: v })
+  const rectAreas = pState.layout.rectAreas
+  const setRectAreas = (v) => pDispatch({ type: 'SET_RECT_AREAS', value: v })
+  const deletedPanelKeys = pState.layout.deletedPanelKeys
+  const setDeletedPanelKeys = (v) => pDispatch({ type: 'SET_DELETED_PANEL_KEYS', value: v })
 
   // Step 2: PV area refinement
   const [refinedArea, setRefinedArea] = useState(null)
   const panelType = pState.data.step2.panelType
   const setPanelType = (v) => pDispatch({ type: 'SET_STEP2', payload: { panelType: v } })
-  const [referenceLine, setReferenceLine] = useState(null)
-  const [referenceLineLengthCm, setReferenceLineLengthCm] = useState('')
   const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm || '')
   const setPanelFrontHeight = (v) => pDispatch({ type: 'SET_STEP2', payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
   const panelAngle = String(pState.data.step2.defaultAngleDeg || '')
@@ -45,26 +59,23 @@ export function useProjectState() {
   const [isDrawingLine, setIsDrawingLine] = useState(false)
   const [lineStart, setLineStart] = useState(null)
 
-  // Step 3: Solar panel placement
-  const [baseline, setBaseline] = useState(null)
-  const [showBaseline, setShowBaseline] = useState(true)
-  const [showDistances, setShowDistances] = useState(true)
-  const [distanceMeasurement, setDistanceMeasurement] = useState(null)
-  const [panels, setPanels] = useState([])
+  // Step 2-3: data from reducer
   const areas = pState.data.step2.areas
   const setAreas = (v) => pDispatch({ type: 'SET_AREAS', value: v })
-  const [rectAreas, setRectAreas] = useState([])
-  const [selectedPanels, setSelectedPanels] = useState([])
-  const [dragState, setDragState] = useState(null)
-  const [rotationState, setRotationState] = useState(null)
-  const [viewZoom, setViewZoom] = useState(1)
   const trapezoidConfigs = pState.data.step2.trapezoidConfigs
   const setTrapezoidConfigs = (v) => pDispatch({ type: 'SET_TRAPEZOID_CONFIGS', value: v })
   const panelGrid = pState.data.step2.panelGrid
   const setPanelGrid = (v) => pDispatch({ type: 'SET_PANEL_GRID', value: v })
-  // Tracks manually deleted panel positions per area so computePanels can skip them.
-  // Shape: { [areaIdx: number]: string[] }  where each string is "row_col".
-  const [deletedPanelKeys, setDeletedPanelKeys] = useState({})
+
+  // Step 3: UI state
+  const [showBaseline, setShowBaseline] = useState(true)
+  const [showDistances, setShowDistances] = useState(true)
+  const [distanceMeasurement, setDistanceMeasurement] = useState(null)
+  const [selectedPanels, setSelectedPanels] = useState([])
+  const [dragState, setDragState] = useState(null)
+  const [rotationState, setRotationState] = useState(null)
+  const [viewZoom, setViewZoom] = useState(1)
+
   // Set before operations that call setRectAreas but already handle panel state themselves.
   // 'load' → also run reSyncLoadedPanelCols; 'reset' → just skip the recompute.
   const skipRecomputeRef = useRef(null)
@@ -97,56 +108,30 @@ export function useProjectState() {
     if (spec) pDispatch({ type: 'SET_STEP2', payload: { panelWidthCm: spec.widthCm, panelLengthCm: spec.lengthCm } })
   }, [panelType, panelTypes])
 
-  // ── Sync layout useState values into reducer ──
+  // ── Sync pixelToCmRatio from refinedArea into layout (derived, for save) ──
   useEffect(() => {
-    pDispatch({ type: 'SYNC_LAYOUT', payload: {
-      uploadedImageData: uploadedImageData ? { ...uploadedImageData, file: undefined } : null,
-      roofPolygon,
-      referenceLine,
-      referenceLineLengthCm,
-      pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null,
-      baseline,
-      rectAreas: rectAreas.map(ra => ({
-        id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
-        color: ra.color, xDir: ra.xDir, yDir: ra.yDir,
-        manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
-      })),
-      panels,
-      deletedPanelKeys,
-    }})
-  }, [uploadedImageData, roofPolygon, referenceLine, referenceLineLengthCm, refinedArea, baseline, rectAreas, panels, deletedPanelKeys])
+    pDispatch({ type: 'SET_LAYOUT', payload: { pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null } })
+  }, [refinedArea])
 
   // ── Wizard lifecycle ──────────────────────────────────────────────────────
 
   const resetWizardState = () => {
-    setCurrentStep(1)
+    pDispatch({ type: 'RESET' })
+    // Reset remaining useState hooks not in reducer
     setSelectedPoint(null)
-    setRoofPolygon(null)
     setIsProcessing(false)
     setUploadedImageMode(true)
-    setUploadedImageData(null)
     setImageRef(null)
     setRefinedArea(null)
-    setPanelType('AIKO-G670-MCH72Mw')
-    setReferenceLine(null)
-    setReferenceLineLengthCm('')
-    setPanelFrontHeight('')
-setPanelAngle('')
     setIsDrawingLine(false)
     setLineStart(null)
-    setPanels([])
-    setAreas([])
-    setRectAreas([])
     setSelectedPanels([])
     setDragState(null)
     setRotationState(null)
-    setTrapezoidConfigs({})
-    setDeletedPanelKeys({})
-    setStep3GlobalSettings({})
-    setStep3AreaSettings({})
-    setStep4PlanApproval(null)
-    setStep5BomDeltas(null)
-    setCloudProjectId(null)
+    setShowBaseline(true)
+    setShowDistances(true)
+    setDistanceMeasurement(null)
+    setViewZoom(1)
   }
 
   const handleStartOver = () => {
@@ -192,8 +177,6 @@ setPanelAngle('')
 
   const handleImportProject = (data, existingCloudId = null) => {
     resetWizardState()
-    setCurrentProject(data.project)
-
     // Refresh app settings so defaults are not stale after admin changes / migrations
     refreshAppSettings()
 
@@ -224,8 +207,29 @@ setPanelAngle('')
     const grid = {}
     ;(s2.areas || []).forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
 
-    // ── Load all reducer data in one shot ──
+    // ── Enrich rectAreas with step2 area data ──
+    let enrichedRectAreas = layout.rectAreas || []
+    if (layout.rectAreas && s2.areas) {
+      enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
+        const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
+        return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+      })
+    }
+    if (enrichedRectAreas.length > 0) skipRecomputeRef.current = 'load'
+
+    // ── Load all reducer state in one shot ──
     pDispatch({ type: 'LOAD_PROJECT',
+      layout: {
+        uploadedImageData: layout.uploadedImageData ?? null,
+        roofPolygon: layout.roofPolygon ?? null,
+        referenceLine: layout.referenceLine ?? null,
+        referenceLineLengthCm: layout.referenceLineLengthCm != null ? String(layout.referenceLineLengthCm) : null,
+        pixelToCmRatio: layout.pixelToCmRatio ?? null,
+        baseline: layout.baseline ?? null,
+        panels: layout.panels ? layout.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A' })) : [],
+        rectAreas: enrichedRectAreas,
+        deletedPanelKeys: layout.deletedPanelKeys ?? {},
+      },
       data: {
         version: '3.0',
         step2: {
@@ -244,28 +248,10 @@ setPanelAngle('')
         step5: { bomDeltas: s5.bomDeltas ?? null },
       },
       navigation: { step: data.currentStep || 1, tab: null },
+      project: { cloudProjectId: existingCloudId ?? null, appScreen: 'wizard', currentProject: data.project },
     })
 
-    // ── Layout useState (still source of truth for rendering) ──
-    if (layout.uploadedImageData)  setUploadedImageData(layout.uploadedImageData)
-    if (layout.roofPolygon)        setRoofPolygon(layout.roofPolygon)
-    if (layout.referenceLine)      setReferenceLine(layout.referenceLine)
-    if (layout.referenceLineLengthCm !== undefined) setReferenceLineLengthCm(String(layout.referenceLineLengthCm))
-    if (layout.baseline)           setBaseline(layout.baseline)
-    if (layout.panels)             setPanels(layout.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A' })))
-    if (layout.deletedPanelKeys)   setDeletedPanelKeys(layout.deletedPanelKeys)
-
-    if (layout.rectAreas && s2.areas) {
-      skipRecomputeRef.current = 'load'
-      setRectAreas(layout.rectAreas.map((ra, idx) => {
-        const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
-        return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
-      }))
-    } else if (layout.rectAreas) {
-      skipRecomputeRef.current = 'load'
-      setRectAreas(layout.rectAreas)
-    }
-
+    // ── Remaining useState that aren't in reducer ──
     if (layout.pixelToCmRatio) {
       setRefinedArea({
         pixelToCmRatio: layout.pixelToCmRatio,
@@ -276,14 +262,21 @@ setPanelAngle('')
         panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: [PANEL_V] },
       })
     }
-
-    if (existingCloudId) setCloudProjectId(existingCloudId)
-    setAppScreen('wizard')
   }
 
   const getLayoutData = () => {
-    // Read directly from reducer — layout synced by effect
-    return { ...pState.layout, currentStep }
+    const l = pState.layout
+    return {
+      ...l,
+      currentStep,
+      // Strip FE-only fields before saving
+      uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
+      rectAreas: l.rectAreas.map(ra => ({
+        id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
+        color: ra.color, xDir: ra.xDir, yDir: ra.yDir,
+        manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
+      })),
+    }
   }
 
   const getProjectData = () => {
@@ -308,7 +301,14 @@ setPanelAngle('')
     const { trapezoidConfigs: _tc, panelGrid: _pg, ...step2Rest } = d.step2
     return {
       ...d,
-      step2: { ...step2Rest, areas: enrichedAreas, trapezoids },
+      step2: {
+        ...step2Rest,
+        // Ensure panel dimensions are always present (fallback to panelSpec if sync effect hasn't fired)
+        panelWidthCm: step2Rest.panelWidthCm ?? panelSpec.widthCm,
+        panelLengthCm: step2Rest.panelLengthCm ?? panelSpec.lengthCm,
+        areas: enrichedAreas,
+        trapezoids,
+      },
     }
   }
 
