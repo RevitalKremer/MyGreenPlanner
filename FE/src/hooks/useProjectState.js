@@ -150,11 +150,9 @@ setPanelAngle('')
   }
 
   const handleStartOver = () => {
-    if (confirm('Return to the welcome screen? All unsaved progress will be lost.')) {
-      resetWizardState()
-      setCurrentProject(null)
-      setAppScreen('welcome')
-    }
+    resetWizardState()
+    setCurrentProject(null)
+    setAppScreen('welcome')
   }
 
   const generateWhiteCanvas = () => {

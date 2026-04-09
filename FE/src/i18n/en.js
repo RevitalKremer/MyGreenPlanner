@@ -12,6 +12,7 @@ const en = {
   'app.error':                'Error',
   'app.export':               'Export',
   'app.startOver':            'Start Over',
+  'app.startOverConfirm':     'Return to the welcome screen? All unsaved progress will be lost.',
   'app.analyzingRoof':        'Analyzing roof...',
   'app.by':                   'by',
   'app.verifySuccess':        '✓ Email verified successfully!',

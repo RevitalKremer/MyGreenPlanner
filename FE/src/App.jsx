@@ -375,6 +375,7 @@ function App() {
   }
 
   const handleStartOver = async () => {
+    if (!confirm(t('app.startOverConfirm'))) return
     s.handleStartOver()
     // Fetch the latest project to show on welcome screen
     if (auth.user) {
