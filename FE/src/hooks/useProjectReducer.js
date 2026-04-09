@@ -33,6 +33,7 @@ export const A = Object.freeze({
   SET_PROJECT:            'SET_PROJECT',
   // UI
   SET_UI:                 'SET_UI',
+  SET_SELECTED_PANELS:    'SET_SELECTED_PANELS',
 })
 
 export const initialProjectState = {
@@ -222,6 +223,11 @@ export function projectReducer(state, action) {
 
     case A.SET_UI:
       return { ...state, ui: { ...state.ui, ...action.payload } }
+
+    case A.SET_SELECTED_PANELS: {
+      const selectedPanels = typeof action.value === 'function' ? action.value(state.ui.selectedPanels) : action.value
+      return { ...state, ui: { ...state.ui, selectedPanels } }
+    }
 
     default:
       return state

@@ -63,7 +63,7 @@ export function useProjectState() {
   const distanceMeasurement = pState.ui.distanceMeasurement
   const setDistanceMeasurement = (v) => pDispatch({ type: A.SET_UI, payload: { distanceMeasurement: v } })
   const selectedPanels = pState.ui.selectedPanels
-  const setSelectedPanels = (v) => pDispatch({ type: A.SET_UI, payload: { selectedPanels: v } })
+  const setSelectedPanels = (v) => pDispatch({ type: A.SET_SELECTED_PANELS, value: v })
   const dragState = pState.ui.dragState
   const setDragState = (v) => pDispatch({ type: A.SET_UI, payload: { dragState: v } })
   const rotationState = pState.ui.rotationState
