@@ -6,7 +6,7 @@ import { createProject, updateProject } from '../services/projectsApi'
 import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
-import { projectReducer, initialProjectState } from './useProjectReducer'
+import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction } from './computePanelsAction'
 import useAppConfig from './useAppConfig'
 
@@ -16,65 +16,78 @@ export function useProjectState() {
 
   // App-level screen — reads from reducer
   const appScreen = pState.project.appScreen
-  const setAppScreen = (v) => pDispatch({ type: 'SET_PROJECT', payload: { appScreen: v } })
+  const setAppScreen = (v) => pDispatch({ type: A.SET_PROJECT, payload: { appScreen: v } })
   const currentProject = pState.project.currentProject
-  const setCurrentProject = (v) => pDispatch({ type: 'SET_PROJECT', payload: { currentProject: v } })
+  const setCurrentProject = (v) => pDispatch({ type: A.SET_PROJECT, payload: { currentProject: v } })
 
   // Wizard state — now reads from reducer
   const currentStep = pState.navigation.step
-  const setCurrentStep = (step) => pDispatch({ type: 'SET_STEP', step })
+  const setCurrentStep = (step) => pDispatch({ type: A.SET_STEP, step })
 
   // Step 1: Roof allocation
-  const [selectedPoint, setSelectedPoint] = useState(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [uploadedImageMode, setUploadedImageMode] = useState(true)
   const [imageRef, setImageRef] = useState(null)
 
   // Layout — reads from reducer
   const uploadedImageData = pState.layout.uploadedImageData
-  const setUploadedImageData = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { uploadedImageData: v } })
+  const setUploadedImageData = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { uploadedImageData: v } })
   const roofPolygon = pState.layout.roofPolygon
-  const setRoofPolygon = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { roofPolygon: v } })
+  const setRoofPolygon = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofPolygon: v } })
   const referenceLine = pState.layout.referenceLine
-  const setReferenceLine = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { referenceLine: v } })
+  const setReferenceLine = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLine: v } })
   const referenceLineLengthCm = pState.layout.referenceLineLengthCm ?? ''
-  const setReferenceLineLengthCm = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { referenceLineLengthCm: v } })
+  const setReferenceLineLengthCm = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLineLengthCm: v } })
   const baseline = pState.layout.baseline
-  const setBaseline = (v) => pDispatch({ type: 'SET_LAYOUT', payload: { baseline: v } })
+  const setBaseline = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { baseline: v } })
   const panels = pState.layout.panels
-  const setPanels = (v) => pDispatch({ type: 'SET_PANELS', value: v })
+  const setPanels = (v) => pDispatch({ type: A.SET_PANELS, value: v })
   const rectAreas = pState.layout.rectAreas
-  const setRectAreas = (v) => pDispatch({ type: 'SET_RECT_AREAS', value: v })
+  const setRectAreas = (v) => pDispatch({ type: A.SET_RECT_AREAS, value: v })
   const deletedPanelKeys = pState.layout.deletedPanelKeys
-  const setDeletedPanelKeys = (v) => pDispatch({ type: 'SET_DELETED_PANEL_KEYS', value: v })
+  const setDeletedPanelKeys = (v) => pDispatch({ type: A.SET_DELETED_PANEL_KEYS, value: v })
+
+  // UI — reads from reducer
+  const selectedPoint = pState.ui.selectedPoint
+  const setSelectedPoint = (v) => pDispatch({ type: A.SET_UI, payload: { selectedPoint: v } })
+  const isProcessing = pState.ui.isProcessing
+  const setIsProcessing = (v) => pDispatch({ type: A.SET_UI, payload: { isProcessing: v } })
+  const uploadedImageMode = pState.ui.uploadedImageMode
+  const setUploadedImageMode = (v) => pDispatch({ type: A.SET_UI, payload: { uploadedImageMode: v } })
+  const isDrawingLine = pState.ui.isDrawingLine
+  const setIsDrawingLine = (v) => pDispatch({ type: A.SET_UI, payload: { isDrawingLine: v } })
+  const lineStart = pState.ui.lineStart
+  const setLineStart = (v) => pDispatch({ type: A.SET_UI, payload: { lineStart: v } })
+  const showBaseline = pState.ui.showBaseline
+  const setShowBaseline = (v) => pDispatch({ type: A.SET_UI, payload: { showBaseline: v } })
+  const showDistances = pState.ui.showDistances
+  const setShowDistances = (v) => pDispatch({ type: A.SET_UI, payload: { showDistances: v } })
+  const distanceMeasurement = pState.ui.distanceMeasurement
+  const setDistanceMeasurement = (v) => pDispatch({ type: A.SET_UI, payload: { distanceMeasurement: v } })
+  const selectedPanels = pState.ui.selectedPanels
+  const setSelectedPanels = (v) => pDispatch({ type: A.SET_UI, payload: { selectedPanels: v } })
+  const dragState = pState.ui.dragState
+  const setDragState = (v) => pDispatch({ type: A.SET_UI, payload: { dragState: v } })
+  const rotationState = pState.ui.rotationState
+  const setRotationState = (v) => pDispatch({ type: A.SET_UI, payload: { rotationState: v } })
+  const viewZoom = pState.ui.viewZoom
+  const setViewZoom = (v) => pDispatch({ type: A.SET_UI, payload: { viewZoom: v } })
 
   // Step 2: PV area refinement
   const [refinedArea, setRefinedArea] = useState(null)
   const panelType = pState.data.step2.panelType
-  const setPanelType = (v) => pDispatch({ type: 'SET_STEP2', payload: { panelType: v } })
+  const setPanelType = (v) => pDispatch({ type: A.SET_STEP2, payload: { panelType: v } })
   const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm || '')
-  const setPanelFrontHeight = (v) => pDispatch({ type: 'SET_STEP2', payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
+  const setPanelFrontHeight = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
   const panelAngle = String(pState.data.step2.defaultAngleDeg || '')
-  const setPanelAngle = (v) => pDispatch({ type: 'SET_STEP2', payload: { defaultAngleDeg: parseFloat(v) || 0 } })
-  const [isDrawingLine, setIsDrawingLine] = useState(false)
-  const [lineStart, setLineStart] = useState(null)
+  const setPanelAngle = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultAngleDeg: parseFloat(v) || 0 } })
 
   // Step 2-3: data from reducer
   const areas = pState.data.step2.areas
-  const setAreas = (v) => pDispatch({ type: 'SET_AREAS', value: v })
+  const setAreas = (v) => pDispatch({ type: A.SET_AREAS, value: v })
   const trapezoidConfigs = pState.data.step2.trapezoidConfigs
-  const setTrapezoidConfigs = (v) => pDispatch({ type: 'SET_TRAPEZOID_CONFIGS', value: v })
+  const setTrapezoidConfigs = (v) => pDispatch({ type: A.SET_TRAPEZOID_CONFIGS, value: v })
   const panelGrid = pState.data.step2.panelGrid
-  const setPanelGrid = (v) => pDispatch({ type: 'SET_PANEL_GRID', value: v })
+  const setPanelGrid = (v) => pDispatch({ type: A.SET_PANEL_GRID, value: v })
 
-  // Step 3: UI state
-  const [showBaseline, setShowBaseline] = useState(true)
-  const [showDistances, setShowDistances] = useState(true)
-  const [distanceMeasurement, setDistanceMeasurement] = useState(null)
-  const [selectedPanels, setSelectedPanels] = useState([])
-  const [dragState, setDragState] = useState(null)
-  const [rotationState, setRotationState] = useState(null)
-  const [viewZoom, setViewZoom] = useState(1)
 
   // Set before operations that call setRectAreas but already handle panel state themselves.
   // 'load' → also run reSyncLoadedPanelCols; 'reset' → just skip the recompute.
@@ -82,16 +95,16 @@ export function useProjectState() {
 
   // Step 3-5: reads from reducer, writes via dispatch
   const step3GlobalSettings = pState.data.step3.globalSettings
-  const setStep3GlobalSettings = (v) => pDispatch({ type: 'SET_STEP3_GLOBAL_SETTINGS', value: v })
+  const setStep3GlobalSettings = (v) => pDispatch({ type: A.SET_STEP3_GLOBAL, value: v })
   const step3AreaSettings = pState.data.step3.areaSettings
-  const setStep3AreaSettings = (v) => pDispatch({ type: 'SET_STEP3_AREA_SETTINGS', value: v })
+  const setStep3AreaSettings = (v) => pDispatch({ type: A.SET_STEP3_AREA, value: v })
   const step4PlanApproval = pState.data.step4.planApproval
-  const setStep4PlanApproval = (v) => pDispatch({ type: 'SET_PLAN_APPROVAL', value: v })
+  const setStep4PlanApproval = (v) => pDispatch({ type: A.SET_PLAN_APPROVAL, value: v })
   const step5BomDeltas = pState.data.step5.bomDeltas
-  const setStep5BomDeltas = (v) => pDispatch({ type: 'SET_BOM_DELTAS', value: v })
+  const setStep5BomDeltas = (v) => pDispatch({ type: A.SET_BOM_DELTAS, value: v })
 
   const cloudProjectId = pState.project.cloudProjectId
-  const setCloudProjectId = (v) => pDispatch({ type: 'SET_PROJECT', payload: { cloudProjectId: v } })
+  const setCloudProjectId = (v) => pDispatch({ type: A.SET_PROJECT, payload: { cloudProjectId: v } })
 
   // ── App config (panel types, settings, products, backend) ──
   const {
@@ -105,33 +118,21 @@ export function useProjectState() {
   // ── Sync panelSpec dimensions into reducer when panelType changes ──
   useEffect(() => {
     const spec = panelTypes?.find(t => t.id === panelType) ?? panelTypes?.[0]
-    if (spec) pDispatch({ type: 'SET_STEP2', payload: { panelWidthCm: spec.widthCm, panelLengthCm: spec.lengthCm } })
+    if (spec) pDispatch({ type: A.SET_STEP2, payload: { panelWidthCm: spec.widthCm, panelLengthCm: spec.lengthCm } })
   }, [panelType, panelTypes])
 
   // ── Sync pixelToCmRatio from refinedArea into layout (derived, for save) ──
   useEffect(() => {
-    pDispatch({ type: 'SET_LAYOUT', payload: { pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null } })
+    pDispatch({ type: A.SET_LAYOUT, payload: { pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null } })
   }, [refinedArea])
 
   // ── Wizard lifecycle ──────────────────────────────────────────────────────
 
   const resetWizardState = () => {
-    pDispatch({ type: 'RESET' })
+    pDispatch({ type: A.RESET })
     // Reset remaining useState hooks not in reducer
-    setSelectedPoint(null)
-    setIsProcessing(false)
-    setUploadedImageMode(true)
     setImageRef(null)
     setRefinedArea(null)
-    setIsDrawingLine(false)
-    setLineStart(null)
-    setSelectedPanels([])
-    setDragState(null)
-    setRotationState(null)
-    setShowBaseline(true)
-    setShowDistances(true)
-    setDistanceMeasurement(null)
-    setViewZoom(1)
   }
 
   const handleStartOver = () => {
@@ -218,7 +219,7 @@ export function useProjectState() {
     if (enrichedRectAreas.length > 0) skipRecomputeRef.current = 'load'
 
     // ── Load all reducer state in one shot ──
-    pDispatch({ type: 'LOAD_PROJECT',
+    pDispatch({ type: A.LOAD_PROJECT,
       layout: {
         uploadedImageData: layout.uploadedImageData ?? null,
         roofPolygon: layout.roofPolygon ?? null,
