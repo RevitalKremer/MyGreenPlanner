@@ -247,3 +247,198 @@ export function computePanelsAction({
     emptyNewIndices,
   }
 }
+
+
+/**
+ * Recompute trapezoid IDs for a single area from current panel state.
+ * Pure function — returns { updatedPanels, newTrapConfigs } or null if prerequisites missing.
+ */
+export function refreshAreaTrapezoidsAction({
+  areaIdx, area, panels, referenceLine, referenceLineLengthCm,
+  panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
+}) {
+  if (!area || area.manualTrapezoids || !area.vertices?.length) return null
+  if (!referenceLine || !referenceLineLengthCm) return null
+
+  const dxRef = referenceLine.end.x - referenceLine.start.x
+  const dyRef = referenceLine.end.y - referenceLine.start.y
+  const pixelLength = Math.sqrt(dxRef * dxRef + dyRef * dyRef)
+  if (pixelLength <= 0) return null
+  const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
+
+  const pWid = panelSpec.widthCm
+  const gapPx = (appDefaults?.panelGapCm) / pixelToCmRatio
+  const portraitW = pWid / pixelToCmRatio
+  const portraitPitch = portraitW + gapPx
+
+  const { vertices, rotation = 0, xDir = 'ltr' } = area
+  const areaLabel = area.label || area.id || `area-${areaIdx}`
+  const rotRad = (rotation * Math.PI) / 180
+  const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)
+  const cxAvg = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
+  const cyAvg = vertices.reduce((s, v) => s + v.y, 0) / vertices.length
+  const localVerts = vertices.map(v => {
+    const dx = v.x - cxAvg, dy = v.y - cyAvg
+    return { x: dx * cosF - dy * sinF, y: dx * sinF + dy * cosF }
+  })
+  const minLX = Math.min(...localVerts.map(v => v.x))
+  const maxLX = Math.max(...localVerts.map(v => v.x))
+
+  const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
+  const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
+
+  const areaPanels = panels.filter(p => p.area === areaIdx)
+  if (!areaPanels.length) return null
+
+  const panelWithCols = areaPanels.map(p => {
+    const pcx = p.x + p.width / 2
+    const pcy = p.y + p.height / 2
+    const lx = (pcx - cxAvg) * cosF - (pcy - cyAvg) * sinF
+    const panelW = p.width
+    const fillLeft = xDir === 'rtl' ? maxLX - lx - panelW / 2 : lx - minLX - panelW / 2
+    const kStart = Math.floor(fillLeft / portraitPitch)
+    const kEnd = Math.ceil((fillLeft + panelW) / portraitPitch)
+    const coveredCols = []
+    for (let k = kStart; k <= kEnd; k++) {
+      const portCenter = k * portraitPitch + portraitW / 2
+      if (portCenter >= fillLeft && portCenter < fillLeft + panelW) coveredCols.push(k)
+    }
+    const physCol = coveredCols.length > 0 ? coveredCols[0] : Math.round(fillLeft / portraitPitch)
+    return { ...p, col: physCol, coveredCols }
+  })
+
+  const colRowsMap = new Map()
+  const rowOrient = {}
+  panelWithCols.forEach(p => {
+    const row = p.row ?? 0
+    rowOrient[row] = p.heightCm > p.widthCm ? PANEL_V : PANEL_H
+    const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
+    cols.forEach(c => {
+      if (!colRowsMap.has(c)) colRowsMap.set(c, new Set())
+      colRowsMap.get(c).add(row)
+    })
+  })
+
+  const allRows = [...new Set(panelWithCols.map(p => p.row ?? 0))].sort((a, b) => a - b)
+  const colSig = (col) =>
+    allRows.map(r =>
+      colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
+    ).join('|')
+
+  const sigToTrap = new Map()
+  let n = 1
+  ;[...colRowsMap.keys()].sort((a, b) => a - b).forEach(col => {
+    const s = colSig(col)
+    if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n++}`)
+  })
+  if (sigToTrap.size === 1) {
+    const [[sig]] = [...sigToTrap.entries()]
+    sigToTrap.set(sig, areaLabel)
+  }
+
+  const newTrapConfigs = {}
+  sigToTrap.forEach((trapId, sig) => {
+    const shape = sig.split('|')
+    newTrapConfigs[trapId] = {
+      angle: aAngle, frontHeight: aFront,
+      backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm),
+      lineOrientations: shape,
+    }
+  })
+
+  // Build updated panels for this area
+  const updatedPanels = panels.map(p => {
+    if (p.area !== areaIdx) return p
+    const updated = panelWithCols.find(pw => pw.id === p.id)
+    if (!updated) return p
+    const sig = colSig(updated.col)
+    const newTrapId = sigToTrap.get(sig) || areaLabel
+    if (newTrapId === p.trapezoidId && updated.col === p.col) return p
+    return { ...p, col: updated.col, coveredCols: updated.coveredCols, trapezoidId: newTrapId }
+  })
+
+  // Merge trap configs: remove old traps for this area, add new
+  const mergedTrapConfigs = {}
+  Object.entries(trapezoidConfigs).forEach(([id, cfg]) => {
+    const rest = id.slice(areaLabel.length)
+    if (id !== areaLabel && !(id.startsWith(areaLabel) && /^\d/.test(rest))) mergedTrapConfigs[id] = cfg
+  })
+  Object.entries(newTrapConfigs).forEach(([id, cfg]) => {
+    mergedTrapConfigs[id] = { ...(trapezoidConfigs[id] || {}), ...cfg }
+  })
+
+  return { updatedPanels, mergedTrapConfigs }
+}
+
+
+/**
+ * Re-derive col/coveredCols/row for loaded panels by matching to closest computed panel.
+ * Returns { panels, panelGrid } or null if prerequisites missing.
+ */
+export function reSyncLoadedPanelColsAction({
+  referenceLine, referenceLineLengthCm, rectAreas, panels, panelSpec, appDefaults,
+}) {
+  if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return null
+  if (!panelSpec) return null
+  const dx = referenceLine.end.x - referenceLine.start.x
+  const dy = referenceLine.end.y - referenceLine.start.y
+  const pixelLength = Math.sqrt(dx * dx + dy * dy)
+  if (pixelLength <= 0) return null
+  const ratio = parseFloat(referenceLineLengthCm) / pixelLength
+
+  const next = [...panels]
+  rectAreas.forEach((area, areaIdx) => {
+    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm)
+    if (!computed.length) return
+    const halfW = computed[0].width / 2
+    const threshold = halfW * 3
+    next.forEach((p, i) => {
+      if (p.area !== areaIdx) return
+      const pcx = p.x + p.width / 2
+      const pcy = p.y + p.height / 2
+      let best = null, bestDist = Infinity
+      computed.forEach(cp => {
+        const d = Math.sqrt((pcx - cp.cx) ** 2 + (pcy - cp.cy) ** 2)
+        if (d < bestDist) { bestDist = d; best = cp }
+      })
+      if (best && bestDist < threshold) {
+        next[i] = { ...p, row: best.row, col: best.col, coveredCols: best.coveredCols }
+      }
+    })
+  })
+
+  const newGrid = {}
+  rectAreas.forEach((area, areaIdx) => {
+    const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm)
+    const areaFiltered = next.filter(p => p.area === areaIdx)
+    newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, ratio)
+  })
+
+  return { panels: next, panelGrid: newGrid }
+}
+
+
+/**
+ * Rebuild panel grid from panels + rectAreas geometry.
+ * Returns the new panelGrid object, or null if prerequisites missing.
+ */
+export function rebuildPanelGridAction({
+  referenceLine, referenceLineLengthCm, rectAreas, panels, panelSpec, appDefaults,
+}) {
+  if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return null
+  if (!panelSpec) return null
+  const dx = referenceLine.end.x - referenceLine.start.x
+  const dy = referenceLine.end.y - referenceLine.start.y
+  const pixelLength = Math.sqrt(dx * dx + dy * dy)
+  if (pixelLength <= 0) return null
+  const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
+  const newGrid = {}
+  rectAreas.forEach((area, areaIdx) => {
+    const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
+    const areaFiltered = panels.filter(p => p.area === areaIdx)
+    newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
+  })
+  return newGrid
+}

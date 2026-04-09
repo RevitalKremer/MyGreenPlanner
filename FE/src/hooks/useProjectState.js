@@ -1,13 +1,10 @@
-import { useState, useEffect, useRef, useReducer } from 'react'
+import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
-import { computePanelBackHeight } from '../utils/trapezoidGeometry'
 import { createProject, updateProject } from '../services/projectsApi'
-import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
-import { computePolygonPanels } from '../utils/rectPanelService'
-import { buildPanelGrid } from '../utils/panelGridService'
+import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
-import { computePanelsAction } from './computePanelsAction'
+import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
 import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
@@ -72,13 +69,30 @@ export function useProjectState() {
   const setViewZoom = (v) => pDispatch({ type: A.SET_UI, payload: { viewZoom: v } })
 
   // Step 2: PV area refinement
-  const [refinedArea, setRefinedArea] = useState(null)
   const panelType = pState.data.step2.panelType
   const setPanelType = (v) => pDispatch({ type: A.SET_STEP2, payload: { panelType: v } })
   const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm || '')
   const setPanelFrontHeight = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
   const panelAngle = String(pState.data.step2.defaultAngleDeg || '')
   const setPanelAngle = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultAngleDeg: parseFloat(v) || 0 } })
+
+  // Derived from layout + step2 data
+  const refinedArea = useMemo(() => {
+    if (!referenceLine || !referenceLineLengthCm) return null
+    const dx = referenceLine.end.x - referenceLine.start.x
+    const dy = referenceLine.end.y - referenceLine.start.y
+    const pixelLength = Math.sqrt(dx * dx + dy * dy)
+    if (pixelLength <= 0) return null
+    const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
+    return {
+      pixelToCmRatio,
+      polygon: roofPolygon,
+      panelType,
+      referenceLine,
+      referenceLineLengthCm: parseFloat(referenceLineLengthCm),
+      panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: [PANEL_V] },
+    }
+  }, [referenceLine, referenceLineLengthCm, roofPolygon, panelType, panelFrontHeight, panelAngle])
 
   // Step 2-3: data from reducer
   const areas = pState.data.step2.areas
@@ -121,18 +135,12 @@ export function useProjectState() {
     if (spec) pDispatch({ type: A.SET_STEP2, payload: { panelWidthCm: spec.widthCm, panelLengthCm: spec.lengthCm } })
   }, [panelType, panelTypes])
 
-  // ── Sync pixelToCmRatio from refinedArea into layout (derived, for save) ──
-  useEffect(() => {
-    pDispatch({ type: A.SET_LAYOUT, payload: { pixelToCmRatio: refinedArea?.pixelToCmRatio ?? null } })
-  }, [refinedArea])
-
   // ── Wizard lifecycle ──────────────────────────────────────────────────────
 
   const resetWizardState = () => {
     pDispatch({ type: A.RESET })
     // Reset remaining useState hooks not in reducer
     setImageRef(null)
-    setRefinedArea(null)
   }
 
   const handleStartOver = () => {
@@ -252,17 +260,7 @@ export function useProjectState() {
       project: { cloudProjectId: existingCloudId ?? null, appScreen: 'wizard', currentProject: data.project },
     })
 
-    // ── Remaining useState that aren't in reducer ──
-    if (layout.pixelToCmRatio) {
-      setRefinedArea({
-        pixelToCmRatio: layout.pixelToCmRatio,
-        polygon: layout.roofPolygon,
-        panelType: s2.panelType,
-        referenceLine: layout.referenceLine,
-        referenceLineLengthCm: layout.referenceLineLengthCm,
-        panelConfig: { frontHeight: s2.defaultFrontHeightCm ?? 0, backHeight: 0, angle: s2.defaultAngleDeg ?? 0, lineOrientations: [PANEL_V] },
-      })
-    }
+    // refinedArea is now a useMemo — auto-derived from layout + step2 data
   }
 
   const getLayoutData = () => {
@@ -270,6 +268,7 @@ export function useProjectState() {
     return {
       ...l,
       currentStep,
+      pixelToCmRatio: refinedArea?.pixelToCmRatio ?? l.pixelToCmRatio ?? null,
       // Strip FE-only fields before saving
       uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
       rectAreas: l.rectAreas.map(ra => ({
@@ -382,129 +381,14 @@ export function useProjectState() {
     setSelectedPanels([])
   }
 
-  // Recompute trapezoid IDs for a single area from current panel state.
-  // orientOverrides: { panelId: newHeightCm } — pending orientation changes not yet in state.
-  // When provided, the orientation swap (pixel w/h + heightCm) is also applied in the same setPanels call.
   const refreshAreaTrapezoids = (areaIdx) => {
-    const area = rectAreas[areaIdx]
-    if (!area || area.manualTrapezoids || !area.vertices?.length) return
-    if (!referenceLine || !referenceLineLengthCm) return
-
-    // Pixel-to-cm ratio from the calibration line
-    const dxRef = referenceLine.end.x - referenceLine.start.x
-    const dyRef = referenceLine.end.y - referenceLine.start.y
-    const pixelLength = Math.sqrt(dxRef * dxRef + dyRef * dyRef)
-    if (pixelLength <= 0) return
-    const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-
-    // Fill-grid column geometry
-    const pWid = panelSpec.widthCm
-    const gapPx = (appDefaults?.panelGapCm) / pixelToCmRatio
-    const portraitW = pWid / pixelToCmRatio
-    const portraitPitch = portraitW + gapPx
-
-    // Area local frame (unrotated bounding box)
-    const { vertices, rotation = 0, xDir = 'ltr' } = area
-    const areaLabel = area.label || area.id || `area-${areaIdx}`
-    const rotRad = (rotation * Math.PI) / 180
-    const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)
-    const cxAvg = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
-    const cyAvg = vertices.reduce((s, v) => s + v.y, 0) / vertices.length
-    const localVerts = vertices.map(v => {
-      const dx = v.x - cxAvg, dy = v.y - cyAvg
-      return { x: dx * cosF - dy * sinF, y: dx * sinF + dy * cosF }
+    const result = refreshAreaTrapezoidsAction({
+      areaIdx, area: rectAreas[areaIdx], panels, referenceLine, referenceLineLengthCm,
+      panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
     })
-    const minLX = Math.min(...localVerts.map(v => v.x))
-    const maxLX = Math.max(...localVerts.map(v => v.x))
-
-    const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
-    const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
-
-    const areaPanels = panels.filter(p => p.area === areaIdx)
-    if (!areaPanels.length) return
-
-    // Recompute col/coveredCols for each panel from its current pixel position
-    const panelWithCols = areaPanels.map(p => {
-      const pcx = p.x + p.width / 2
-      const pcy = p.y + p.height / 2
-      const lx = (pcx - cxAvg) * cosF - (pcy - cyAvg) * sinF
-      const panelW = p.width
-      const fillLeft = xDir === 'rtl' ? maxLX - lx - panelW / 2 : lx - minLX - panelW / 2
-      const kStart = Math.floor(fillLeft / portraitPitch)
-      const kEnd = Math.ceil((fillLeft + panelW) / portraitPitch)
-      const coveredCols = []
-      for (let k = kStart; k <= kEnd; k++) {
-        const portCenter = k * portraitPitch + portraitW / 2
-        if (portCenter >= fillLeft && portCenter < fillLeft + panelW) coveredCols.push(k)
-      }
-      const physCol = coveredCols.length > 0 ? coveredCols[0] : Math.round(fillLeft / portraitPitch)
-      return { ...p, col: physCol, coveredCols }
-    })
-
-    // Build col → set<row> and row → orientation from current panel state
-    const colRowsMap = new Map()
-    const rowOrient = {}
-    panelWithCols.forEach(p => {
-      const row = p.row ?? 0
-      rowOrient[row] = p.heightCm > p.widthCm ? PANEL_V : PANEL_H
-      const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
-      cols.forEach(c => {
-        if (!colRowsMap.has(c)) colRowsMap.set(c, new Set())
-        colRowsMap.get(c).add(row)
-      })
-    })
-
-    const allRows = [...new Set(panelWithCols.map(p => p.row ?? 0))].sort((a, b) => a - b)
-    const colSig = (col) =>
-      allRows.map(r =>
-        colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
-      ).join('|')
-
-    const sigToTrap = new Map()
-    let n = 1
-    ;[...colRowsMap.keys()].sort((a, b) => a - b).forEach(col => {
-      const s = colSig(col)
-      if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n++}`)
-    })
-    if (sigToTrap.size === 1) {
-      const [[sig]] = [...sigToTrap.entries()]
-      sigToTrap.set(sig, areaLabel)
-    }
-
-    // Compute trap configs for each trapezoid shape
-    const newTrapConfigs = {}
-    sigToTrap.forEach((trapId, sig) => {
-      const shape = sig.split('|')
-      newTrapConfigs[trapId] = {
-        angle: aAngle, frontHeight: aFront,
-        backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm),
-        lineOrientations: shape,
-      }
-    })
-
-    // Update panels with recomputed col/coveredCols and new trapezoidId
-    setPanels(prev => prev.map(p => {
-      if (p.area !== areaIdx) return p
-      const updated = panelWithCols.find(pw => pw.id === p.id)
-      if (!updated) return p
-      const sig = colSig(updated.col)
-      const newTrapId = sigToTrap.get(sig) || areaLabel
-      if (newTrapId === p.trapezoidId && updated.col === p.col) return p
-      return { ...p, col: updated.col, coveredCols: updated.coveredCols, trapezoidId: newTrapId }
-    }))
-
-    // Rebuild trapezoid configs for this area, preserve other areas
-    setTrapezoidConfigs(prev => {
-      const next = {}
-      Object.entries(prev).forEach(([id, cfg]) => {
-        const rest = id.slice(areaLabel.length)
-        if (id !== areaLabel && !(id.startsWith(areaLabel) && /^\d/.test(rest))) next[id] = cfg
-      })
-      Object.entries(newTrapConfigs).forEach(([id, cfg]) => {
-        next[id] = { ...(prev[id] || {}), ...cfg }
-      })
-      return next
-    })
+    if (!result) return
+    setPanels(result.updatedPanels)
+    setTrapezoidConfigs(result.mergedTrapConfigs)
   }
 
   const addManualPanel = () => {
@@ -647,7 +531,6 @@ export function useProjectState() {
       ...a,
     })))
     setTrapezoidConfigs(result.trapezoidConfigs)
-    setRefinedArea(result.refinedArea)
   }
 
   const recordPanelDeletion = (panel) => {
@@ -661,68 +544,20 @@ export function useProjectState() {
     })
   }
 
-  // After a project load (computePanels skipped), re-derive col/coveredCols/row for each
-  // loaded panel by matching it to the closest computed panel from computePolygonPanels.
-  // This ensures key lookups in buildPanelGrid are consistent with fresh geometry,
-  // without resetting the panel's pixel positions.
   const reSyncLoadedPanelCols = () => {
-    if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return
-    const dx = referenceLine.end.x - referenceLine.start.x
-    const dy = referenceLine.end.y - referenceLine.start.y
-    const pixelLength = Math.sqrt(dx * dx + dy * dy)
-    if (pixelLength <= 0) return
-    const ratio = parseFloat(referenceLineLengthCm) / pixelLength
-    const spec = panelSpec
-
-    setPanels(prev => {
-      const next = [...prev]
-      rectAreas.forEach((area, areaIdx) => {
-        const computed = computePolygonPanels(area, ratio, spec, appDefaults?.panelGapCm)
-        if (!computed.length) return
-        const halfW = computed[0].width / 2
-        const threshold = halfW * 3  // generous: covers one full panel-pitch
-        next.forEach((p, i) => {
-          if (p.area !== areaIdx) return
-          const pcx = p.x + p.width / 2
-          const pcy = p.y + p.height / 2
-          let best = null, bestDist = Infinity
-          computed.forEach(cp => {
-            const d = Math.sqrt((pcx - cp.cx) ** 2 + (pcy - cp.cy) ** 2)
-            if (d < bestDist) { bestDist = d; best = cp }
-          })
-          if (best && bestDist < threshold) {
-            next[i] = { ...p, row: best.row, col: best.col, coveredCols: best.coveredCols }
-          }
-        })
-      })
-      // Rebuild panelGrid with the synced panel data
-      const newGrid = {}
-      rectAreas.forEach((area, areaIdx) => {
-        const areaLabel = area.label || area.id || `area-${areaIdx}`
-        const computed = computePolygonPanels(area, ratio, spec, appDefaults?.panelGapCm)
-        const areaFiltered = next.filter(p => p.area === areaIdx)
-        newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, ratio)
-      })
-      setPanelGrid(newGrid)
-      return next
+    const result = reSyncLoadedPanelColsAction({
+      referenceLine, referenceLineLengthCm, rectAreas, panels, panelSpec, appDefaults,
     })
+    if (!result) return
+    setPanels(result.panels)
+    setPanelGrid(result.panelGrid)
   }
 
   const rebuildPanelGrid = (updatedPanels) => {
-    if (!referenceLine || !referenceLineLengthCm || rectAreas.length === 0) return
-    const dx = referenceLine.end.x - referenceLine.start.x
-    const dy = referenceLine.end.y - referenceLine.start.y
-    const pixelLength = Math.sqrt(dx * dx + dy * dy)
-    if (pixelLength <= 0) return
-    const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-    const newGrid = {}
-    rectAreas.forEach((area, areaIdx) => {
-      const areaLabel = area.label || area.id || `area-${areaIdx}`
-      const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
-      const areaFiltered = updatedPanels.filter(p => p.area === areaIdx)
-      newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
+    const newGrid = rebuildPanelGridAction({
+      referenceLine, referenceLineLengthCm, rectAreas, panels: updatedPanels, panelSpec, appDefaults,
     })
-    setPanelGrid(newGrid)
+    if (newGrid) setPanelGrid(newGrid)
   }
 
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
@@ -743,20 +578,7 @@ export function useProjectState() {
   const handleNext = (totalSteps) => {
     if (currentStep >= totalSteps) return
 
-    if (currentStep === 2) {
-      const pixelLength = Math.sqrt(
-        Math.pow(referenceLine.end.x - referenceLine.start.x, 2) +
-        Math.pow(referenceLine.end.y - referenceLine.start.y, 2)
-      )
-      const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
-      // Panels are already computed by the auto-effect; just update refinedArea with the calibrated ratio.
-      setRefinedArea({
-        polygon: roofPolygon, panelType, referenceLine,
-        referenceLineLengthCm: parseFloat(referenceLineLengthCm),
-        pixelToCmRatio,
-        panelConfig: { frontHeight: parseFloat(panelFrontHeight) || 0, backHeight: 0, angle: parseFloat(panelAngle) || 0, lineOrientations: [PANEL_V] },
-      })
-    }
+    // refinedArea is now a useMemo — no manual update needed on step transition
 
     const nextStep = currentStep + 1
 
