@@ -16,10 +16,9 @@ export default function ToolPanel({
   yLocked, onToggleYLock, hasAreas,
   onSetEditMode,
   selectedAreaIdx,
+  selectedAreaLabel,
   onDeleteArea,
   onResetArea,
-  onRecalcTrapezoids,
-  canRecalcTrapezoids,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -122,7 +121,7 @@ export default function ToolPanel({
                   {areaHasSelection ? (
                     <>
                       <div style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, marginBottom: '0.4rem' }}>
-                        {t('step2.tool.selectedArea', { idx: selectedAreaIdx })}
+                        {t('step2.tool.selectedArea', { label: selectedAreaLabel ?? selectedAreaIdx })}
                       </div>
                       <div style={{ display: 'flex', gap: '0.3rem' }}>
                         <button style={areaActionStyle(false)} onClick={() => onDeleteArea(selectedAreaIdx)} title={t('step2.tool.deleteAreaTitle')}>
@@ -130,9 +129,6 @@ export default function ToolPanel({
                         </button>
                         <button style={areaActionStyle(false)} onClick={() => onResetArea(selectedAreaIdx)} title={t('step2.tool.resetAreaTitle')}>
                           ↺ {t('step2.tool.resetArea')}
-                        </button>
-                        <button style={areaActionStyle(!canRecalcTrapezoids)} onClick={() => canRecalcTrapezoids && onRecalcTrapezoids(selectedAreaIdx)} title={t('step2.tool.recalcTitle')}>
-                          ⟳ {t('step2.tool.recalc')}
                         </button>
                       </div>
                     </>

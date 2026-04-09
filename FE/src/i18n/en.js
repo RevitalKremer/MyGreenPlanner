@@ -213,14 +213,12 @@ const en = {
   'step2.tool.yFree':             '⊟ Y-Lock OFF',
   'step2.tool.modeAreas':         '◫ Areas',
   'step2.tool.modePanels':        '⊞ Panels',
-  'step2.tool.selectedArea':      'Area {idx} selected',
+  'step2.tool.selectedArea':      'Area {label} selected',
   'step2.tool.clickAreaToSelect': 'Click an area on the canvas',
   'step2.tool.deleteArea':        'Del',
   'step2.tool.deleteAreaTitle':   'Delete selected area',
   'step2.tool.resetArea':         'Reset',
   'step2.tool.resetAreaTitle':    'Reset area to original layout',
-  'step2.tool.recalc':            '⟳',
-  'step2.tool.recalcTitle':       'Recalculate trapezoids for selected area',
   'step2.tool.selectPanelTool':   'Select a panel tool above',
 
   // ── Step 3 – Construction Planning sidebar ───────────────────────────────

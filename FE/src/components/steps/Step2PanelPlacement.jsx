@@ -69,6 +69,41 @@ export default function Step2PanelPlacement({
     setTrapIdOverride(null)
   }, [selectedPanels])
 
+  // ── Auto-recalc trapezoids with 1s debounce ──
+  // Build a fingerprint per area from panel positions/orientations + area vertices.
+  // When it changes for a specific area, debounce and recalc that area's trapezoids.
+  // Uses a ref-based timer so that unrelated re-renders don't cancel pending recalcs.
+  const prevFingerprintRef = useRef({})
+  const pendingRecalcRef = useRef({})  // { [areaIdx]: timerId }
+  useEffect(() => {
+    const fp = {}
+    rectAreas.forEach((area, idx) => {
+      if (area.manualTrapezoids) return
+      const areaPanels = panels.filter(p => p.area === idx)
+      const verts = area.vertices?.map(v => `${Math.round(v.x)},${Math.round(v.y)}`).join(';') ?? ''
+      const panelFp = areaPanels.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)},${p.width},${p.height},${p.heightCm},${p.widthCm}`).join('|')
+      fp[idx] = `${verts}#${areaPanels.length}#${panelFp}#${area.rotation ?? 0}`
+    })
+
+    for (const idx of Object.keys(fp)) {
+      if (prevFingerprintRef.current[idx] !== fp[idx] && prevFingerprintRef.current[idx] !== undefined) {
+        const areaIdx = Number(idx)
+        // Reset debounce timer for this area
+        if (pendingRecalcRef.current[areaIdx]) clearTimeout(pendingRecalcRef.current[areaIdx])
+        pendingRecalcRef.current[areaIdx] = setTimeout(() => {
+          delete pendingRecalcRef.current[areaIdx]
+          refreshAreaTrapezoids(areaIdx)
+        }, 1000)
+      }
+    }
+    prevFingerprintRef.current = fp
+  }, [panels, rectAreas, refreshAreaTrapezoids])
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => { Object.values(pendingRecalcRef.current).forEach(clearTimeout) }
+  }, [])
+
   // Track newly drawn area index so we can select it once panels are computed
   const pendingNewAreaIdxRef = useRef(null)
   // Stable area index — survives panel ID changes across recomputes
@@ -181,7 +216,6 @@ export default function Step2PanelPlacement({
 
   const selectedRow = (selectedRowIndex !== null) ? rows[selectedRowIndex] : null
   const selectedAreaIdx = selectedRow?.length ? (selectedRow[0].area ?? selectedRow[0].row ?? null) : null
-  const canRecalcTrapezoids = typeof selectedAreaIdx === 'number' && !rectAreas[selectedAreaIdx]?.manualTrapezoids
 
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
@@ -523,10 +557,9 @@ export default function Step2PanelPlacement({
             yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
             onSetEditMode={handleSetEditMode}
             selectedAreaIdx={selectedAreaIdx}
+            selectedAreaLabel={typeof selectedAreaIdx === 'number' ? (rectAreas[selectedAreaIdx]?.label || String(selectedAreaIdx)) : null}
             onDeleteArea={handleDeleteArea}
             onResetArea={regenerateSingleRowHandler}
-            onRecalcTrapezoids={refreshAreaTrapezoids}
-            canRecalcTrapezoids={canRecalcTrapezoids}
           />
         )}
       </div>
