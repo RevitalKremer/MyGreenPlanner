@@ -12,6 +12,7 @@ const he = {
   'app.error':                'שגיאה',
   'app.export':               'ייצוא',
   'app.startOver':            'התחל מחדש',
+  'app.startOverConfirm':     'לחזור למסך הפתיחה? כל השינויים שלא נשמרו ימחקו.',
   'app.analyzingRoof':        'מנתח גג...',
   'app.by':                   'By',
   'app.verifySuccess':        '✓ כתובת האימייל אומתה בהצלחה!',
