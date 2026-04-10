@@ -56,7 +56,7 @@ export default function RailLayoutTab({
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
-  // BE rail lookup: keyed by areaIdx:panelRowIdx:railId and areaLabel:panelRowIdx:railId
+  // BE rail lookup: keyed by areaLabel:panelRowIdx:railId (and legacy variants)
   const beRailByKey = useMemo(() => {
     const m = {}
     ;(beRailsData ?? []).forEach((area, idx) => {
@@ -64,6 +64,7 @@ export default function RailLayoutTab({
         const pri = r._panelRowIdx ?? 0
         m[`${idx}:${pri}:${r.railId}`] = r
         m[`${area.areaLabel}:${pri}:${r.railId}`] = r
+        if (area.areaId != null) m[`${area.areaId}:${pri}:${r.railId}`] = r
         // Legacy fallback (single-row areas)
         if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
         if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
@@ -71,6 +72,17 @@ export default function RailLayoutTab({
     })
     return m
   }, [beRailsData])
+
+  // Map areaGroupKey → area label (for BE rail lookup resolution)
+  const groupKeyToLabel = useMemo(() => {
+    const m = {}
+    for (const p of panels) {
+      if (p.areaGroupKey != null && p.trapezoidId && !m[p.areaGroupKey]) {
+        m[p.areaGroupKey] = p.trapezoidId.replace(/\d+$/, '')
+      }
+    }
+    return m
+  }, [panels])
 
   // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
   const { railLayouts, railLayoutKeys } = useMemo(() => {
@@ -175,7 +187,7 @@ export default function RailLayoutTab({
   const activeCrossSectionRl = railLayouts[selectedRowIdx ?? 0] ?? null
 
   const overlayProps = {
-    railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey,
+    railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey, groupKeyToLabel,
     sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
   }
 

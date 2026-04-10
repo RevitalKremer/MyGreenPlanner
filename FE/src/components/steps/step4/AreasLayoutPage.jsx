@@ -19,10 +19,28 @@ export default function AreasLayoutPage({
 
   const rowKeys = useMemo(() => buildRowGroups(nonEmptyPanels).keys, [nonEmptyPanels])
 
+  // Map areaGroupKey → areas entry (handles multi-row where rowKeys are rectArea indices)
+  const areaByGroupKey = useMemo(() => {
+    const map = {}
+    const areaByLabel = {}
+    for (const a of (Array.isArray(areas) ? areas : [])) { if (a.label) areaByLabel[a.label] = a }
+    const seen = new Set()
+    for (const p of nonEmptyPanels) {
+      const gk = p.areaGroupKey ?? p.area ?? 0
+      if (seen.has(gk)) continue
+      seen.add(gk)
+      const tid = p.trapezoidId
+      const matched = (Array.isArray(areas) ? areas : []).find(a => a.trapezoidIds?.includes(tid))
+        ?? areaByLabel[tid?.replace(/\d+$/, '')]
+      if (matched) map[gk] = matched
+    }
+    return map
+  }, [nonEmptyPanels, areas])
+
   const areaLabel = useCallback((areaKey, i) => {
-    const g = areas[areaKey]?.label
+    const g = areaByGroupKey[areaKey]?.label ?? (Array.isArray(areas) ? areas[areaKey] : undefined)?.label
     return g ? `${g}` : t('step4.pdf.area', { n: i + 1 })
-  }, [areas, t])
+  }, [areas, areaByGroupKey, t])
 
   const { naturalW, naturalH } = useMemo(() => {
     if (!nonEmptyPanels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }

@@ -366,26 +366,36 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 5. External diagonals */}
                 {sDiags && sBases && (beBasesData ?? []).map((areaData, ai) => {
-                  // Use first base's _panelRowIdx for diagonal frame (diagonals connect bases within same row)
-                  const firstBasePri = (areaData.bases ?? [])[0]?._panelRowIdx
-                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, firstBasePri)
-                  if (!ctx) return null
-                  const { af, liveOffsets } = ctx
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const PROFILE_THICK = (4 / pixelToCmRatio) * sc
                   const diags = areaData.diagonals ?? []
                   const allBases = areaData.bases ?? []
 
-                  // Derive each connection point from its base position + diagonal offset
+                  // Group bases by panelRowIdx for per-row base index lookup
+                  const basesByRow = {}
+                  for (const b of allBases) {
+                    const ri = b._panelRowIdx ?? 0
+                    if (!basesByRow[ri]) basesByRow[ri] = []
+                    basesByRow[ri].push(b)
+                  }
+
                   return diags.map((d, di) => {
-                    const baseA = allBases[d.startBaseIdx]
-                    const baseB = allBases[d.endBaseIdx]
+                    // Resolve frame for this diagonal's row
+                    const diagPri = d.panelRowIdx ?? 0
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, diagPri)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                    const { angleRad: tAngle, localBounds: tLB } = tFrame
+
+                    // Base indices are relative to THIS row's bases (from per-row diagonal computation)
+                    const rowBases = basesByRow[diagPri] ?? allBases
+                    const baseA = rowBases[d.startBaseIdx]
+                    const baseB = rowBases[d.endBaseIdx]
                     if (!baseA || !baseB) return null
 
-                    // X: base offsetFromStartCm (with live drag override)
-                    const xA = (liveOffsets?.[d.startBaseIdx] != null ? liveOffsets[d.startBaseIdx] / 10 : baseA.offsetFromStartCm)
-                    const xB = (liveOffsets?.[d.endBaseIdx] != null ? liveOffsets[d.endBaseIdx] / 10 : baseB.offsetFromStartCm)
+                    // X: base offsetFromStartCm
+                    const xA = baseA.offsetFromStartCm
+                    const xB = baseB.offsetFromStartCm
                     const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
                     const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
 

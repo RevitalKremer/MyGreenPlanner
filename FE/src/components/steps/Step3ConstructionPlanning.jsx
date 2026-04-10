@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
 import { PANEL_V } from '../../utils/panelCodes'
@@ -37,9 +37,29 @@ export default function Step3ConstructionPlanning({
   const [userEditedBases, setUserEditedBases] = useState(new Set())
 
   // ── Settings hook ──────────────────────────────────────────────────────
+  // Pre-compute areaByGroupKey for settings (needed before useRowData runs)
+  const areaByGroupKey = useMemo(() => {
+    const map = {}
+    const areaByLabel = {}
+    for (const a of areas) { if (a.label) areaByLabel[a.label] = a }
+    // Group panels by areaGroupKey, find area via trapezoidId
+    const seen = new Set()
+    for (const p of panels) {
+      const gk = p.areaGroupKey ?? p.area ?? 0
+      if (seen.has(gk)) continue
+      seen.add(gk)
+      const tid = p.trapezoidId
+      const matched = areas.find(a => a.trapezoidIds?.includes(tid)) ?? areaByLabel[tid?.replace(/\d+$/, '')]
+      if (matched) map[gk] = matched
+      else if (areas[gk]) map[gk] = areas[gk]
+    }
+    return map
+  }, [panels, areas])
+
   const settings = useStep3Settings({
     initialGlobalSettings, initialAreaSettings, SETTINGS_DEFAULTS, PARAM_SCHEMA,
     appDefaults, panelSpec, trapezoidConfigs, setTrapezoidConfigs, areas,
+    areaByGroupKey,
     onTabSave, onTabReset, onSettingsChange,
   })
 
@@ -47,7 +67,7 @@ export default function Step3ConstructionPlanning({
   const getLineOrientations = useCallback((areaKey, trapId) => {
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
-    const areaGroup = areas[areaKey] || {}
+    const areaGroup = areaByGroupKey[areaKey] ?? areas[areaKey] ?? {}
     return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
   }, [refinedArea, trapezoidConfigs, areas])
 

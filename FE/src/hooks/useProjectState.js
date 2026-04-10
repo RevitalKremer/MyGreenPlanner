@@ -340,6 +340,7 @@ export function useProjectState() {
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
         color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
+        areaGroupId: ra.areaGroupId, rowIndex: ra.rowIndex ?? 0,
       })),
     }
   }
@@ -351,16 +352,26 @@ export function useProjectState() {
       id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
     }))
     // Enrich areas with rectAreas geometry + panel-derived trapezoidIds
-    const enrichedAreas = d.step2.areas.map((a, idx) => {
-      const ra = rectAreas[idx]
-      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
+    // d.step2.areas has one entry per area GROUP (not per rectArea).
+    // Find the first rectArea for each group by matching label/areaGroupId.
+    const enrichedAreas = d.step2.areas.map((a) => {
+      const groupLabel = a.label
+      // Find the primary rectArea for this group by matching areaGroupId, label, or area index
+      const ra = rectAreas.find(r => (r.areaGroupId || r.label) === groupLabel)
+        || rectAreas.find(r => r.label === groupLabel)
+      // Filter panels by areaGroupKey (not p.area which is rectArea index)
+      const groupKey = ra ? rectAreas.indexOf(ra) : undefined
+      const areaTrapIds = [...new Set(
+        panels.filter(p => p.areaGroupKey === groupKey || (groupKey === undefined && (rectAreas[p.area]?.label === groupLabel)))
+          .map(p => p.trapezoidId).filter(Boolean)
+      )]
       return {
         ...a,
-        id: ra?.id ?? a.id, label: ra?.label ?? a.label,
+        label: groupLabel,
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
         trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (a.trapezoidIds ?? []),
-        panelRows: (d.step2.panelGrid[ra?.label ?? a.label] || []).map((pg, ri) => ({
+        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
           rowIndex: ri, panelGrid: pg ?? null,
         })),
       }

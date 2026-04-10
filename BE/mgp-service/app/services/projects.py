@@ -531,6 +531,7 @@ async def compute_and_save_bases(
         all_row_bases: dict[int, list] = {}
         # Use first row's bases_data_map for trapezoid detail computation
         first_bases_data_map: dict[str, dict | None] = {}
+        per_row_data: dict[int, dict] = {}  # rowIdx → { basesDataMap, consolidated }
 
         for pr in panel_rows:
             row_idx = pr.get('rowIndex', 0)
@@ -579,6 +580,8 @@ async def compute_and_save_bases(
             # Keep first row's data for trapezoid detail computation
             if not first_bases_data_map:
                 first_bases_data_map = bases_data_map
+            # Keep per-row data for external diagonal computation
+            per_row_data[row_idx] = {'basesDataMap': bases_data_map, 'consolidated': consolidated}
 
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
@@ -588,6 +591,7 @@ async def compute_and_save_bases(
             'basesDataMap': first_bases_data_map,
             'trapIds': trap_ids,
             'consolidated': consolidated if panel_rows else {},
+            'perRowData': per_row_data,
         })
 
     project.data = data
@@ -617,16 +621,30 @@ async def compute_and_save_external_diagonals(
     for area_res in bases_result:
         area_id = area_res.get('areaId', 0)
         label = area_res.get('areaLabel', '')
-        bases_data_map = area_res.get('basesDataMap', {})
         trap_ids = area_res.get('trapIds', [])
-        consolidated = area_res.get('consolidated', {})
-        if not bases_data_map:
-            diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': []})
-            continue
+        per_row_data = area_res.get('perRowData', {})
 
-        area_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
-        _upsert_computed_area(step3, area_id, label, {'diagonals': area_diagonals})
-        diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': area_diagonals})
+        # Compute external diagonals per panel row, tag each with panelRowIdx
+        all_diagonals = []
+        if per_row_data:
+            for row_idx, row_data in sorted(per_row_data.items()):
+                bdm = row_data.get('basesDataMap', {})
+                cons = row_data.get('consolidated', {})
+                if not bdm:
+                    continue
+                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids)
+                for d in row_diags:
+                    d['panelRowIdx'] = row_idx
+                all_diagonals.extend(row_diags)
+        else:
+            # Fallback: single-row (use basesDataMap from area_res)
+            bases_data_map = area_res.get('basesDataMap', {})
+            consolidated = area_res.get('consolidated', {})
+            if bases_data_map:
+                all_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
+
+        _upsert_computed_area(step3, area_id, label, {'diagonals': all_diagonals})
+        diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': all_diagonals})
 
     data['step3'] = step3
     project.data = data
