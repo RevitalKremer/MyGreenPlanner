@@ -259,12 +259,49 @@ export default function Step2PanelPlacement({
 
   const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
+    // Find the area's pivot (start corner) to anchor the rotation
+    const firstSel = panels.find(p => selectedPanels.includes(p.id))
+    const areaIdx = firstSel?.area ?? 0
+    const area = rectAreas[areaIdx]
+    const pivot = area?.vertices?.[area?.pivotIdx ?? 0]
     const newPanels = panels.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
       const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
       const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
+      if (pivot) {
+        // Anchor to the start corner: find the panel's rotated corner nearest to pivot
+        const r = (panel.rotation || 0) * Math.PI / 180
+        const cosR = Math.cos(r), sinR = Math.sin(r)
+        const hw = panel.width / 2, hh = panel.height / 2
+        // 4 corners of the panel in screen space (rotated around cx,cy)
+        const corners = [
+          { dx: -hw, dy: -hh }, { dx: hw, dy: -hh },
+          { dx: hw, dy: hh },   { dx: -hw, dy: hh },
+        ].map(c => ({
+          x: cx + c.dx * cosR - c.dy * sinR,
+          y: cy + c.dx * sinR + c.dy * cosR,
+          ldx: c.dx, ldy: c.dy,
+        }))
+        // Find corner nearest to pivot
+        let nearest = corners[0], bestDist = Infinity
+        corners.forEach(c => {
+          const d = Math.hypot(c.x - pivot.x, c.y - pivot.y)
+          if (d < bestDist) { bestDist = d; nearest = c }
+        })
+        // After swap: the same local corner position but with swapped half-dims
+        const nhw = newW / 2, nhh = newH / 2
+        const newLdx = Math.sign(nearest.ldx) * nhw
+        const newLdy = Math.sign(nearest.ldy) * nhh
+        // New corner position in screen space
+        const newCornerX = cx + newLdx * cosR - newLdy * sinR
+        const newCornerY = cy + newLdx * sinR + newLdy * cosR
+        // Shift center so the nearest corner stays at the same screen position
+        const newCx = cx + (nearest.x - newCornerX)
+        const newCy = cy + (nearest.y - newCornerY)
+        return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: newCx - newW / 2, y: newCy - newH / 2 }
+      }
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
     })
     setPanels(newPanels)
