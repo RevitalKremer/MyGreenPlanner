@@ -843,7 +843,7 @@ export default function PanelCanvas({
                   {drawPreviewPanels.map((p, i) => {
                     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2
                     const pibw = p.width * 0.012
-                    const down = dy >= 0
+                    const down = drawVertical ? dx < 0 : dy >= 0
                     const r = (p.rotation || 0) * Math.PI / 180
                     const rDeg = p.rotation || 0
                     const bh = Math.min(p.width, p.height) * 0.22
