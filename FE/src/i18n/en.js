@@ -170,6 +170,7 @@ const en = {
   'step2.sidebar.applyToAll':     'Apply to All Areas',
   'step2.sidebar.drawHint':       'Select the Draw tool and drag on the canvas to create a panel area.',
   'step2.sidebar.areas':          'Areas',
+  'step2.sidebar.addToArea':      'Add to area\u2026',
   'step2.sidebar.reSplit':        'Re-split trapezoids based on current panel layout',
   'step2.sidebar.customConfig':   'Custom config',
 
@@ -220,6 +221,9 @@ const en = {
   'step2.tool.resetArea':         'Reset',
   'step2.tool.resetAreaTitle':    'Reset area to original layout',
   'step2.tool.rotateArea90Title': 'Rotate selected area 90°',
+  'step2.tool.addRow':            'Add Row',
+  'step2.tool.cancelAddRow':      'Cancel',
+  'step2.tool.drawRowHint':       'Draw a new row on the canvas',
   'step2.tool.drawVerticalOn':   'V-Draw',
   'step2.tool.drawVerticalOff':  'V-Draw',
   'step2.tool.drawVerticalOnTitle':  'Drawing vertical areas. Click to switch to horizontal.',

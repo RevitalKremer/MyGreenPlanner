@@ -13,6 +13,7 @@ const PM_PAD = 24, MAX_W = 900
 export default function RailsLayoutPage({
   panels = [], refinedArea,
   trapSettingsMap = {}, trapLineRailsMap = {},
+  beRailsData = null,
   project, panelType, panelWp, totalKw, date, pageRef,
 }) {
   const { t } = useLang()
@@ -52,6 +53,7 @@ export default function RailsLayoutPage({
             refinedArea={refinedArea}
             trapSettingsMap={trapSettingsMap}
             trapLineRailsMap={trapLineRailsMap}
+            beRailsData={beRailsData}
             printMode
           />
         </div>

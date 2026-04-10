@@ -4,9 +4,17 @@ import { localToScreen } from '../../../utils/railLayoutService'
  * Resolve area frame from areaData, trying areaId, areaLabel, and label as keys.
  * Returns context object or null if no frame found.
  */
-export function resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap) {
+export function resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, panelRowIdx) {
   const areaId = areaData.areaId ?? areaData.areaLabel ?? areaData.label
-  const af = areaFrames[areaId] ?? areaFrames[String(areaId)] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
+  // Try row-specific frame first (multi-row areas), then plain area key
+  // Keys may be numeric id or string label, so try both
+  const rowKeyId    = panelRowIdx != null ? `${areaId}:${panelRowIdx}` : null
+  const rowKeyLabel = panelRowIdx != null && areaData.areaLabel ? `${areaData.areaLabel}:${panelRowIdx}` : null
+  const rowKeyLabel2 = panelRowIdx != null && areaData.label ? `${areaData.label}:${panelRowIdx}` : null
+  const af = (rowKeyId && areaFrames[rowKeyId])
+    ?? (rowKeyLabel && areaFrames[rowKeyLabel])
+    ?? (rowKeyLabel2 && areaFrames[rowKeyLabel2])
+    ?? areaFrames[areaId] ?? areaFrames[String(areaId)] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
   if (!af) return null
   const areaTrapIds = areaTrapsMap[areaId] ?? areaTrapsMap[String(areaId)] ?? areaTrapsMap[areaData.areaLabel] ?? []
   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
@@ -22,7 +30,10 @@ export function baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toS
   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
   const { angleRad: tAngle, localBounds: tLB } = tFrame
   const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-  const offsetCm = liveOffsets?.[sbi] != null ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+  // For multi-row bases (panelRowIdx > 0), always use BE offset — liveOffsets
+  // are only valid for row 0 (multi-row drag editing is deferred)
+  const useBeOffset = (sb._panelRowIdx ?? 0) > 0
+  const offsetCm = (!useBeOffset && liveOffsets?.[sbi] != null) ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
   const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
   const depthPx = sb.startCm / pixelToCmRatio
   const lenPx = sb.lengthCm / pixelToCmRatio

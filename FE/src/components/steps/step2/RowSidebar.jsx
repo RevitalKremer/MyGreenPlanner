@@ -7,7 +7,7 @@ import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 export default function RowSidebar({
   panels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
-  rows, areaLabel, getAreaKey,
+  rows, areaGroups, areaLabel, getAreaKey, onMergeRowIntoArea,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
   rectAreas = [],
   setRectAreas,
@@ -133,46 +133,79 @@ export default function RowSidebar({
       {panels.length > 0 && (
         <>
 
-          {/* Area list with trapezoid sub-items */}
+          {/* Area list with trapezoid sub-items — grouped by areaGroupId */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-              {t('step2.sidebar.areas')} ({rows.length})
+              {t('step2.sidebar.areas')} ({(areaGroups || []).length || rows.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {rows.map((row, i) => {
-                const isRowSelected = row.some(p => selectedPanels.includes(p.id))
-                const areaKey = getAreaKey(row[0])
-                const trapIds = areaTrapezoidMap[areaKey] || []
+              {(areaGroups && areaGroups.length > 0 ? areaGroups : rows.map((row, i) => ({
+                groupId: getAreaKey(row[0]), label: rectAreas[getAreaKey(row[0])]?.label, rows: [{ rowIdx: i, row, areaIdx: getAreaKey(row[0]), panelRowIndex: 0 }], areaIndices: [getAreaKey(row[0])],
+              }))).map((group) => {
+                const isMultiRow = group.rows.length > 1
+                const allGroupPanels = group.rows.flatMap(r => r.row)
+                const isGroupSelected = allGroupPanels.some(p => selectedPanels.includes(p.id))
+                const firstAreaKey = group.areaIndices[0]
+                const trapIds = areaTrapezoidMap[firstAreaKey] || []
                 const hasMultiTrap = trapIds.length > 1
+                const totalPanels = allGroupPanels.length
+
                 return (
-                  <div key={i}>
+                  <div key={group.groupId}>
                     <div style={{
                       padding: '0.4rem 0.5rem 0.35rem 0.6rem',
-                      background: isRowSelected ? PRIMARY_BG_LIGHT : BG_LIGHT,
-                      border: `2px solid ${isRowSelected ? PRIMARY : 'transparent'}`,
+                      background: isGroupSelected ? PRIMARY_BG_LIGHT : BG_LIGHT,
+                      border: `2px solid ${isGroupSelected ? PRIMARY : 'transparent'}`,
                       borderRadius: '8px',
                       transition: 'all 0.12s',
                     }}>
-                      {/* Top row: dot + name + panel count + buttons */}
+                      {/* Top row: dot + name + panel count */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <span
-                          onClick={() => { setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
-                          style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isRowSelected ? PRIMARY : BORDER_MID, cursor: 'pointer' }}
+                          onClick={() => { setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
+                          style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: isGroupSelected ? PRIMARY : BORDER_MID, cursor: 'pointer' }}
                         />
                         <input
-                          value={rectAreas[areaKey]?.label ?? areaLabel(areaKey, i)}
-                          onChange={e => setRectAreas?.(prev => prev.map((a, idx) => idx === areaKey ? { ...a, label: e.target.value } : a))}
-                          onClick={ev => { ev.stopPropagation(); setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
-                          style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isRowSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', minWidth: 0, flex: 1, cursor: 'text' }}
+                          value={rectAreas[firstAreaKey]?.label ?? areaLabel(firstAreaKey, 0)}
+                          onChange={e => {
+                            const newLabel = e.target.value
+                            setRectAreas?.(prev => prev.map(a =>
+                              (a.areaGroupId || a.label) === group.groupId ? { ...a, label: newLabel } : a
+                            ))
+                          }}
+                          onClick={ev => { ev.stopPropagation(); setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
+                          style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isGroupSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', minWidth: 0, flex: 1, cursor: 'text' }}
                         />
                         <span
-                          onClick={() => { setSelectedPanels(row.map(p => p.id)); setTrapIdOverride(null) }}
+                          onClick={() => { setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
                           style={{ fontSize: '0.72rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}
                         >
-                          {row.length}p
+                          {isMultiRow && `${group.rows.length}r `}{totalPanels}p
                         </span>
                       </div>
-                      {/* Second row: trapezoid badge(s) */}
+
+                      {/* Multi-row: show sub-rows */}
+                      {isMultiRow && (
+                        <div style={{ marginTop: '0.25rem', paddingLeft: '13px', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                          {group.rows.map((r, ri) => {
+                            const isSubSelected = r.row.some(p => selectedPanels.includes(p.id))
+                            return (
+                              <div
+                                key={ri}
+                                onClick={() => { setSelectedPanels(r.row.map(p => p.id)); setTrapIdOverride(null) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', padding: '0.1rem 0.2rem', borderRadius: '4px', background: isSubSelected ? PRIMARY_BG_ALT : 'transparent' }}
+                              >
+                                <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: isSubSelected ? PRIMARY : BORDER_LIGHT, flexShrink: 0 }} />
+                                <span style={{ fontSize: '0.68rem', color: isSubSelected ? TEXT_DARK : TEXT_VERY_LIGHT }}>
+                                  Row {ri + 1} — {r.row.length}p
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Trapezoid badge(s) */}
                       {!hasMultiTrap && trapIds.length === 1 && (
                         <div style={{ marginTop: '0.2rem', paddingLeft: '13px' }}>
                           <span
@@ -190,11 +223,48 @@ export default function RowSidebar({
                           </span>
                         </div>
                       )}
+
+                      {/* "Add to Area..." merge button — shown for single-row areas when other areas exist */}
+                      {!isMultiRow && isGroupSelected && (() => {
+                        const thisArea = rectAreas[firstAreaKey]
+                        const thisAngle = parseFloat(thisArea?.angle) || 0
+                        const thisFH = parseFloat(thisArea?.frontHeight) || 0
+                        const allGroups = areaGroups || []
+                        const compatibleTargets = allGroups.filter(g => {
+                          if (g.groupId === group.groupId) return false
+                          const targetArea = rectAreas[g.areaIndices[0]]
+                          const tAngle = parseFloat(targetArea?.angle) || 0
+                          const tFH = parseFloat(targetArea?.frontHeight) || 0
+                          return Math.abs(tAngle - thisAngle) < 0.1 && Math.abs(tFH - thisFH) < 0.1
+                        })
+                        if (compatibleTargets.length === 0) return null
+                        return (
+                          <div style={{ marginTop: '0.3rem', paddingLeft: '13px' }}>
+                            <select
+                              defaultValue=""
+                              onChange={e => {
+                                if (e.target.value) {
+                                  onMergeRowIntoArea?.(firstAreaKey, e.target.value)
+                                  e.target.value = ''
+                                }
+                              }}
+                              style={{ width: '100%', padding: '0.2rem 0.3rem', fontSize: '0.68rem', border: `1px solid ${BORDER}`, borderRadius: '4px', color: TEXT_SECONDARY, cursor: 'pointer', background: 'white' }}
+                            >
+                              <option value="" disabled>{t('step2.sidebar.addToArea')}</option>
+                              {compatibleTargets.map(g => (
+                                <option key={g.groupId} value={g.groupId}>
+                                  {g.label} ({g.rows.flatMap(r => r.row).length}p)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )
+                      })()}
                     </div>
                     {hasMultiTrap && (
                       <div style={{ borderLeft: `2px solid ${PRIMARY}`, marginLeft: '0.7rem', borderRadius: '0 0 6px 6px', background: BG_FAINT, borderBottom: `1px solid ${BORDER_FAINT}`, borderRight: `1px solid ${BORDER_FAINT}` }}>
                         {trapIds.map(trapId => {
-                          const trapPanels = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId)
+                          const trapPanels = panels.filter(p => group.areaIndices.includes(p.area ?? p.row) && p.trapezoidId === trapId)
                           const isTrapSelected = trapPanels.length > 0 && trapPanels.every(p => selectedPanels.includes(p.id))
                           return (
                             <div

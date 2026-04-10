@@ -56,23 +56,30 @@ export default function RailLayoutTab({
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
-  // BE rail lookup by area index + railId (for interactive mode) and areaLabel + railId (for print mode)
+  // BE rail lookup: keyed by areaIdx:panelRowIdx:railId and areaLabel:panelRowIdx:railId
   const beRailByKey = useMemo(() => {
     const m = {}
     ;(beRailsData ?? []).forEach((area, idx) => {
       for (const r of (area.rails ?? [])) {
-        m[`${idx}:${r.railId}`] = r
-        m[`${area.areaLabel}:${r.railId}`] = r
+        const pri = r._panelRowIdx ?? 0
+        m[`${idx}:${pri}:${r.railId}`] = r
+        m[`${area.areaLabel}:${pri}:${r.railId}`] = r
+        // Legacy fallback (single-row areas)
+        if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
+        if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
       }
     })
     return m
   }, [beRailsData])
 
-  const railLayouts = useMemo(() => {
-    if (railLayoutsProp) return railLayoutsProp
-    return rowKeys.map((rowKey, i) => {
-      const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
-      // For the selected row in edit mode, use live lineRails; otherwise use stored per-area data
+  // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
+  const { railLayouts, railLayoutKeys } = useMemo(() => {
+    if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
+    const layouts = []
+    const layoutKeys = []  // parallel array: rowKey for each layout entry (for BE lookup)
+    rowKeys.forEach((rowKey, i) => {
+      const areaPanels = rowGroups[rowKey] ?? []
+      const firstTrapId = areaPanels[0]?.trapezoidId
       const useStored = i !== selectedRowIdx || printMode
       let areaLineRails = lineRails
       if (useStored && firstTrapId && trapLineRailsMap[firstTrapId]) {
@@ -84,8 +91,29 @@ export default function RailLayoutTab({
         overhangCm: useStored ? (areaSettings.railOverhangCm ?? railOverhangCm) : railOverhangCm,
         stockLengths: useStored ? (areaSettings.stockLengths ?? stockLengths) : stockLengths,
       }
-      return computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, cfg)
+      // Split panels by panelRowIdx so each physical row gets its own rail layout
+      const panelRowGroups = {}
+      for (const p of areaPanels) {
+        const ri = p.panelRowIdx ?? 0
+        if (!panelRowGroups[ri]) panelRowGroups[ri] = []
+        panelRowGroups[ri].push(p)
+      }
+      const rowIdxKeys = Object.keys(panelRowGroups).map(Number).sort((a, b) => a - b)
+      if (rowIdxKeys.length <= 1) {
+        const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
+        if (rl) rl._panelRowIdx = 0
+        layouts.push(rl)
+        layoutKeys.push(rowKey)
+      } else {
+        for (const ri of rowIdxKeys) {
+          const rl = computeRowRailLayout(panelRowGroups[ri], pixelToCmRatio, cfg)
+          if (rl) rl._panelRowIdx = ri
+          layouts.push(rl)
+          layoutKeys.push(rowKey)  // all sub-rows map to the same area rowKey
+        }
+      }
     })
+    return { railLayouts: layouts, railLayoutKeys: layoutKeys }
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
@@ -147,7 +175,7 @@ export default function RailLayoutTab({
   const activeCrossSectionRl = railLayouts[selectedRowIdx ?? 0] ?? null
 
   const overlayProps = {
-    railLayouts, rowKeys, rowGroups, beRailByKey,
+    railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey,
     sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
   }
 

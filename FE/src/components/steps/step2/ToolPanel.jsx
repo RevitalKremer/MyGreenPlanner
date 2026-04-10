@@ -21,6 +21,9 @@ export default function ToolPanel({
   onDeleteArea,
   onResetArea,
   onRotateArea90,
+  addRowToGroup,
+  onAddRowToArea,
+  onCancelAddRow,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -144,6 +147,18 @@ export default function ToolPanel({
                           ↻ 90°
                         </button>
                       </div>
+                      {/* Add Row button */}
+                      <button
+                        style={{ ...areaActionStyle(false), marginTop: '0.3rem', width: '100%', background: addRowToGroup ? BLUE_BG : 'white', color: addRowToGroup ? BLUE : TEXT_SECONDARY, border: `1px solid ${addRowToGroup ? BLUE_BORDER : BORDER}` }}
+                        onClick={() => addRowToGroup ? onCancelAddRow?.() : onAddRowToArea?.()}
+                      >
+                        {addRowToGroup ? `✕ ${t('step2.tool.cancelAddRow')}` : `＋ ${t('step2.tool.addRow')}`}
+                      </button>
+                      {addRowToGroup && (
+                        <div style={{ fontSize: '0.68rem', color: BLUE, textAlign: 'center', marginTop: '0.2rem' }}>
+                          {t('step2.tool.drawRowHint')}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div style={{ fontSize: '0.78rem', color: TEXT_FAINTEST, textAlign: 'center', padding: '0.2rem 0' }}>

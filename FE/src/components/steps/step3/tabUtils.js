@@ -23,11 +23,14 @@ export function getPanelsBoundingBox(panels) {
   return { minX, maxX, minY, maxY }
 }
 
-/** Group panels by area/row key, return { map, sortedKeys } */
+/** Group panels by area/row key, return { map, sortedKeys }.
+ *  Uses panel.areaGroupKey (set by computePanelsAction) to merge multi-row areas.
+ */
 export function buildRowGroups(panels) {
   const map = {}
   for (const p of panels) {
-    const key = p.area ?? p.row ?? 0
+    // areaGroupKey groups all rows in a multi-row area under one key
+    const key = p.areaGroupKey ?? p.area ?? p.row ?? 0
     if (!map[key]) map[key] = []
     map[key].push(p)
   }

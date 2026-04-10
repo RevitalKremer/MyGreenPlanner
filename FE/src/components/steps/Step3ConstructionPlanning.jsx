@@ -101,12 +101,17 @@ export default function Step3ConstructionPlanning({
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync effects ───────────────────────────────────────────────────────
+  // Seed customBasesMap per panel row to avoid mixing multi-row offsets.
+  // Key: trapezoidId (edit bar uses this); offsets are per-row only for the FIRST row
+  // (multi-row base editing is deferred — for now, rendering uses sb.offsetFromStartCm directly).
   useEffect(() => {
     if (!beBasesData) return
     const map = {}
     for (const areaData of beBasesData) {
       const bdMap = areaData.basesDataMap || {}
-      for (const base of (areaData.bases || [])) {
+      // Only seed from first row's bases (row 0) to avoid multi-row offset mixing
+      const row0Bases = (areaData.bases || []).filter(b => (b._panelRowIdx ?? 0) === 0)
+      for (const base of row0Bases) {
         const tid = base.trapezoidId
         const frameStart = bdMap[tid]?.frameStartCm ?? 0
         if (!map[tid]) map[tid] = []

@@ -58,6 +58,9 @@ class RectAreaLayout(BaseModel):
     """
     Drawn rectangular area — pixel-space geometry and canvas settings.
     Physical parameters (angleDeg, frontHeightCm) live in ProjectData.areas[].settings.
+
+    Multi-row areas: multiple RectAreaLayout entries share the same areaGroupId.
+    All rows in a group share angle, frontHeight, rotation, and areaVertical.
     """
     id: str
     vertices: list[Point]                               # 4 corners in screen pixels
@@ -69,6 +72,10 @@ class RectAreaLayout(BaseModel):
     manualTrapezoids: bool = False
     manualColTrapezoids: dict[str, str] = Field(default_factory=dict)
     # str(colIdx) → explicit trapezoid ID override
+
+    # Multi-row grouping
+    areaGroupId: Optional[str] = None                   # links rows in the same logical area (e.g. "A")
+    rowIndex: int = 0                                   # 0 = first row, 1 = second, etc. within group
 
 
 # ── Panels (pixel + logical — synced from data) ───────────────────────────────
@@ -106,6 +113,7 @@ class PanelLayout(BaseModel):
 
     yDir: Optional[str] = None   # panel stacking direction: 'btt' | 'ttb'
     isEmpty: bool = False        # True for ghost/empty slots
+    panelRowIdx: int = 0         # which panel row within the area group (multi-row areas)
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────

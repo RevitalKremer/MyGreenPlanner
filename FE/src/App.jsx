@@ -133,26 +133,51 @@ function App() {
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
           lineOrientations: firstTrap?.lineOrientations ?? [PANEL_V],
-          panelGrid: a.panelGrid ?? null,
+          panelRows: a.panelRows ?? (a.panelGrid ? [{ rowIndex: 0, panelGrid: a.panelGrid }] : []),
         }
       }))
     }
 
     const { computedAreas = [], computedTrapezoids = [] } = step3
 
-    // Convert to rails format
+    // Flatten rails, tagging each with _panelRowIdx for per-row lookup
+    const flattenRailsWithRowIdx = (d) => {
+      if (!d) return []
+      if (Array.isArray(d)) return d
+      const result = []
+      for (const [rowIdx, items] of Object.entries(d)) {
+        for (const item of items) {
+          result.push({ ...item, _panelRowIdx: Number(rowIdx) })
+        }
+      }
+      return result
+    }
+
+    // Convert to rails format (flatten per-row dict to flat list)
     const railsData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
-      rails: ca.rails || []
+      rails: flattenRailsWithRowIdx(ca.rails),
+      numLargeGaps: ca.numLargeGaps ?? 0,
     }))
     setBeRailsData(railsData)
 
-    // Convert to bases format (include diagonals)
+    // Convert to bases format (flatten per-row dict, tag each base with _panelRowIdx)
+    const flattenBasesWithRowIdx = (d) => {
+      if (!d) return []
+      if (Array.isArray(d)) return d
+      const result = []
+      for (const [rowIdx, items] of Object.entries(d)) {
+        for (const item of items) {
+          result.push({ ...item, _panelRowIdx: Number(rowIdx) })
+        }
+      }
+      return result
+    }
     const basesData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
-      bases: ca.bases || [],
+      bases: flattenBasesWithRowIdx(ca.bases),
       diagonals: ca.diagonals || [],
     }))
     setBeBasesData(basesData)
@@ -563,16 +588,40 @@ function App() {
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             rectAreas={s.rectAreas}
             setRectAreas={s.setRectAreas}
-            onAddRectArea={(rawRect) => {
+            onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
                 const idx = prev.length
+                if (addToGroupId) {
+                  // Adding a new row to an existing area group
+                  const parentArea = prev.find(a => (a.areaGroupId || a.label) === addToGroupId)
+                  const groupRows = prev.filter(a => (a.areaGroupId || a.label) === addToGroupId)
+                  const nextRowIndex = groupRows.length
+                  return [...prev, {
+                    ...rawRect,
+                    id: `${addToGroupId}_r${nextRowIndex}`,
+                    label: parentArea?.label ?? addToGroupId,
+                    color: parentArea?.color ?? AREA_PALETTE[idx % AREA_PALETTE.length],
+                    frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
+                    angle: parentArea?.angle ?? s.panelAngle ?? '',
+                    areaGroupId: addToGroupId,
+                    rowIndex: nextRowIndex,
+                    areaVertical: parentArea?.areaVertical ?? false,
+                    rotation: parentArea?.rotation ?? 0,
+                    manualTrapezoids: false,
+                    manualColTrapezoids: {},
+                  }]
+                }
+                // New standalone area
+                const newLabel = String.fromCharCode(65 + idx % 26)
                 return [...prev, {
                   ...rawRect,
-                  id: String.fromCharCode(65 + idx % 26),
-                  label: String.fromCharCode(65 + idx % 26),
+                  id: newLabel,
+                  label: newLabel,
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
+                  areaGroupId: newLabel,
+                  rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},
                 }]
@@ -654,6 +703,7 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
             bomDeltas={s.step5BomDeltas ?? {}}

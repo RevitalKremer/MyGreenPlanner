@@ -4,6 +4,16 @@ import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 
 /**
+ * Flatten rails/bases from dict[rowIndex → list] to a single list.
+ * Handles both new dict format and legacy list format.
+ */
+function flattenRowDict(d) {
+  if (!d) return []
+  if (Array.isArray(d)) return d  // legacy list format
+  return Object.values(d).flat()
+}
+
+/**
  * Derives row-level data: panel counts, row keys, line rails,
  * trapezoid maps, and construction geometry from BE data.
  */
@@ -23,7 +33,7 @@ export default function useRowData({
   const rowPanelCounts = useMemo(() => {
     const map = {}
     panels.forEach(p => {
-      const key = (p.area ?? p.row) ?? 'unassigned'
+      const key = p.areaGroupKey ?? (p.area ?? p.row) ?? 'unassigned'
       map[key] = (map[key] || 0) + 1
     })
     return map
@@ -44,9 +54,10 @@ export default function useRowData({
     const area    = areas[areaKey]
     if (!area) return null
     const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
-    if (!beArea?.rails?.length) return null
+    const flatRails = flattenRowDict(beArea?.rails)
+    if (!flatRails.length) return null
     const map = {}
-    for (const r of beArea.rails) {
+    for (const r of flatRails) {
       if (!map[r.lineIdx]) map[r.lineIdx] = []
       map[r.lineIdx].push(r.offsetFromLineFrontCm)
     }
@@ -122,7 +133,7 @@ export default function useRowData({
 
       const areaObj    = areas[areaKey]
       const beAreaData = beRailsData?.find(a => (a.areaId != null && areaObj?.id != null ? a.areaId === areaObj.id : a.areaLabel === areaObj?.label))
-      const rails      = beAreaData?.rails ?? []
+      const rails      = flattenRowDict(beAreaData?.rails)
 
       const measuredRowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
       const numRailConnectors = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegmentsMm.length - 1), 0)
@@ -142,7 +153,7 @@ export default function useRowData({
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
           railOverhang,
-          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+          panelsPerLine: (areas[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
           numRails, numLines,
           numLargeGaps: beAreaData?.numLargeGaps ?? 0,
           numRailConnectors,
@@ -161,7 +172,7 @@ export default function useRowData({
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,
-        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+        panelsPerLine: (areas[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
         numRails, numLines,
         numLargeGaps: beAreaData?.numLargeGaps ?? 0,
         numRailConnectors,

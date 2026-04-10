@@ -70,6 +70,8 @@ export default function Step2PanelPlacement({
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
   const [snapToGridlines, setSnapToGridlines] = useState(false)
+  // Multi-row: when set, the next drawn area will be added to this areaGroupId
+  const [addRowToGroup, setAddRowToGroup] = useState(null)
 
   // Clear trapezoid override whenever selection changes
   useEffect(() => {
@@ -126,8 +128,10 @@ export default function Step2PanelPlacement({
   const handleAddRectArea = useCallback((area) => {
     pendingNewAreaIdxRef.current = rectAreas.length
     const isAllLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
-    onAddRectArea?.({ ...area, mode: isAllLocked ? 'ylocked' : 'free' })
-  }, [rectAreas, onAddRectArea])
+    const groupId = addRowToGroup
+    onAddRectArea?.({ ...area, mode: isAllLocked ? 'ylocked' : 'free' }, groupId)
+    if (groupId) setAddRowToGroup(null)  // reset after use
+  }, [rectAreas, onAddRectArea, addRowToGroup])
 
   const handleDeleteArea = useCallback((areaKey) => {
     // After deletion, indices shift: next area lands at same index, or previous if it was last
@@ -227,6 +231,25 @@ export default function Step2PanelPlacement({
 
     return result
   }, [panels])
+
+  // Group rows by areaGroupId for multi-row display
+  const areaGroups = useMemo(() => {
+    const groups = new Map()  // areaGroupId → { label, color, areaIndices: [], rows: [] }
+    rows.forEach((row, rowIdx) => {
+      const areaIdx = row[0]?.area
+      if (areaIdx == null) return
+      const area = rectAreas[areaIdx]
+      if (!area) return
+      const groupId = area.areaGroupId || area.label || area.id || `area-${areaIdx}`
+      if (!groups.has(groupId)) {
+        groups.set(groupId, { groupId, label: area.label, color: area.color, areaIndices: [], rows: [] })
+      }
+      const g = groups.get(groupId)
+      g.areaIndices.push(areaIdx)
+      g.rows.push({ rowIdx, row, areaIdx, panelRowIndex: area.rowIndex ?? 0 })
+    })
+    return [...groups.values()]
+  }, [rows, rectAreas])
 
   const panelToRowMap = useMemo(() => {
     const map = new Map()
@@ -579,7 +602,27 @@ export default function Step2PanelPlacement({
             selectedPanels={selectedPanels} setSelectedPanels={setSelectedPanels}
             setTrapIdOverride={setTrapIdOverride}
             rows={rows}
+            areaGroups={areaGroups}
             areaLabel={areaLabel} getAreaKey={getAreaKey}
+            onMergeRowIntoArea={(rowAreaIdx, targetGroupId) => {
+              setRectAreas(prev => {
+                const targetRows = prev.filter(a => (a.areaGroupId || a.label) === targetGroupId)
+                const targetArea = targetRows[0]
+                const nextRowIndex = targetRows.length
+                return prev.map((a, idx) => {
+                  if (idx !== rowAreaIdx) return a
+                  return {
+                    ...a,
+                    areaGroupId: targetGroupId,
+                    label: targetArea?.label ?? targetGroupId,
+                    rowIndex: nextRowIndex,
+                    angle: targetArea?.angle ?? a.angle,
+                    frontHeight: targetArea?.frontHeight ?? a.frontHeight,
+                    color: targetArea?.color ?? a.color,
+                  }
+                })
+              })
+            }}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
             rectAreas={rectAreas}
@@ -630,6 +673,17 @@ export default function Step2PanelPlacement({
             onDeleteArea={handleDeleteArea}
             onResetArea={regenerateSingleRowHandler}
             onRotateArea90={handleRotateArea90}
+            addRowToGroup={addRowToGroup}
+            onAddRowToArea={() => {
+              if (selectedAreaIdx == null) return
+              const area = rectAreas[selectedAreaIdx]
+              const groupId = area?.areaGroupId || area?.label
+              if (groupId) {
+                setAddRowToGroup(groupId)
+                setActiveTool('area')  // switch to area draw mode
+              }
+            }}
+            onCancelAddRow={() => setAddRowToGroup(null)}
           />
         )}
       </div>

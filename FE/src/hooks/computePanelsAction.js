@@ -92,7 +92,17 @@ export function computePanelsAction({
     rectAreas.forEach((area, areaIdx) => {
       if (areaIdx === onlyAreaIdx) return
       const areaLabel = area.label || area.id || `area-${areaIdx}`
-      if (panelGrid[areaLabel]) newPanelGrid[areaLabel] = panelGrid[areaLabel]
+      if (panelGrid[areaLabel]) {
+        if (!newPanelGrid[areaLabel]) newPanelGrid[areaLabel] = []
+        // Merge: preserve existing rows' grids
+        const existing = panelGrid[areaLabel]
+        if (Array.isArray(existing)) {
+          existing.forEach((g, ri) => { if (g) newPanelGrid[areaLabel][ri] = g })
+        } else {
+          // Legacy single grid — wrap as row 0
+          newPanelGrid[areaLabel][0] = existing
+        }
+      }
       const existingPanels = panels.filter(p => p.area === areaIdx)
       const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
       areaLineConfigs[areaIdx] = {
@@ -107,6 +117,18 @@ export function computePanelsAction({
         }
       })
     })
+  }
+
+  // Pre-compute areaGroupKey: index of the first rectArea in each group
+  const areaGroupKeyMap = {}  // areaIdx → firstIdxInGroup
+  rectAreas.forEach((area, areaIdx) => {
+    const groupId = area.areaGroupId || area.label || area.id || `area-${areaIdx}`
+    if (!(groupId in areaGroupKeyMap)) areaGroupKeyMap[groupId] = areaIdx
+  })
+  const getGroupKey = (areaIdx) => {
+    const area = rectAreas[areaIdx]
+    const groupId = area?.areaGroupId || area?.label || area?.id || `area-${areaIdx}`
+    return areaGroupKeyMap[groupId] ?? areaIdx
   }
 
   let panelId = allPanels.length > 0 ? Math.max(...allPanels.map(p => p.id)) + 1 : 1
@@ -131,7 +153,10 @@ export function computePanelsAction({
       filtered = [computed[0]]
     }
 
-    newPanelGrid[areaLabel] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
+    // Store per-row grid: panelGrid[areaLabel] is an array indexed by rowIndex
+    const rowIdx = area.rowIndex ?? 0
+    if (!newPanelGrid[areaLabel]) newPanelGrid[areaLabel] = []
+    newPanelGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
 
     // Area-level orientation (all rows, no empties) — used for areas state and step 4
     const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
@@ -190,7 +215,7 @@ export function computePanelsAction({
       filtered.forEach(p => {
         const physCol = p.coveredCols?.[0] ?? p.col ?? 0
         const sig = colSig(physCol)
-        allPanels.push({ ...p, id: panelId++, area: areaIdx,
+        allPanels.push({ ...p, id: panelId++, area: areaIdx, areaGroupKey: getGroupKey(areaIdx), panelRowIdx: rowIdx,
           trapezoidId: sigToTrap.get(sig) || areaLabel,
           xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
       })
@@ -206,7 +231,7 @@ export function computePanelsAction({
       })
       filtered.forEach(p => {
         const trapId = colToTrap[String(p.col ?? 0)] ?? defaultTrap
-        allPanels.push({ ...p, id: panelId++, area: areaIdx, trapezoidId: trapId, xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
+        allPanels.push({ ...p, id: panelId++, area: areaIdx, areaGroupKey: getGroupKey(areaIdx), panelRowIdx: rowIdx, trapezoidId: trapId, xDir: area.xDir ?? 'ltr', yDir: area.yDir ?? 'ttb' })
       })
     }
   })
@@ -217,13 +242,25 @@ export function computePanelsAction({
     .map((_, i) => i)
     .filter(i => !areaIndicesWithPanels.has(i) && !existingAreaIndices.has(i))
 
-  // Build updated areas array
-  const updatedAreas = rectAreas.map((a, idx) => ({
-    label: a.label,
-    angle: parseFloat(a.angle) || 0,
-    frontHeight: parseFloat(a.frontHeight) || 0,
-    lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? [PANEL_V],
-  }))
+  // Build updated areas array — group by areaGroupId for multi-row areas
+  const areaGroupMap = new Map()  // areaGroupId → { label, angle, frontHeight, lineOrientations, panelRows: [] }
+  rectAreas.forEach((a, idx) => {
+    const groupId = a.areaGroupId || a.label || a.id || `area-${idx}`
+    if (!areaGroupMap.has(groupId)) {
+      areaGroupMap.set(groupId, {
+        label: a.label,
+        angle: parseFloat(a.angle) || 0,
+        frontHeight: parseFloat(a.frontHeight) || 0,
+        lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? [PANEL_V],
+        areaVertical: a.areaVertical ?? false,
+        panelRows: [],
+      })
+    }
+    const group = areaGroupMap.get(groupId)
+    const ri = a.rowIndex ?? 0
+    group.panelRows.push({ rowIndex: ri })
+  })
+  const updatedAreas = [...areaGroupMap.values()]
 
   // Merge trapezoid configs (preserve existing fields, override with new)
   const mergedTrapConfigs = {}
@@ -411,9 +448,11 @@ export function reSyncLoadedPanelColsAction({
   const newGrid = {}
   rectAreas.forEach((area, areaIdx) => {
     const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const rowIdx = area.rowIndex ?? 0
     const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm)
     const areaFiltered = next.filter(p => p.area === areaIdx)
-    newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, ratio)
+    if (!newGrid[areaLabel]) newGrid[areaLabel] = []
+    newGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, areaFiltered, ratio)
   })
 
   return { panels: next, panelGrid: newGrid }
@@ -437,9 +476,11 @@ export function rebuildPanelGridAction({
   const newGrid = {}
   rectAreas.forEach((area, areaIdx) => {
     const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const rowIdx = area.rowIndex ?? 0
     const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
     const areaFiltered = panels.filter(p => p.area === areaIdx)
-    newGrid[areaLabel] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
+    if (!newGrid[areaLabel]) newGrid[areaLabel] = []
+    newGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
   })
   return newGrid
 }

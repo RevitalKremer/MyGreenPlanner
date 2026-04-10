@@ -232,7 +232,7 @@ export default function Step4PdfReport({
   panels = [], refinedArea, areas = [], project, projectId,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
-  beBasesData = null, beTrapezoidsData = null,
+  beRailsData = null, beBasesData = null, beTrapezoidsData = null,
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
 }) {
@@ -599,6 +599,7 @@ export default function Step4PdfReport({
               pageRef={page4Ref}
               panels={panels} refinedArea={refinedArea}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
+              beRailsData={beRailsData}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
           </ScaledPage>

@@ -223,14 +223,51 @@ export function useProjectState() {
       lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
     }))
     const grid = {}
-    ;(s2.areas || []).forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
+    ;(s2.areas || []).forEach(a => {
+      const label = a.label ?? a.id
+      if (a.panelRows?.length > 0) {
+        // New format: panelRows array
+        grid[label] = a.panelRows.map(pr => pr.panelGrid).filter(Boolean)
+      } else if (a.panelGrid) {
+        // Legacy format: single panelGrid → wrap as array
+        grid[label] = [a.panelGrid]
+      }
+    })
 
     // ── Enrich rectAreas with step2 area data ──
+    // Multi-row areas: s2.areas has fewer entries than layout.rectAreas (one per group).
+    // Use panelRows count to assign rectAreas to s2.areas sequentially.
     let enrichedRectAreas = layout.rectAreas || []
     if (layout.rectAreas && s2.areas) {
+      // Build a sequential mapping: rectArea index → { s2Area, rowIndex }
+      const rectToArea = []
+      let raIdx = 0
+      for (const s2a of s2.areas) {
+        const rowCount = Math.max(1, s2a.panelRows?.length ?? 1)
+        for (let ri = 0; ri < rowCount && raIdx < layout.rectAreas.length; ri++) {
+          rectToArea.push({ s2a, rowIndex: ri })
+          raIdx++
+        }
+      }
+      // Assign any remaining rectAreas (shouldn't happen, but be safe)
+      while (raIdx < layout.rectAreas.length) {
+        rectToArea.push({ s2a: {}, rowIndex: 0 })
+        raIdx++
+      }
+
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
-        return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+        const { s2a, rowIndex: derivedRowIndex } = rectToArea[idx] || { s2a: {}, rowIndex: 0 }
+        const effectiveGroupId = s2a.label || ra.areaGroupId || ra.label || ra.id
+        const rowIndex = ra.rowIndex ?? derivedRowIndex
+        return {
+          ...ra,
+          // Keep rectArea's own id (unique per drawn row); don't overwrite with s2.area.id
+          label: s2a.label ?? ra.id,
+          frontHeight: String(s2a.frontHeightCm ?? ''),
+          angle: String(s2a.angleDeg ?? ''),
+          areaGroupId: ra.areaGroupId || effectiveGroupId,
+          rowIndex,
+        }
       })
     }
     if (enrichedRectAreas.length > 0) skipRecomputeRef.current = 'load'
@@ -244,7 +281,17 @@ export function useProjectState() {
         referenceLineLengthCm: layout.referenceLineLengthCm != null ? String(layout.referenceLineLengthCm) : null,
         pixelToCmRatio: layout.pixelToCmRatio ?? null,
         baseline: layout.baseline ?? null,
-        panels: layout.panels ? layout.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A' })) : [],
+        panels: layout.panels ? layout.panels.map(p => {
+          const areaIdx = p.area ?? p.row ?? 0
+          const ra = enrichedRectAreas[areaIdx]
+          const panelRowIdx = p.panelRowIdx ?? ra?.rowIndex ?? 0
+          // areaGroupKey: index of the first rectArea in this group
+          const groupId = ra?.areaGroupId || ra?.label
+          const areaGroupKey = groupId != null
+            ? enrichedRectAreas.findIndex(a => (a.areaGroupId || a.label) === groupId)
+            : areaIdx
+          return { ...p, area: areaIdx, trapezoidId: p.trapezoidId ?? 'A', panelRowIdx, areaGroupKey: areaGroupKey >= 0 ? areaGroupKey : areaIdx }
+        }) : [],
         rectAreas: enrichedRectAreas,
         deletedPanelKeys: layout.deletedPanelKeys ?? {},
       },
@@ -313,7 +360,9 @@ export function useProjectState() {
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
         trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (a.trapezoidIds ?? []),
-        panelGrid: d.step2.panelGrid[ra?.label ?? a.label] ?? null,
+        panelRows: (d.step2.panelGrid[ra?.label ?? a.label] || []).map((pg, ri) => ({
+          rowIndex: ri, panelGrid: pg ?? null,
+        })),
       }
     })
     const { trapezoidConfigs: _tc, panelGrid: _pg, ...step2Rest } = d.step2
