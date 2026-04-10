@@ -353,24 +353,73 @@ export function useProjectState() {
     }))
     // Enrich areas with rectAreas geometry + panel-derived trapezoidIds
     // d.step2.areas has one entry per area GROUP (not per rectArea).
-    // Find the first rectArea for each group by matching label/areaGroupId.
+    // Build a robust panel→area mapping using multiple strategies.
+
+    // Pre-build: for each rectArea index, which areaGroupKey and label?
+    const raGroupKeys = {}  // rectAreaIdx → areaGroupKey
+    const raLabels = {}     // rectAreaIdx → label
+    rectAreas.forEach((ra, idx) => {
+      const gid = ra.areaGroupId || ra.label || ra.id
+      raLabels[idx] = ra.label || ra.id
+      // Find the first rectArea with this groupId
+      const firstIdx = rectAreas.findIndex(r => (r.areaGroupId || r.label || r.id) === gid)
+      raGroupKeys[idx] = firstIdx >= 0 ? firstIdx : idx
+    })
+
     const enrichedAreas = d.step2.areas.map((a) => {
       const groupLabel = a.label
-      // Find the primary rectArea for this group by matching areaGroupId, label, or area index
+
+      // Strategy 1: find rectArea by areaGroupId or label match
       const ra = rectAreas.find(r => (r.areaGroupId || r.label) === groupLabel)
         || rectAreas.find(r => r.label === groupLabel)
-      // Filter panels by areaGroupKey (not p.area which is rectArea index)
-      const groupKey = ra ? rectAreas.indexOf(ra) : undefined
-      const areaTrapIds = [...new Set(
-        panels.filter(p => p.areaGroupKey === groupKey || (groupKey === undefined && (rectAreas[p.area]?.label === groupLabel)))
-          .map(p => p.trapezoidId).filter(Boolean)
-      )]
+
+      // Strategy 2: find panels belonging to this area group via multiple methods
+      let areaPanels
+      if (ra) {
+        const groupKey = rectAreas.indexOf(ra)
+        // Match by areaGroupKey
+        areaPanels = panels.filter(p => p.areaGroupKey === groupKey)
+        // Fallback: match by rectArea label
+        if (areaPanels.length === 0) {
+          const matchingRaIdxs = rectAreas
+            .map((r, i) => ((r.areaGroupId || r.label) === groupLabel) ? i : -1)
+            .filter(i => i >= 0)
+          areaPanels = panels.filter(p => matchingRaIdxs.includes(p.area))
+        }
+      } else {
+        // No rectArea match: find panels whose rectArea label matches
+        areaPanels = panels.filter(p => raLabels[p.area] === groupLabel)
+      }
+
+      // Strategy 3: if still empty, try matching by trapezoidId prefix (e.g., "D" → D1, D2, D3)
+      if (areaPanels.length === 0) {
+        areaPanels = panels.filter(p => {
+          const tid = p.trapezoidId || ''
+          return tid === groupLabel || tid.replace(/\d+$/, '') === groupLabel
+        })
+      }
+
+      // Derive trapezoidIds from panels (primary source of truth)
+      const panelDerivedTrapIds = [...new Set(areaPanels.map(p => p.trapezoidId).filter(Boolean))]
+      // Use panel-derived IDs, but keep stored IDs that panels might have lost during recompute
+      const storedTrapIds = a.trapezoidIds ?? []
+      // Only use stored as base if panel-derived is empty; otherwise panel-derived wins
+      // but validate stored IDs belong to this area (prefix matches label)
+      const validStoredIds = storedTrapIds.filter(tid =>
+        tid === groupLabel || tid.startsWith(groupLabel)
+      )
+      const areaTrapIds = panelDerivedTrapIds.length > 0
+        ? panelDerivedTrapIds
+        : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
+
+      console.log(`[getProjectData] area "${groupLabel}": strategy=${ra ? (areaPanels.length > 0 ? '1/2' : '3') : 'noRA'}, groupKey=${ra ? rectAreas.indexOf(ra) : 'N/A'}, panels=${areaPanels.length}, panelDerived=[${panelDerivedTrapIds.join(',')}], stored=[${storedTrapIds.join(',')}], final=[${areaTrapIds.join(',')}]`)
+
       return {
         ...a,
         label: groupLabel,
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
-        trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (a.trapezoidIds ?? []),
+        trapezoidIds: areaTrapIds,
         panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
           rowIndex: ri, panelGrid: pg ?? null,
         })),
@@ -644,10 +693,14 @@ export function useProjectState() {
 
     setPanelGrid(result.panelGrid)
     setPanels(result.panels)
-    setAreas(prev => result.areas.map((a, idx) => ({
-      ...prev[idx],  // preserve existing fields like id, trapezoidIds from server
-      ...a,
-    })))
+    setAreas(prev => {
+      console.log(`[setAreas] prev labels: [${prev.map(p => p.label).join(', ')}], result labels: [${result.areas.map(a => a.label).join(', ')}]`)
+      return result.areas.map((a) => {
+        // Match previous area by label (not index — lengths may differ for multi-trap areas)
+        const prevMatch = prev.find(p => p.label === a.label)
+        return { ...prevMatch, ...a }
+      })
+    })
     setTrapezoidConfigs(result.trapezoidConfigs)
   }
 

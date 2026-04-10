@@ -818,6 +818,12 @@ def _compute_all_trapezoid_details(
                 area_idx = idx
                 break
         if not area:
+            import logging
+            logging.error(
+                f"Trapezoid '{trap_id}' not found in any area's trapezoidIds. "
+                f"Available areas: {[(a.get('label'), a.get('trapezoidIds', [])) for a in areas]}. "
+                f"Skipping trapezoid detail computation."
+            )
             continue
 
         area_id = area.get('id', 0)
