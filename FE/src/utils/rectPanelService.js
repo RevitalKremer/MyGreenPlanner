@@ -104,6 +104,7 @@ export function computeRectPanels(rect, cmPerPixel, panelSpec, panelGapCm) {
       line: p.rowIndex,
       col:  p.coveredCols?.[0] ?? p.colIndex,
       coveredCols: p.coveredCols,
+      xDir, yDir,
     }
   })
 }
@@ -228,7 +229,7 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
       height:   p.rowH,
       widthCm:  p.widthCm,
       heightCm: p.heightCm,
-      rotation,
+      rotation: effectiveRotation,
       cx: imgCx,
       cy: imgCy,
       row:  p.rowIndex,

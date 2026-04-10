@@ -219,6 +219,11 @@ const he = {
   'step2.tool.deleteAreaTitle': 'מחק אזור נבחר',
   'step2.tool.resetArea':       'איפוס',
   'step2.tool.resetAreaTitle':  'אפס אזור לפריסה המקורית',
+  'step2.tool.rotateArea90Title': 'סובב אזור נבחר ב-90°',
+  'step2.tool.drawVerticalOn':   'V-Draw',
+  'step2.tool.drawVerticalOff':  'V-Draw',
+  'step2.tool.drawVerticalOnTitle':  'מצייר אזורים אנכיים. לחץ למעבר לאופקי.',
+  'step2.tool.drawVerticalOffTitle': 'מצייר אזורים אופקיים. לחץ לציור אנכי.',
   'step2.tool.selectPanelTool': 'בחר כלי פנל למעלה',
 
   // ── Step 3 – Construction Planning sidebar ───────────────────────────────

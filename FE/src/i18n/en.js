@@ -219,6 +219,11 @@ const en = {
   'step2.tool.deleteAreaTitle':   'Delete selected area',
   'step2.tool.resetArea':         'Reset',
   'step2.tool.resetAreaTitle':    'Reset area to original layout',
+  'step2.tool.rotateArea90Title': 'Rotate selected area 90°',
+  'step2.tool.drawVerticalOn':   'V-Draw',
+  'step2.tool.drawVerticalOff':  'V-Draw',
+  'step2.tool.drawVerticalOnTitle':  'Drawing vertical areas. Click to switch to horizontal.',
+  'step2.tool.drawVerticalOffTitle': 'Drawing horizontal areas. Click to draw vertical.',
   'step2.tool.selectPanelTool':   'Select a panel tool above',
 
   // ── Step 3 – Construction Planning sidebar ───────────────────────────────

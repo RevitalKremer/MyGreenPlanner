@@ -14,11 +14,13 @@ export default function ToolPanel({
   showVGridlines, setShowVGridlines,
   snapToGridlines, setSnapToGridlines,
   yLocked, onToggleYLock, hasAreas,
+  drawVertical, onToggleDrawVertical,
   onSetEditMode,
   selectedAreaIdx,
   selectedAreaLabel,
   onDeleteArea,
   onResetArea,
+  onRotateArea90,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -116,6 +118,14 @@ export default function ToolPanel({
                   )}
                   {yLocked ? t('step2.tool.yLocked') : t('step2.tool.yFree')}
                 </button>
+                {/* V-Draw toggle */}
+                <button
+                  onClick={onToggleDrawVertical}
+                  title={drawVertical ? t('step2.tool.drawVerticalOnTitle') : t('step2.tool.drawVerticalOffTitle')}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem', background: drawVertical ? BG_MID : 'white', color: drawVertical ? TEXT_DARK : TEXT_VERY_LIGHT, border: `1px solid ${drawVertical ? BORDER_MID : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+                >
+                  ⊞ {drawVertical ? t('step2.tool.drawVerticalOn') : t('step2.tool.drawVerticalOff')}
+                </button>
                 {/* Area selection hint / actions */}
                 <div style={{ padding: '0.5rem 0.6rem', background: BG_FAINT, borderRadius: '7px', border: `1px solid ${BG_MID}` }}>
                   {areaHasSelection ? (
@@ -129,6 +139,9 @@ export default function ToolPanel({
                         </button>
                         <button style={areaActionStyle(false)} onClick={() => onResetArea(selectedAreaIdx)} title={t('step2.tool.resetAreaTitle')}>
                           ↺ {t('step2.tool.resetArea')}
+                        </button>
+                        <button style={areaActionStyle(false)} onClick={() => onRotateArea90?.(selectedAreaIdx)} title={t('step2.tool.rotateArea90Title')}>
+                          ↻ 90°
                         </button>
                       </div>
                     </>

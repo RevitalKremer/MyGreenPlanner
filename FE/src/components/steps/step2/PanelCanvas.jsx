@@ -36,6 +36,7 @@ export default function PanelCanvas({
   rebuildPanelGrid,
   recordPanelDeletion,
   panelGapCm,
+  drawVertical = false,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -82,16 +83,23 @@ export default function PanelCanvas({
     const dx = drawRectEnd.x - drawRectStart.x
     const dy = drawRectEnd.y - drawRectStart.y
     if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return []
+    const absDx = Math.abs(dx), absDy = Math.abs(dy)
+    // For vertical draw: swap width/height AND swap xDir/yDir sources
+    // so the fill algorithm starts from the draw start point in rotated frame
+    const vd = drawVertical
     return computeRectPanels({
       cx: (drawRectStart.x + drawRectEnd.x) / 2,
       cy: (drawRectStart.y + drawRectEnd.y) / 2,
-      width: Math.abs(dx),
-      height: Math.abs(dy),
-      rotation: 0,
-      xDir: dx >= 0 ? 'ltr' : 'rtl',
-      yDir: dy >= 0 ? 'ttb' : 'btt',
+      width:  vd ? absDy : absDx,
+      height: vd ? absDx : absDy,
+      rotation: vd ? 90 : 0,
+      // V-Draw: 90° rotation maps localX→screenY, localY→screen-X
+      // xDir controls column fill along localX (→ screen Y after rotation)
+      // yDir controls row stack along localY (→ screen -X after rotation, hence inverted)
+      xDir: vd ? (dy >= 0 ? 'ltr' : 'rtl') : (dx >= 0 ? 'ltr' : 'rtl'),
+      yDir: vd ? (dx >= 0 ? 'btt' : 'ttb') : (dy >= 0 ? 'ttb' : 'btt'),
     }, cmPerPixel, panelSpec, panelGapCm)
-  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec, panelGapCm])
+  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec, panelGapCm, drawVertical])
 
   // Space bar for pan-anywhere
   useEffect(() => {
@@ -497,13 +505,15 @@ export default function PanelCanvas({
       const dx = drawRectEnd.x - drawRectStart.x
       const dy = drawRectEnd.y - drawRectStart.y
       if (Math.abs(dx) > 2 && Math.abs(dy) > 2 && drawPreviewPanels.length > 0) {
-        const yDir = dy >= 0 ? 'ttb' : 'btt'
-        const xDir = dx >= 0 ? 'ltr' : 'rtl'
+        const vd = drawVertical
+        const xDir = vd ? (dy >= 0 ? 'ltr' : 'rtl') : (dx >= 0 ? 'ltr' : 'rtl')
+        const yDir = vd ? (dx >= 0 ? 'btt' : 'ttb') : (dy >= 0 ? 'ttb' : 'btt')
+        const baseRotation = drawVertical ? 90 : 0
         const vertices = fitPolygonToRectPanels(
-          drawPreviewPanels, 0, drawRectStart.x, drawRectStart.y
+          drawPreviewPanels, baseRotation, drawRectStart.x, drawRectStart.y
         )
         if (vertices) {
-          onAddRectArea?.({ vertices, rotation: 0, yDir, xDir, pivotIdx: 0, mode: 'free' })
+          onAddRectArea?.({ vertices, rotation: 0, yDir, xDir, pivotIdx: 0, mode: 'free', areaVertical: drawVertical })
         }
       }
       setDrawRectStart(null)

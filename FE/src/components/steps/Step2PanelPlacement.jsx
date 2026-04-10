@@ -65,6 +65,7 @@ export default function Step2PanelPlacement({
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
+  const [drawVertical, setDrawVertical] = useState(false)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
   const [snapToGridlines, setSnapToGridlines] = useState(false)
@@ -135,6 +136,23 @@ export default function Step2PanelPlacement({
     setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
     setSelectedPanels([])
   }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels])
+
+  const handleRotateArea90 = useCallback((areaIdx) => {
+    if (areaIdx == null || areaIdx >= rectAreas.length) return
+    setRectAreas(prev => prev.map((area, i) => {
+      if (i !== areaIdx) return area
+      const isVertical = !(area.areaVertical ?? false)
+      // Rotate all 4 vertices 90° around centroid
+      const cx = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+      const cy = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+      const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
+      const newVertices = area.vertices.map(v => ({
+        x: cx + (v.x - cx) * cosR - (v.y - cy) * sinR,
+        y: cy + (v.x - cx) * sinR + (v.y - cy) * cosR,
+      }))
+      return { ...area, vertices: newVertices, areaVertical: isVertical, rotation: 0 }
+    }))
+  }, [rectAreas.length, setRectAreas])
 
   // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
   useEffect(() => {
@@ -503,6 +521,7 @@ export default function Step2PanelPlacement({
             rebuildPanelGrid={rebuildPanelGrid}
             recordPanelDeletion={recordPanelDeletion}
             panelGapCm={appDefaults?.panelGapCm}
+            drawVertical={drawVertical}
           />
         ) : (
           <div className="step-content">
@@ -565,11 +584,13 @@ export default function Step2PanelPlacement({
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
             yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
+            drawVertical={drawVertical} onToggleDrawVertical={() => setDrawVertical(v => !v)}
             onSetEditMode={handleSetEditMode}
             selectedAreaIdx={selectedAreaIdx}
             selectedAreaLabel={typeof selectedAreaIdx === 'number' ? (rectAreas[selectedAreaIdx]?.label || String(selectedAreaIdx)) : null}
             onDeleteArea={handleDeleteArea}
             onResetArea={regenerateSingleRowHandler}
+            onRotateArea90={handleRotateArea90}
           />
         )}
       </div>
