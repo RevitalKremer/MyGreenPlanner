@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
-import { createProject, updateProject } from '../services/projectsApi'
+import { createProject, updateProject, uploadProjectImage, getProjectImageUrl } from '../services/projectsApi'
+import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
@@ -266,12 +267,19 @@ export function useProjectState() {
 
   const getLayoutData = () => {
     const l = pState.layout
+    const hasImageRef = l.uploadedImageData?.imageRef
+    
     return {
       ...l,
       currentStep,
       pixelToCmRatio: refinedArea?.pixelToCmRatio ?? l.pixelToCmRatio ?? null,
       // Strip FE-only fields before saving
-      uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
+      // If imageRef exists, don't send base64 imageData (reduces payload by ~1-2MB)
+      uploadedImageData: l.uploadedImageData ? {
+        ...l.uploadedImageData,
+        file: undefined,
+        imageData: hasImageRef ? undefined : l.uploadedImageData.imageData,  // Exclude base64 if using imageRef
+      } : null,
       rectAreas: l.rectAreas.map(ra => ({
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
         color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
@@ -319,14 +327,47 @@ export function useProjectState() {
     const roofSpec = currentProject?.roofSpec || null
     const layout   = getLayoutData()
     const data     = getProjectData()
+    
+    let projectId
     if (cloudProjectId) {
       await updateProject(cloudProjectId, { name, location, layout, data }, step)
-      return cloudProjectId
+      projectId = cloudProjectId
     } else {
       const saved = await createProject(name, location, layout, data, roofSpec)
       setCloudProjectId(saved.id)
-      return saved.id
+      projectId = saved.id
     }
+    
+    // After project is saved, upload image if it hasn't been uploaded yet
+    if (projectId && uploadedImageData && uploadedImageData.imageData && !uploadedImageData.imageRef) {
+      try {
+        // Convert base64 to blob (for white canvas or uploaded images)
+        const imageBlob = uploadedImageData.file || dataURLtoBlob(uploadedImageData.imageData)
+        const result = await uploadProjectImage(projectId, imageBlob)
+        
+        // Update state with imageRef
+        const updatedImageData = { ...uploadedImageData, imageRef: result.imageId }
+        setUploadedImageData(updatedImageData)
+        
+        // Update project again to use imageRef (this time without base64)
+        const updatedLayout = {
+          ...layout,
+          uploadedImageData: {
+            ...updatedImageData,
+            imageData: undefined,  // Remove base64 now that we have imageRef
+            file: undefined,
+          }
+        }
+        await updateProject(projectId, { layout: updatedLayout }, step)
+        
+        console.log('✅ Image uploaded and project updated with imageRef:', result.imageId)
+      } catch (error) {
+        console.error('Failed to upload image after project save:', error)
+        // Continue - project was saved with base64
+      }
+    }
+    
+    return projectId
   }
 
   // ── Panel layout handlers ─────────────────────────────────────────────────
@@ -446,10 +487,16 @@ export function useProjectState() {
     }
   }
 
-  const handleImageUploaded = (imageData) => {
+  const handleImageUploaded = async (imageData) => {
+    // Store image data immediately
+    // Actual upload to backend happens in handleSaveProject after project exists
     setUploadedImageData(imageData)
     setUploadedImageMode(true)
-    setRoofPolygon({ coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], area: imageData.width * imageData.height, confidence: 1 })
+    setRoofPolygon({ 
+      coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], 
+      area: imageData.width * imageData.height, 
+      confidence: 1 
+    })
     setReferenceLine(null)
     setReferenceLineLengthCm('')
   }
@@ -648,6 +695,49 @@ export function useProjectState() {
     }
   }
 
+  // ── Computed image source (handles both base64 and imageRef) ──
+  const [imageSrc, setImageSrc] = useState(null)
+  
+  useEffect(() => {
+    if (!uploadedImageData) {
+      setImageSrc(null)
+      return
+    }
+    
+    // New flow: fetch image from backend if imageRef exists
+    if (uploadedImageData.imageRef && cloudProjectId) {
+      const fetchImage = async () => {
+        try {
+          const url = getProjectImageUrl(cloudProjectId)
+          const response = await mgpRequest(url)
+          
+          if (!response.ok) {
+            console.error('Failed to fetch image:', response.status)
+            // Fallback to base64 if available
+            setImageSrc(uploadedImageData.imageData || null)
+            return
+          }
+          
+          const blob = await response.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          setImageSrc(blobUrl)
+          
+          // Cleanup function to revoke blob URL when component unmounts or deps change
+          return () => URL.revokeObjectURL(blobUrl)
+        } catch (error) {
+          console.error('Error fetching image:', error)
+          // Fallback to base64 if available
+          setImageSrc(uploadedImageData.imageData || null)
+        }
+      }
+      
+      fetchImage()
+    } else {
+      // Legacy flow: use base64 imageData
+      setImageSrc(uploadedImageData.imageData || null)
+    }
+  }, [uploadedImageData?.imageRef, uploadedImageData?.imageData, cloudProjectId])
+
   return {
     // Screen
     appScreen, setAppScreen,
@@ -660,6 +750,7 @@ export function useProjectState() {
     isProcessing,
     uploadedImageMode, setUploadedImageMode,
     uploadedImageData, setUploadedImageData,
+    imageSrc, // Computed: imageRef URL or base64 imageData
     imageRef, setImageRef,
     // Step 2
     refinedArea,
