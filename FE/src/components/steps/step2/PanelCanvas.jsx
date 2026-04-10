@@ -302,13 +302,10 @@ export default function PanelCanvas({
       const { areaIdx, cornerIdx: dragCornerIdx, startX, startY, startRotation, pivotX, pivotY, refLength, origVertices, origCornerX, origCornerY, areaVertical } = yLockDragState
       let deltaAngleDeg
       if (origCornerX !== undefined) {
-        // Corner drag: one axis → rotation (height locked), other axis → width extension
-        // Horizontal: Y → tilt, X → width (panels in row). v[3]=height(locked), v[1]=width.
-        // Vertical:   X → tilt, Y → width (panels in row). v[3]=height(locked), v[1]=width.
-        // Height vector (v[3]-pivot) is always locked. Width vector (v[1]-pivot) is extensible.
-        // The difference is which mouse axis drives the circle constraint.
+        const pivotIdx = 0
+        const isOppositeCorner = dragCornerIdx === ((pivotIdx + 2) % 4)
 
-        // 1. Rotation: constrain corner on circle using the tilt axis
+        // 1. Rotation from mouse position relative to pivot
         // Horizontal: Y displacement constrains, solve for X
         // Vertical:   X displacement constrains, solve for Y
         let newCornerX, newCornerY
@@ -337,38 +334,39 @@ export default function PanelCanvas({
         const snapping = absRot < 3
         if (snapping) deltaAngleDeg = -startRotation
 
-        // 2. Rebuild polygon: height vector locked, width vector extensible
-        // Detect which vector (v[1] or v[3]) is "height" (locked, ridge-to-eave):
-        // For horizontal areas: height is the more-vertical vector
-        // For vertical areas: height is the more-horizontal vector
+        // 2. Rebuild polygon
         const rad = deltaAngleDeg * Math.PI / 180
         const cosA = Math.cos(rad), sinA = Math.sin(rad)
 
         const v1x = origVertices[1].x - pivotX, v1y = origVertices[1].y - pivotY
         const v3x = origVertices[3].x - pivotX, v3y = origVertices[3].y - pivotY
+
+        // Detect which vector is height (locked) vs width
         const v1AbsY = Math.abs(v1y), v1AbsX = Math.abs(v1x)
         const v3AbsY = Math.abs(v3y), v3AbsX = Math.abs(v3x)
-        // Height vector: for horizontal areas it's the one more aligned with Y axis,
-        // for vertical areas it's the one more aligned with X axis
         const v1IsHeight = areaVertical ? (v1AbsX > v3AbsX) : (v1AbsY > v3AbsY)
-        const owx = v1IsHeight ? v3x : v1x, owy = v1IsHeight ? v3y : v1y  // width vec (extensible)
-        const ohx = v1IsHeight ? v1x : v3x, ohy = v1IsHeight ? v1y : v3y  // height vec (locked)
+        const owx = v1IsHeight ? v3x : v1x, owy = v1IsHeight ? v3y : v1y
+        const ohx = v1IsHeight ? v1x : v3x, ohy = v1IsHeight ? v1y : v3y
         const hIsV1 = v1IsHeight
         const origWidthDist = Math.hypot(owx, owy)
 
-        // Rotate height vector (locked magnitude)
+        // Rotate both vectors
         const nhx = ohx * cosA - ohy * sinA
         const nhy = ohx * sinA + ohy * cosA
-
-        // New width direction (rotated original width direction, unit vector)
         const nwdx = (owx * cosA - owy * sinA) / origWidthDist
         const nwdy = (owx * sinA + owy * cosA) / origWidthDist
 
-        // Project mouse onto new width direction from pivot → new width
-        const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
-        const newWidth = Math.max(minW, (x - pivotX) * nwdx + (y - pivotY) * nwdy)
+        let newWidth
+        if (isOppositeCorner) {
+          // v[2] drag: pure rotation — both height and width locked
+          newWidth = origWidthDist
+        } else {
+          // v[1] or v[3] drag: rotation + width extension
+          const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
+          newWidth = Math.max(minW, (x - pivotX) * nwdx + (y - pivotY) * nwdy)
+        }
 
-        // Reconstruct vertices: v[1] and v[3] must get the correct vectors back
+        // Reconstruct vertices
         const wVec = { x: newWidth * nwdx, y: newWidth * nwdy }
         const hVec = { x: nhx, y: nhy }
         const v1Vec = hIsV1 ? hVec : wVec
