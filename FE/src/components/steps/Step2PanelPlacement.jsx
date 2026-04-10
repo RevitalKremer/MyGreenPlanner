@@ -53,13 +53,19 @@ export default function Step2PanelPlacement({
   rebuildPanelGrid,
   recordPanelDeletion,
   appDefaults,
+  paramLimits = {},
   roofType,
 }) {
+  const angLim = paramLimits.mountingAngleDeg
+  const fhLim  = paramLimits.frontHeightCm
+  // Mounting section visible if either setting's roofTypes includes this roof (null = all)
+  const showMounting = !angLim.roofTypes || angLim.roofTypes.includes(roofType || 'concrete')
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
+  const [drawVertical, setDrawVertical] = useState(false)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
   const [snapToGridlines, setSnapToGridlines] = useState(false)
@@ -68,6 +74,41 @@ export default function Step2PanelPlacement({
   useEffect(() => {
     setTrapIdOverride(null)
   }, [selectedPanels])
+
+  // ── Auto-recalc trapezoids with 1s debounce ──
+  // Build a fingerprint per area from panel positions/orientations + area vertices.
+  // When it changes for a specific area, debounce and recalc that area's trapezoids.
+  // Uses a ref-based timer so that unrelated re-renders don't cancel pending recalcs.
+  const prevFingerprintRef = useRef({})
+  const pendingRecalcRef = useRef({})  // { [areaIdx]: timerId }
+  useEffect(() => {
+    const fp = {}
+    rectAreas.forEach((area, idx) => {
+      if (area.manualTrapezoids) return
+      const areaPanels = panels.filter(p => p.area === idx)
+      const verts = area.vertices?.map(v => `${Math.round(v.x)},${Math.round(v.y)}`).join(';') ?? ''
+      const panelFp = areaPanels.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)},${p.width},${p.height},${p.heightCm},${p.widthCm}`).join('|')
+      fp[idx] = `${verts}#${areaPanels.length}#${panelFp}#${area.rotation ?? 0}`
+    })
+
+    for (const idx of Object.keys(fp)) {
+      if (prevFingerprintRef.current[idx] !== fp[idx] && prevFingerprintRef.current[idx] !== undefined) {
+        const areaIdx = Number(idx)
+        // Reset debounce timer for this area
+        if (pendingRecalcRef.current[areaIdx]) clearTimeout(pendingRecalcRef.current[areaIdx])
+        pendingRecalcRef.current[areaIdx] = setTimeout(() => {
+          delete pendingRecalcRef.current[areaIdx]
+          refreshAreaTrapezoids(areaIdx)
+        }, 1000)
+      }
+    }
+    prevFingerprintRef.current = fp
+  }, [panels, rectAreas, refreshAreaTrapezoids])
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => { Object.values(pendingRecalcRef.current).forEach(clearTimeout) }
+  }, [])
 
   // Track newly drawn area index so we can select it once panels are computed
   const pendingNewAreaIdxRef = useRef(null)
@@ -95,6 +136,23 @@ export default function Step2PanelPlacement({
     setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
     setSelectedPanels([])
   }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels])
+
+  const handleRotateArea90 = useCallback((areaIdx) => {
+    if (areaIdx == null || areaIdx >= rectAreas.length) return
+    setRectAreas(prev => prev.map((area, i) => {
+      if (i !== areaIdx) return area
+      const isVertical = !(area.areaVertical ?? false)
+      // Rotate all 4 vertices 90° around centroid
+      const cx = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+      const cy = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+      const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
+      const newVertices = area.vertices.map(v => ({
+        x: cx + (v.x - cx) * cosR - (v.y - cy) * sinR,
+        y: cy + (v.x - cx) * sinR + (v.y - cy) * cosR,
+      }))
+      return { ...area, vertices: newVertices, areaVertical: isVertical, rotation: 0 }
+    }))
+  }, [rectAreas.length, setRectAreas])
 
   // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
   useEffect(() => {
@@ -181,7 +239,6 @@ export default function Step2PanelPlacement({
 
   const selectedRow = (selectedRowIndex !== null) ? rows[selectedRowIndex] : null
   const selectedAreaIdx = selectedRow?.length ? (selectedRow[0].area ?? selectedRow[0].row ?? null) : null
-  const canRecalcTrapezoids = typeof selectedAreaIdx === 'number' && !rectAreas[selectedAreaIdx]?.manualTrapezoids
 
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
@@ -202,12 +259,49 @@ export default function Step2PanelPlacement({
 
   const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
+    // Find the area's pivot (start corner) to anchor the rotation
+    const firstSel = panels.find(p => selectedPanels.includes(p.id))
+    const areaIdx = firstSel?.area ?? 0
+    const area = rectAreas[areaIdx]
+    const pivot = area?.vertices?.[area?.pivotIdx ?? 0]
     const newPanels = panels.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
       const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
       const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
+      if (pivot) {
+        // Anchor to the start corner: find the panel's rotated corner nearest to pivot
+        const r = (panel.rotation || 0) * Math.PI / 180
+        const cosR = Math.cos(r), sinR = Math.sin(r)
+        const hw = panel.width / 2, hh = panel.height / 2
+        // 4 corners of the panel in screen space (rotated around cx,cy)
+        const corners = [
+          { dx: -hw, dy: -hh }, { dx: hw, dy: -hh },
+          { dx: hw, dy: hh },   { dx: -hw, dy: hh },
+        ].map(c => ({
+          x: cx + c.dx * cosR - c.dy * sinR,
+          y: cy + c.dx * sinR + c.dy * cosR,
+          ldx: c.dx, ldy: c.dy,
+        }))
+        // Find corner nearest to pivot
+        let nearest = corners[0], bestDist = Infinity
+        corners.forEach(c => {
+          const d = Math.hypot(c.x - pivot.x, c.y - pivot.y)
+          if (d < bestDist) { bestDist = d; nearest = c }
+        })
+        // After swap: the same local corner position but with swapped half-dims
+        const nhw = newW / 2, nhh = newH / 2
+        const newLdx = Math.sign(nearest.ldx) * nhw
+        const newLdy = Math.sign(nearest.ldy) * nhh
+        // New corner position in screen space
+        const newCornerX = cx + newLdx * cosR - newLdy * sinR
+        const newCornerY = cy + newLdx * sinR + newLdy * cosR
+        // Shift center so the nearest corner stays at the same screen position
+        const newCx = cx + (nearest.x - newCornerX)
+        const newCy = cy + (nearest.y - newCornerY)
+        return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: newCx - newW / 2, y: newCy - newH / 2 }
+      }
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
     })
     setPanels(newPanels)
@@ -464,6 +558,7 @@ export default function Step2PanelPlacement({
             rebuildPanelGrid={rebuildPanelGrid}
             recordPanelDeletion={recordPanelDeletion}
             panelGapCm={appDefaults?.panelGapCm}
+            drawVertical={drawVertical}
           />
         ) : (
           <div className="step-content">
@@ -503,6 +598,11 @@ export default function Step2PanelPlacement({
             reassignToTrapezoid={reassignToTrapezoid}
             panelGapCm={appDefaults?.panelGapCm}
             lineGapCm={appDefaults?.lineGapCm}
+            showMounting={showMounting}
+            angleMin={angLim.min}
+            angleMax={angLim.max}
+            frontHeightMin={fhLim.min}
+            frontHeightMax={fhLim.max}
             roofType={roofType}
           />
         )}
@@ -521,12 +621,13 @@ export default function Step2PanelPlacement({
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
             yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
+            drawVertical={drawVertical} onToggleDrawVertical={() => setDrawVertical(v => !v)}
             onSetEditMode={handleSetEditMode}
             selectedAreaIdx={selectedAreaIdx}
+            selectedAreaLabel={typeof selectedAreaIdx === 'number' ? (rectAreas[selectedAreaIdx]?.label || String(selectedAreaIdx)) : null}
             onDeleteArea={handleDeleteArea}
             onResetArea={regenerateSingleRowHandler}
-            onRecalcTrapezoids={refreshAreaTrapezoids}
-            canRecalcTrapezoids={canRecalcTrapezoids}
+            onRotateArea90={handleRotateArea90}
           />
         )}
       </div>

@@ -63,6 +63,7 @@ class Step2Area(BaseModel):
     label: str                          # user-editable display label: 'A', 'B', 'C', …
     angleDeg: Optional[float] = None
     frontHeightCm: Optional[float] = None
+    areaVertical: bool = False          # 90° rotated area (e.g. tile roof side faces)
     trapezoidIds: list[str] = Field(default_factory=list)
     panelGrid: Optional[PanelGrid] = None
 

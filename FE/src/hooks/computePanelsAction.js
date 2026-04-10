@@ -271,9 +271,10 @@ export function refreshAreaTrapezoidsAction({
   const portraitW = pWid / pixelToCmRatio
   const portraitPitch = portraitW + gapPx
 
-  const { vertices, rotation = 0, xDir = 'ltr' } = area
+  const { vertices, rotation = 0, xDir = 'ltr', areaVertical = false } = area
   const areaLabel = area.label || area.id || `area-${areaIdx}`
-  const rotRad = (rotation * Math.PI) / 180
+  const effectiveRotation = (areaVertical ? 90 : 0) + rotation
+  const rotRad = (effectiveRotation * Math.PI) / 180
   const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)
   const cxAvg = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
   const cyAvg = vertices.reduce((s, v) => s + v.y, 0) / vertices.length

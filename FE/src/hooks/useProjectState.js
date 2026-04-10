@@ -123,7 +123,7 @@ export function useProjectState() {
   // ── App config (panel types, settings, products, backend) ──
   const {
     panelTypes, panelSpec,
-    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup,
+    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup, paramLimits,
     products, productByType, altsByType,
     backendStatus,
     refreshAppSettings,
@@ -167,6 +167,7 @@ export function useProjectState() {
   }
 
   const handleCreateProject = (projectInfo) => {
+    refreshAppSettings()
     setCurrentProject(projectInfo)
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
@@ -273,7 +274,7 @@ export function useProjectState() {
       uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
       rectAreas: l.rectAreas.map(ra => ({
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
-        color: ra.color, xDir: ra.xDir, yDir: ra.yDir,
+        color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
       })),
     }
@@ -563,6 +564,7 @@ export function useProjectState() {
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
   // Skipped once after a project load so imported panel positions (including moves) are preserved.
   // Only runs on step 1-2; step 3+ uses frozen data from the step 2→3 transition.
+  const computeTimerRef = useRef(null)
   useEffect(() => {
     if (skipRecomputeRef.current) {
       const reason = skipRecomputeRef.current
@@ -571,7 +573,13 @@ export function useProjectState() {
       return
     }
     if (currentStep > 2) return  // don't recompute panels after step 2
-    computePanels()
+    // Debounce: avoid re-render cascade during rapid drag updates
+    if (computeTimerRef.current) clearTimeout(computeTimerRef.current)
+    computeTimerRef.current = setTimeout(() => {
+      computeTimerRef.current = null
+      computePanels()
+    }, 5)
+    return () => { if (computeTimerRef.current) clearTimeout(computeTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults])
 
@@ -624,11 +632,13 @@ export function useProjectState() {
         if (roofType === 'tiles') return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
+        const angLim = paramLimits.mountingAngleDeg
+        const fhLim  = paramLimits.frontHeightCm
         return rectAreas.every(a => {
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
-          return fh !== '' && parseFloat(fh) >= 0 &&
-            ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
+          return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&
+            ang !== '' && parseFloat(ang) >= angLim.min && parseFloat(ang) <= angLim.max
         })
       }
       case 3: return true
@@ -692,6 +702,7 @@ export function useProjectState() {
     paramSchemaForRoof,
     settingsDefaults,
     paramGroup,
+    paramLimits,
     // Products (materials for BOM)
     products, productByType, altsByType,
     // Cloud
