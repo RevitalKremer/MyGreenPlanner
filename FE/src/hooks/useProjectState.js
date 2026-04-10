@@ -167,6 +167,7 @@ export function useProjectState() {
   }
 
   const handleCreateProject = (projectInfo) => {
+    refreshAppSettings()
     setCurrentProject(projectInfo)
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
