@@ -65,6 +65,7 @@ export default function Step2PanelPlacement({
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   const [trapIdOverride, setTrapIdOverride] = useState(null)
+  const [drawVertical, setDrawVertical] = useState(false)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
   const [snapToGridlines, setSnapToGridlines] = useState(false)
@@ -135,6 +136,23 @@ export default function Step2PanelPlacement({
     setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
     setSelectedPanels([])
   }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels])
+
+  const handleRotateArea90 = useCallback((areaIdx) => {
+    if (areaIdx == null || areaIdx >= rectAreas.length) return
+    setRectAreas(prev => prev.map((area, i) => {
+      if (i !== areaIdx) return area
+      const isVertical = !(area.areaVertical ?? false)
+      // Rotate all 4 vertices 90° around centroid
+      const cx = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+      const cy = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+      const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
+      const newVertices = area.vertices.map(v => ({
+        x: cx + (v.x - cx) * cosR - (v.y - cy) * sinR,
+        y: cy + (v.x - cx) * sinR + (v.y - cy) * cosR,
+      }))
+      return { ...area, vertices: newVertices, areaVertical: isVertical, rotation: 0 }
+    }))
+  }, [rectAreas.length, setRectAreas])
 
   // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
   useEffect(() => {
@@ -241,12 +259,49 @@ export default function Step2PanelPlacement({
 
   const togglePanelOrientation = () => {
     if (!selectedPanels.length) return
+    // Find the area's pivot (start corner) to anchor the rotation
+    const firstSel = panels.find(p => selectedPanels.includes(p.id))
+    const areaIdx = firstSel?.area ?? 0
+    const area = rectAreas[areaIdx]
+    const pivot = area?.vertices?.[area?.pivotIdx ?? 0]
     const newPanels = panels.map(panel => {
       if (!selectedPanels.includes(panel.id)) return panel
       const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
       const newW = panel.height, newH = panel.width
       const isCurrentlyPortrait = (panel.heightCm ?? panelSpec.lengthCm) > (panelSpec.lengthCm + panelSpec.widthCm) / 2
       const newHeightCm = isCurrentlyPortrait ? panelSpec.widthCm : panelSpec.lengthCm
+      if (pivot) {
+        // Anchor to the start corner: find the panel's rotated corner nearest to pivot
+        const r = (panel.rotation || 0) * Math.PI / 180
+        const cosR = Math.cos(r), sinR = Math.sin(r)
+        const hw = panel.width / 2, hh = panel.height / 2
+        // 4 corners of the panel in screen space (rotated around cx,cy)
+        const corners = [
+          { dx: -hw, dy: -hh }, { dx: hw, dy: -hh },
+          { dx: hw, dy: hh },   { dx: -hw, dy: hh },
+        ].map(c => ({
+          x: cx + c.dx * cosR - c.dy * sinR,
+          y: cy + c.dx * sinR + c.dy * cosR,
+          ldx: c.dx, ldy: c.dy,
+        }))
+        // Find corner nearest to pivot
+        let nearest = corners[0], bestDist = Infinity
+        corners.forEach(c => {
+          const d = Math.hypot(c.x - pivot.x, c.y - pivot.y)
+          if (d < bestDist) { bestDist = d; nearest = c }
+        })
+        // After swap: the same local corner position but with swapped half-dims
+        const nhw = newW / 2, nhh = newH / 2
+        const newLdx = Math.sign(nearest.ldx) * nhw
+        const newLdy = Math.sign(nearest.ldy) * nhh
+        // New corner position in screen space
+        const newCornerX = cx + newLdx * cosR - newLdy * sinR
+        const newCornerY = cy + newLdx * sinR + newLdy * cosR
+        // Shift center so the nearest corner stays at the same screen position
+        const newCx = cx + (nearest.x - newCornerX)
+        const newCy = cy + (nearest.y - newCornerY)
+        return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: newCx - newW / 2, y: newCy - newH / 2 }
+      }
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
     })
     setPanels(newPanels)
@@ -503,6 +558,7 @@ export default function Step2PanelPlacement({
             rebuildPanelGrid={rebuildPanelGrid}
             recordPanelDeletion={recordPanelDeletion}
             panelGapCm={appDefaults?.panelGapCm}
+            drawVertical={drawVertical}
           />
         ) : (
           <div className="step-content">
@@ -565,11 +621,13 @@ export default function Step2PanelPlacement({
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}
             yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
+            drawVertical={drawVertical} onToggleDrawVertical={() => setDrawVertical(v => !v)}
             onSetEditMode={handleSetEditMode}
             selectedAreaIdx={selectedAreaIdx}
             selectedAreaLabel={typeof selectedAreaIdx === 'number' ? (rectAreas[selectedAreaIdx]?.label || String(selectedAreaIdx)) : null}
             onDeleteArea={handleDeleteArea}
             onResetArea={regenerateSingleRowHandler}
+            onRotateArea90={handleRotateArea90}
           />
         )}
       </div>
