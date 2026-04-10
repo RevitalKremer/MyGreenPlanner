@@ -125,7 +125,7 @@ export default function PanelCanvas({
     if (panActive || dragState) return 'grabbing'
     if (rectSelect) return 'crosshair'
     if (rotationState) return 'crosshair'
-    if (overYLockArea) return overYLockArea.vertical ? 'ew-resize' : 'ns-resize'
+    if (overYLockArea) return overYLockArea === 'vertical' ? 'ew-resize' : 'ns-resize'
     switch (activeTool) {
       case 'move': return 'default'
       case 'rotate': return 'crosshair'
@@ -257,7 +257,7 @@ export default function PanelCanvas({
 
     if (!yLockDragState) {
       const hoveredYLock = rectAreas.find(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices))
-      setOverYLockArea(hoveredYLock ? { vertical: hoveredYLock.areaVertical ?? false } : false)
+      setOverYLockArea(hoveredYLock ? (hoveredYLock.areaVertical ? 'vertical' : 'horizontal') : false)
     }
 
     if (activeTool === 'area' && drawRectStart) {
