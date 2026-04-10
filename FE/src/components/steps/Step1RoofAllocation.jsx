@@ -37,6 +37,7 @@ export default function Step1RoofAllocation({
   setUploadedImageMode,
   backendStatus,
   uploadedImageData,
+  imageSrc,
   setUploadedImageData,
   handleImageUploaded,
   imageRef,
@@ -239,7 +240,7 @@ export default function Step1RoofAllocation({
               >
                 <img
                   ref={(el) => { localImgRef.current = el; setImageRef(el) }}
-                  src={uploadedImageData.imageData}
+                  src={imageSrc}
                   alt="Uploaded roof"
                   onClick={drawMode === 'auto' && !isDrawingLine && !uploadedImageData?.isWhiteboard ? handleImageClick : undefined}
                   style={{
@@ -250,13 +251,13 @@ export default function Step1RoofAllocation({
                     width: 'auto',
                     height: 'auto',
                     cursor: isAnyDrawing ? 'crosshair' : 'default'
-                  }}
-                />
+                    }}
+                  />
 
                 {/* SVG overlay — handles drawing and displays polygon */}
                 {imageRef && (
                   <svg
-                    viewBox={`0 0 ${imageRef.naturalWidth} ${imageRef.naturalHeight}`}
+                    viewBox={`0 0 ${imageRef.naturalWidth || uploadedImageData.width} ${imageRef.naturalHeight || uploadedImageData.height}`}
                     preserveAspectRatio="xMidYMid meet"
                     style={{
                       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
@@ -384,7 +385,7 @@ export default function Step1RoofAllocation({
                   onZoomOut={() => setViewZoom(z => Math.max(0.5, z - 0.1))}
                   onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
                   onZoomIn={() => setViewZoom(z => Math.min(3, z + 0.1))}
-                  imageData={uploadedImageData.imageData}
+                  imageData={imageSrc}
                   mmWidth={MM_W}
                   mmHeight={MM_H}
                   onPanToPoint={panToMinimapPoint}

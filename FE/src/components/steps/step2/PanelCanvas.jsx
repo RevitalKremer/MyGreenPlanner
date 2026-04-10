@@ -16,7 +16,7 @@ import CanvasNavigator from '../../shared/CanvasNavigator'
 import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from '../../../utils/rectPanelService'
 
 export default function PanelCanvas({
-  uploadedImageData, viewZoom, setViewZoom,
+  uploadedImageData, imageSrc, viewZoom, setViewZoom,
   imageRef, setImageRef,
   roofPolygon, baseline,
   panels, setPanels,
@@ -614,7 +614,7 @@ export default function PanelCanvas({
       >
         <img
           ref={imgRefCallback}
-          src={uploadedImageData.imageData}
+          src={imageSrc}
           alt="Roof with panels"
           style={{
             display: 'block',
@@ -1077,7 +1077,7 @@ let fill, borderColor, ibw
           onZoomOut={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
           onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
           onZoomIn={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
-          imageData={uploadedImageData.imageData}
+          imageData={imageSrc}
           mmWidth={MM_W}
           mmHeight={MM_H}
           onPanToPoint={panToMinimapPoint}

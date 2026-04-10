@@ -1,16 +1,19 @@
 import copy
 import uuid
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel
+from PIL import Image
+import io
 
 from sqlalchemy import select
 
 from app.database import get_db
 from app.models.setting import AppSetting
 from app.models.user import User
+from app.models.project_image import ProjectImage
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary, ProjectListResponse
 from app.schemas.bom import BOMRead, BOMItemRead, BOMDeltasUpdate, BOMEffectiveRead
 from app.services import projects as project_service
@@ -526,4 +529,111 @@ async def get_effective_bom(
         items=_localize_bom_items(effective_items, resolved_lang),
         createdAt=bom.created_at,
         updatedAt=bom.updated_at,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Image Upload/Fetch Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{project_id}/image")
+async def upload_project_image(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload an image for a project and store it in the project_images table.
+    
+    Returns: { imageId, width, height, contentType, fileSize }
+    """
+    # Verify project ownership
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image file")
+    
+    # Read and validate image
+    try:
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes))
+        width, height = image.size
+        file_size = len(image_bytes)
+        
+        # Optional: Add max size validation
+        max_size = 10 * 1024 * 1024  # 10MB
+        if file_size > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Image too large. Maximum size is {max_size / (1024 * 1024)}MB"
+            )
+        
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {str(e)}")
+    
+    # Delete existing image for this project (one image per project)
+    existing = await db.execute(
+        select(ProjectImage).where(ProjectImage.project_id == project_id)
+    )
+    existing_image = existing.scalar_one_or_none()
+    if existing_image:
+        await db.delete(existing_image)
+    
+    # Create new image record
+    project_image = ProjectImage(
+        project_id=project_id,
+        image_data=image_bytes,
+        content_type=file.content_type,
+        width=width,
+        height=height,
+        file_size=file_size,
+    )
+    db.add(project_image)
+    await db.commit()
+    await db.refresh(project_image)
+    
+    return {
+        "imageId": str(project_image.id),
+        "width": width,
+        "height": height,
+        "contentType": file.content_type,
+        "fileSize": file_size,
+    }
+
+
+@router.get("/{project_id}/image")
+async def get_project_image(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch the image for a project.
+    
+    Returns the binary image data with appropriate Content-Type header.
+    """
+    # Verify project ownership
+    project = await project_service.get_project(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    
+    # Fetch image
+    result = await db.execute(
+        select(ProjectImage).where(ProjectImage.project_id == project_id)
+    )
+    project_image = result.scalar_one_or_none()
+    
+    if not project_image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No image found for this project")
+    
+    # Return binary data with proper content type
+    return Response(
+        content=project_image.image_data,
+        media_type=project_image.content_type,
+        headers={
+            "Cache-Control": "public, max-age=2592000",  # Cache for 30 days
+            "Content-Length": str(project_image.file_size),
+        }
     )

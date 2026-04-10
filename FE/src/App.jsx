@@ -505,6 +505,7 @@ function App() {
             setUploadedImageMode={s.setUploadedImageMode}
             backendStatus={s.backendStatus}
             uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             handleImageUploaded={s.handleImageUploaded}
             imageRef={s.imageRef}
             setImageRef={s.setImageRef}
@@ -529,6 +530,7 @@ function App() {
         {s.currentStep === 2 && (
           <Step2PanelPlacement
             uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
             imageRef={s.imageRef}

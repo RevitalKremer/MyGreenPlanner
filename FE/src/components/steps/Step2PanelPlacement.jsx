@@ -13,6 +13,7 @@ import PanelCanvas from './step2/PanelCanvas'
 
 export default function Step2PanelPlacement({
   uploadedImageData,
+  imageSrc,
   roofPolygon,
   refinedArea,
   imageRef,
@@ -535,6 +536,7 @@ export default function Step2PanelPlacement({
         {uploadedImageData ? (
           <PanelCanvas
             uploadedImageData={uploadedImageData}
+            imageSrc={imageSrc}
             viewZoom={viewZoom} setViewZoom={setViewZoom}
             imageRef={imageRef} setImageRef={setImageRef}
             roofPolygon={roofPolygon}
