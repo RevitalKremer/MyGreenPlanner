@@ -134,12 +134,13 @@ function pointInPolygon(px, py, polygon) {
  */
 export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
-  const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr' } = area
+  const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr', areaVertical = false } = area
   const pLen = panelSpec.lengthCm
   const pWid = panelSpec.widthCm
   if (!vertices || vertices.length < 3) return []
 
-  const rotRad = (rotation * Math.PI) / 180
+  const effectiveRotation = (areaVertical ? 90 : 0) + rotation
+  const rotRad = (effectiveRotation * Math.PI) / 180
   const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)  // screen → local
   const cosB = Math.cos(rotRad),  sinB = Math.sin(rotRad)   // local → screen
 

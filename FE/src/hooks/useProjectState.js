@@ -274,7 +274,7 @@ export function useProjectState() {
       uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
       rectAreas: l.rectAreas.map(ra => ({
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
-        color: ra.color, xDir: ra.xDir, yDir: ra.yDir,
+        color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
       })),
     }

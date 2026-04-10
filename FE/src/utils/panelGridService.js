@@ -32,7 +32,8 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
   // ── rowPositions: absolute cm from start corner to leading edge of each cell ──
   const rowPositions = buildRowPositions(area, computed, filtered, pixelToCmRatio)
 
-  const result = { startCorner: `${yCode}${xCode}`, areaAngle: area.rotation ?? 0, rows }
+  const effectiveAngle = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
+  const result = { startCorner: `${yCode}${xCode}`, areaAngle: effectiveAngle, rows }
   if (rowPositions) result.rowPositions = rowPositions
   return result
 }
@@ -53,8 +54,9 @@ function buildRowPositions(area, computed, filtered, pixelToCmRatio) {
   if (!pixelToCmRatio || pixelToCmRatio <= 0) return null
   if (!area.vertices || area.vertices.length < 3) return null
 
-  const { vertices, rotation = 0, xDir = 'ltr' } = area
-  const rotRad = (rotation * Math.PI) / 180
+  const { vertices, rotation = 0, xDir = 'ltr', areaVertical = false } = area
+  const effectiveRotation = (areaVertical ? 90 : 0) + rotation
+  const rotRad = (effectiveRotation * Math.PI) / 180
   const cosF = Math.cos(-rotRad), sinF = Math.sin(-rotRad)
 
   // Area centroid — same as in computePolygonPanels
