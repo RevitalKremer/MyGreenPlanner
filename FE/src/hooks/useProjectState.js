@@ -564,6 +564,7 @@ export function useProjectState() {
   // Auto-compute panels whenever rectAreas, panel type, or global mounting defaults change.
   // Skipped once after a project load so imported panel positions (including moves) are preserved.
   // Only runs on step 1-2; step 3+ uses frozen data from the step 2→3 transition.
+  const computeTimerRef = useRef(null)
   useEffect(() => {
     if (skipRecomputeRef.current) {
       const reason = skipRecomputeRef.current
@@ -572,7 +573,13 @@ export function useProjectState() {
       return
     }
     if (currentStep > 2) return  // don't recompute panels after step 2
-    computePanels()
+    // Debounce: avoid re-render cascade during rapid drag updates
+    if (computeTimerRef.current) clearTimeout(computeTimerRef.current)
+    computeTimerRef.current = setTimeout(() => {
+      computeTimerRef.current = null
+      computePanels()
+    }, 5)
+    return () => { if (computeTimerRef.current) clearTimeout(computeTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults])
 

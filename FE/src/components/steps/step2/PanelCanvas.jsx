@@ -253,9 +253,12 @@ export default function PanelCanvas({
 
   const handleSVGMouseMove = (e) => {
     const { x, y } = svgCoords(e)
-    setMousePos({ x, y })
+    // Only update mousePos when not in a drag — avoids re-render cascade during drags
+    if (!yLockDragState && !moveDragState && !freeDragState && !dragState && !rotationState) {
+      setMousePos({ x, y })
+    }
 
-    if (!yLockDragState) {
+    if (!yLockDragState && !moveDragState && !freeDragState) {
       const hoveredYLock = rectAreas.find(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices))
       setOverYLockArea(hoveredYLock ? (hoveredYLock.areaVertical ? 'vertical' : 'horizontal') : false)
     }
