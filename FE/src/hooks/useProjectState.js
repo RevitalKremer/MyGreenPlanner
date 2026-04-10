@@ -193,6 +193,12 @@ export function useProjectState() {
     refreshAppSettings()
 
     const layout = data.layout || {}
+    
+    // Regenerate white canvas imageData if missing (for projects saved after optimization)
+    if (layout.uploadedImageData?.isWhiteboard && !layout.uploadedImageData.imageData) {
+      const whiteCanvas = generateWhiteCanvas()
+      layout.uploadedImageData.imageData = whiteCanvas.imageData
+    }
     const s2     = data.step2  || {}
     const s3     = data.step3  || {}
     const s4     = data.step4  || {}
@@ -269,6 +275,7 @@ export function useProjectState() {
   const getLayoutData = () => {
     const l = pState.layout
     const hasImageRef = l.uploadedImageData?.imageRef
+    const isWhiteboard = l.uploadedImageData?.isWhiteboard
     
     return {
       ...l,
@@ -276,10 +283,11 @@ export function useProjectState() {
       pixelToCmRatio: refinedArea?.pixelToCmRatio ?? l.pixelToCmRatio ?? null,
       // Strip FE-only fields before saving
       // If imageRef exists, don't send base64 imageData (reduces payload by ~1-2MB)
+      // For white canvas, exclude imageData (can be regenerated on load)
       uploadedImageData: l.uploadedImageData ? {
         ...l.uploadedImageData,
         file: undefined,
-        imageData: hasImageRef ? undefined : l.uploadedImageData.imageData,  // Exclude base64 if using imageRef
+        imageData: (hasImageRef || isWhiteboard) ? undefined : l.uploadedImageData.imageData,
       } : null,
       rectAreas: l.rectAreas.map(ra => ({
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
@@ -340,9 +348,10 @@ export function useProjectState() {
     }
     
     // After project is saved, upload image if it hasn't been uploaded yet
-    if (projectId && uploadedImageData && uploadedImageData.imageData && !uploadedImageData.imageRef) {
+    // Skip white canvas - it can be regenerated on-the-fly
+    if (projectId && uploadedImageData && uploadedImageData.imageData && !uploadedImageData.imageRef && !uploadedImageData.isWhiteboard) {
       try {
-        // Convert base64 to blob (for white canvas or uploaded images)
+        // Convert base64 to blob (for uploaded images)
         const imageBlob = uploadedImageData.file || dataURLtoBlob(uploadedImageData.imageData)
         const result = await uploadProjectImage(projectId, imageBlob)
         
