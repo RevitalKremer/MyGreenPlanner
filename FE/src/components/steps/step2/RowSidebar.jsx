@@ -27,6 +27,11 @@ export default function RowSidebar({
   reassignToTrapezoid,
   panelGapCm,
   lineGapCm,
+  showMounting = true,
+  angleMin,
+  angleMax,
+  frontHeightMin,
+  frontHeightMax,
   roofType = 'concrete',
 }) {
   const { t } = useLang()
@@ -77,8 +82,8 @@ export default function RowSidebar({
         </select>
       </div>
 
-      {/* Default mounting settings (hidden for tiles — flat, no frame) */}
-      {roofType !== 'tiles' && (
+      {/* Default mounting settings (visibility controlled by DB roof_types) */}
+      {showMounting && (
         <div style={{ marginBottom: '1rem', padding: '0.6rem 0.7rem 0.5rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BORDER_FAINT}` }}>
           <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
             {t('step2.sidebar.defaultMounting')}
@@ -87,21 +92,23 @@ export default function RowSidebar({
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.angle')}</div>
               <input
-                type="number" min="0" max="30" step="1"
+                type="number" min={angleMin} max={angleMax} step="1"
                 value={panelAngle ?? ''}
                 onChange={e => setPanelAngle?.(e.target.value)}
+                onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setPanelAngle?.(String(Math.min(angleMax, Math.max(angleMin, v)))) }}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
-                placeholder={t('step2.sidebar.angleRange')}
+                placeholder={`${angleMin}–${angleMax}`}
               />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.frontH')}</div>
               <input
-                type="number" min="0" max="200" step="1"
+                type="number" min={frontHeightMin} max={frontHeightMax} step="1"
                 value={panelFrontHeight ?? ''}
                 onChange={e => setPanelFrontHeight?.(e.target.value)}
+                onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setPanelFrontHeight?.(String(Math.min(frontHeightMax, Math.max(frontHeightMin, v)))) }}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
-                placeholder={t('step2.sidebar.frontHPlaceholder')}
+                placeholder={`${frontHeightMin}–${frontHeightMax}`}
               />
             </div>
           </div>
@@ -233,6 +240,11 @@ export default function RowSidebar({
             setRectAreas={setRectAreas}
             panelGapCm={panelGapCm}
             lineGapCm={lineGapCm}
+            showMounting={showMounting}
+            angleMin={angleMin}
+            angleMax={angleMax}
+            frontHeightMin={frontHeightMin}
+            frontHeightMax={frontHeightMax}
             panelSpec={panelTypes.find(t => t.id === panelType) ?? panelTypes[0]}
           />
         </div>

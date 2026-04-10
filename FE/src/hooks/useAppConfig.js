@@ -61,6 +61,11 @@ export default function useAppConfig({ panelType, currentProject }) {
     )
   }, [paramSchema])
 
+  // ── Per-key limits lookup: { key: { min, max, default } } ──
+  const paramLimits = useMemo(() => {
+    return Object.fromEntries(paramSchema.map(p => [p.key, { min: p.min, max: p.max, default: p.default, roofTypes: p.roofTypes }]))
+  }, [paramSchema])
+
   // ── Products (materials for BOM) ──
   const [products, setProducts] = useState([])
   const productByType = useMemo(() => Object.fromEntries(products.map(p => [p.type, p])), [products])
@@ -115,7 +120,7 @@ export default function useAppConfig({ panelType, currentProject }) {
 
   return {
     panelTypes, panelSpec,
-    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup,
+    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup, paramLimits,
     products, productByType, altsByType,
     backendStatus,
     refreshAppSettings,

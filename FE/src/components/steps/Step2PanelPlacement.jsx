@@ -53,8 +53,13 @@ export default function Step2PanelPlacement({
   rebuildPanelGrid,
   recordPanelDeletion,
   appDefaults,
+  paramLimits = {},
   roofType,
 }) {
+  const angLim = paramLimits.mountingAngleDeg
+  const fhLim  = paramLimits.frontHeightCm
+  // Mounting section visible if either setting's roofTypes includes this roof (null = all)
+  const showMounting = !angLim.roofTypes || angLim.roofTypes.includes(roofType || 'concrete')
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
@@ -537,6 +542,11 @@ export default function Step2PanelPlacement({
             reassignToTrapezoid={reassignToTrapezoid}
             panelGapCm={appDefaults?.panelGapCm}
             lineGapCm={appDefaults?.lineGapCm}
+            showMounting={showMounting}
+            angleMin={angLim.min}
+            angleMax={angLim.max}
+            frontHeightMin={fhLim.min}
+            frontHeightMax={fhLim.max}
             roofType={roofType}
           />
         )}

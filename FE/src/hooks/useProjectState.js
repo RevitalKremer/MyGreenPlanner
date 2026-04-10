@@ -123,7 +123,7 @@ export function useProjectState() {
   // ── App config (panel types, settings, products, backend) ──
   const {
     panelTypes, panelSpec,
-    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup,
+    appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup, paramLimits,
     products, productByType, altsByType,
     backendStatus,
     refreshAppSettings,
@@ -624,11 +624,13 @@ export function useProjectState() {
         if (roofType === 'tiles') return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
+        const angLim = paramLimits.mountingAngleDeg
+        const fhLim  = paramLimits.frontHeightCm
         return rectAreas.every(a => {
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
-          return fh !== '' && parseFloat(fh) >= 0 &&
-            ang !== '' && parseFloat(ang) >= 0 && parseFloat(ang) <= 30
+          return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&
+            ang !== '' && parseFloat(ang) >= angLim.min && parseFloat(ang) <= angLim.max
         })
       }
       case 3: return true
@@ -692,6 +694,7 @@ export function useProjectState() {
     paramSchemaForRoof,
     settingsDefaults,
     paramGroup,
+    paramLimits,
     // Products (materials for BOM)
     products, productByType, altsByType,
     // Cloud

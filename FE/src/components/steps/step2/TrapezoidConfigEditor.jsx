@@ -15,6 +15,11 @@ export default function TrapezoidConfigEditor({
   rectAreas, setRectAreas,
   panelGapCm,
   lineGapCm,
+  showMounting = true,
+  angleMin,
+  angleMax,
+  frontHeightMin,
+  frontHeightMax,
   panelSpec,
 }) {
   if (!selectedRow) return null
@@ -144,27 +149,29 @@ export default function TrapezoidConfigEditor({
         })()}
       </svg>
 
-      {/* Angle + Front Height inputs */}
-      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+      {/* Angle + Front Height inputs (hidden for tiles) */}
+      {showMounting && <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
           <input
-            type="number" min="0" max="30" step="0.5"
+            type="number" min={angleMin} max={angleMax} step="0.5"
             value={angleRaw !== '' ? angleRaw : defaultAngle}
             onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: e.target.value } : a))}
+            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: String(Math.min(angleMax, Math.max(angleMin, v))) } : a)) }}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
           <input
-            type="number" min="0" step="0.5"
+            type="number" min={frontHeightMin} max={frontHeightMax} step="0.5"
             value={frontHeightRaw !== '' ? frontHeightRaw : defaultFrontHeight}
             onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, frontHeight: e.target.value } : a))}
+            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, frontHeight: String(Math.min(frontHeightMax, Math.max(frontHeightMin, v))) } : a)) }}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
-      </div>
+      </div>}
 
       {/* Lines — shape display (includes ghost slots for auto-split trapezoids) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem', padding: '0.3rem 0.4rem', background: BG_SUBTLE, borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}` }}>

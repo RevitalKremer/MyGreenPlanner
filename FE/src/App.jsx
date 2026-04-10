@@ -592,6 +592,7 @@ function App() {
             panelAngle={s.panelAngle}
             setPanelAngle={s.setPanelAngle}
             appDefaults={s.appDefaults}
+            paramLimits={s.paramLimits}
             roofType={s.currentProject?.roofSpec?.type}
           />
         )}
