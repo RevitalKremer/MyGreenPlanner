@@ -125,7 +125,7 @@ export default function PanelCanvas({
     if (panActive || dragState) return 'grabbing'
     if (rectSelect) return 'crosshair'
     if (rotationState) return 'crosshair'
-    if (overYLockArea) return 'ns-resize'
+    if (overYLockArea) return overYLockArea.vertical ? 'ew-resize' : 'ns-resize'
     switch (activeTool) {
       case 'move': return 'default'
       case 'rotate': return 'crosshair'
@@ -170,7 +170,7 @@ export default function PanelCanvas({
         const pivot = area.vertices[pIdx]
         const adj = area.vertices[(pIdx + 1) % area.vertices.length]
         const refLength = Math.max(Math.hypot(adj.x - pivot.x, adj.y - pivot.y), 1)
-        setYLockDragState({ areaIdx, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices })
+        setYLockDragState({ areaIdx, startX: x, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, areaVertical: area.areaVertical ?? false })
         return
       }
     }
@@ -256,7 +256,8 @@ export default function PanelCanvas({
     setMousePos({ x, y })
 
     if (!yLockDragState) {
-      setOverYLockArea(rectAreas.some(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices)))
+      const hoveredYLock = rectAreas.find(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices))
+      setOverYLockArea(hoveredYLock ? { vertical: hoveredYLock.areaVertical ?? false } : false)
     }
 
     if (activeTool === 'area' && drawRectStart) {
@@ -295,18 +296,34 @@ export default function PanelCanvas({
     }
 
     if (yLockDragState) {
-      const { areaIdx, startY, startRotation, pivotX, pivotY, refLength, origVertices, origCornerX, origCornerY } = yLockDragState
+      const { areaIdx, cornerIdx: dragCornerIdx, startX, startY, startRotation, pivotX, pivotY, refLength, origVertices, origCornerX, origCornerY, areaVertical } = yLockDragState
       let deltaAngleDeg
       if (origCornerX !== undefined) {
-        // Corner drag: Y → rotation, X → width extension
+        // Corner drag: one axis → rotation (height locked), other axis → width extension
+        // Horizontal: Y → tilt, X → width (panels in row). v[3]=height(locked), v[1]=width.
+        // Vertical:   X → tilt, Y → width (panels in row). v[3]=height(locked), v[1]=width.
+        // Height vector (v[3]-pivot) is always locked. Width vector (v[1]-pivot) is extensible.
+        // The difference is which mouse axis drives the circle constraint.
 
-        // 1. Rotation from Y (rigid body: corner Y tracks mouse directly)
-        const dyFromPivot = y - pivotY
-        const dxSq = refLength * refLength - dyFromPivot * dyFromPivot
-        if (dxSq < 0) return
-        const newCornerX = pivotX + Math.sign(origCornerX - pivotX) * Math.sqrt(dxSq)
+        // 1. Rotation: constrain corner on circle using the tilt axis
+        // Horizontal: Y displacement constrains, solve for X
+        // Vertical:   X displacement constrains, solve for Y
+        let newCornerX, newCornerY
+        if (areaVertical) {
+          const dxFromPivot = x - pivotX
+          const dySq = refLength * refLength - dxFromPivot * dxFromPivot
+          if (dySq < 0) return
+          newCornerX = x
+          newCornerY = pivotY + Math.sign(origCornerY - pivotY) * Math.sqrt(dySq)
+        } else {
+          const dyFromPivot = y - pivotY
+          const dxSq = refLength * refLength - dyFromPivot * dyFromPivot
+          if (dxSq < 0) return
+          newCornerX = pivotX + Math.sign(origCornerX - pivotX) * Math.sqrt(dxSq)
+          newCornerY = y
+        }
         const origAngle = Math.atan2(origCornerY - pivotY, origCornerX - pivotX)
-        const newAngle  = Math.atan2(y - pivotY, newCornerX - pivotX)
+        const newAngle  = Math.atan2(newCornerY - pivotY, newCornerX - pivotX)
         deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
 
         // Snap to 0° if resulting rotation is within 3°
@@ -315,13 +332,23 @@ export default function PanelCanvas({
         const snapping = absRot < 3
         if (snapping) deltaAngleDeg = -startRotation
 
-        // 2. Rebuild polygon with rotated height (locked) + new width from X projection
+        // 2. Rebuild polygon: height vector locked, width vector extensible
+        // Detect which vector (v[1] or v[3]) is "height" (locked, ridge-to-eave):
+        // For horizontal areas: height is the more-vertical vector
+        // For vertical areas: height is the more-horizontal vector
         const rad = deltaAngleDeg * Math.PI / 180
         const cosA = Math.cos(rad), sinA = Math.sin(rad)
 
-        // Original local vectors (pivotIdx always 0)
-        const owx = origVertices[1].x - pivotX, owy = origVertices[1].y - pivotY // width vec
-        const ohx = origVertices[3].x - pivotX, ohy = origVertices[3].y - pivotY // height vec (locked)
+        const v1x = origVertices[1].x - pivotX, v1y = origVertices[1].y - pivotY
+        const v3x = origVertices[3].x - pivotX, v3y = origVertices[3].y - pivotY
+        const v1AbsY = Math.abs(v1y), v1AbsX = Math.abs(v1x)
+        const v3AbsY = Math.abs(v3y), v3AbsX = Math.abs(v3x)
+        // Height vector: for horizontal areas it's the one more aligned with Y axis,
+        // for vertical areas it's the one more aligned with X axis
+        const v1IsHeight = areaVertical ? (v1AbsX > v3AbsX) : (v1AbsY > v3AbsY)
+        const owx = v1IsHeight ? v3x : v1x, owy = v1IsHeight ? v3y : v1y  // width vec (extensible)
+        const ohx = v1IsHeight ? v1x : v3x, ohy = v1IsHeight ? v1y : v3y  // height vec (locked)
+        const hIsV1 = v1IsHeight
         const origWidthDist = Math.hypot(owx, owy)
 
         // Rotate height vector (locked magnitude)
@@ -332,15 +359,20 @@ export default function PanelCanvas({
         const nwdx = (owx * cosA - owy * sinA) / origWidthDist
         const nwdy = (owx * sinA + owy * cosA) / origWidthDist
 
-        // Project mouse onto new width direction from pivot → new width (min: 1 landscape panel)
+        // Project mouse onto new width direction from pivot → new width
         const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
         const newWidth = Math.max(minW, (x - pivotX) * nwdx + (y - pivotY) * nwdy)
 
+        // Reconstruct vertices: v[1] and v[3] must get the correct vectors back
+        const wVec = { x: newWidth * nwdx, y: newWidth * nwdy }
+        const hVec = { x: nhx, y: nhy }
+        const v1Vec = hIsV1 ? hVec : wVec
+        const v3Vec = hIsV1 ? wVec : hVec
         const newVertices = [
-          { x: pivotX,             y: pivotY },
-          { x: pivotX + newWidth * nwdx,             y: pivotY + newWidth * nwdy },
-          { x: pivotX + newWidth * nwdx + nhx,       y: pivotY + newWidth * nwdy + nhy },
-          { x: pivotX + nhx,                         y: pivotY + nhy },
+          { x: pivotX,                          y: pivotY },
+          { x: pivotX + v1Vec.x,                y: pivotY + v1Vec.y },
+          { x: pivotX + v1Vec.x + v3Vec.x,     y: pivotY + v1Vec.y + v3Vec.y },
+          { x: pivotX + v3Vec.x,                y: pivotY + v3Vec.y },
         ]
         const actualRotation = startRotation + deltaAngleDeg
         setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
@@ -352,8 +384,10 @@ export default function PanelCanvas({
           setSnapGuideState(null)
         }
       } else {
-        // Body drag fallback: Y only, fixed width
-        deltaAngleDeg = Math.atan2(y - startY, refLength) * (180 / Math.PI)
+        // Body drag fallback: tilt axis only, fixed width
+        // Horizontal: Y drives tilt. Vertical: X drives tilt.
+        const bodyDisp = areaVertical ? (x - startX) : (y - startY)
+        deltaAngleDeg = Math.atan2(bodyDisp, refLength) * (180 / Math.PI)
         const rawRotation = startRotation + deltaAngleDeg
         const absRot = Math.abs(rawRotation)
         const snapping = absRot < 3
@@ -460,10 +494,11 @@ export default function PanelCanvas({
       setRectAreas(prev => {
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
         const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
-        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
         if (!fitted) return prev
         return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
       })
@@ -475,10 +510,11 @@ export default function PanelCanvas({
       setRectAreas(prev => {
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
         const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
-        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
         if (!fitted) return prev
         return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
       })
@@ -491,10 +527,11 @@ export default function PanelCanvas({
       setRectAreas(prev => {
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
+        const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
         const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
-        const fitted = fitPolygonToRectPanels(panels, area.rotation ?? 0, pivot.x, pivot.y)
+        const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
         if (!fitted) return prev
         return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
       })
@@ -765,7 +802,8 @@ export default function PanelCanvas({
                   {area.vertices.map((v, cornerIdx) => {
                     const isPivot = cornerIdx === pivotIdx
                     const isDraggable = !isPivot || isYLocked
-                    const cursor = isPivot && isYLocked ? 'move' : (isYLocked ? 'ns-resize' : (isDraggable ? 'crosshair' : 'default'))
+                    const isVert = area.areaVertical ?? false
+                    const cursor = isPivot && isYLocked ? 'move' : (isYLocked ? (isVert ? 'ew-resize' : 'ns-resize') : (isDraggable ? 'crosshair' : 'default'))
                     return (
                       <circle
                         key={cornerIdx}
@@ -781,7 +819,7 @@ export default function PanelCanvas({
                             setMoveDragState({ areaIdx, startX: v.x, startY: v.y, origVertices: area.vertices })
                           } else if (isYLocked) {
                             const refLength = Math.max(Math.hypot(v.x - pivot.x, v.y - pivot.y), 1)
-                            setYLockDragState({ areaIdx, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, origCornerX: v.x, origCornerY: v.y })
+                            setYLockDragState({ areaIdx, cornerIdx, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, origCornerX: v.x, origCornerY: v.y, areaVertical: area.areaVertical ?? false })
                           } else {
                             const owx = area.vertices[1].x - pivot.x, owy = area.vertices[1].y - pivot.y
                             const ohx = area.vertices[3].x - pivot.x, ohy = area.vertices[3].y - pivot.y
