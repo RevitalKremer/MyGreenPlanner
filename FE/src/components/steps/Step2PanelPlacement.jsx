@@ -91,7 +91,7 @@ export default function Step2PanelPlacement({
       const areaPanels = panels.filter(p => p.area === idx)
       const verts = area.vertices?.map(v => `${Math.round(v.x)},${Math.round(v.y)}`).join(';') ?? ''
       const panelFp = areaPanels.map(p => `${p.id}:${Math.round(p.x)},${Math.round(p.y)},${p.width},${p.height},${p.heightCm},${p.widthCm}`).join('|')
-      fp[idx] = `${verts}#${areaPanels.length}#${panelFp}#${area.rotation ?? 0}`
+      fp[idx] = `${verts}#${areaPanels.length}#${panelFp}#${area.rotation ?? 0}#${area.angle ?? ''}#${area.frontHeight ?? ''}`
     })
 
     for (const idx of Object.keys(fp)) {

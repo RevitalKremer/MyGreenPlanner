@@ -265,7 +265,7 @@ export function useProjectState() {
           label: s2a.label ?? ra.id,
           frontHeight: String(s2a.frontHeightCm ?? ''),
           angle: String(s2a.angleDeg ?? ''),
-          areaGroupId: ra.areaGroupId || effectiveGroupId,
+          areaGroupId: effectiveGroupId,  // always sync with enriched label
           rowIndex,
         }
       })
@@ -369,9 +369,10 @@ export function useProjectState() {
     const enrichedAreas = d.step2.areas.map((a) => {
       const groupLabel = a.label
 
-      // Strategy 1: find rectArea by areaGroupId or label match
-      const ra = rectAreas.find(r => (r.areaGroupId || r.label) === groupLabel)
-        || rectAreas.find(r => r.label === groupLabel)
+      // Strategy 1: find rectArea by label first (authoritative after enrichment),
+      // then areaGroupId (original creation label — may differ after save/reload)
+      const ra = rectAreas.find(r => r.label === groupLabel)
+        || rectAreas.find(r => r.areaGroupId === groupLabel)
 
       // Strategy 2: find panels belonging to this area group via multiple methods
       let areaPanels
@@ -412,7 +413,9 @@ export function useProjectState() {
         ? panelDerivedTrapIds
         : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
 
-      console.log(`[getProjectData] area "${groupLabel}": strategy=${ra ? (areaPanels.length > 0 ? '1/2' : '3') : 'noRA'}, groupKey=${ra ? rectAreas.indexOf(ra) : 'N/A'}, panels=${areaPanels.length}, panelDerived=[${panelDerivedTrapIds.join(',')}], stored=[${storedTrapIds.join(',')}], final=[${areaTrapIds.join(',')}]`)
+      const raIdx = ra ? rectAreas.indexOf(ra) : -1
+      console.log(`[getProjectData] area "${groupLabel}": raIdx=${raIdx}, raLabel="${ra?.label}", raGroupId="${ra?.areaGroupId}", panels=${areaPanels.length}, panelDerived=[${panelDerivedTrapIds.join(',')}], stored=[${storedTrapIds.join(',')}], final=[${areaTrapIds.join(',')}]`)
+      if (raIdx === 0) console.log(`[getProjectData] rectAreas: [${rectAreas.map((r,i) => `${i}:${r.areaGroupId||''}/${r.label||r.id}`).join(', ')}]`)
 
       return {
         ...a,
