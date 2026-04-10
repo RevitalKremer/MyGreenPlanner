@@ -326,9 +326,11 @@ export default function PanelCanvas({
         const newAngle  = Math.atan2(newCornerY - pivotY, newCornerX - pivotX)
         deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
 
-        // Snap to 0° if resulting rotation is within 3°
+        // Snap to 0° if within 3°, clamp to ±80°
         const rawRotation = startRotation + deltaAngleDeg
-        const absRot = Math.abs(rawRotation)
+        const clamped = Math.max(-80, Math.min(80, rawRotation))
+        deltaAngleDeg = clamped - startRotation
+        const absRot = Math.abs(clamped)
         const snapping = absRot < 3
         if (snapping) deltaAngleDeg = -startRotation
 
@@ -389,7 +391,9 @@ export default function PanelCanvas({
         const bodyDisp = areaVertical ? (x - startX) : (y - startY)
         deltaAngleDeg = Math.atan2(bodyDisp, refLength) * (180 / Math.PI)
         const rawRotation = startRotation + deltaAngleDeg
-        const absRot = Math.abs(rawRotation)
+        const clamped = Math.max(-80, Math.min(80, rawRotation))
+        deltaAngleDeg = clamped - startRotation
+        const absRot = Math.abs(clamped)
         const snapping = absRot < 3
         if (snapping) deltaAngleDeg = -startRotation
         const actualRotation = startRotation + deltaAngleDeg
