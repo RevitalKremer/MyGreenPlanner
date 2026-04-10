@@ -153,7 +153,8 @@ export function useProjectState() {
   const generateWhiteCanvas = () => {
     const W = 3000, H = 2000
     const canvas = document.createElement('canvas')
-    canvas.width = W; canvas.height = H
+    canvas.width = W
+    canvas.height = H
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, W, H)

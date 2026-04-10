@@ -251,13 +251,13 @@ export default function Step1RoofAllocation({
                     width: 'auto',
                     height: 'auto',
                     cursor: isAnyDrawing ? 'crosshair' : 'default'
-                  }}
-                />
+                    }}
+                  />
 
                 {/* SVG overlay — handles drawing and displays polygon */}
                 {imageRef && (
                   <svg
-                    viewBox={`0 0 ${imageRef.naturalWidth} ${imageRef.naturalHeight}`}
+                    viewBox={`0 0 ${imageRef.naturalWidth || uploadedImageData.width} ${imageRef.naturalHeight || uploadedImageData.height}`}
                     preserveAspectRatio="xMidYMid meet"
                     style={{
                       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
