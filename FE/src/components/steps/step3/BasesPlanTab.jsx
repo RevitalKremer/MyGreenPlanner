@@ -433,51 +433,62 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                   })
                 })}
 
-                {/* 6. Dimensions */}
-                {sDims && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  const af = areaFrames[areaKey]
-                  if (!af) return null
-                  const { frame: refFrame, isRtl: afIsRtl } = af
-                  const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
-
-                  const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
-                  const allBases = (areaData?.bases ?? []).map(sb => ({
-                    ...sb, trapId: sb.trapezoidId,
-                    localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
-                  }))
-                  if (allBases.length < 2) return null
-
-                  const projected = allBases.sort((a, b) => a.localX - b.localX)
-
-                  const isBtt = af.isBtt
-                  const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
-                  const outSign = isBtt ? -1 : 1
-                  const apX = outSign * perpX, apY = outSign * perpY
-
-                  const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
-
-                  const ANN_OFF = 16 / effZoom, EXT_GAP = 2 / effZoom
-                  const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
-                  const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
+                {/* 6. Dimensions — per panel row */}
+                {sDims && (beBasesData ?? []).map((areaData, ai) => {
+                  // Group bases by panelRowIdx
+                  const basesByRow = {}
+                  for (const b of (areaData.bases ?? [])) {
+                    const ri = b._panelRowIdx ?? 0
+                    if (!basesByRow[ri]) basesByRow[ri] = []
+                    basesByRow[ri].push(b)
+                  }
 
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
-                  const isSelectedArea = areaKey === selectedArea
-                  const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
-                    ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
 
-                  const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
-                  const annPts    = projected.map(b => annSvg(b.localX))
-                  const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
-                  const segColors = projected.slice(0, -1).map((b1, si) => {
-                    const b2 = projected[si + 1]
-                    return (isSelectedArea && (b1.trapId === effTrapId || b2.trapId === effTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
+                  return Object.entries(basesByRow).map(([riStr, rowBases]) => {
+                    const ri = Number(riStr)
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, ri)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { frame: refFrame, isRtl: afIsRtl } = af
+                    const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
+
+                    const allBases = rowBases.map(sb => ({
+                      ...sb, trapId: sb.trapezoidId,
+                      localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
+                    }))
+                    if (allBases.length < 2) return null
+
+                    const projected = allBases.sort((a, b) => a.localX - b.localX)
+                    const isBtt = af.isBtt
+                    const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
+                    const outSign = isBtt ? -1 : 1
+                    const apX = outSign * perpX, apY = outSign * perpY
+                    const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
+
+                    const ANN_OFF = 16 / effZoom, EXT_GAP = 2 / effZoom
+                    const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
+                    const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
+
+                    const areaKey = String(areaData.areaId ?? areaData.areaLabel ?? ai)
+                    const isSelectedArea = areaKey === String(selectedArea)
+                    const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
+                      ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
+
+                    const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
+                    const annPts    = projected.map(b => annSvg(b.localX))
+                    const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
+                    const segColors = projected.slice(0, -1).map((b1, si) => {
+                      const b2 = projected[si + 1]
+                      return (isSelectedArea && (b1.trapId === effTrapId || b2.trapId === effTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
+                    })
+
+                    return (
+                      <g key={`area-ann-${ai}-r${ri}`} style={hlStyle}>
+                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} />
+                      </g>
+                    )
                   })
-
-                  return (
-                    <g key={`area-ann-${areaKey}`} style={hlStyle}>
-                      <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} />
-                    </g>
-                  )
                 })}
 
                 {/* 7. Edit bar */}
