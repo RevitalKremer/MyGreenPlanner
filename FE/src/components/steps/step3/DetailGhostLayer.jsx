@@ -1,4 +1,5 @@
 import { GHOST_FILL, GHOST_STROKE, GHOST_DASH } from '../../../styles/colors'
+import { calculateDiagonalPosition } from '../../../utils/trapezoidGeometry'
 
 /**
  * Ghost overlay: renders the full trap structural outline in ghost style
@@ -61,13 +62,17 @@ export default function DetailGhostLayer({
       {/* Ghost diagonals */}
       {gDiags.map((d, di) => {
         if (d.spanIdx >= gLegs.length - 1) return null
-        const xA = gLegEndXPositions[d.spanIdx], xB = gLegXPositions[d.spanIdx + 1]
-        const spanW = xB - xA
-        const topX = xA + d.topPct * spanW
-        const botX = xA + d.botPct * spanW
-        const hA = gLegHeights[d.spanIdx] ?? 0, hB = gLegHeights[d.spanIdx + 1] ?? 0
-        const topY = gBaseY - (hA + d.topPct * (hB - hA))
-        return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: gBaseY + BEAM_THICK_PX / 2, sw: BEAM_THICK_PX * 0.75 })
+        const { topX, topY, botX, botY } = calculateDiagonalPosition({
+          spanIdx: d.spanIdx,
+          topPct: d.topPct,
+          botPct: d.botPct,
+          legXs: gLegXPositions,
+          legEndXs: gLegEndXPositions,
+          legHeights: gLegHeights,
+          baseY: gBaseY,
+          beamThickPx: BEAM_THICK_PX,
+        })
+        return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: botY, sw: BEAM_THICK_PX * 0.75 })
       })}
       {/* Ghost blocks */}
       {(() => {

@@ -35,3 +35,40 @@ export const computePanelBackHeight = (panelFrontHeight, angle, orientations, li
   const angleRad = (angle || 0) * Math.PI / 180
   return panelFrontHeight + computeTotalSlopeDepth(orientations, lineGapCm, panelLengthCm, panelWidthCm) * Math.sin(angleRad)
 }
+
+// ─── Diagonal rendering helpers ───────────────────────────────────────────────
+
+/**
+ * Calculate diagonal pixel positions from leg data and percentages.
+ * Diagonal spans FULL BEAM (start of left leg to end of right leg) to match backend.
+ * @param {number}   spanIdx      - span index (between legs i and i+1)
+ * @param {number}   topPct       - top attachment point as percentage of span (0-1)
+ * @param {number}   botPct       - bottom attachment point as percentage of span (0-1)
+ * @param {number[]} legXs        - left edge X positions of all legs (px)
+ * @param {number[]} legEndXs     - right edge X positions of all legs (px)
+ * @param {number[]} legHeights   - heights of all legs (px)
+ * @param {number}   baseY        - base beam Y position (px)
+ * @param {number}   beamThickPx  - beam thickness (px)
+ * @returns {{ xA, xB, spanW, topX, botX, topY, botY }} - pixel coordinates for diagonal rendering
+ */
+export const calculateDiagonalPosition = ({
+  spanIdx,
+  topPct,
+  botPct,
+  legXs,
+  legEndXs,
+  legHeights,
+  baseY,
+  beamThickPx,
+}) => {
+  const xA = legXs[spanIdx]
+  const xB = legEndXs[spanIdx + 1]
+  const spanW = xB - xA
+  const topX = xA + topPct * spanW
+  const botX = xA + botPct * spanW
+  const hA = legHeights[spanIdx] ?? 0
+  const hB = legHeights[spanIdx + 1] ?? 0
+  const topY = baseY - (hA + topPct * (hB - hA))
+  const botY = baseY + beamThickPx / 2
+  return { xA, xB, spanW, topX, botX, topY, botY }
+}
