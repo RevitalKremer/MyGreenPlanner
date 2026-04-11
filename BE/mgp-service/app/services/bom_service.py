@@ -128,7 +128,7 @@ def _derive_row_construction(
         return {
             'rowLength': row_length,
             'angle': 0, 'frontHeight': 0, 'heightRear': 0, 'heightFront': 0,
-            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0, 'diagonalLength': 0,
+            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0,
             'numTrapezoids': 0,
             'panelCount': total_panel_count,
             'numRails': num_rails,
@@ -164,7 +164,6 @@ def _derive_row_construction(
         'baseLength': geom.get('baseLength', 0),
         'baseBeamLength': geom.get('baseBeamLength', 0),
         'topBeamLength': geom.get('topBeamLength', 0),
-        'diagonalLength': geom.get('diagonalLength', 0),
         'numTrapezoids': num_trapezoids,
         'panelCount': total_panel_count,
         'numRails': num_rails,
@@ -201,11 +200,29 @@ def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute diagonal brace BOM."""
-    T = rc['numTrapezoids']
-    nS = T - 1
-    if nS > 0 and rc['diagonalLength'] > 0:
-        return [{'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS}]
+    """Compute diagonal brace BOM from actual diagonal lengths."""
+    # Sum actual diagonal brace lengths from trapezoid details
+    total_length_cm = 0
+    count = 0
+    
+    # rc may contain trapezoid details with diagonal data
+    if 'trapezoidDetails' in rc:
+        for trap_detail in rc['trapezoidDetails'].values():
+            for diag in trap_detail.get('diagonals', []):
+                if not diag.get('disabled', False):
+                    length = diag.get('lengthCm', 0)
+                    if length > 0:
+                        multiplier = 2 if diag.get('double', False) else 1
+                        total_length_cm += length * multiplier
+                        count += 1
+    
+    if count > 0 and total_length_cm > 0:
+        return [{
+            'areaLabel': area_label,
+            'element': 'angle_profile_40x40_diag',
+            'totalLengthM': total_length_cm / 100,
+            'qty': count
+        }]
     return []
 
 

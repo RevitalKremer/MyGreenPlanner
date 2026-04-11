@@ -158,7 +158,6 @@ class ComputedTrapezoid(BaseModel):
     #   heightRear, heightFront          — structural leg heights (cm)
     #   topBeamLength, baseBeamLength    — slope / horizontal beam lengths (cm)
     #   baseLength                       — horizontal leg-to-leg span (cm)
-    #   diagonalLength                   — simplified diagonal length (cm)
     #   angle                            — tilt angle (degrees)
     #   panelFrontHeight                 — panel lower edge height from floor (cm, step2 input)
     #   panelRearHeightCm                — panel lower edge height at ridge side (cm)

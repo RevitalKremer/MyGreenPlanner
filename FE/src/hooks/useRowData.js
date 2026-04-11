@@ -173,7 +173,7 @@ export default function useRowData({
         return {
           angle: 0, frontHeight: 0, panelCount,
           rowLength: measuredRowLength,
-          baseLength: 0, diagonalLength: 0,
+          baseLength: 0,
           heightRear: 0, heightFront: 0,
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
@@ -193,7 +193,6 @@ export default function useRowData({
         angle, frontHeight: frontLegH, panelCount,
         rowLength: measuredRowLength,
         baseLength: beGeom.baseBeamLength,
-        diagonalLength: beGeom.diagonalLength ?? 0,
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,

@@ -137,7 +137,6 @@ export default function useSelectedGeometry({
       angle, frontHeight: frontLegH, panelCount: 1,
       rowLength,
       baseLength: beGeom.baseBeamLength,
-      diagonalLength: beGeom.diagonalLength ?? 0,
       numTrapezoids: numSpans + 1,
       spacing: rowLength / numSpans,
       railOverhang,
