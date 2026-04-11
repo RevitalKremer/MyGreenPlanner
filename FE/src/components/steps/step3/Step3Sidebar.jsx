@@ -374,68 +374,60 @@ export default function Step3Sidebar({
                 </div>
               </div>
 
-              {/* Sub-items: rows (bases tab), trapezoids (rails/trapezoids tabs) */}
-              {(() => {
-                const showRowSubItems = activeTab === 'bases' && isAreaSelected
-                const showTrapSubItems = (activeTab === 'trapezoids' || activeTab === 'rails') && trapIds.length > 1 && isAreaSelected
-
-                if (showRowSubItems) {
-                  // Panel row sub-items for rails/bases tabs
-                  const rowIdxSet = new Set()
-                  panels.forEach(p => {
-                    if ((p.areaGroupKey ?? p.area) === areaKey) rowIdxSet.add(p.panelRowIdx ?? 0)
-                  })
-                  const panelRowIdxs = [...rowIdxSet].sort((a, b) => a - b)
-                  if (panelRowIdxs.length <= 1) return null
-                  return (
-                    <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
-                      {panelRowIdxs.map((ri, idx) => {
-                        const isRowSelected = selectedPanelRowIdx === ri
-                        const count = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey && (p.panelRowIdx ?? 0) === ri).length
-                        return (
-                          <div
-                            key={ri}
-                            onClick={e => { e.stopPropagation(); setSelectedPanelRowIdx?.(ri) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isRowSelected ? PRIMARY : 'transparent'}`, background: isRowSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
-                          >
-                            <span style={{ fontSize: '0.72rem', fontWeight: '600', color: isRowSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER }}>
-                              Row {idx + 1}
-                            </span>
-                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                }
-
-                if (showTrapSubItems) {
-                  return (
-                    <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
-                      {trapIds.map(trapId => {
-                        const isTrapSelected = effectiveSelectedTrapId === trapId
-                        const count = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId).length
-                        return (
-                          <div
-                            key={trapId}
-                            onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
-                          >
-                            <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
-                              {trapId}
-                            </span>
-                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count} panels</span>
-                            {!!trapezoidConfigs[trapId] && (
-                              <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                }
-
-                return null
+              {/* Sub-items: separate lists for trapezoids and rows when area is selected */}
+              {isAreaSelected && (() => {
+                const areaPanels = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey)
+                const rowIdxSet = new Set()
+                areaPanels.forEach(p => rowIdxSet.add(p.panelRowIdx ?? 0))
+                const panelRowIdxs = [...rowIdxSet].sort((a, b) => a - b)
+                const hasMultiTraps = trapIds.length > 1
+                const hasMultiRows = panelRowIdxs.length > 1
+                if (!hasMultiTraps && !hasMultiRows) return null
+                return (
+                  <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
+                    {/* Trapezoid sub-items (shown on all tabs except areas when multi-trap) */}
+                    {hasMultiTraps && activeTab !== 'areas' && trapIds.map(trapId => {
+                      const isTrapSelected = effectiveSelectedTrapId === trapId
+                      const count = areaPanels.filter(p => p.trapezoidId === trapId).length
+                      return (
+                        <div
+                          key={`t-${trapId}`}
+                          onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
+                        >
+                          <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
+                            {trapId}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
+                          {!!trapezoidConfigs[trapId] && (
+                            <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                    {/* Separator between traps and rows */}
+                    {hasMultiTraps && hasMultiRows && activeTab !== 'areas' && (
+                      <div style={{ borderTop: `1px dashed ${BORDER_FAINT}`, margin: '0.15rem 1rem 0.15rem 1.5rem' }} />
+                    )}
+                    {/* Row sub-items (shown on bases tab when multi-row) */}
+                    {hasMultiRows && activeTab === 'bases' && panelRowIdxs.map((ri, idx) => {
+                      const isRowSelected = selectedPanelRowIdx === ri
+                      const count = areaPanels.filter(p => (p.panelRowIdx ?? 0) === ri).length
+                      return (
+                        <div
+                          key={`r-${ri}`}
+                          onClick={e => { e.stopPropagation(); setSelectedPanelRowIdx?.(ri) }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isRowSelected ? PRIMARY : 'transparent'}`, background: isRowSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
+                        >
+                          <span style={{ fontSize: '0.72rem', fontWeight: '600', color: isRowSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER }}>
+                            Row {idx + 1}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
               })()}
             </div>
           )

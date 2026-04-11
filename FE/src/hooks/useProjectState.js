@@ -544,7 +544,7 @@ export function useProjectState() {
 
   const refreshAreaTrapezoids = (areaIdx) => {
     const result = refreshAreaTrapezoidsAction({
-      areaIdx, area: rectAreas[areaIdx], panels, referenceLine, referenceLineLengthCm,
+      areaIdx, area: rectAreas[areaIdx], panels, rectAreas, referenceLine, referenceLineLengthCm,
       panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
     })
     if (!result) return
@@ -711,6 +711,21 @@ export function useProjectState() {
       const existing = prev[areaIdx] ?? []
       if (existing.includes(key)) return prev
       return { ...prev, [areaIdx]: [...existing, key] }
+    })
+  }
+
+  const clearDeletedPanelsForArea = (areaIdx) => {
+    setDeletedPanelKeys(prev => {
+      const next = { ...prev }
+      delete next[areaIdx]
+      // Shift higher indices down (area deletion shifts all subsequent indices)
+      const shifted = {}
+      for (const [k, v] of Object.entries(next)) {
+        const idx = Number(k)
+        if (idx > areaIdx) shifted[idx - 1] = v
+        else shifted[k] = v
+      }
+      return shifted
     })
   }
 
@@ -900,6 +915,7 @@ export function useProjectState() {
     panelGrid,
     rebuildPanelGrid,
     recordPanelDeletion,
+    clearDeletedPanelsForArea,
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,

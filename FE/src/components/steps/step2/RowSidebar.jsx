@@ -146,7 +146,7 @@ export default function RowSidebar({
                 const allGroupPanels = group.rows.flatMap(r => r.row)
                 const isGroupSelected = allGroupPanels.some(p => selectedPanels.includes(p.id))
                 const firstAreaKey = group.areaIndices[0]
-                const trapIds = areaTrapezoidMap[firstAreaKey] || []
+                const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))]
                 const hasMultiTrap = trapIds.length > 1
                 const totalPanels = allGroupPanels.length
 

@@ -582,6 +582,7 @@ function App() {
             refreshAreaTrapezoids={s.refreshAreaTrapezoids}
             rebuildPanelGrid={s.rebuildPanelGrid}
             recordPanelDeletion={s.recordPanelDeletion}
+            clearDeletedPanelsForArea={s.clearDeletedPanelsForArea}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}

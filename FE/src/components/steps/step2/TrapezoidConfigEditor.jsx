@@ -1,4 +1,4 @@
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
+import { PRIMARY, PRIMARY_DARK, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
 import {
   computeTotalSlopeDepth,
   isHorizontalOrientation, isEmptyOrientation,
@@ -10,7 +10,7 @@ export default function TrapezoidConfigEditor({
   refinedArea, trapezoidConfigs,
   getAreaKey,
   resetTrapezoidConfig,
-  selectedAreaTrapIds, reassignToTrapezoid,
+  selectedAreaTrapIds: _selectedAreaTrapIds, reassignToTrapezoid: _reassignToTrapezoid,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
   panelGapCm,
@@ -96,21 +96,14 @@ export default function TrapezoidConfigEditor({
       border: `1px solid ${isOverridden ? PRIMARY : BG_MID}`,
     }}>
 
-      {/* Row 1: trapezoid selector */}
-      <div style={{ marginBottom: '0.35rem' }}>
-        <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Trapezoid</div>
-        <select
-          value={selectedTrapezoidId || ''}
-          onChange={e => reassignToTrapezoid?.(e.target.value)}
-          style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`, borderRadius: '6px', cursor: 'pointer' }}
-        >
-          {(selectedAreaTrapIds?.length > 0 ? selectedAreaTrapIds : [selectedTrapezoidId]).filter(Boolean).map(tid => (
-            <option key={tid} value={tid}>{tid}</option>
-          ))}
-        </select>
-      </div>
+      {/* Trapezoid label */}
+      {selectedTrapezoidId && (
+        <div style={{ marginBottom: '0.35rem', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK }}>
+          {selectedTrapezoidId}
+        </div>
+      )}
 
-      {/* Row 2: actions */}
+      {/* Actions */}
       <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.5rem' }}>
         {isOverridden && (
           <button

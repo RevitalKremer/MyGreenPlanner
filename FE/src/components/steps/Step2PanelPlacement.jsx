@@ -53,6 +53,7 @@ export default function Step2PanelPlacement({
   refreshAreaTrapezoids,
   rebuildPanelGrid,
   recordPanelDeletion,
+  clearDeletedPanelsForArea,
   appDefaults,
   paramLimits = {},
   roofType,
@@ -139,8 +140,9 @@ export default function Step2PanelPlacement({
     selectedAreaIdxRef.current = nextIdx >= 0 ? nextIdx : null
     setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))
     setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
+    clearDeletedPanelsForArea?.(areaKey)
     setSelectedPanels([])
-  }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels])
+  }, [rectAreas.length, setPanels, setRectAreas, setSelectedPanels, clearDeletedPanelsForArea])
 
   const handleRotateArea90 = useCallback((areaIdx) => {
     if (areaIdx == null || areaIdx >= rectAreas.length) return
