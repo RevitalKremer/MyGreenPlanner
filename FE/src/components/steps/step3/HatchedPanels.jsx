@@ -10,7 +10,7 @@ export default function HatchedPanels({ panels, selectedTrapId, selectedArea, to
     const sw = panel.width * sc, sh = panel.height * sc
     const scx = sx + sw / 2, scy = sy + sh / 2
     const isSelected = selectedArea != null
-      ? panel.area === selectedArea
+      ? (panel.areaGroupKey ?? panel.area) === selectedArea
       : selectedTrapId === null || panel.trapezoidId === selectedTrapId
     const opacity = isSelected ? 1 : 0.25
     const fill = isSelected ? PANEL_LIGHT_BG_ALT : PANEL_LIGHT_BG

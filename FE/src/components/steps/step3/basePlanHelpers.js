@@ -4,7 +4,7 @@ import { localToScreen } from '../../../utils/railLayoutService'
  * Resolve area frame from areaData, trying areaId, areaLabel, and label as keys.
  * Returns context object or null if no frame found.
  */
-export function resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, panelRowIdx) {
+export function resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, _customBasesMap, panelRowIdx) {
   const areaId = areaData.areaId ?? areaData.areaLabel ?? areaData.label
   // Try row-specific frame first (multi-row areas), then plain area key
   // Keys may be numeric id or string label, so try both
@@ -18,22 +18,19 @@ export function resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezo
   if (!af) return null
   const areaTrapIds = areaTrapsMap[areaId] ?? areaTrapsMap[String(areaId)] ?? areaTrapsMap[areaData.areaLabel] ?? []
   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-  const liveOffsets = customBasesMap[fullTrapId]
-  return { af, areaId, areaTrapIds, fullTrapId, liveOffsets }
+  return { af, areaId, areaTrapIds, fullTrapId }
 }
 
 /**
  * Compute screen coordinates for a single base line.
  * Returns { btx, bty, bbx, bby, lx, la, offsetCm }.
  */
-export function baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg }) {
+export function baseScreenCoords(sb, _sbi, { af, pixelToCmRatio, toSvg }) {
   const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
   const { angleRad: tAngle, localBounds: tLB } = tFrame
   const line = tLines?.find(l => l.lineIdx === sb.panelLineIdx) ?? tLines?.[0]
-  // For multi-row bases (panelRowIdx > 0), always use BE offset — liveOffsets
-  // are only valid for row 0 (multi-row drag editing is deferred)
-  const useBeOffset = (sb._panelRowIdx ?? 0) > 0
-  const offsetCm = (!useBeOffset && liveOffsets?.[sbi] != null) ? liveOffsets[sbi] / 10 : sb.offsetFromStartCm
+  // Always use BE offset — liveOffsets only used by edit bar (BasePlanOverlay)
+  const offsetCm = sb.offsetFromStartCm
   const lx = tIsRtl ? tLB.maxX - offsetCm / pixelToCmRatio : tLB.minX + offsetCm / pixelToCmRatio
   const depthPx = sb.startCm / pixelToCmRatio
   const lenPx = sb.lengthCm / pixelToCmRatio

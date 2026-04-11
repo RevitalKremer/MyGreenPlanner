@@ -19,7 +19,7 @@ export default function Step3ConstructionPlanning({
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
-  railsComputing = false, onTabSave, onTabReset,
+  railsComputing = false, onTabSave, onTabReset, onActiveTabChange,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
   roofType = 'concrete',
@@ -29,7 +29,7 @@ export default function Step3ConstructionPlanning({
   const { t } = useLang()
 
   // ── UI state ───────────────────────────────────────────────────────────
-  const [selectedRowIdx, setSelectedRowIdx] = useState(0)
+  const [selectedRowIdx, setSelectedRowIdx] = useState(null)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
   const [selectedPanelRowIdx, setSelectedPanelRowIdx] = useState(0)
   // Treat null, "null" string, and undefined as no saved tab - default to 'areas'
@@ -105,10 +105,13 @@ export default function Step3ConstructionPlanning({
   // ── Tab save on switch ─────────────────────────────────────────────────
   const prevTabRef = useRef(activeTab)
   useEffect(() => {
-    // On tab switch, save the new tab to update navigation.tab
+    const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+    const currentMapped = tabMap[activeTab] || activeTab
+    onActiveTabChange?.(currentMapped)
     if (prevTabRef.current !== activeTab) {
-      const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-      onTabSave?.(tabMap[activeTab] || activeTab)
+      // Save the PREVIOUS tab first (to persist any edits like custom base offsets)
+      const prevTab = tabMap[prevTabRef.current] || prevTabRef.current
+      onTabSave?.(prevTab)
     }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -123,24 +126,28 @@ export default function Step3ConstructionPlanning({
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync effects ───────────────────────────────────────────────────────
-  // Seed customBasesMap per panel row to avoid mixing multi-row offsets.
-  // Key: trapezoidId (edit bar uses this); offsets are per-row only for the FIRST row
-  // (multi-row base editing is deferred — for now, rendering uses sb.offsetFromStartCm directly).
+  // Seed customBasesMap with per-row keys ("trapId:rowIdx") from BE data
   useEffect(() => {
     if (!beBasesData) return
     const map = {}
     for (const areaData of beBasesData) {
-      const bdMap = areaData.basesDataMap || {}
-      // Only seed from first row's bases (row 0) to avoid multi-row offset mixing
-      const row0Bases = (areaData.bases || []).filter(b => (b._panelRowIdx ?? 0) === 0)
-      for (const base of row0Bases) {
-        const tid = base.trapezoidId
-        const frameStart = bdMap[tid]?.frameStartCm ?? 0
-        if (!map[tid]) map[tid] = []
-        map[tid].push(Math.round((base.offsetFromStartCm - frameStart) * 10))
+      // Group bases by panelRowIdx
+      const byRow = {}
+      for (const base of (areaData.bases || [])) {
+        const ri = base._panelRowIdx ?? 0
+        if (!byRow[ri]) byRow[ri] = []
+        byRow[ri].push(base)
+      }
+      for (const [riStr, rowBases] of Object.entries(byRow)) {
+        for (const base of rowBases) {
+          const tid = base.trapezoidId
+          const key = `${tid}:${riStr}`
+          if (!map[key]) map[key] = []
+          map[key].push(Math.round(base.offsetFromStartCm * 10))
+        }
       }
     }
-    for (const tid of Object.keys(map)) map[tid].sort((a, b) => a - b)
+    for (const k of Object.keys(map)) map[k].sort((a, b) => a - b)
     setCustomBasesMap(map)
   }, [beBasesData])
 
@@ -294,7 +301,6 @@ export default function Step3ConstructionPlanning({
                 panels={panels} refinedArea={refinedArea}
                 uploadedImageData={uploadedImageData} imageSrc={imageSrc}
                 selectedRowIdx={selectedRowIdx}
-                selectedPanelRowIdx={selectedPanelRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
                 panelDepthsCm={geo.areaLinePanelDepths}
@@ -324,9 +330,10 @@ export default function Step3ConstructionPlanning({
               beBasesData={beBasesData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              onBasesChange={(trapId, offsets) => {
-                setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
-                setUserEditedBases(prev => new Set([...prev, trapId]))
+              onBasesChange={(trapId, offsets, panelRowIdx) => {
+                const key = `${trapId}:${panelRowIdx ?? selectedPanelRowIdx}`
+                setCustomBasesMap(prev => ({ ...prev, [key]: offsets }))
+                setUserEditedBases(prev => new Set([...prev, key]))
               }}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
                 clearTrap: (tid) => {

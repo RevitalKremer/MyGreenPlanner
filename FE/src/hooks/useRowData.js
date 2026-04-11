@@ -78,10 +78,11 @@ export default function useRowData({
     const area    = areaByGroupKey[areaKey]
     if (!area) return null
     const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
-    const flatRails = flattenRowDict(beArea?.rails)
-    if (!flatRails.length) return null
+    // Use only first row's rails (lineRails is per-trapezoid, shared across rows)
+    const firstRowRails = (beArea?.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === 0)
+    if (!firstRowRails.length) return null
     const map = {}
-    for (const r of flatRails) {
+    for (const r of firstRowRails) {
       if (!map[r.lineIdx]) map[r.lineIdx] = []
       map[r.lineIdx].push(r.offsetFromLineFrontCm)
     }

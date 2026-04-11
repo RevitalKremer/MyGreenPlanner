@@ -100,6 +100,7 @@ function App() {
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
+  const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
@@ -256,7 +257,7 @@ function App() {
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
-    
+
     // 'areas' tab is view-only, no backend save needed
     if (tabName === 'areas') return
     
@@ -658,6 +659,7 @@ function App() {
             railsComputing={railsComputing}
             onTabSave={handleTabSave}
             onTabReset={handleTabReset}
+            onActiveTabChange={(tab) => { step3ActiveTabRef.current = tab }}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
@@ -791,6 +793,14 @@ function App() {
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
               if (savedId) {
+                // Save current tab first to persist any pending edits (e.g., custom base offsets)
+                if (stepBeforeNext === 3) {
+                  const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+                  const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
+                  if (currentTab && currentTab !== 'areas') {
+                    try { await handleTabSave(currentTab) } catch (e) { console.error(e) }
+                  }
+                }
                 // Tell the BE about the step transition — it resets dependent data
                 // and computes rails+bases on 2→3 (returned in response)
                 try {

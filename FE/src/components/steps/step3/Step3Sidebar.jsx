@@ -357,9 +357,9 @@ export default function Step3Sidebar({
               <div
                 onClick={() => {
                   setSelectedRowIdx(i)
-                  // On bases/rails tabs, don't pre-select a trapezoid (show all traps in area)
-                  // On trapezoids tab, select the first trap
-                  setSelectedTrapezoidId((activeTab === 'rails' || activeTab === 'bases') ? null : (areaTrapezoidMap[areaKey]?.[0] ?? null))
+                  // Bases tab: no trap pre-selection (show all traps in area)
+                  // Rails/trapezoids tabs: select first trap
+                  setSelectedTrapezoidId(activeTab === 'bases' ? null : (areaTrapezoidMap[areaKey]?.[0] ?? null))
                 }}
                 style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
@@ -374,10 +374,10 @@ export default function Step3Sidebar({
                 </div>
               </div>
 
-              {/* Sub-items: trapezoids (for areas/trapezoids tabs) or panel rows (for rails/bases tabs) */}
+              {/* Sub-items: rows (bases tab), trapezoids (rails/trapezoids tabs) */}
               {(() => {
-                const showRowSubItems = (activeTab === 'rails' || activeTab === 'bases') && isAreaSelected
-                const showTrapSubItems = activeTab === 'trapezoids' && trapIds.length > 1 && isAreaSelected
+                const showRowSubItems = activeTab === 'bases' && isAreaSelected
+                const showTrapSubItems = (activeTab === 'trapezoids' || activeTab === 'rails') && trapIds.length > 1 && isAreaSelected
 
                 if (showRowSubItems) {
                   // Panel row sub-items for rails/bases tabs

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useLayoutEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
@@ -208,6 +208,22 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     initialMountRef.current = false
   }, [centerView])
 
+  // Auto-pan to selected panel row (don't change zoom, only pan)
+  useEffect(() => {
+    if (initialMountRef.current || selectedPanelRowIdx == null || !containerRef.current) return
+    // Find panels for the selected row within the selected area
+    const rowPanels = panels.filter(p => (p.panelRowIdx ?? 0) === selectedPanelRowIdx &&
+      (effectiveSelectedTrapId ? p.trapezoidId === effectiveSelectedTrapId : true))
+    if (rowPanels.length === 0) return
+    const rb = getPanelsBoundingBox(rowPanels)
+    const cx = PAD + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
+    const cy = PAD + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const targetX = containerRect.width / 2 - cx * zoom
+    const targetY = containerRect.height / 2 - cy * zoom
+    setPanOffset({ x: targetX, y: targetY })
+  }, [selectedPanelRowIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (trapIds.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
@@ -325,9 +341,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
                     if (!ctx) return null
-                    const { af, liveOffsets } = ctx
+                    const { af } = ctx
                     const { isBtt: tIsBtt } = af
-                    const { lx, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    const { lx, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const line = af.lines?.find(l => l.lineIdx === sb.panelLineIdx) ?? af.lines?.[0]
                     const depthPx = sb.startCm / pixelToCmRatio
                     const lenPx = sb.lengthCm / pixelToCmRatio
@@ -354,8 +370,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
                     if (!ctx) return null
-                    const { af, liveOffsets } = ctx
-                    const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    const { af } = ctx
+                    const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
                     return (
                       <g key={`base-${ai}-${sbi}`}>
@@ -516,10 +532,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   const rowBases = (areaData.bases ?? []).filter(sb => (sb._panelRowIdx ?? 0) === selectedPanelRowIdx)
                   if (rowBases.length === 0) return null
 
-                  const liveOffsets = customBasesMap[fullTrapId]
-                  const syntheticBases = rowBases.map((sb, sbi) => {
-                    const useBeOffset = (sb._panelRowIdx ?? 0) > 0
-                    const offMm = (!useBeOffset && liveOffsets?.[sbi] != null) ? liveOffsets[sbi] : Math.round(sb.offsetFromStartCm * 10)
+                  const liveOffsets = customBasesMap[`${fullTrapId}:${selectedPanelRowIdx}`]
+                  // When liveOffsets exists, it's the source of truth (may have added/removed bases)
+                  const offsetSource = liveOffsets ?? rowBases.map(sb => Math.round(sb.offsetFromStartCm * 10))
+                  const syntheticBases = offsetSource.map((offMm) => {
                     const offCm = offMm / 10
                     const lx = afIsRtl
                       ? localBounds.maxX - offCm / pixelToCmRatio
@@ -543,7 +559,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                       edgeOffsetMm={trapS.edgeOffsetMm}
                       isSelected={true}
                       overrideBarLocalY={barLocalY}
-                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
+                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets, selectedPanelRowIdx) : null}
                     />
                   )
                 })}
@@ -553,14 +569,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   const firstBasePri = (areaData.bases ?? [])[0]?._panelRowIdx
                   const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, firstBasePri)
                   if (!ctx) return null
-                  const { af, liveOffsets } = ctx
+                  const { af } = ctx
                   const { frame: tFrame, isRtl: tIsRtl } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const allBases = areaData.bases ?? []
                   const sw = 6 / effZoom
 
                   const baseScreenPos = allBases.map((sb, sbi) =>
-                    baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                   )
 
                   return (

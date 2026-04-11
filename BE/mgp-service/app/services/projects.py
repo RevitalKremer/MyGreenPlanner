@@ -242,6 +242,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
 
     panel_grid: explicit panel grid for one panel row. If not provided,
     falls back to legacy area.panelGrid (should not happen after migration).
+    lineRails is per-trapezoid (shared across all rows in the area).
     """
     step2           = data.get('step2', {})
     step3           = data.get('step3', {})
@@ -252,8 +253,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
     else:
         area_settings = area_settings_raw.get(str(area_idx)) or {}
 
-    # lineRails: use transient override from FE if provided; otherwise let
-    # rail_service compute from default spacing (no re-derivation from old rails)
+    # lineRails: per-area setting (shared across all rows in the area)
     line_rails = area_settings.get('lineRails') or {}
 
     effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
@@ -496,16 +496,21 @@ async def compute_and_save_bases(
         await db.commit()
         return []
 
-    # Persist custom offsets
+    # Persist custom offsets (per-row keys "trapId:rowIdx")
     stored_custom = step3.get('customBasesOffsets') or {}
+    import logging
+    logging.info(f"[compute_bases] stored_custom from DB: {stored_custom}, trapezoid_configs: {list((trapezoid_configs or {}).keys())}")
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
             co = cfg.get('customOffsets')
+            row_idx = cfg.get('panelRowIdx', 0)
+            row_key = f'{trap_id}:{row_idx}'
             if co is not None:
                 if len(co) > 0:
-                    stored_custom[trap_id] = co
+                    stored_custom[row_key] = co
                 else:
-                    stored_custom.pop(trap_id, None)
+                    stored_custom.pop(row_key, None)
+    logging.info(f"[compute_bases] stored_custom after processing: {stored_custom}")
     step3['customBasesOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
@@ -552,16 +557,28 @@ async def compute_and_save_bases(
                 if trap_id not in effective_configs:
                     effective_configs[trap_id] = {}
 
-                if not has_existing_bases:
-                    effective_configs[trap_id].pop('customOffsets', None)
-                    stored_custom.pop(trap_id, None)
-                elif 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
-                    stored = stored_custom[trap_id]
-                    frame_check = trap_frame_mm or round((trap_end - trap_start) * 10) if trap_start is not None else None
-                    if stored and len(stored) >= 2 and frame_check and max(stored) <= frame_check:
-                        effective_configs[trap_id]['customOffsets'] = stored
-                    else:
-                        stored_custom.pop(trap_id, None)
+                # Per-row custom offsets keyed by "trapId:rowIdx"
+                row_custom_key = f'{trap_id}:{row_idx}'
+                if 'customOffsets' in effective_configs[trap_id]:
+                    # FE explicitly sent offsets (or reset with empty list) — use as-is
+                    if not effective_configs[trap_id]['customOffsets']:
+                        # Explicit reset: clear stored
+                        effective_configs[trap_id].pop('customOffsets', None)
+                        stored_custom.pop(row_custom_key, None)
+                else:
+                    # No FE override — try to restore from stored DB data
+                    stored = stored_custom.get(row_custom_key)
+                    if stored and has_existing_bases:
+                        # Validate offsets fit within frame (single-trap areas have no frame bounds → skip validation)
+                        frame_check = trap_frame_mm or (round((trap_end - trap_start) * 10) if trap_start is not None else None)
+                        if frame_check is not None:
+                            if len(stored) >= 2 and max(stored) <= frame_check:
+                                effective_configs[trap_id]['customOffsets'] = stored
+                            else:
+                                stored_custom.pop(row_custom_key, None)
+                        elif len(stored) >= 2:
+                            # No frame bounds (single-trap area) — trust stored offsets
+                            effective_configs[trap_id]['customOffsets'] = stored
 
                 inputs = _build_base_inputs(
                     data, area, i, app_defaults, trap_id, effective_configs,
@@ -1239,9 +1256,17 @@ async def save_tab(
         # Bases overrides → trapezoidConfigs[].customOffsets
         if 'bases' in overrides and overrides['bases']:
             trapezoid_configs = trapezoid_configs or {}
-            for trap_id, offsets in overrides['bases'].items():
+            for key, offsets in overrides['bases'].items():
+                # Key format: "trapId:rowIdx" (per-row) or plain "trapId"
+                if ':' in key:
+                    trap_id, row_idx_str = key.rsplit(':', 1)
+                    row_idx = int(row_idx_str)
+                else:
+                    trap_id = key
+                    row_idx = 0
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customOffsets'] = offsets
+                trap_cfg['panelRowIdx'] = row_idx
         
         # Diagonal overrides → trapezoidConfigs[].customDiagonals
         # New format: { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
