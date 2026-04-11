@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildTrapezoidGroups } from './tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildTrapezoidGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
+import BackgroundImageLayer from './BackgroundImageLayer'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
 import RailsOverlay from './RailsOverlay'
@@ -16,8 +17,9 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
+  const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -27,44 +29,52 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
+  const initialMountRef = useRef(true)
 
-  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const svgRef = useRef(null)
 
   const { map: trapGroups, keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
-  const basePlans = useMemo(() => {
-    return trapIds.map(trapId => {
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
+
+  // Split each trapezoid group by panelRowIdx for multi-row areas
+  const { expandedBasePlans: basePlans, expandedRailLayouts: railLayouts, expandedTrapIds } = useMemo(() => {
+    const bps = []
+    const rls = []
+    const eTrapIds = []
+    for (const trapId of trapIds) {
+      const allPanels = trapGroups[trapId] ?? []
       const s = trapSettingsMap[trapId] ?? {}
-      const railOverhangCm = s.railOverhangCm
       const lineRails = trapLineRailsMap[trapId] ?? null
-      const cfg = {
-        edgeOffsetMm: s.edgeOffsetMm,
-        spacingMm:    s.spacingMm   ,
+
+      // Split by panelRowIdx
+      const byRow = {}
+      for (const p of allPanels) {
+        const ri = p.panelRowIdx ?? 0
+        if (!byRow[ri]) byRow[ri] = []
+        byRow[ri].push(p)
       }
-      // customBasesMap is always seeded from BE data — user edits update it directly
-      const customOffsets = customBasesMap[trapId]
-      if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
-      return computeRowBasePlan(trapGroups[trapId], pixelToCmRatio, { overhangCm: railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg)
-    })
+      const rowIdxKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b)
+
+      for (const ri of rowIdxKeys) {
+        const rowPanels = byRow[ri]
+
+        const cfg = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
+        const customOffsets = customBasesMap[trapId]
+        if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
+        bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg))
+
+        rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths }))
+
+        eTrapIds.push(trapId)
+      }
+    }
+    return { expandedBasePlans: bps, expandedRailLayouts: rls, expandedTrapIds: eTrapIds }
   },
     [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap]
-  )
-
-  const railLayouts = useMemo(() => {
-    return trapIds.map(trapId => {
-      const s = trapSettingsMap[trapId] ?? {}
-      const lineRails = trapLineRailsMap[trapId] ?? null
-      return computeRowRailLayout(trapGroups[trapId], pixelToCmRatio, {
-        lineRails,
-        overhangCm:   s.railOverhangCm,
-        stockLengths: s.stockLengths,
-      })
-    })
-  },
-    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap]
   )
 
   // Wait for BE data to be ready before rendering
@@ -111,11 +121,16 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   }, [beBasesData, areaTrapsMap])
 
   // Object form of basePlans for consolidation lookup
+  // expandedTrapIds parallels basePlans — merge all rows' plans per trapId
   const basePlansMap = useMemo(() => {
     const m = {}
-    trapIds.forEach((trapId, i) => { if (basePlans[i]) m[trapId] = basePlans[i] })
+    expandedTrapIds.forEach((trapId, i) => {
+      if (!basePlans[i]) return
+      // Use first row's base plan as representative for consolidation
+      if (!m[trapId]) m[trapId] = basePlans[i]
+    })
     return m
-  }, [trapIds, basePlans])
+  }, [expandedTrapIds, basePlans])
 
   // Consolidated bases: bases from shallower sub-areas that fall within a deeper sub-area's
   // x-extent are removed. Result: { trapId: Base[] }
@@ -126,20 +141,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
   const totalBases = trapIds.reduce((s, trapId) => s + (consolidatedBasesMap[trapId]?.length ?? 0), 0)
 
-  // Per-area frame: computed from ALL panels in the area (covers all panel lines).
-  // Keyed by area id (from trapAreaMap) when available, fallback to stripped trapezoidId.
+  // Per-row frame: computed from panels in each physical panel row.
+  // Keyed by "areaKey:panelRowIdx" for multi-row, and also by plain "areaKey" (first row).
   const areaFrames = useMemo(() => {
-    const areaPanels = {}
+    // Group panels by areaKey + panelRowIdx
+    const rowPanels = {}
     for (const p of panels) {
       const tid = p.trapezoidId ?? 'A1'
       const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
-      if (!areaPanels[areaKey]) areaPanels[areaKey] = []
-      areaPanels[areaKey].push(p)
+      const ri = p.panelRowIdx ?? 0
+      const key = `${areaKey}:${ri}`
+      if (!rowPanels[key]) rowPanels[key] = { areaKey, ri, panels: [] }
+      rowPanels[key].panels.push(p)
     }
-    const map = {}
-    for (const [areaKey, areaPnls] of Object.entries(areaPanels)) {
+
+    const buildFrame = (areaPnls) => {
       const pf = computePanelFrame(areaPnls)
-      if (!pf) continue
+      if (!pf) return null
       const lineMap = {}
       for (const pr of pf.panelLocalRects) {
         const li = pr.line ?? 0
@@ -150,7 +168,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
       const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
       const isRtl = areaPnls[0]?.xDir === 'rtl'
       const isBtt = areaPnls[0]?.yDir === 'btt'
-      map[areaKey] = { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
+      return { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
+    }
+
+    const map = {}
+    for (const [key, { areaKey, ri, panels: pnls }] of Object.entries(rowPanels)) {
+      const f = buildFrame(pnls)
+      if (!f) continue
+      // Key by "areaKey:rowIdx"
+      map[key] = f
+      // Also key by plain areaKey for first row (backward compat + single-row areas)
+      if (ri === 0 && !map[areaKey]) map[areaKey] = f
     }
     // Also key by area label so beBasesData lookups work (label may differ from id)
     for (const area of areas) {
@@ -164,32 +192,37 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
 
   const bbox = useMemo(() => {
-    if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
-    return getPanelsBoundingBox(panels)
-  }, [panels])
+    if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
+    return expandBboxForImage(panelBbox, uploadedImageData)
+  }, [nonEmptyPanels, uploadedImageData])
 
   const PAD  = 60, MAX_W = 900  // PAD=60 gives room for edit bars above/below the panel bbox
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
   const sc   = bboxW > 0 ? MAX_W / bboxW : 1
 
-  // Auto-pan to selected trapezoid when selection changes
+  // Center view on initial mount at 100% zoom (like Step 2)
+  // Use layoutEffect to run before paint and avoid flicker
+  useLayoutEffect(() => {
+    centerView()
+    initialMountRef.current = false
+  }, [centerView])
+
+  // Auto-pan to selected panel row (don't change zoom, only pan)
   useEffect(() => {
-    if (effectiveSelectedTrapId == null) return
-    const rowPanels = trapGroups[effectiveSelectedTrapId] ?? []
+    if (initialMountRef.current || selectedPanelRowIdx == null || !containerRef.current) return
+    // Find panels for the selected row within the selected area
+    const rowPanels = panels.filter(p => (p.panelRowIdx ?? 0) === selectedPanelRowIdx &&
+      (effectiveSelectedTrapId ? p.trapezoidId === effectiveSelectedTrapId : true))
     if (rowPanels.length === 0) return
     const rb = getPanelsBoundingBox(rowPanels)
     const cx = PAD + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
     const cy = PAD + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
-    const CONTENT_PAD = 20
-    requestAnimationFrame(() => {
-      if (!containerRef.current) return
-      const { width: cw, height: ch } = containerRef.current.getBoundingClientRect()
-      setPanOffset({
-        x: cw / 2 - (cx + CONTENT_PAD) * zoom,
-        y: ch / 2 - (cy + CONTENT_PAD) * zoom,
-      })
-    })
-  }, [effectiveSelectedTrapId, trapGroups, bbox, sc, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const targetX = containerRect.width / 2 - cx * zoom
+    const targetY = containerRect.height / 2 - cy * zoom
+    setPanOffset({ x: targetX, y: targetY })
+  }, [selectedPanelRowIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (trapIds.length === 0) {
     return (
@@ -224,6 +257,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   // ── SVG layers (shared by both print and interactive modes) ──
   const svgLayers = (
     <>
+      {(printMode ? printShowRoofImage : showRoofImage) && <BackgroundImageLayer 
+        imageSrc={imageSrc}
+        uploadedImageData={uploadedImageData}
+        bbox={bbox}
+        toSvg={toSvg}
+        sc={sc}
+      />}
+
       <HatchedPanels panels={panels} selectedTrapId={effTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
       {/* Purlin lines for parallel installation — parallel to bases, starting from first base */}
@@ -282,7 +323,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                 {/* 1. Rails */}
                 <RailsOverlay
                   railLayouts={railLayouts}
-                  rowKeys={trapIds}
+                  rowKeys={expandedTrapIds}
                   rowGroups={trapGroups}
                   beRailByKey={beRailByKey}
                   toSvg={toSvg}
@@ -297,12 +338,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 2. Blocks */}
                 {sBlocks && (beBasesData ?? []).map((areaData, ai) => {
-                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
-                  if (!ctx) return null
-                  const { af, liveOffsets } = ctx
-                  const { isBtt: tIsBtt } = af
                   return (areaData.bases ?? []).map((sb, sbi) => {
-                    const { lx, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { isBtt: tIsBtt } = af
+                    const { lx, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const line = af.lines?.find(l => l.lineIdx === sb.panelLineIdx) ?? af.lines?.[0]
                     const depthPx = sb.startCm / pixelToCmRatio
                     const lenPx = sb.lengthCm / pixelToCmRatio
@@ -325,12 +366,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 3. Bases + 4. Base IDs */}
                 {sBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
-                  if (!ctx) return null
-                  const { af, liveOffsets } = ctx
                   const profThick = (4 / pixelToCmRatio) * sc
                   return (areaData.bases ?? []).map((sb, sbi) => {
-                    const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
                     return (
                       <g key={`base-${ai}-${sbi}`}>
@@ -343,24 +384,36 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
                 {/* 5. External diagonals */}
                 {sDiags && sBases && (beBasesData ?? []).map((areaData, ai) => {
-                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
-                  if (!ctx) return null
-                  const { af, liveOffsets } = ctx
-                  const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
-                  const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const PROFILE_THICK = (4 / pixelToCmRatio) * sc
                   const diags = areaData.diagonals ?? []
                   const allBases = areaData.bases ?? []
 
-                  // Derive each connection point from its base position + diagonal offset
+                  // Group bases by panelRowIdx for per-row base index lookup
+                  const basesByRow = {}
+                  for (const b of allBases) {
+                    const ri = b._panelRowIdx ?? 0
+                    if (!basesByRow[ri]) basesByRow[ri] = []
+                    basesByRow[ri].push(b)
+                  }
+
                   return diags.map((d, di) => {
-                    const baseA = allBases[d.startBaseIdx]
-                    const baseB = allBases[d.endBaseIdx]
+                    // Resolve frame for this diagonal's row
+                    const diagPri = d.panelRowIdx ?? 0
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, diagPri)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                    const { angleRad: tAngle, localBounds: tLB } = tFrame
+
+                    // Base indices are relative to THIS row's bases (from per-row diagonal computation)
+                    const rowBases = basesByRow[diagPri] ?? allBases
+                    const baseA = rowBases[d.startBaseIdx]
+                    const baseB = rowBases[d.endBaseIdx]
                     if (!baseA || !baseB) return null
 
-                    // X: base offsetFromStartCm (with live drag override)
-                    const xA = (liveOffsets?.[d.startBaseIdx] != null ? liveOffsets[d.startBaseIdx] / 10 : baseA.offsetFromStartCm)
-                    const xB = (liveOffsets?.[d.endBaseIdx] != null ? liveOffsets[d.endBaseIdx] / 10 : baseB.offsetFromStartCm)
+                    // X: base offsetFromStartCm
+                    const xA = baseA.offsetFromStartCm
+                    const xB = baseB.offsetFromStartCm
                     const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
                     const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
 
@@ -398,51 +451,62 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                   })
                 })}
 
-                {/* 6. Dimensions */}
-                {sDims && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  const af = areaFrames[areaKey]
-                  if (!af) return null
-                  const { frame: refFrame, isRtl: afIsRtl } = af
-                  const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
-
-                  const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
-                  const allBases = (areaData?.bases ?? []).map(sb => ({
-                    ...sb, trapId: sb.trapezoidId,
-                    localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
-                  }))
-                  if (allBases.length < 2) return null
-
-                  const projected = allBases.sort((a, b) => a.localX - b.localX)
-
-                  const isBtt = af.isBtt
-                  const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
-                  const outSign = isBtt ? -1 : 1
-                  const apX = outSign * perpX, apY = outSign * perpY
-
-                  const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
-
-                  const ANN_OFF = 16 / effZoom, EXT_GAP = 2 / effZoom
-                  const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
-                  const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
+                {/* 6. Dimensions — per panel row */}
+                {sDims && (beBasesData ?? []).map((areaData, ai) => {
+                  // Group bases by panelRowIdx
+                  const basesByRow = {}
+                  for (const b of (areaData.bases ?? [])) {
+                    const ri = b._panelRowIdx ?? 0
+                    if (!basesByRow[ri]) basesByRow[ri] = []
+                    basesByRow[ri].push(b)
+                  }
 
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
-                  const isSelectedArea = areaKey === selectedArea
-                  const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
-                    ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
 
-                  const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
-                  const annPts    = projected.map(b => annSvg(b.localX))
-                  const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
-                  const segColors = projected.slice(0, -1).map((b1, si) => {
-                    const b2 = projected[si + 1]
-                    return (isSelectedArea && (b1.trapId === effTrapId || b2.trapId === effTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
+                  return Object.entries(basesByRow).map(([riStr, rowBases]) => {
+                    const ri = Number(riStr)
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, ri)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { frame: refFrame, isRtl: afIsRtl } = af
+                    const { angleRad: refAngle, localBounds: refLB, center: refCenter } = refFrame
+
+                    const allBases = rowBases.map(sb => ({
+                      ...sb, trapId: sb.trapezoidId,
+                      localX: afIsRtl ? refLB.maxX - sb.offsetFromStartCm / pixelToCmRatio : refLB.minX + sb.offsetFromStartCm / pixelToCmRatio,
+                    }))
+                    if (allBases.length < 2) return null
+
+                    const projected = allBases.sort((a, b) => a.localX - b.localX)
+                    const isBtt = af.isBtt
+                    const perpX = -Math.sin(refAngle), perpY = Math.cos(refAngle)
+                    const outSign = isBtt ? -1 : 1
+                    const apX = outSign * perpX, apY = outSign * perpY
+                    const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
+
+                    const ANN_OFF = 16 / effZoom, EXT_GAP = 2 / effZoom
+                    const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
+                    const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
+
+                    const areaKey = String(areaData.areaId ?? areaData.areaLabel ?? ai)
+                    const isSelectedArea = areaKey === String(selectedArea)
+                    const hlStyle = (isSelectedArea && highlightGroup === 'base-spacing')
+                      ? { animation: 'hlPulse 0.75s ease-in-out infinite' } : {}
+
+                    const measurePts = projected.map(b => { const [ex, ey] = edgeSvg(b.localX); return [ex + apX * EXT_GAP, ey + apY * EXT_GAP] })
+                    const annPts    = projected.map(b => annSvg(b.localX))
+                    const labels    = projected.slice(0, -1).map((b1, si) => String(Math.round(Math.abs(projected[si + 1].localX - b1.localX) * pixelToCmRatio * 10)))
+                    const segColors = projected.slice(0, -1).map((b1, si) => {
+                      const b2 = projected[si + 1]
+                      return (isSelectedArea && (b1.trapId === effTrapId || b2.trapId === effTrapId)) ? BLUE_SELECTED : TEXT_SECONDARY
+                    })
+
+                    return (
+                      <g key={`area-ann-${ai}-r${ri}`} style={hlStyle}>
+                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} />
+                      </g>
+                    )
                   })
-
-                  return (
-                    <g key={`area-ann-${areaKey}`} style={hlStyle}>
-                      <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} />
-                    </g>
-                  )
                 })}
 
                 {/* 7. Edit bar */}
@@ -451,16 +515,27 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                   if (!af?.frame?.center) return null
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
                   if (effTrapId !== null && String(areaKey) !== String(selectedArea)) return null
-                  const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
                   const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
                   if (!areaData?.bases?.length) return null
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
                   const trapS = trapSettingsMap[fullTrapId] ?? {}
-                  const { center, angleRad, localBounds } = areaFrame
+
+                  // Use per-row frame for the selected panel row
+                  const rowCtx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, selectedPanelRowIdx)
+                  if (!rowCtx) return null
+                  const { af: rowAf } = rowCtx
+                  const { frame: rowFrame, isRtl: afIsRtl, isBtt: afIsBtt } = rowAf
+                  const { center, angleRad, localBounds } = rowFrame
                   const frameLengthPx = localBounds.maxX - localBounds.minX
-                  const liveOffsets = customBasesMap[fullTrapId]
-                  const syntheticBases = areaData.bases.map((sb, sbi) => {
-                    const offMm = liveOffsets?.[sbi] ?? Math.round(sb.offsetFromStartCm * 10)
+
+                  // Filter bases to the selected panel row only
+                  const rowBases = (areaData.bases ?? []).filter(sb => (sb._panelRowIdx ?? 0) === selectedPanelRowIdx)
+                  if (rowBases.length === 0) return null
+
+                  const liveOffsets = customBasesMap[`${fullTrapId}:${selectedPanelRowIdx}`]
+                  // When liveOffsets exists, it's the source of truth (may have added/removed bases)
+                  const offsetSource = liveOffsets ?? rowBases.map(sb => Math.round(sb.offsetFromStartCm * 10))
+                  const syntheticBases = offsetSource.map((offMm) => {
                     const offCm = offMm / 10
                     const lx = afIsRtl
                       ? localBounds.maxX - offCm / pixelToCmRatio
@@ -476,7 +551,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                   const barLocalY = afIsBtt ? localBounds.maxY + 20 / effZoom : localBounds.minY - 20 / effZoom
                   return (
                     <BasePlanOverlay
-                      key={`overlay-${areaKey}`}
+                      key={`overlay-${areaKey}-r${selectedPanelRowIdx}`}
                       bp={syntheticBp}
                       zoom={effZoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
                       svgRef={svgRef} toSvg={toSvg}
@@ -484,23 +559,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
                       edgeOffsetMm={trapS.edgeOffsetMm}
                       isSelected={true}
                       overrideBarLocalY={barLocalY}
-                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets) : null}
+                      onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets, selectedPanelRowIdx) : null}
                     />
                   )
                 })}
 
                 {/* Base parameter highlights (top z-order) */}
                 {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {
-                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap)
+                  const firstBasePri = (areaData.bases ?? [])[0]?._panelRowIdx
+                  const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, firstBasePri)
                   if (!ctx) return null
-                  const { af, liveOffsets } = ctx
+                  const { af } = ctx
                   const { frame: tFrame, isRtl: tIsRtl } = af
                   const { angleRad: tAngle, localBounds: tLB } = tFrame
                   const allBases = areaData.bases ?? []
                   const sw = 6 / effZoom
 
                   const baseScreenPos = allBases.map((sb, sbi) =>
-                    baseScreenCoords(sb, sbi, { af, liveOffsets, pixelToCmRatio, toSvg })
+                    baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                   )
 
                   return (
@@ -569,6 +645,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
         <LayersPanel
           layers={[
+            { label: t('step3.layer.roofImage'),  checked: showRoofImage,  setter: setShowRoofImage },
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
@@ -608,7 +685,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
         </button>
         {tableOpen && (
           <div style={{ overflowY: 'auto', maxHeight: '260px', padding: '0.5rem 1.25rem 1rem' }}>
-            {trapIds.map((trapId, i) => <BasesTable key={trapId} bp={basePlans[i]} rowIdx={i} />)}
+            {expandedTrapIds.map((trapId, i) => <BasesTable key={`${trapId}-${i}`} bp={basePlans[i]} rowIdx={i} />)}
           </div>
         )}
       </div>

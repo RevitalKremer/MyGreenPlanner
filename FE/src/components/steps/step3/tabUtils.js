@@ -23,11 +23,29 @@ export function getPanelsBoundingBox(panels) {
   return { minX, maxX, minY, maxY }
 }
 
-/** Group panels by area/row key, return { map, sortedKeys } */
+/** Expand a bounding box to include the full image dimensions if image exists */
+export function expandBboxForImage(panelBbox, uploadedImageData) {
+  if (!uploadedImageData) return panelBbox
+  
+  const imgW = uploadedImageData.width || 3000
+  const imgH = uploadedImageData.height || 2000
+  
+  return {
+    minX: Math.min(panelBbox.minX, 0),
+    maxX: Math.max(panelBbox.maxX, imgW),
+    minY: Math.min(panelBbox.minY, 0),
+    maxY: Math.max(panelBbox.maxY, imgH)
+  }
+}
+
+/** Group panels by area/row key, return { map, sortedKeys }.
+ *  Uses panel.areaGroupKey (set by computePanelsAction) to merge multi-row areas.
+ */
 export function buildRowGroups(panels) {
   const map = {}
   for (const p of panels) {
-    const key = p.area ?? p.row ?? 0
+    // areaGroupKey groups all rows in a multi-row area under one key
+    const key = p.areaGroupKey ?? p.area ?? p.row ?? 0
     if (!map[key]) map[key] = []
     map[key].push(p)
   }

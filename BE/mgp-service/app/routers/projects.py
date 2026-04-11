@@ -293,7 +293,7 @@ async def get_rails(
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', [])}
+        {'areaLabel': ca.get('label', ''), 'rails': ca.get('rails', {})}
         for ca in computed_areas
     ]
 
@@ -311,7 +311,7 @@ async def get_bases(
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
-        {'areaId': ca.get('areaId', 0), 'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', []), 'diagonals': ca.get('diagonals', [])}
+        {'areaId': ca.get('areaId', 0), 'areaLabel': ca.get('label', ''), 'bases': ca.get('bases', {}), 'diagonals': ca.get('diagonals', [])}
         for ca in computed_areas
     ]
 
@@ -343,19 +343,28 @@ async def get_rail_dimensions(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
-    return [
-        {
+    result = []
+    for ca in computed_areas:
+        rails_dict = ca.get('rails', {})
+        # Flatten all rows' rails for the dimensions view
+        all_rails = []
+        if isinstance(rails_dict, dict):
+            for row_rails in rails_dict.values():
+                if isinstance(row_rails, list):
+                    all_rails.extend(row_rails)
+        else:
+            all_rails = rails_dict  # legacy list format
+        result.append({
             'areaLabel': ca.get('label', ''),
             'rails': [
                 {k: r[k] for k in ('railId', 'lineIdx',
                                     'offsetFromLineFrontCm', 'offsetFromRearEdgeCm',
                                     'startCm', 'lengthCm')
                  if k in r}
-                for r in ca.get('rails', [])
+                for r in all_rails
             ],
-        }
-        for ca in computed_areas
-    ]
+        })
+    return result
 
 
 @router.get("/{project_id}/rails/materials")
@@ -374,7 +383,18 @@ async def get_rail_materials(
     # Get stockLengths from settings cache (no DB query)
     stock_lengths_default = settings_cache.get_setting('stockLengths')
     stock_lengths = (step3.get('globalSettings') or {}).get('stockLengths', stock_lengths_default)
-    areas_rails = [ca.get('rails', []) for ca in step3.get('computedAreas', [])]
+    # Flatten rails across all panel rows per area
+    areas_rails = []
+    for ca in step3.get('computedAreas', []):
+        rails_dict = ca.get('rails', {})
+        flat_rails = []
+        if isinstance(rails_dict, dict):
+            for row_rails in rails_dict.values():
+                if isinstance(row_rails, list):
+                    flat_rails.extend(row_rails)
+        else:
+            flat_rails = rails_dict  # legacy list format
+        areas_rails.append(flat_rails)
     return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 
 

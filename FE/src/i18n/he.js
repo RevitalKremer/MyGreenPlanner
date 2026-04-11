@@ -170,6 +170,7 @@ const he = {
   'step2.sidebar.applyToAll':        'החל על כל האזורים',
   'step2.sidebar.drawHint':          'בחר את כלי השרטוט וגרור על הקנבס ליצירת אזור פנלים.',
   'step2.sidebar.areas':             'אזורים',
+  'step2.sidebar.addToArea':         'הוסף לאזור\u2026',
   'step2.sidebar.reSplit':           'פצל מחדש טרפזים לפי הפריסה הנוכחית',
   'step2.sidebar.customConfig':      'הגדרה מותאמת',
 
@@ -220,6 +221,9 @@ const he = {
   'step2.tool.resetArea':       'איפוס',
   'step2.tool.resetAreaTitle':  'אפס אזור לפריסה המקורית',
   'step2.tool.rotateArea90Title': 'סובב אזור נבחר ב-90°',
+  'step2.tool.addRow':            'הוסף שורה',
+  'step2.tool.cancelAddRow':      'ביטול',
+  'step2.tool.drawRowHint':       'צייר שורה חדשה על הקנבס',
   'step2.tool.drawVerticalOn':   'V-Draw',
   'step2.tool.drawVerticalOff':  'V-Draw',
   'step2.tool.drawVerticalOnTitle':  'מצייר אזורים אנכיים. לחץ למעבר לאופקי.',
@@ -392,6 +396,7 @@ const he = {
 
   // ── Step 3 – Layers panel ─────────────────────────────────────────────────
   'step3.layers.title':          'שכבות',
+  'step3.layer.roofImage':       'תמונת גג',
   'step3.layer.rails':           'קושרות',
   'step3.layer.dimensions':      'מידות',
   'step3.layer.materialSummary': 'סיכום חומרים',

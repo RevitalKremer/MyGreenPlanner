@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowRailLayout } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import RailsOverlay from './RailsOverlay'
 import LayersPanel from './LayersPanel'
+import BackgroundImageLayer from './BackgroundImageLayer'
 import RailsTable from './RailsTable'
 import RailCrossSectionOverlay from './RailCrossSectionOverlay'
 import RulerTool from '../../shared/RulerTool'
@@ -15,6 +16,7 @@ import RulerTool from '../../shared/RulerTool'
 
 export default function RailLayoutTab({
   panels = [], refinedArea, selectedRowIdx = null,
+  uploadedImageData, imageSrc,
   settings = {},
   lineRails,           // { [lineIdx]: [offsetCm, ...] }
   panelDepthsCm,       // [depthCm, ...]
@@ -24,6 +26,7 @@ export default function RailLayoutTab({
   onResetRails,
   highlightGroup = null,
   printMode = false,
+  printShowRoofImage = true,
   trapSettingsMap = {},
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
@@ -37,6 +40,7 @@ export default function RailLayoutTab({
 
   const svgRef = useRef(null)
 
+  const [showRoofImage,       setShowRoofImage]       = useState(true)
   const [showRails,           setShowRails]           = useState(true)
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
@@ -44,8 +48,9 @@ export default function RailLayoutTab({
   const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
+  const initialMountRef = useRef(true)
 
-  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const railConfig = useMemo(() => ({
@@ -56,23 +61,44 @@ export default function RailLayoutTab({
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
-  // BE rail lookup by area index + railId (for interactive mode) and areaLabel + railId (for print mode)
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
+
+  // BE rail lookup: keyed by areaLabel:panelRowIdx:railId (and legacy variants)
   const beRailByKey = useMemo(() => {
     const m = {}
     ;(beRailsData ?? []).forEach((area, idx) => {
       for (const r of (area.rails ?? [])) {
-        m[`${idx}:${r.railId}`] = r
-        m[`${area.areaLabel}:${r.railId}`] = r
+        const pri = r._panelRowIdx ?? 0
+        m[`${idx}:${pri}:${r.railId}`] = r
+        m[`${area.areaLabel}:${pri}:${r.railId}`] = r
+        if (area.areaId != null) m[`${area.areaId}:${pri}:${r.railId}`] = r
+        // Legacy fallback (single-row areas)
+        if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
+        if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
       }
     })
     return m
   }, [beRailsData])
 
-  const railLayouts = useMemo(() => {
-    if (railLayoutsProp) return railLayoutsProp
-    return rowKeys.map((rowKey, i) => {
-      const firstTrapId = rowGroups[rowKey]?.[0]?.trapezoidId
-      // For the selected row in edit mode, use live lineRails; otherwise use stored per-area data
+  // Map areaGroupKey → area label (for BE rail lookup resolution)
+  const groupKeyToLabel = useMemo(() => {
+    const m = {}
+    for (const p of panels) {
+      if (p.areaGroupKey != null && p.trapezoidId && !m[p.areaGroupKey]) {
+        m[p.areaGroupKey] = p.trapezoidId.replace(/\d+$/, '')
+      }
+    }
+    return m
+  }, [panels])
+
+  // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
+  const { railLayouts, railLayoutKeys } = useMemo(() => {
+    if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
+    const layouts = []
+    const layoutKeys = []  // parallel array: rowKey for each layout entry (for BE lookup)
+    rowKeys.forEach((rowKey, i) => {
+      const areaPanels = rowGroups[rowKey] ?? []
+      const firstTrapId = areaPanels[0]?.trapezoidId
       const useStored = i !== selectedRowIdx || printMode
       let areaLineRails = lineRails
       if (useStored && firstTrapId && trapLineRailsMap[firstTrapId]) {
@@ -84,17 +110,39 @@ export default function RailLayoutTab({
         overhangCm: useStored ? (areaSettings.railOverhangCm ?? railOverhangCm) : railOverhangCm,
         stockLengths: useStored ? (areaSettings.stockLengths ?? stockLengths) : stockLengths,
       }
-      return computeRowRailLayout(rowGroups[rowKey], pixelToCmRatio, cfg)
+      // Split panels by panelRowIdx so each physical row gets its own rail layout
+      const panelRowGroups = {}
+      for (const p of areaPanels) {
+        const ri = p.panelRowIdx ?? 0
+        if (!panelRowGroups[ri]) panelRowGroups[ri] = []
+        panelRowGroups[ri].push(p)
+      }
+      const rowIdxKeys = Object.keys(panelRowGroups).map(Number).sort((a, b) => a - b)
+      if (rowIdxKeys.length <= 1) {
+        const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
+        if (rl) rl._panelRowIdx = 0
+        layouts.push(rl)
+        layoutKeys.push(rowKey)
+      } else {
+        for (const ri of rowIdxKeys) {
+          const rl = computeRowRailLayout(panelRowGroups[ri], pixelToCmRatio, cfg)
+          if (rl) rl._panelRowIdx = ri
+          layouts.push(rl)
+          layoutKeys.push(rowKey)  // all sub-rows map to the same area rowKey
+        }
+      }
     })
+    return { railLayouts: layouts, railLayoutKeys: layoutKeys }
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
 
   const bbox = useMemo(() => {
-    if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
-    return getPanelsBoundingBox(panels)
-  }, [panels])
+    if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
+    return expandBboxForImage(panelBbox, uploadedImageData)
+  }, [nonEmptyPanels, uploadedImageData])
 
   const PAD = 24, PAD_LEFT = 180, MAX_W = 900
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
@@ -102,25 +150,12 @@ export default function RailLayoutTab({
   const svgW = MAX_W + PAD_LEFT + PAD, svgH = bboxH * sc + PAD * 2
   const toSvgFn = (sx, sy) => [PAD_LEFT + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
 
-  // Auto-pan to the selected row when selectedRowIdx changes
-  useEffect(() => {
-    if (selectedRowIdx == null) return
-    const selectedKey = rowKeys[selectedRowIdx]
-    const rowPanels   = rowGroups[selectedKey] ?? []
-    if (rowPanels.length === 0) return
-    const rb = getPanelsBoundingBox(rowPanels)
-    const cx = PAD_LEFT + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
-    const cy = PAD     + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
-    const CONTENT_PAD = 20   // 1.25rem padding around svg
-    requestAnimationFrame(() => {
-      if (!containerRef.current) return
-      const { width: cw, height: ch } = containerRef.current.getBoundingClientRect()
-      setPanOffset({
-        x: cw / 2 - (cx + CONTENT_PAD) * zoom,
-        y: ch / 2 - (cy + CONTENT_PAD) * zoom,
-      })
-    })
-  }, [selectedRowIdx, rowKeys, rowGroups, bbox, sc, zoom])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Center view on initial mount at 100% zoom (like Step 2)
+  // Use layoutEffect to run before paint and avoid flicker
+  useLayoutEffect(() => {
+    centerView()
+    initialMountRef.current = false
+  }, [centerView])
 
   if (rowKeys.length === 0) {
     return (
@@ -144,10 +179,17 @@ export default function RailLayoutTab({
   }, [onLineRailsChange])
 
   // Pick the active row layout for cross-section overlay
-  const activeCrossSectionRl = railLayouts[selectedRowIdx ?? 0] ?? null
+  // Cross-section overlay uses the FIRST row of the selected area (rails are per-trapezoid, shared across rows)
+  const activeLayoutIdx = useMemo(() => {
+    if (selectedRowIdx == null) return 0
+    const selectedKey = rowKeys[selectedRowIdx]
+    const firstIdx = railLayoutKeys.findIndex(k => k === selectedKey)
+    return firstIdx >= 0 ? firstIdx : 0
+  }, [selectedRowIdx, rowKeys, railLayoutKeys])
+  const activeCrossSectionRl = railLayouts[activeLayoutIdx] ?? railLayouts[0] ?? null
 
   const overlayProps = {
-    railLayouts, rowKeys, rowGroups, beRailByKey,
+    railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey, groupKeyToLabel,
     sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
   }
 
@@ -158,6 +200,13 @@ export default function RailLayoutTab({
 
     return (
       <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
+        {(printMode ? printShowRoofImage : showRoofImage) && <BackgroundImageLayer 
+          imageSrc={imageSrc}
+          uploadedImageData={uploadedImageData}
+          bbox={bbox}
+          toSvg={toSvg_pm}
+          sc={sc}
+        />}
         <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
         <RailsOverlay {...overlayProps} toSvg={toSvg_pm} zoom={1}
           layers={{ rails: true, dimensions: true, materialSummary: true, connectors: true }} />
@@ -186,6 +235,14 @@ export default function RailLayoutTab({
               <div style={{ padding: '1.25rem 1.25rem 0' }}>
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
+
+                  {showRoofImage && <BackgroundImageLayer 
+                    imageSrc={imageSrc}
+                    uploadedImageData={uploadedImageData}
+                    bbox={bbox}
+                    toSvg={toSvg}
+                    sc={sc}
+                  />}
 
                   <HatchedPanels panels={panels} selectedArea={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
@@ -218,6 +275,7 @@ export default function RailLayoutTab({
 
           <LayersPanel
             layers={[
+              { label: t('step3.layer.roofImage'),       checked: showRoofImage,       setter: setShowRoofImage },
               { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
               { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
               { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },

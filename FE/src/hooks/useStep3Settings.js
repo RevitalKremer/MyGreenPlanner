@@ -8,6 +8,7 @@ import { useLang } from '../i18n/LangContext'
 export default function useStep3Settings({
   initialGlobalSettings, initialAreaSettings, SETTINGS_DEFAULTS, PARAM_SCHEMA,
   appDefaults, panelSpec, trapezoidConfigs, setTrapezoidConfigs, areas,
+  areaByGroupKey,
   onTabSave, onTabReset, onSettingsChange,
 }) {
   const { t } = useLang()
@@ -23,9 +24,10 @@ export default function useStep3Settings({
   const getSettings = (areaIdx) => ({ panelLengthCm, panelWidthCm, ...globalSettings, ...(areaSettings[areaIdx] || {}) })
 
   const areaLabel = useCallback((areaKey, i) => {
-    const g = areas[areaKey]?.label
+    // areaByGroupKey maps areaGroupKey → areas entry (handles multi-row areas)
+    const g = areaByGroupKey?.[areaKey]?.label ?? areas[areaKey]?.label
     return g ? `${g}` : t('step3.label.area', { n: i + 1 })
-  }, [areas, t])
+  }, [areas, areaByGroupKey, t])
 
   // ── Area-level setting update ───────────────────────────────────────────
   const updateSetting = (areaIdx, key, value) => {

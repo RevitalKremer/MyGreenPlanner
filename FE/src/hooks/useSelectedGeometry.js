@@ -3,6 +3,13 @@ import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../
 import { railOffsetFromSpacing } from '../utils/railLayoutService'
 import { PANEL_H, PANEL_V, REAL_PANELS } from '../utils/panelCodes.js'
 
+/** Flatten rails/bases from dict[rowIndex → list] to a single list. */
+function flattenRowDict(d) {
+  if (!d) return []
+  if (Array.isArray(d)) return d
+  return Object.values(d).flat()
+}
+
 /**
  * Derives geometry for the currently selected row/trapezoid:
  * line depths, orientations, rail positions, and spacing controls.
@@ -118,7 +125,7 @@ export default function useSelectedGeometry({
     if (!beGeom) return null
 
     const beAreaData = beRailsData?.find(a => a.areaLabel === areas[areaKey]?.label)
-    const rails = beAreaData?.rails ?? []
+    const rails = flattenRowDict(beAreaData?.rails)
     const rowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
     if (rowLength == null) return null
 
@@ -134,7 +141,7 @@ export default function useSelectedGeometry({
       numTrapezoids: numSpans + 1,
       spacing: rowLength / numSpans,
       railOverhang,
-      panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+      panelsPerLine: (areas[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
       typeLetter: 'A', // will be overridden by row-level assignTypes if shown in context
     }
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, getTrapBasesSettings])

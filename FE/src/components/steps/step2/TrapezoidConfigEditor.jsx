@@ -1,4 +1,4 @@
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
+import { PRIMARY, PRIMARY_DARK, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING, WARNING_DARK, WARNING_LIGHT, WARNING_BG } from '../../../styles/colors'
 import {
   computeTotalSlopeDepth,
   isHorizontalOrientation, isEmptyOrientation,
@@ -10,7 +10,6 @@ export default function TrapezoidConfigEditor({
   refinedArea, trapezoidConfigs,
   getAreaKey,
   resetTrapezoidConfig,
-  selectedAreaTrapIds, reassignToTrapezoid,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
   panelGapCm,
@@ -34,6 +33,14 @@ export default function TrapezoidConfigEditor({
   const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
   const angleRaw = area?.angle ?? ''
   const frontHeightRaw = area?.frontHeight ?? ''
+
+  // Update all rows in the same areaGroupId when a shared property changes
+  const updateGroupProp = (updates) => {
+    const groupId = area?.areaGroupId
+    setRectAreas?.(prev => prev.map(a =>
+      a.areaGroupId === groupId ? { ...a, ...updates } : a
+    ))
+  }
 
   const angle = angleRaw !== '' ? parseFloat(angleRaw) || 0 : defaultAngle
   const frontHeight = frontHeightRaw !== '' ? parseFloat(frontHeightRaw) || 0 : defaultFrontHeight
@@ -88,21 +95,14 @@ export default function TrapezoidConfigEditor({
       border: `1px solid ${isOverridden ? PRIMARY : BG_MID}`,
     }}>
 
-      {/* Row 1: trapezoid selector */}
-      <div style={{ marginBottom: '0.35rem' }}>
-        <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Trapezoid</div>
-        <select
-          value={selectedTrapezoidId || ''}
-          onChange={e => reassignToTrapezoid?.(e.target.value)}
-          style={{ width: '100%', padding: '3px 6px', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK, background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`, borderRadius: '6px', cursor: 'pointer' }}
-        >
-          {(selectedAreaTrapIds?.length > 0 ? selectedAreaTrapIds : [selectedTrapezoidId]).filter(Boolean).map(tid => (
-            <option key={tid} value={tid}>{tid}</option>
-          ))}
-        </select>
-      </div>
+      {/* Trapezoid label */}
+      {selectedTrapezoidId && (
+        <div style={{ marginBottom: '0.35rem', fontSize: '0.78rem', fontWeight: '700', color: PRIMARY_DARK }}>
+          {selectedTrapezoidId}
+        </div>
+      )}
 
-      {/* Row 2: actions */}
+      {/* Actions */}
       <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.5rem' }}>
         {isOverridden && (
           <button
@@ -111,7 +111,7 @@ export default function TrapezoidConfigEditor({
               if (setRectAreas && areaKey !== null && areaKey !== undefined) {
                 const resetAngle = String(parseFloat(panelAngle) || defaultAngle || 0)
                 const resetFH = String(parseFloat(panelFrontHeight) || defaultFrontHeight || 0)
-                setRectAreas(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: resetAngle, frontHeight: resetFH } : a))
+                updateGroupProp({ angle: resetAngle, frontHeight: resetFH })
               }
             }}
             style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: 'white', color: TEXT_PLACEHOLDER, border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer' }}
@@ -156,8 +156,8 @@ export default function TrapezoidConfigEditor({
           <input
             type="number" min={angleMin} max={angleMax} step="0.5"
             value={angleRaw !== '' ? angleRaw : defaultAngle}
-            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: e.target.value } : a))}
-            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, angle: String(Math.min(angleMax, Math.max(angleMin, v))) } : a)) }}
+            onChange={e => updateGroupProp({ angle: e.target.value })}
+            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateGroupProp({ angle: String(Math.min(angleMax, Math.max(angleMin, v))) }) }}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>
@@ -166,8 +166,8 @@ export default function TrapezoidConfigEditor({
           <input
             type="number" min={frontHeightMin} max={frontHeightMax} step="0.5"
             value={frontHeightRaw !== '' ? frontHeightRaw : defaultFrontHeight}
-            onChange={e => setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, frontHeight: e.target.value } : a))}
-            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRectAreas?.(prev => prev.map((a, i) => i === areaKey ? { ...a, frontHeight: String(Math.min(frontHeightMax, Math.max(frontHeightMin, v))) } : a)) }}
+            onChange={e => updateGroupProp({ frontHeight: e.target.value })}
+            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateGroupProp({ frontHeight: String(Math.min(frontHeightMax, Math.max(frontHeightMin, v))) }) }}
             style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
           />
         </div>

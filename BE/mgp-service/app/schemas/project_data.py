@@ -57,6 +57,12 @@ class PanelGrid(BaseModel):
     rowPositions: Optional[dict[str, list[float]]] = None
 
 
+class PanelRowData(BaseModel):
+    """One panel row within an area. Each row has its own panel grid."""
+    rowIndex: int = 0
+    panelGrid: Optional[PanelGrid] = None
+
+
 class Step2Area(BaseModel):
     """Basic area config set during panel placement. No computed data."""
     id: int                             # permanent numeric id, assigned by BE, never changes
@@ -65,7 +71,8 @@ class Step2Area(BaseModel):
     frontHeightCm: Optional[float] = None
     areaVertical: bool = False          # 90° rotated area (e.g. tile roof side faces)
     trapezoidIds: list[str] = Field(default_factory=list)
-    panelGrid: Optional[PanelGrid] = None
+    panelRows: list[PanelRowData] = Field(default_factory=list)
+    # Each entry = one drawn panel row; single-row area = list of length 1
 
 
 class Step2Trapezoid(BaseModel):
@@ -128,11 +135,17 @@ class ExternalDiagonal(BaseModel):
 
 
 class ComputedArea(BaseModel):
-    """Server-computed construction data for one area."""
+    """Server-computed construction data for one area.
+
+    rails/bases are keyed by panel row index (int) within the area.
+    Single-row areas use key 0.
+    """
     areaId: int                     # matches step2.areas[].id (permanent)
     label: str                      # matches step2.areas[].label (display)
-    rails: list[Rail] = Field(default_factory=list)
-    bases: list[Base] = Field(default_factory=list)
+    rails: dict[int, list[Rail]] = Field(default_factory=dict)
+    # rowIndex → computed rails for that panel row
+    bases: dict[int, list[Base]] = Field(default_factory=dict)
+    # rowIndex → computed bases for that panel row
     diagonals: list[ExternalDiagonal] = Field(default_factory=list)
     numLargeGaps: int = 0
 

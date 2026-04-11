@@ -213,12 +213,22 @@ def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
     computed.append({'trapezoidId': trap_id, **detail})
 
 
-def _derive_line_rails(computed_area: dict | None) -> dict[str, list[float]]:
-    """Group computed rails by lineIdx → sorted offsets."""
+def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[str, list[float]]:
+    """Group computed rails by lineIdx → sorted offsets.
+
+    computed_area.rails is a dict[rowIndex → list[Rail]].
+    Extracts rails for the given row_index.
+    """
     if not computed_area:
         return {}
+    rails_dict = computed_area.get('rails', {})
+    # Support both new dict format and legacy list format
+    if isinstance(rails_dict, list):
+        rails_list = rails_dict
+    else:
+        rails_list = rails_dict.get(row_index) or rails_dict.get(str(row_index)) or []
     derived: dict[str, list] = {}
-    for r in computed_area.get('rails', []):
+    for r in rails_list:
         li = str(r.get('lineIdx', 0))
         off = r.get('offsetFromLineFrontCm')
         if off is not None:
@@ -226,8 +236,14 @@ def _derive_line_rails(computed_area: dict | None) -> dict[str, list[float]]:
     return {li: sorted(offs) for li, offs in derived.items()}
 
 
-def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict) -> dict:
-    """Extract rail computation inputs from project data for one area."""
+def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict,
+                       panel_grid: dict | None = None) -> dict:
+    """Extract rail computation inputs from project data for one area/row.
+
+    panel_grid: explicit panel grid for one panel row. If not provided,
+    falls back to legacy area.panelGrid (should not happen after migration).
+    lineRails is per-trapezoid (shared across all rows in the area).
+    """
     step2           = data.get('step2', {})
     step3           = data.get('step3', {})
     global_settings = step3.get('globalSettings') or {}
@@ -237,12 +253,13 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
     else:
         area_settings = area_settings_raw.get(str(area_idx)) or {}
 
-    # lineRails: use transient override from FE if provided; otherwise let
-    # rail_service compute from default spacing (no re-derivation from old rails)
+    # lineRails: per-area setting (shared across all rows in the area)
     line_rails = area_settings.get('lineRails') or {}
 
+    effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
+
     return {
-        'panel_grid':        area.get('panelGrid') or {},
+        'panel_grid':        effective_grid,
         'panel_width_cm':    step2.get('panelWidthCm'),
         'panel_length_cm':   step2.get('panelLengthCm'),
         'line_rails':        line_rails,
@@ -285,25 +302,41 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     for i, area in enumerate(areas):
         area_id = area.get('id', i + 1)
         label = area.get('label') or str(i)
-        computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults))
-        # Round slope beam to whole cm by adjusting the last rail
-        _round_slope_beam_rails(
-            computed['rails'],
-            area.get('panelGrid') or {},
-            step2['panelWidthCm'],
-            step2['panelLengthCm'],
-            app_defaults['lineGapCm'],
-            app_defaults['baseOverhangCm'],
-        )
+
+        # Iterate panel rows (multi-row areas)
+        panel_rows = area.get('panelRows', [])
+        if not panel_rows:
+            # Legacy fallback: single panelGrid → treat as one row
+            pg = area.get('panelGrid')
+            panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
+
+        all_row_rails: dict[int, list] = {}
+        total_large_gaps = 0
+        for pr in panel_rows:
+            row_idx = pr.get('rowIndex', 0)
+            pg = pr.get('panelGrid') or {}
+            computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults, panel_grid=pg))
+            # Round slope beam to whole cm by adjusting the last rail
+            _round_slope_beam_rails(
+                computed['rails'],
+                pg,
+                step2['panelWidthCm'],
+                step2['panelLengthCm'],
+                app_defaults['lineGapCm'],
+                app_defaults['baseOverhangCm'],
+            )
+            all_row_rails[row_idx] = computed['rails']
+            total_large_gaps += computed['numLargeGaps']
+
         _upsert_computed_area(step3, area_id, label, {
-            'rails': computed['rails'],
-            'numLargeGaps': computed['numLargeGaps'],
+            'rails': all_row_rails,
+            'numLargeGaps': total_large_gaps,
         })
         result.append({
             'areaId':       area_id,
             'areaLabel':    label,
-            'rails':        computed['rails'],
-            'numLargeGaps': computed['numLargeGaps'],
+            'rails':        all_row_rails,
+            'numLargeGaps': total_large_gaps,
         })
 
     # Strip lineRails from step3.areaSettings before persisting
@@ -387,20 +420,27 @@ def _build_base_inputs(
     trapezoid_id: str, trapezoid_configs: dict | None = None,
     trap_start_cm: float | None = None, trap_end_cm: float | None = None,
     roof_spec: dict | None = None,
+    panel_grid: dict | None = None, row_index: int = 0,
 ) -> dict:
-    """Extract base computation inputs for one trapezoid within an area."""
+    """Extract base computation inputs for one trapezoid within an area/row.
+
+    panel_grid: explicit panel grid for one panel row.
+    row_index: which panel row to derive line_rails from.
+    """
     step2 = data.get('step2', {})
     area_id = area.get('id', area_idx + 1)
 
-    # Line rails from computed area data
+    # Line rails from computed area data (row-specific)
     computed_area = _get_computed_area(data, area_id)
-    line_rails = _derive_line_rails(computed_area)
+    line_rails = _derive_line_rails(computed_area, row_index=row_index)
 
     trap_cfg = (trapezoid_configs or {}).get(trapezoid_id, {})
     custom_offsets = trap_cfg.get('customOffsets')
 
+    effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
+
     return {
-        'panel_grid':          area.get('panelGrid') or {},
+        'panel_grid':          effective_grid,
         'panel_width_cm':      step2.get('panelWidthCm'),
         'panel_length_cm':     step2.get('panelLengthCm'),
         'line_rails':          line_rails,
@@ -456,16 +496,18 @@ async def compute_and_save_bases(
         await db.commit()
         return []
 
-    # Persist custom offsets
+    # Persist custom offsets (per-row keys "trapId:rowIdx")
     stored_custom = step3.get('customBasesOffsets') or {}
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
             co = cfg.get('customOffsets')
+            row_idx = cfg.get('panelRowIdx', 0)
+            row_key = f'{trap_id}:{row_idx}'
             if co is not None:
                 if len(co) > 0:
-                    stored_custom[trap_id] = co
+                    stored_custom[row_key] = co
                 else:
-                    stored_custom.pop(trap_id, None)
+                    stored_custom.pop(row_key, None)
     step3['customBasesOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
@@ -477,51 +519,93 @@ async def compute_and_save_bases(
 
         # Check if this area already has computed bases
         computed_area = _get_computed_area(data, area_id)
-        has_existing_bases = computed_area is not None and len(computed_area.get('bases', [])) > 0
+        existing_bases = computed_area.get('bases', {}) if computed_area else {}
+        has_existing_bases = bool(existing_bases) and any(
+            len(v) > 0 for v in (existing_bases.values() if isinstance(existing_bases, dict) else [existing_bases])
+        )
 
-        bases_data_map: dict[str, dict | None] = {}
-        for trap_id in trap_ids:
-            trap_start, trap_end = _compute_trap_x_range(
-                area.get('panelGrid') or {}, trap_id, trap_ids,
-                trapezoids,
-                step2['panelWidthCm'], step2['panelLengthCm'],
-                app_defaults['panelGapCm'],
-            )
+        # Iterate panel rows (multi-row areas)
+        panel_rows = area.get('panelRows', [])
+        if not panel_rows:
+            pg = area.get('panelGrid')
+            panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
 
-            trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
+        all_row_bases: dict[int, list] = {}
+        # Use first row's bases_data_map for trapezoid detail computation
+        first_bases_data_map: dict[str, dict | None] = {}
+        per_row_data: dict[int, dict] = {}  # rowIdx → { basesDataMap, consolidated }
 
-            effective_configs = dict(trapezoid_configs or {})
-            if trap_id not in effective_configs:
-                effective_configs[trap_id] = {}
+        for pr in panel_rows:
+            row_idx = pr.get('rowIndex', 0)
+            pg = pr.get('panelGrid') or {}
 
-            if not has_existing_bases:
-                effective_configs[trap_id].pop('customOffsets', None)
-                stored_custom.pop(trap_id, None)
-            elif 'customOffsets' not in effective_configs[trap_id] and trap_id in stored_custom:
-                stored = stored_custom[trap_id]
-                frame_check = trap_frame_mm or round((trap_end - trap_start) * 10) if trap_start is not None else None
-                if stored and len(stored) >= 2 and frame_check and max(stored) <= frame_check:
-                    effective_configs[trap_id]['customOffsets'] = stored
+            bases_data_map: dict[str, dict | None] = {}
+            for trap_id in trap_ids:
+                trap_start, trap_end = _compute_trap_x_range(
+                    pg, trap_id, trap_ids,
+                    trapezoids,
+                    step2['panelWidthCm'], step2['panelLengthCm'],
+                    app_defaults['panelGapCm'],
+                )
+
+                trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
+
+                effective_configs = dict(trapezoid_configs or {})
+                if trap_id not in effective_configs:
+                    effective_configs[trap_id] = {}
+
+                # Per-row custom offsets keyed by "trapId:rowIdx"
+                row_custom_key = f'{trap_id}:{row_idx}'
+                if 'customOffsets' in effective_configs[trap_id]:
+                    # FE explicitly sent offsets (or reset with empty list) — use as-is
+                    if not effective_configs[trap_id]['customOffsets']:
+                        # Explicit reset: clear stored
+                        effective_configs[trap_id].pop('customOffsets', None)
+                        stored_custom.pop(row_custom_key, None)
                 else:
-                    stored_custom.pop(trap_id, None)
+                    # No FE override — try to restore from stored DB data
+                    stored = stored_custom.get(row_custom_key)
+                    if stored and has_existing_bases:
+                        # Validate offsets fit within frame (single-trap areas have no frame bounds → skip validation)
+                        frame_check = trap_frame_mm or (round((trap_end - trap_start) * 10) if trap_start is not None else None)
+                        if frame_check is not None:
+                            if len(stored) >= 2 and max(stored) <= frame_check:
+                                effective_configs[trap_id]['customOffsets'] = stored
+                            else:
+                                stored_custom.pop(row_custom_key, None)
+                        elif len(stored) >= 2:
+                            # No frame bounds (single-trap area) — trust stored offsets
+                            effective_configs[trap_id]['customOffsets'] = stored
 
-            inputs = _build_base_inputs(data, area, i, app_defaults, trap_id, effective_configs, trap_start, trap_end, roof_spec)
-            bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
+                inputs = _build_base_inputs(
+                    data, area, i, app_defaults, trap_id, effective_configs,
+                    trap_start, trap_end, roof_spec,
+                    panel_grid=pg, row_index=row_idx,
+                )
+                bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
-        consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
+            consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
 
-        all_bases = []
-        for trap_id in trap_ids:
-            all_bases.extend(consolidated.get(trap_id, []))
+            row_bases = []
+            for trap_id in trap_ids:
+                row_bases.extend(consolidated.get(trap_id, []))
+            all_row_bases[row_idx] = row_bases
 
-        _upsert_computed_area(step3, area_id, label, {'bases': all_bases})
+            # Keep first row's data for trapezoid detail computation
+            if not first_bases_data_map:
+                first_bases_data_map = bases_data_map
+            # Keep per-row data for external diagonal computation
+            per_row_data[row_idx] = {'basesDataMap': bases_data_map, 'consolidated': consolidated}
+
+        _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
             'areaId': area_id,
             'areaLabel': label,
-            'bases': all_bases,
-            'basesDataMap': bases_data_map,
+            'bases': all_row_bases,
+            'basesDataMap': first_bases_data_map,
             'trapIds': trap_ids,
-            'consolidated': consolidated,
+            'consolidated': consolidated if panel_rows else {},
+            'perRowData': per_row_data,
         })
 
     project.data = data
@@ -551,16 +635,30 @@ async def compute_and_save_external_diagonals(
     for area_res in bases_result:
         area_id = area_res.get('areaId', 0)
         label = area_res.get('areaLabel', '')
-        bases_data_map = area_res.get('basesDataMap', {})
         trap_ids = area_res.get('trapIds', [])
-        consolidated = area_res.get('consolidated', {})
-        if not bases_data_map:
-            diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': []})
-            continue
+        per_row_data = area_res.get('perRowData', {})
 
-        area_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
-        _upsert_computed_area(step3, area_id, label, {'diagonals': area_diagonals})
-        diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': area_diagonals})
+        # Compute external diagonals per panel row, tag each with panelRowIdx
+        all_diagonals = []
+        if per_row_data:
+            for row_idx, row_data in sorted(per_row_data.items()):
+                bdm = row_data.get('basesDataMap', {})
+                cons = row_data.get('consolidated', {})
+                if not bdm:
+                    continue
+                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids)
+                for d in row_diags:
+                    d['panelRowIdx'] = row_idx
+                all_diagonals.extend(row_diags)
+        else:
+            # Fallback: single-row (use basesDataMap from area_res)
+            bases_data_map = area_res.get('basesDataMap', {})
+            consolidated = area_res.get('consolidated', {})
+            if bases_data_map:
+                all_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
+
+        _upsert_computed_area(step3, area_id, label, {'diagonals': all_diagonals})
+        diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': all_diagonals})
 
     data['step3'] = step3
     project.data = data
@@ -647,7 +745,7 @@ async def update_project_step(
             aid = area_res.get('areaId')
             for ca in updated_step3.get('computedAreas', []):
                 if ca.get('areaId') == aid:
-                    area_res['bases'] = ca.get('bases', [])
+                    area_res['bases'] = ca.get('bases', {})
                     break
 
     # ── Auto-compute BOM on entering step 4 ──
@@ -734,6 +832,11 @@ def _compute_all_trapezoid_details(
                 area_idx = idx
                 break
         if not area:
+            logging.error(
+                f"Trapezoid '{trap_id}' not found in any area's trapezoidIds. "
+                f"Available areas: {[(a.get('label'), a.get('trapezoidIds', [])) for a in areas]}. "
+                f"Skipping trapezoid detail computation."
+            )
             continue
 
         area_id = area.get('id', 0)
@@ -743,8 +846,9 @@ def _compute_all_trapezoid_details(
 
         # Derive line rails — only for active (non-empty) lines of this trapezoid.
         # Ghost rendering is handled by the FE overlaying the full trap's DetailView.
+        # Use first panel row (row_index=0) — trapezoid geometry is shared across rows.
         computed_area = _get_computed_area(data, area_id)
-        all_line_rails = _derive_line_rails(computed_area)
+        all_line_rails = _derive_line_rails(computed_area, row_index=0)
         line_rails = {
             li: offs for li, offs in all_line_rails.items()
             if int(li) < len(line_orients) and not is_empty_orientation(line_orients[int(li)])
@@ -1003,7 +1107,15 @@ def _reassign_base_trapezoid_ids(
                 if key not in depth_to_trap or detail.get('isFullTrap'):
                     depth_to_trap[key] = tid
                 trap_to_depth[tid] = key
-        for base in area_data.get('bases', []):
+        # Iterate all bases across all panel rows (dict[rowIdx → list[Base]])
+        bases_by_row = area_data.get('bases', {})
+        all_bases = []
+        if isinstance(bases_by_row, dict):
+            for row_bases in bases_by_row.values():
+                all_bases.extend(row_bases if isinstance(row_bases, list) else [])
+        else:
+            all_bases = bases_by_row  # legacy list format
+        for base in all_bases:
             base_len = round(base.get('lengthCm', 0), 1)
             current_tid = base.get('trapezoidId', '')
             current_depth = trap_to_depth.get(current_tid)
@@ -1140,9 +1252,17 @@ async def save_tab(
         # Bases overrides → trapezoidConfigs[].customOffsets
         if 'bases' in overrides and overrides['bases']:
             trapezoid_configs = trapezoid_configs or {}
-            for trap_id, offsets in overrides['bases'].items():
+            for key, offsets in overrides['bases'].items():
+                # Key format: "trapId:rowIdx" (per-row) or plain "trapId"
+                if ':' in key:
+                    trap_id, row_idx_str = key.rsplit(':', 1)
+                    row_idx = int(row_idx_str)
+                else:
+                    trap_id = key
+                    row_idx = 0
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customOffsets'] = offsets
+                trap_cfg['panelRowIdx'] = row_idx
         
         # Diagonal overrides → trapezoidConfigs[].customDiagonals
         # New format: { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
@@ -1185,7 +1305,7 @@ async def save_tab(
             aid = area_res.get('areaId')
             for ca in updated_step3.get('computedAreas', []):
                 if ca.get('areaId') == aid:
-                    area_res['bases'] = ca.get('bases', [])
+                    area_res['bases'] = ca.get('bases', {})
                     break
 
     # Return full project data — same structure as GET /projects/:id
