@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildTrapezoidGroups } from './tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildTrapezoidGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import LayersPanel from './LayersPanel'
+import BackgroundImageLayer from './BackgroundImageLayer'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
 import RailsOverlay from './RailsOverlay'
@@ -16,8 +17,9 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
+  const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
@@ -27,13 +29,16 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
+  const initialMountRef = useRef(true)
 
-  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const svgRef = useRef(null)
 
   const { map: trapGroups, keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
+
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
   // Split each trapezoid group by panelRowIdx for multi-row areas
   const { expandedBasePlans: basePlans, expandedRailLayouts: railLayouts, expandedTrapIds } = useMemo(() => {
@@ -187,32 +192,21 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
 
   const bbox = useMemo(() => {
-    if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
-    return getPanelsBoundingBox(panels)
-  }, [panels])
+    if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
+    return expandBboxForImage(panelBbox, uploadedImageData)
+  }, [nonEmptyPanels, uploadedImageData])
 
   const PAD  = 60, MAX_W = 900  // PAD=60 gives room for edit bars above/below the panel bbox
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
   const sc   = bboxW > 0 ? MAX_W / bboxW : 1
 
-  // Auto-pan to selected trapezoid when selection changes
-  useEffect(() => {
-    if (effectiveSelectedTrapId == null) return
-    const rowPanels = trapGroups[effectiveSelectedTrapId] ?? []
-    if (rowPanels.length === 0) return
-    const rb = getPanelsBoundingBox(rowPanels)
-    const cx = PAD + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
-    const cy = PAD + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
-    const CONTENT_PAD = 20
-    requestAnimationFrame(() => {
-      if (!containerRef.current) return
-      const { width: cw, height: ch } = containerRef.current.getBoundingClientRect()
-      setPanOffset({
-        x: cw / 2 - (cx + CONTENT_PAD) * zoom,
-        y: ch / 2 - (cy + CONTENT_PAD) * zoom,
-      })
-    })
-  }, [effectiveSelectedTrapId, trapGroups, bbox, sc, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Center view on initial mount at 100% zoom (like Step 2)
+  // Use layoutEffect to run before paint and avoid flicker
+  useLayoutEffect(() => {
+    centerView()
+    initialMountRef.current = false
+  }, [centerView])
 
   if (trapIds.length === 0) {
     return (
@@ -247,6 +241,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
   // ── SVG layers (shared by both print and interactive modes) ──
   const svgLayers = (
     <>
+      {(printMode ? printShowRoofImage : showRoofImage) && <BackgroundImageLayer 
+        imageSrc={imageSrc}
+        uploadedImageData={uploadedImageData}
+        bbox={bbox}
+        toSvg={toSvg}
+        sc={sc}
+      />}
+
       <HatchedPanels panels={panels} selectedTrapId={effTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
       {/* Purlin lines for parallel installation — parallel to bases, starting from first base */}
@@ -616,6 +618,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], eff
 
         <LayersPanel
           layers={[
+            { label: t('step3.layer.roofImage'),  checked: showRoofImage,  setter: setShowRoofImage },
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 const MM_W = 180
 const MM_H = 100
@@ -14,6 +14,7 @@ export function useCanvasPanZoom() {
   const panRef = useRef(null)
   const containerRef = useRef(null)
   const contentRef = useRef(null)
+  const hasAutoFit = useRef(false)
 
   const handleWheel = (e) => {
     e.preventDefault()
@@ -44,7 +45,31 @@ export function useCanvasPanZoom() {
   }
 
   const stopPan = () => { panRef.current = null; setPanActive(false) }
-  const resetView = () => { setZoom(1); setPanOffset({ x: 0, y: 0 }) }
+  
+  const resetView = useCallback(() => { 
+    setZoom(1)
+    setPanOffset({ x: 0, y: 0 })
+  }, [])
+
+  /**
+   * Center view on content at 100% zoom (like Step 2).
+   */
+  const centerView = useCallback(() => {
+    if (!contentRef.current || !containerRef.current) return
+    const contentRect = contentRef.current.getBoundingClientRect()
+    const containerRect = containerRef.current.getBoundingClientRect()
+    
+    if (contentRect.width <= 0 || contentRect.height <= 0) return
+    if (containerRect.width <= 0 || containerRect.height <= 0) return
+    
+    // Center content in viewport at zoom=1
+    const centeredX = (containerRect.width - contentRect.width) / 2
+    const centeredY = (containerRect.height - contentRect.height) / 2
+    
+    setZoom(1)
+    setPanOffset({ x: centeredX, y: centeredY })
+    hasAutoFit.current = true
+  }, [])
 
   const panToMinimapPoint = (mmX, mmY) => {
     if (!contentRef.current || !containerRef.current) return
@@ -77,7 +102,7 @@ export function useCanvasPanZoom() {
     panOffset, setPanOffset,
     panActive,
     containerRef, contentRef,
-    handleWheel, startPan, handleMouseMove, stopPan, resetView,
+    handleWheel, startPan, handleMouseMove, stopPan, resetView, centerView,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   }
 }

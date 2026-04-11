@@ -15,6 +15,7 @@ import useSelectedGeometry from '../../hooks/useSelectedGeometry'
 
 export default function Step3ConstructionPlanning({
   panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs,
+  uploadedImageData, imageSrc,
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
@@ -250,7 +251,7 @@ export default function Step3ConstructionPlanning({
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} />}
+          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} />}
 
           {activeTab === 'detail' && (() => {
             const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
@@ -289,6 +290,7 @@ export default function Step3ConstructionPlanning({
             <div style={{ height: '100%', overflow: 'hidden' }}>
               <RailLayoutTab
                 panels={panels} refinedArea={refinedArea}
+                uploadedImageData={uploadedImageData} imageSrc={imageSrc}
                 selectedRowIdx={selectedRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
@@ -309,6 +311,7 @@ export default function Step3ConstructionPlanning({
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <BasesPlanTab
               panels={panels} refinedArea={refinedArea} areas={areas}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}

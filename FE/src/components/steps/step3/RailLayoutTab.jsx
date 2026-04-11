@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import { computeRowRailLayout } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import RailsOverlay from './RailsOverlay'
 import LayersPanel from './LayersPanel'
+import BackgroundImageLayer from './BackgroundImageLayer'
 import RailsTable from './RailsTable'
 import RailCrossSectionOverlay from './RailCrossSectionOverlay'
 import RulerTool from '../../shared/RulerTool'
@@ -15,6 +16,7 @@ import RulerTool from '../../shared/RulerTool'
 
 export default function RailLayoutTab({
   panels = [], refinedArea, selectedRowIdx = null,
+  uploadedImageData, imageSrc,
   settings = {},
   lineRails,           // { [lineIdx]: [offsetCm, ...] }
   panelDepthsCm,       // [depthCm, ...]
@@ -24,6 +26,7 @@ export default function RailLayoutTab({
   onResetRails,
   highlightGroup = null,
   printMode = false,
+  printShowRoofImage = true,
   trapSettingsMap = {},
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
@@ -37,6 +40,7 @@ export default function RailLayoutTab({
 
   const svgRef = useRef(null)
 
+  const [showRoofImage,       setShowRoofImage]       = useState(true)
   const [showRails,           setShowRails]           = useState(true)
   const [showDimensions,      setShowDimensions]      = useState(true)
   const [showMaterialSummary, setShowMaterialSummary] = useState(true)
@@ -44,8 +48,9 @@ export default function RailLayoutTab({
   const [showEditBar,    setShowEditBar]    = useState(false)
   const [rulerActive,         setRulerActive]         = useState(false)
   const [tableOpen,           setTableOpen]           = useState(false)
+  const initialMountRef = useRef(true)
 
-  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const railConfig = useMemo(() => ({
@@ -55,6 +60,8 @@ export default function RailLayoutTab({
   }), [lineRails, railOverhangCm, stockLengths])
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
+
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
   // BE rail lookup: keyed by areaLabel:panelRowIdx:railId (and legacy variants)
   const beRailByKey = useMemo(() => {
@@ -132,9 +139,10 @@ export default function RailLayoutTab({
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
 
   const bbox = useMemo(() => {
-    if (panels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
-    return getPanelsBoundingBox(panels)
-  }, [panels])
+    if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
+    return expandBboxForImage(panelBbox, uploadedImageData)
+  }, [nonEmptyPanels, uploadedImageData])
 
   const PAD = 24, PAD_LEFT = 180, MAX_W = 900
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
@@ -142,25 +150,12 @@ export default function RailLayoutTab({
   const svgW = MAX_W + PAD_LEFT + PAD, svgH = bboxH * sc + PAD * 2
   const toSvgFn = (sx, sy) => [PAD_LEFT + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
 
-  // Auto-pan to the selected row when selectedRowIdx changes
-  useEffect(() => {
-    if (selectedRowIdx == null) return
-    const selectedKey = rowKeys[selectedRowIdx]
-    const rowPanels   = rowGroups[selectedKey] ?? []
-    if (rowPanels.length === 0) return
-    const rb = getPanelsBoundingBox(rowPanels)
-    const cx = PAD_LEFT + ((rb.minX + rb.maxX) / 2 - bbox.minX) * sc
-    const cy = PAD     + ((rb.minY + rb.maxY) / 2 - bbox.minY) * sc
-    const CONTENT_PAD = 20   // 1.25rem padding around svg
-    requestAnimationFrame(() => {
-      if (!containerRef.current) return
-      const { width: cw, height: ch } = containerRef.current.getBoundingClientRect()
-      setPanOffset({
-        x: cw / 2 - (cx + CONTENT_PAD) * zoom,
-        y: ch / 2 - (cy + CONTENT_PAD) * zoom,
-      })
-    })
-  }, [selectedRowIdx, rowKeys, rowGroups, bbox, sc, zoom])   // eslint-disable-line react-hooks/exhaustive-deps
+  // Center view on initial mount at 100% zoom (like Step 2)
+  // Use layoutEffect to run before paint and avoid flicker
+  useLayoutEffect(() => {
+    centerView()
+    initialMountRef.current = false
+  }, [centerView])
 
   if (rowKeys.length === 0) {
     return (
@@ -198,6 +193,13 @@ export default function RailLayoutTab({
 
     return (
       <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
+        {(printMode ? printShowRoofImage : showRoofImage) && <BackgroundImageLayer 
+          imageSrc={imageSrc}
+          uploadedImageData={uploadedImageData}
+          bbox={bbox}
+          toSvg={toSvg_pm}
+          sc={sc}
+        />}
         <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
         <RailsOverlay {...overlayProps} toSvg={toSvg_pm} zoom={1}
           layers={{ rails: true, dimensions: true, materialSummary: true, connectors: true }} />
@@ -226,6 +228,14 @@ export default function RailLayoutTab({
               <div style={{ padding: '1.25rem 1.25rem 0' }}>
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
+
+                  {showRoofImage && <BackgroundImageLayer 
+                    imageSrc={imageSrc}
+                    uploadedImageData={uploadedImageData}
+                    bbox={bbox}
+                    toSvg={toSvg}
+                    sc={sc}
+                  />}
 
                   <HatchedPanels panels={panels} selectedArea={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
 
@@ -258,6 +268,7 @@ export default function RailLayoutTab({
 
           <LayersPanel
             layers={[
+              { label: t('step3.layer.roofImage'),       checked: showRoofImage,       setter: setShowRoofImage },
               { label: t('step3.layer.rails'),           checked: showRails,           setter: setShowRails },
               { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
               { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },

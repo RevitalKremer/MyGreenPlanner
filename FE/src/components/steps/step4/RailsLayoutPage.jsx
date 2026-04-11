@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import RailLayoutTab from '../step3/RailLayoutTab'
-import { getPanelsBoundingBox } from '../step3/tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
@@ -12,6 +12,7 @@ const PM_PAD = 24, MAX_W = 900
 
 export default function RailsLayoutPage({
   panels = [], refinedArea,
+  uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {},
   beRailsData = null,
   project, panelType, panelWp, totalKw, date, pageRef,
@@ -19,12 +20,14 @@ export default function RailsLayoutPage({
   const { t } = useLang()
   const { naturalW, naturalH } = useMemo(() => {
     if (!panels.length) return { naturalW: MAX_W + PM_PAD * 2, naturalH: 200 }
-    const bbox = getPanelsBoundingBox(panels)
+    const panelBbox = getPanelsBoundingBox(panels)
+    const bbox = expandBboxForImage(panelBbox, uploadedImageData)
+    
     const bboxW = bbox.maxX - bbox.minX
     const bboxH = bbox.maxY - bbox.minY
     const sc    = bboxW > 0 ? MAX_W / bboxW : 1
     return { naturalW: MAX_W + PM_PAD * 2, naturalH: bboxH * sc + PM_PAD * 2 }
-  }, [panels])
+  }, [panels, uploadedImageData])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -51,6 +54,8 @@ export default function RailsLayoutPage({
           <RailLayoutTab
             panels={panels}
             refinedArea={refinedArea}
+            uploadedImageData={uploadedImageData}
+            imageSrc={imageSrc}
             trapSettingsMap={trapSettingsMap}
             trapLineRailsMap={trapLineRailsMap}
             beRailsData={beRailsData}

@@ -1,11 +1,12 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, TEXT_DARKEST, WHITE, BLACK } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
+import BackgroundImageLayer from './BackgroundImageLayer'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { getPanelsBoundingBox, buildRowGroups } from './tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 
 const PAD      = 40   // SVG padding around panel content
@@ -71,17 +72,19 @@ export default function AreasTab({
   panels, areas,
   rowKeys = [], areaLabel = () => '',
   printMode = false,
-  printShowAreas = true, printShowCounts = true,
+  printShowAreas = true, printShowCounts = true, printShowRoofImage = true,
+  uploadedImageData, imageSrc,
 }) {
   const { t } = useLang()
   const [showAreas, setShowAreas] = useState(true)
   const [showCounts, setShowCounts] = useState(true)
+  const [showRoofImage, setShowRoofImage] = useState(true)
   const [rulerActive, setRulerActive] = useState(false)
 
   const {
     zoom, setZoom, panOffset, panActive,
     containerRef, contentRef,
-    startPan, handleMouseMove, stopPan, resetView,
+    startPan, handleMouseMove, stopPan, resetView, centerView,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
@@ -89,14 +92,21 @@ export default function AreasTab({
 
   const bbox = useMemo(() => {
     if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
-    return getPanelsBoundingBox(nonEmptyPanels)
-  }, [nonEmptyPanels])
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
+    return expandBboxForImage(panelBbox, uploadedImageData)
+  }, [nonEmptyPanels, uploadedImageData])
 
   const bboxW = bbox.maxX - bbox.minX
   const bboxH = bbox.maxY - bbox.minY
   const sc    = bboxW > 0 ? MAX_W / bboxW : 1
   const svgW  = MAX_W + PAD * 2
   const svgH  = bboxH * sc + PAD * 2
+
+  // Center view on initial mount at 100% zoom (like Step 2)
+  // Use layoutEffect to run before paint and avoid flicker
+  useLayoutEffect(() => {
+    centerView()
+  }, [centerView])
 
   const toSvg = useCallback(
     (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc],
@@ -181,6 +191,14 @@ export default function AreasTab({
   if (printMode) {
     return (
       <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+        {/* Background image - first layer */}
+        {printShowRoofImage && <BackgroundImageLayer 
+          imageSrc={imageSrc}
+          uploadedImageData={uploadedImageData}
+          bbox={bbox}
+          toSvg={toSvg}
+          sc={sc}
+        />}
         {printShowAreas && areaData.map(({ areaKey, pts }) => (
           <polygon key={`poly-${areaKey}`}
             points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
@@ -241,6 +259,15 @@ export default function AreasTab({
           <div style={{ padding: CSS_PAD }}>
             <svg width={svgW} height={svgH} style={{ display: 'block' }}>
 
+              {/* Background image - first layer */}
+              {showRoofImage && <BackgroundImageLayer 
+                imageSrc={imageSrc}
+                uploadedImageData={uploadedImageData}
+                bbox={bbox}
+                toSvg={toSvg}
+                sc={sc}
+              />}
+
               {/* Area polygons — drawn behind panels */}
               {showAreas && areaData.map(({ areaKey, pts }) => (
                 <polygon key={`poly-${areaKey}`}
@@ -300,6 +327,7 @@ export default function AreasTab({
 
       <LayersPanel
         layers={[
+          { label: t('step3.layer.roofImage'), checked: showRoofImage, setter: setShowRoofImage },
           { label: t('step3.areas.label'), checked: showAreas, setter: setShowAreas },
           { label: t('step3.areas.panelCounts'), checked: showCounts, setter: setShowCounts },
         ]}

@@ -653,6 +653,8 @@ function App() {
           <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
+            uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             railsComputing={railsComputing}
             onTabSave={handleTabSave}
             onTabReset={handleTabReset}
@@ -698,6 +700,8 @@ function App() {
             areas={s.areas}
             project={s.currentProject}
             projectId={s.cloudProjectId}
+            uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}

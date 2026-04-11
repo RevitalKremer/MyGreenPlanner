@@ -230,6 +230,7 @@ function ScaledPage({ scale, children }) {
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step4PdfReport({
   panels = [], refinedArea, areas = [], project, projectId,
+  uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {},
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
@@ -368,6 +369,38 @@ export default function Step4PdfReport({
       const clone = svg.cloneNode(true)
       clone.setAttribute('width', w)
       clone.setAttribute('height', h)
+      
+      // Convert <image> elements in SVG to embedded data URLs so they're captured properly
+      const svgImages = clone.querySelectorAll('image')
+      for (const svgImg of svgImages) {
+        const href = svgImg.getAttribute('href') || svgImg.getAttribute('xlink:href')
+        if (href && !href.startsWith('data:')) {
+          try {
+            // If it's already a data URL from imageSrc, keep it; otherwise skip
+            // (This handles the BackgroundImageLayer roof image)
+            if (href.startsWith('blob:') || href.startsWith('http')) {
+              // Load the image and convert to data URL
+              const img = new Image()
+              img.crossOrigin = 'anonymous'
+              await new Promise((resolve, reject) => {
+                img.onload = resolve
+                img.onerror = reject
+                img.src = href
+              })
+              const canvas = document.createElement('canvas')
+              canvas.width = img.naturalWidth
+              canvas.height = img.naturalHeight
+              const ctx = canvas.getContext('2d')
+              ctx.drawImage(img, 0, 0)
+              const dataUrl = canvas.toDataURL('image/png')
+              svgImg.setAttribute('href', dataUrl)
+            }
+          } catch (e) {
+            console.warn('Failed to embed image in SVG:', e)
+          }
+        }
+      }
+      
       const xml = new XMLSerializer().serializeToString(clone)
       const blob = new Blob([xml], { type: 'image/svg+xml' })
       const url = URL.createObjectURL(blob)
@@ -420,7 +453,8 @@ export default function Step4PdfReport({
       firstPage = false
     }
 
-    const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
+    // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
+    const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
     const dateStr  = new Date().toISOString().split('T')[0]
     pdf.save(`${safeName}_${dateStr}.pdf`)
     setIsExporting(false)
@@ -479,7 +513,8 @@ export default function Step4PdfReport({
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Bill of Materials')
 
-    const safeName = (project?.name || 'report').replace(/[^a-z0-9]/gi, '_')
+    // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
+    const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
     const dateStr  = new Date().toISOString().split('T')[0]
     XLSX.writeFile(wb, `${safeName}_BOM_${dateStr}.xlsx`)
   }
@@ -571,6 +606,7 @@ export default function Step4PdfReport({
             <PanelsLayoutPage
               pageRef={page1Ref}
               panels={panels}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
           </ScaledPage>
@@ -579,6 +615,7 @@ export default function Step4PdfReport({
             <AreasLayoutPage
               pageRef={page2Ref}
               panels={panels} areas={areas}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
             />
           </ScaledPage>
@@ -587,6 +624,7 @@ export default function Step4PdfReport({
             <BasesLayoutPage
               pageRef={page3Ref}
               panels={panels} refinedArea={refinedArea} areas={areas}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
@@ -598,6 +636,7 @@ export default function Step4PdfReport({
             <RailsLayoutPage
               pageRef={page4Ref}
               panels={panels} refinedArea={refinedArea}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               beRailsData={beRailsData}
               project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}

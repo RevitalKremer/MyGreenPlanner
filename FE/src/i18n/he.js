@@ -396,6 +396,7 @@ const he = {
 
   // ── Step 3 – Layers panel ─────────────────────────────────────────────────
   'step3.layers.title':          'שכבות',
+  'step3.layer.roofImage':       'תמונת גג',
   'step3.layer.rails':           'קושרות',
   'step3.layer.dimensions':      'מידות',
   'step3.layer.materialSummary': 'סיכום חומרים',
