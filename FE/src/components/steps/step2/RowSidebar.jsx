@@ -21,10 +21,8 @@ export default function RowSidebar({
   selectedRow,
   selectedTrapezoidId,
   selectedAreaLabel,
-  selectedAreaTrapIds,
   refinedArea,
   resetTrapezoidConfig,
-  reassignToTrapezoid,
   panelGapCm,
   lineGapCm,
   showMounting = true,
@@ -302,8 +300,6 @@ export default function RowSidebar({
             trapezoidConfigs={trapezoidConfigs}
             getAreaKey={getAreaKey}
             resetTrapezoidConfig={resetTrapezoidConfig}
-            selectedAreaTrapIds={selectedAreaTrapIds}
-            reassignToTrapezoid={reassignToTrapezoid}
             panelFrontHeight={panelFrontHeight}
             panelAngle={panelAngle}
             rectAreas={rectAreas}

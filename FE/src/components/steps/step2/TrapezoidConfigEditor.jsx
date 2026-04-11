@@ -10,7 +10,6 @@ export default function TrapezoidConfigEditor({
   refinedArea, trapezoidConfigs,
   getAreaKey,
   resetTrapezoidConfig,
-  selectedAreaTrapIds: _selectedAreaTrapIds, reassignToTrapezoid: _reassignToTrapezoid,
   panelFrontHeight, panelAngle,
   rectAreas, setRectAreas,
   panelGapCm,

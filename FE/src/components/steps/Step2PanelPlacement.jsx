@@ -472,20 +472,6 @@ export default function Step2PanelPlacement({
     return result
   }, [panels, rectAreas])
 
-  const allSelectedSameArea = useMemo(() => {
-    if (selectedPanels.length === 0) return false
-    const sel = panels.filter(p => selectedPanels.includes(p.id))
-    const areaKeys = new Set(sel.map(p => p.area ?? p.row ?? null))
-    return areaKeys.size === 1
-  }, [selectedPanels, panels])
-
-  const selectedAreaTrapIds = useMemo(() => {
-    if (!allSelectedSameArea || !selectedRow) return []
-    const ak = getAreaKey(selectedRow[0])
-    return areaTrapezoidMap[ak] || []
-  }, [allSelectedSameArea, selectedRow, areaTrapezoidMap])
-
-
   const sharedTrapIds = useMemo(() => {
     const trapToAreas = {}
     Object.entries(areaTrapezoidMap).forEach(([areaKey, trapIds]) => {
@@ -500,26 +486,6 @@ export default function Step2PanelPlacement({
     })
     return shared
   }, [areaTrapezoidMap])
-
-  const reassignToTrapezoid = (trapId) => {
-    const selIds = new Set(selectedPanels)
-    setPanels(prev => prev.map(p => selIds.has(p.id) ? { ...p, trapezoidId: trapId } : p))
-    setTrapIdOverride(trapId)
-    // Lock auto-split for this area; store column→trapId mapping so recomputes respect it
-    if (selectedRow) {
-      const ak = getAreaKey(selectedRow[0])
-      if (ak !== null && ak !== undefined) {
-        const selPanels = panels.filter(p => selIds.has(p.id))
-        const cols = [...new Set(selPanels.map(p => p.col).filter(c => c !== undefined))]
-        setRectAreas(prev => prev.map((a, i) => {
-          if (i !== ak) return a
-          const newColMap = { ...(a.manualColTrapezoids || {}) }
-          cols.forEach(c => { newColMap[String(c)] = trapId })
-          return { ...a, manualTrapezoids: true, manualColTrapezoids: newColMap }
-        }))
-      }
-    }
-  }
 
   const resetTrapezoidConfig = () => {
     if (!selectedTrapezoidId) return
@@ -639,10 +605,8 @@ export default function Step2PanelPlacement({
             selectedRow={selectedRow}
             selectedTrapezoidId={selectedTrapezoidId}
             selectedAreaLabel={selectedAreaLabel}
-            selectedAreaTrapIds={selectedAreaTrapIds}
             refinedArea={refinedArea}
             resetTrapezoidConfig={resetTrapezoidConfig}
-            reassignToTrapezoid={reassignToTrapezoid}
             panelGapCm={appDefaults?.panelGapCm}
             lineGapCm={appDefaults?.lineGapCm}
             showMounting={showMounting}
