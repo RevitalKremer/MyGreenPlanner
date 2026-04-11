@@ -119,7 +119,7 @@ def _compute_diagonal_bracing(
     diag_base_pct: float,
     skip_below_cm: float,
     double_above_cm: float,
-    cos_a: float,
+    angle_rad: float,
 ) -> list[dict]:
     """
     Compute diagonal bracing between legs.
@@ -151,10 +151,23 @@ def _compute_diagonal_bracing(
         top_pct = ov_d.get('topPct', def_top)
         bot_pct = ov_d.get('botPct', def_bot)
 
-        span_horiz_cm = abs(legs[i + 1]['positionCm'] - legs[i]['positionEndCm']) * cos_a
-        height_at_top = h_a + top_pct * (h_b - h_a)
-        horiz_dist = abs(top_pct - bot_pct) * span_horiz_cm
-        length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if span_horiz_cm > 0 else 0
+        # Calculate attachment positions along full beams (not just gap)
+        # Leg positions are along slope beam; use these for top attachment
+        span_slope_start = legs[i]['positionCm']
+        span_slope_end = legs[i + 1]['positionEndCm']
+        span_slope_len = span_slope_end - span_slope_start
+        
+        top_pos_slope = span_slope_start + top_pct * span_slope_len
+        bot_pos_slope = span_slope_start + bot_pct * span_slope_len
+        
+        # Height rises as we move along slope: rise = run × sin(angle)
+        sin_a = math.sin(angle_rad)
+        cos_a = math.cos(angle_rad)
+        height_at_top = h_a + top_pos_slope * sin_a
+        
+        # Horizontal distance uses cos_a projection
+        horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
+        length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
 
         raw_diagonals.append({
             'spanIdx': i,
@@ -190,7 +203,8 @@ def _compute_block_positions(
     raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
     for il in inner_legs:
         rail_base = il['railPositionCm'] * cos_a
-        left_edge = rail_base - block_length_cm / 2
+        # Position block with 66% behind rail, 33% ahead to reduce front overlap
+        left_edge = rail_base - block_length_cm * 2 / 3
         raw_blocks.append({'positionCm': _r(left_edge), 'isEnd': False})
     raw_blocks.append({'positionCm': _r(base_beam_length - block_length_cm), 'isEnd': True})
 
@@ -260,14 +274,20 @@ def _compute_structural_punches(
         punches.append({'beamType': 'slope', 'positionCm': _r(rail_pos), 'origin': 'rail'})
 
     # diagonal: top on slope beam (slope coords), bottom on base beam (base beam coords)
+    # Use SAME span definition as diagonal bracing calculation (full span, not gap)
     for diag in diagonals:
         si = diag['spanIdx']
-        gap_start = legs[si]['positionEndCm']
-        gap_end = legs[si + 1]['positionCm']
-        gap = gap_end - gap_start
-        top_pos = _r(gap_start + gap * diag['topPct'] - leg_offset)  # slope coords
-        bot_raw = gap_start + gap * diag['botPct']                     # in leg coords (with offset)
-        bot_pos = _r(leg_offset + (bot_raw - leg_offset) * cos_a)      # base beam coords
+        span_slope_start = legs[si]['positionCm']
+        span_slope_end = legs[si + 1]['positionEndCm']
+        span_slope_len = span_slope_end - span_slope_start
+        
+        top_pos_slope = span_slope_start + diag['topPct'] * span_slope_len
+        bot_pos_slope = span_slope_start + diag['botPct'] * span_slope_len
+        
+        # Convert to beam coordinates
+        top_pos = _r(top_pos_slope - leg_offset)  # slope beam coords
+        bot_pos = _r(leg_offset + (bot_pos_slope - leg_offset) * cos_a)  # base beam coords (projected)
+        
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
@@ -363,15 +383,12 @@ def compute_trapezoid_details(
     base_length_horiz = base_length_cm * cos_a  # original (without extension) for leg placement
     height_front = height_rear + base_length_horiz * math.tan(angle_rad)
 
-    diagonal_length = math.sqrt(base_length_horiz ** 2 + height_front ** 2)
-
     geometry = {
         'heightRear': _r(height_rear),
         'heightFront': _r(height_front),
         'topBeamLength': _r(top_beam_length),
         'baseBeamLength': _r(base_beam_length),
         'baseLength': _r(base_length_horiz),
-        'diagonalLength': _r(diagonal_length),
         'angle': angle_deg,
         'panelFrontHeight': _r(front_height_cm),
         'originCm': _r(origin),
@@ -411,7 +428,7 @@ def compute_trapezoid_details(
     # ── Diagonals ──────────────────────────────────────────────────────────
     diagonals = _compute_diagonal_bracing(
         legs, custom_diagonals, diag_top_pct, diag_base_pct,
-        skip_below_cm, double_above_cm, cos_a,
+        skip_below_cm, double_above_cm, angle_rad,
     )
 
     # ── Blocks ─────────────────────────────────────────────────────────────
