@@ -498,8 +498,6 @@ async def compute_and_save_bases(
 
     # Persist custom offsets (per-row keys "trapId:rowIdx")
     stored_custom = step3.get('customBasesOffsets') or {}
-    import logging
-    logging.info(f"[compute_bases] stored_custom from DB: {stored_custom}, trapezoid_configs: {list((trapezoid_configs or {}).keys())}")
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
             co = cfg.get('customOffsets')
@@ -510,7 +508,6 @@ async def compute_and_save_bases(
                     stored_custom[row_key] = co
                 else:
                     stored_custom.pop(row_key, None)
-    logging.info(f"[compute_bases] stored_custom after processing: {stored_custom}")
     step3['customBasesOffsets'] = stored_custom
 
     for i, area in enumerate(areas):
@@ -835,7 +832,6 @@ def _compute_all_trapezoid_details(
                 area_idx = idx
                 break
         if not area:
-            import logging
             logging.error(
                 f"Trapezoid '{trap_id}' not found in any area's trapezoidIds. "
                 f"Available areas: {[(a.get('label'), a.get('trapezoidIds', [])) for a in areas]}. "

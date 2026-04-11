@@ -413,10 +413,6 @@ export function useProjectState() {
         ? panelDerivedTrapIds
         : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
 
-      const raIdx = ra ? rectAreas.indexOf(ra) : -1
-      console.log(`[getProjectData] area "${groupLabel}": raIdx=${raIdx}, raLabel="${ra?.label}", raGroupId="${ra?.areaGroupId}", panels=${areaPanels.length}, panelDerived=[${panelDerivedTrapIds.join(',')}], stored=[${storedTrapIds.join(',')}], final=[${areaTrapIds.join(',')}]`)
-      if (raIdx === 0) console.log(`[getProjectData] rectAreas: [${rectAreas.map((r,i) => `${i}:${r.areaGroupId||''}/${r.label||r.id}`).join(', ')}]`)
-
       return {
         ...a,
         label: groupLabel,
@@ -697,7 +693,6 @@ export function useProjectState() {
     setPanelGrid(result.panelGrid)
     setPanels(result.panels)
     setAreas(prev => {
-      console.log(`[setAreas] prev labels: [${prev.map(p => p.label).join(', ')}], result labels: [${result.areas.map(a => a.label).join(', ')}]`)
       return result.areas.map((a) => {
         // Match previous area by label (not index — lengths may differ for multi-trap areas)
         const prevMatch = prev.find(p => p.label === a.label)
