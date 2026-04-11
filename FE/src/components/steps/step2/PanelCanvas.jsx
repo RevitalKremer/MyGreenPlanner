@@ -786,7 +786,7 @@ export default function PanelCanvas({
               const pivotIdx = area.pivotIdx ?? 0
               // Multi-row: only show label on the first row (rowIndex 0) of each group
               const isSubRow = (area.rowIndex ?? 0) > 0
-              const groupId = area.areaGroupId || area.label
+              const groupId = area.areaGroupId
               void groupId // used for future convex hull rendering
               return (
                 <g key={`${area.id}-${areaIdx}`} style={{ pointerEvents: 'auto' }}>

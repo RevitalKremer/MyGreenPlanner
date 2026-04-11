@@ -37,9 +37,9 @@ export default function TrapezoidConfigEditor({
 
   // Update all rows in the same areaGroupId when a shared property changes
   const updateGroupProp = (updates) => {
-    const groupId = area?.areaGroupId || area?.label
+    const groupId = area?.areaGroupId
     setRectAreas?.(prev => prev.map(a =>
-      (a.areaGroupId || a.label) === groupId ? { ...a, ...updates } : a
+      a.areaGroupId === groupId ? { ...a, ...updates } : a
     ))
   }
 

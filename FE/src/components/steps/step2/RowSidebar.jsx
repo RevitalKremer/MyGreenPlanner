@@ -170,7 +170,7 @@ export default function RowSidebar({
                           onChange={e => {
                             const newLabel = e.target.value
                             setRectAreas?.(prev => prev.map(a =>
-                              (a.areaGroupId || a.label) === group.groupId ? { ...a, label: newLabel } : a
+                              a.areaGroupId === group.groupId ? { ...a, label: newLabel } : a
                             ))
                           }}
                           onClick={ev => { ev.stopPropagation(); setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}

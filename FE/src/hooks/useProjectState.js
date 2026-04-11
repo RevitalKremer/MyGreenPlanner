@@ -257,15 +257,15 @@ export function useProjectState() {
 
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
         const { s2a, rowIndex: derivedRowIndex } = rectToArea[idx] || { s2a: {}, rowIndex: 0 }
-        const effectiveGroupId = s2a.label || ra.areaGroupId || ra.label || ra.id
+        // areaGroupId = BE-assigned numeric area ID (stable across saves)
+        const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
         const rowIndex = ra.rowIndex ?? derivedRowIndex
         return {
           ...ra,
-          // Keep rectArea's own id (unique per drawn row); don't overwrite with s2.area.id
           label: s2a.label ?? ra.id,
           frontHeight: String(s2a.frontHeightCm ?? ''),
           angle: String(s2a.angleDeg ?? ''),
-          areaGroupId: effectiveGroupId,  // always sync with enriched label
+          areaGroupId: numericGroupId,
           rowIndex,
         }
       })
@@ -286,9 +286,9 @@ export function useProjectState() {
           const ra = enrichedRectAreas[areaIdx]
           const panelRowIdx = p.panelRowIdx ?? ra?.rowIndex ?? 0
           // areaGroupKey: index of the first rectArea in this group
-          const groupId = ra?.areaGroupId || ra?.label
+          const groupId = ra?.areaGroupId
           const areaGroupKey = groupId != null
-            ? enrichedRectAreas.findIndex(a => (a.areaGroupId || a.label) === groupId)
+            ? enrichedRectAreas.findIndex(a => a.areaGroupId === groupId)
             : areaIdx
           return { ...p, area: areaIdx, trapezoidId: p.trapezoidId ?? 'A', panelRowIdx, areaGroupKey: areaGroupKey >= 0 ? areaGroupKey : areaIdx }
         }) : [],
@@ -359,20 +359,21 @@ export function useProjectState() {
     const raGroupKeys = {}  // rectAreaIdx → areaGroupKey
     const raLabels = {}     // rectAreaIdx → label
     rectAreas.forEach((ra, idx) => {
-      const gid = ra.areaGroupId || ra.label || ra.id
+      const gid = ra.areaGroupId
       raLabels[idx] = ra.label || ra.id
       // Find the first rectArea with this groupId
-      const firstIdx = rectAreas.findIndex(r => (r.areaGroupId || r.label || r.id) === gid)
+      const firstIdx = rectAreas.findIndex(r => r.areaGroupId === gid)
       raGroupKeys[idx] = firstIdx >= 0 ? firstIdx : idx
     })
 
     const enrichedAreas = d.step2.areas.map((a) => {
       const groupLabel = a.label
+      const areaId = a.id  // BE-assigned numeric ID
 
-      // Strategy 1: find rectArea by label first (authoritative after enrichment),
-      // then areaGroupId (original creation label — may differ after save/reload)
-      const ra = rectAreas.find(r => r.label === groupLabel)
-        || rectAreas.find(r => r.areaGroupId === groupLabel)
+      // Strategy 1: find rectArea by numeric areaGroupId matching area.id,
+      // then fallback to label match
+      const ra = (typeof areaId === 'number' ? rectAreas.find(r => r.areaGroupId === areaId) : null)
+        || rectAreas.find(r => r.label === groupLabel)
 
       // Strategy 2: find panels belonging to this area group via multiple methods
       let areaPanels
@@ -383,7 +384,7 @@ export function useProjectState() {
         // Fallback: match by rectArea label
         if (areaPanels.length === 0) {
           const matchingRaIdxs = rectAreas
-            .map((r, i) => ((r.areaGroupId || r.label) === groupLabel) ? i : -1)
+            .map((r, i) => ((r.areaGroupId) === groupLabel) ? i : -1)
             .filter(i => i >= 0)
           areaPanels = panels.filter(p => matchingRaIdxs.includes(p.area))
         }

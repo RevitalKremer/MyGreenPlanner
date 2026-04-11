@@ -122,12 +122,12 @@ export function computePanelsAction({
   // Pre-compute areaGroupKey: index of the first rectArea in each group
   const areaGroupKeyMap = {}  // areaIdx → firstIdxInGroup
   rectAreas.forEach((area, areaIdx) => {
-    const groupId = area.areaGroupId || area.label || area.id || `area-${areaIdx}`
+    const groupId = area.areaGroupId ?? -(areaIdx + 1)
     if (!(groupId in areaGroupKeyMap)) areaGroupKeyMap[groupId] = areaIdx
   })
   const getGroupKey = (areaIdx) => {
     const area = rectAreas[areaIdx]
-    const groupId = area?.areaGroupId || area?.label || area?.id || `area-${areaIdx}`
+    const groupId = area?.areaGroupId ?? -(areaIdx + 1)
     return areaGroupKeyMap[groupId] ?? areaIdx
   }
 
@@ -245,7 +245,7 @@ export function computePanelsAction({
   // Build updated areas array — group by areaGroupId for multi-row areas
   const areaGroupMap = new Map()  // areaGroupId → { label, angle, frontHeight, lineOrientations, panelRows: [] }
   rectAreas.forEach((a, idx) => {
-    const groupId = a.areaGroupId || a.label || a.id || `area-${idx}`
+    const groupId = a.areaGroupId ?? -(idx + 1)
     if (!areaGroupMap.has(groupId)) {
       areaGroupMap.set(groupId, {
         label: a.label,

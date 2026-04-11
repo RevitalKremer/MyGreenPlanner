@@ -240,7 +240,7 @@ export default function Step2PanelPlacement({
       if (areaIdx == null) return
       const area = rectAreas[areaIdx]
       if (!area) return
-      const groupId = area.areaGroupId || area.label || area.id || `area-${areaIdx}`
+      const groupId = area.areaGroupId
       if (!groups.has(groupId)) {
         groups.set(groupId, { groupId, label: area.label, color: area.color, areaIndices: [], rows: [] })
       }
@@ -606,7 +606,7 @@ export default function Step2PanelPlacement({
             areaLabel={areaLabel} getAreaKey={getAreaKey}
             onMergeRowIntoArea={(rowAreaIdx, targetGroupId) => {
               setRectAreas(prev => {
-                const targetRows = prev.filter(a => (a.areaGroupId || a.label) === targetGroupId)
+                const targetRows = prev.filter(a => a.areaGroupId === targetGroupId)
                 const targetArea = targetRows[0]
                 const nextRowIndex = targetRows.length
                 return prev.map((a, idx) => {
@@ -677,7 +677,7 @@ export default function Step2PanelPlacement({
             onAddRowToArea={() => {
               if (selectedAreaIdx == null) return
               const area = rectAreas[selectedAreaIdx]
-              const groupId = area?.areaGroupId || area?.label
+              const groupId = area?.areaGroupId
               if (groupId) {
                 setAddRowToGroup(groupId)
                 setActiveTool('area')  // switch to area draw mode

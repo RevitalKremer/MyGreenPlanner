@@ -592,15 +592,15 @@ function App() {
             onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
                 const idx = prev.length
-                if (addToGroupId) {
-                  // Adding a new row to an existing area group
-                  const parentArea = prev.find(a => (a.areaGroupId || a.label) === addToGroupId)
-                  const groupRows = prev.filter(a => (a.areaGroupId || a.label) === addToGroupId)
+                if (addToGroupId != null) {
+                  // Adding a new row to an existing area group (addToGroupId is numeric)
+                  const parentArea = prev.find(a => a.areaGroupId === addToGroupId)
+                  const groupRows = prev.filter(a => a.areaGroupId === addToGroupId)
                   const nextRowIndex = groupRows.length
                   return [...prev, {
                     ...rawRect,
-                    id: `${addToGroupId}_r${nextRowIndex}`,
-                    label: parentArea?.label ?? addToGroupId,
+                    id: `${parentArea?.label ?? ''}_r${nextRowIndex}`,
+                    label: parentArea?.label ?? '',
                     color: parentArea?.color ?? AREA_PALETTE[idx % AREA_PALETTE.length],
                     frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
                     angle: parentArea?.angle ?? s.panelAngle ?? '',
@@ -612,8 +612,10 @@ function App() {
                     manualColTrapezoids: {},
                   }]
                 }
-                // New standalone area
+                // New standalone area — assign temporary numeric areaGroupId
+                // Use -(idx+1) as temp ID; BE will assign permanent positive ID on first save
                 const newLabel = String.fromCharCode(65 + idx % 26)
+                const tempGroupId = -(idx + 1)
                 return [...prev, {
                   ...rawRect,
                   id: newLabel,
@@ -621,7 +623,7 @@ function App() {
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
-                  areaGroupId: newLabel,
+                  areaGroupId: tempGroupId,
                   rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},
