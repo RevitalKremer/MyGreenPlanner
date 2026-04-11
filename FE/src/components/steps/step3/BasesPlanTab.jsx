@@ -17,7 +17,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
@@ -499,16 +499,27 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   if (!af?.frame?.center) return null
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
                   if (effTrapId !== null && String(areaKey) !== String(selectedArea)) return null
-                  const { frame: areaFrame, isRtl: afIsRtl, isBtt: afIsBtt } = af
                   const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
                   if (!areaData?.bases?.length) return null
                   const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
                   const trapS = trapSettingsMap[fullTrapId] ?? {}
-                  const { center, angleRad, localBounds } = areaFrame
+
+                  // Use per-row frame for the selected panel row
+                  const rowCtx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, selectedPanelRowIdx)
+                  if (!rowCtx) return null
+                  const { af: rowAf } = rowCtx
+                  const { frame: rowFrame, isRtl: afIsRtl, isBtt: afIsBtt } = rowAf
+                  const { center, angleRad, localBounds } = rowFrame
                   const frameLengthPx = localBounds.maxX - localBounds.minX
+
+                  // Filter bases to the selected panel row only
+                  const rowBases = (areaData.bases ?? []).filter(sb => (sb._panelRowIdx ?? 0) === selectedPanelRowIdx)
+                  if (rowBases.length === 0) return null
+
                   const liveOffsets = customBasesMap[fullTrapId]
-                  const syntheticBases = areaData.bases.map((sb, sbi) => {
-                    const offMm = liveOffsets?.[sbi] ?? Math.round(sb.offsetFromStartCm * 10)
+                  const syntheticBases = rowBases.map((sb, sbi) => {
+                    const useBeOffset = (sb._panelRowIdx ?? 0) > 0
+                    const offMm = (!useBeOffset && liveOffsets?.[sbi] != null) ? liveOffsets[sbi] : Math.round(sb.offsetFromStartCm * 10)
                     const offCm = offMm / 10
                     const lx = afIsRtl
                       ? localBounds.maxX - offCm / pixelToCmRatio
@@ -524,7 +535,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   const barLocalY = afIsBtt ? localBounds.maxY + 20 / effZoom : localBounds.minY - 20 / effZoom
                   return (
                     <BasePlanOverlay
-                      key={`overlay-${areaKey}`}
+                      key={`overlay-${areaKey}-r${selectedPanelRowIdx}`}
                       bp={syntheticBp}
                       zoom={effZoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
                       svgRef={svgRef} toSvg={toSvg}

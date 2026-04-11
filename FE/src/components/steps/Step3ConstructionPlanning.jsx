@@ -31,6 +31,7 @@ export default function Step3ConstructionPlanning({
   // ── UI state ───────────────────────────────────────────────────────────
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
+  const [selectedPanelRowIdx, setSelectedPanelRowIdx] = useState(0)
   // Treat null, "null" string, and undefined as no saved tab - default to 'areas'
   const [activeTab, setActiveTab] = useState((initialTab && initialTab !== 'null') ? initialTab : 'areas')
   const [highlightParam, setHighlightParam] = useState(null)
@@ -201,7 +202,8 @@ export default function Step3ConstructionPlanning({
       <Step3Sidebar
         rowConstructions={rowConstructions} rowKeys={rowKeys}
         areaTrapezoidMap={areaTrapezoidMap} areaLabel={settings.areaLabel}
-        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={setSelectedRowIdx}
+        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={(idx) => { setSelectedRowIdx(idx); setSelectedPanelRowIdx(0) }}
+        selectedPanelRowIdx={selectedPanelRowIdx} setSelectedPanelRowIdx={setSelectedPanelRowIdx}
         selectedTrapezoidId={selectedTrapezoidId} setSelectedTrapezoidId={setSelectedTrapezoidId}
         effectiveSelectedTrapId={effectiveSelectedTrapId}
         trapezoidConfigs={trapezoidConfigs} panels={panels}
@@ -292,6 +294,7 @@ export default function Step3ConstructionPlanning({
                 panels={panels} refinedArea={refinedArea}
                 uploadedImageData={uploadedImageData} imageSrc={imageSrc}
                 selectedRowIdx={selectedRowIdx}
+                selectedPanelRowIdx={selectedPanelRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
                 panelDepthsCm={geo.areaLinePanelDepths}
@@ -313,6 +316,7 @@ export default function Step3ConstructionPlanning({
               panels={panels} refinedArea={refinedArea} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
+              selectedPanelRowIdx={selectedPanelRowIdx}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}
               trapRCMap={rowData.trapRCMap}

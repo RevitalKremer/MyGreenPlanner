@@ -121,6 +121,7 @@ const SECTIONS = [
 export default function Step3Sidebar({
   rowConstructions, rowKeys, areaTrapezoidMap, areaLabel,
   selectedRowIdx, setSelectedRowIdx,
+  selectedPanelRowIdx, setSelectedPanelRowIdx,
   setSelectedTrapezoidId, effectiveSelectedTrapId,
   trapezoidConfigs, panels,
   activeTab, setActiveTab,
@@ -354,7 +355,12 @@ export default function Step3Sidebar({
           return (
             <div key={i}>
               <div
-                onClick={() => { setSelectedRowIdx(i); setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null) }}
+                onClick={() => {
+                  setSelectedRowIdx(i)
+                  // On bases/rails tabs, don't pre-select a trapezoid (show all traps in area)
+                  // On trapezoids tab, select the first trap
+                  setSelectedTrapezoidId((activeTab === 'rails' || activeTab === 'bases') ? null : (areaTrapezoidMap[areaKey]?.[0] ?? null))
+                }}
                 style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
                 <div style={{ fontSize: '0.84rem', fontWeight: '700', color: isAreaSelected ? TEXT : TEXT_SECONDARY }}>
@@ -368,30 +374,69 @@ export default function Step3Sidebar({
                 </div>
               </div>
 
-              {/* Trapezoid children */}
-              {trapIds.length > 1 && isAreaSelected && (
-                <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
-                  {trapIds.map(trapId => {
-                    const isTrapSelected = effectiveSelectedTrapId === trapId
-                    const count = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId).length
-                    return (
-                      <div
-                        key={trapId}
-                        onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
-                      >
-                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
-                          {trapId}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count} panels</span>
-                        {!!trapezoidConfigs[trapId] && (
-                          <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              {/* Sub-items: trapezoids (for areas/trapezoids tabs) or panel rows (for rails/bases tabs) */}
+              {(() => {
+                const showRowSubItems = (activeTab === 'rails' || activeTab === 'bases') && isAreaSelected
+                const showTrapSubItems = activeTab === 'trapezoids' && trapIds.length > 1 && isAreaSelected
+
+                if (showRowSubItems) {
+                  // Panel row sub-items for rails/bases tabs
+                  const rowIdxSet = new Set()
+                  panels.forEach(p => {
+                    if ((p.areaGroupKey ?? p.area) === areaKey) rowIdxSet.add(p.panelRowIdx ?? 0)
+                  })
+                  const panelRowIdxs = [...rowIdxSet].sort((a, b) => a - b)
+                  if (panelRowIdxs.length <= 1) return null
+                  return (
+                    <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
+                      {panelRowIdxs.map((ri, idx) => {
+                        const isRowSelected = selectedPanelRowIdx === ri
+                        const count = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey && (p.panelRowIdx ?? 0) === ri).length
+                        return (
+                          <div
+                            key={ri}
+                            onClick={e => { e.stopPropagation(); setSelectedPanelRowIdx?.(ri) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isRowSelected ? PRIMARY : 'transparent'}`, background: isRowSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
+                          >
+                            <span style={{ fontSize: '0.72rem', fontWeight: '600', color: isRowSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER }}>
+                              Row {idx + 1}
+                            </span>
+                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+
+                if (showTrapSubItems) {
+                  return (
+                    <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
+                      {trapIds.map(trapId => {
+                        const isTrapSelected = effectiveSelectedTrapId === trapId
+                        const count = panels.filter(p => (p.area ?? p.row) === areaKey && p.trapezoidId === trapId).length
+                        return (
+                          <div
+                            key={trapId}
+                            onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
+                          >
+                            <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
+                              {trapId}
+                            </span>
+                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count} panels</span>
+                            {!!trapezoidConfigs[trapId] && (
+                              <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+
+                return null
+              })()}
             </div>
           )
         })}

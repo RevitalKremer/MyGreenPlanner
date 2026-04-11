@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 
 
 export default function RailLayoutTab({
-  panels = [], refinedArea, selectedRowIdx = null,
+  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
   uploadedImageData, imageSrc,
   settings = {},
   lineRails,           // { [lineIdx]: [offsetCm, ...] }
@@ -179,7 +179,16 @@ export default function RailLayoutTab({
   }, [onLineRailsChange])
 
   // Pick the active row layout for cross-section overlay
-  const activeCrossSectionRl = railLayouts[selectedRowIdx ?? 0] ?? null
+  // Find the expanded layout index for the selected area + panel row
+  const activeLayoutIdx = useMemo(() => {
+    if (selectedRowIdx == null) return 0
+    const selectedKey = rowKeys[selectedRowIdx]
+    // Find the first expanded layout entry for this area, then offset by selectedPanelRowIdx
+    let firstIdx = railLayoutKeys.findIndex(k => k === selectedKey)
+    if (firstIdx < 0) firstIdx = 0
+    return firstIdx + selectedPanelRowIdx
+  }, [selectedRowIdx, selectedPanelRowIdx, rowKeys, railLayoutKeys])
+  const activeCrossSectionRl = railLayouts[activeLayoutIdx] ?? railLayouts[0] ?? null
 
   const overlayProps = {
     railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey, groupKeyToLabel,
