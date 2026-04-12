@@ -11,6 +11,7 @@ export default function RailsOverlay({
   rowKeys,
   rowGroups,
   beRailByKey = {},
+  groupKeyToLabel = {},
   toSvg,
   sc,
   pixelToCmRatio,
@@ -31,9 +32,37 @@ export default function RailsOverlay({
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  const beSegsFor = (i) => (rail) => {
-    const be = beRailByKey[`${rowKeys[i]}:${rail.railId}`]
-    return be?.stockSegmentsMm ?? []
+  const beSegsFor = (i) => {
+    // Pre-resolve: find ALL BE rails for this layout's area + panelRowIdx
+    const rl = railLayouts[i]
+    const pri = rl?._panelRowIdx ?? 0
+    const areaKey = rowKeys[i]
+    const areaLabel = groupKeyToLabel[areaKey] ?? areaKey
+    // Collect all BE rails matching this area + row, keyed by railId
+    // Try both numeric areaKey and resolved label
+    const rowBeRails = {}
+    for (const [k, v] of Object.entries(beRailByKey)) {
+      if (k === `${areaKey}:${pri}:${v.railId}` || k === `${areaLabel}:${pri}:${v.railId}`) rowBeRails[v.railId] = v
+    }
+    // Also try legacy keys as fallback
+    if (Object.keys(rowBeRails).length === 0) {
+      for (const [k, v] of Object.entries(beRailByKey)) {
+        if (k === `${areaKey}:${v.railId}` || k === `${areaLabel}:${v.railId}`) rowBeRails[v.railId] = v
+      }
+    }
+    // For multi-rail lines: all rails in the same lineIdx share stock segments,
+    // so if exact railId match fails, use any rail from the same lineIdx
+    const anySegsForLine = {}
+    for (const v of Object.values(rowBeRails)) {
+      if (!anySegsForLine[v.lineIdx]) anySegsForLine[v.lineIdx] = v.stockSegmentsMm
+    }
+
+    return (rail) => {
+      const be = rowBeRails[rail.railId]
+      if (be) return be.stockSegmentsMm ?? []
+      // Fallback: any BE rail from the same line
+      return anySegsForLine[rail.lineIdx] ?? []
+    }
   }
 
   const railProfileFor = (i) => {

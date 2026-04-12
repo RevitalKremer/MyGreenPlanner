@@ -134,9 +134,10 @@ export default function RailCrossSectionOverlay({
       onLineChange(li, [...newRails].sort((a, b) => a - b))
     }
     const onUp = () => {
-      dragging.current = null
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      // Delay clearing so the click handler (which fires after mouseup) can detect the drag
+      requestAnimationFrame(() => { dragging.current = null })
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)

@@ -100,6 +100,7 @@ function App() {
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
+  const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
@@ -133,26 +134,51 @@ function App() {
           angle: a.angleDeg ?? 0,
           frontHeight: a.frontHeightCm ?? 0,
           lineOrientations: firstTrap?.lineOrientations ?? [PANEL_V],
-          panelGrid: a.panelGrid ?? null,
+          panelRows: a.panelRows ?? (a.panelGrid ? [{ rowIndex: 0, panelGrid: a.panelGrid }] : []),
         }
       }))
     }
 
     const { computedAreas = [], computedTrapezoids = [] } = step3
 
-    // Convert to rails format
+    // Flatten rails, tagging each with _panelRowIdx for per-row lookup
+    const flattenRailsWithRowIdx = (d) => {
+      if (!d) return []
+      if (Array.isArray(d)) return d
+      const result = []
+      for (const [rowIdx, items] of Object.entries(d)) {
+        for (const item of items) {
+          result.push({ ...item, _panelRowIdx: Number(rowIdx) })
+        }
+      }
+      return result
+    }
+
+    // Convert to rails format (flatten per-row dict to flat list)
     const railsData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
-      rails: ca.rails || []
+      rails: flattenRailsWithRowIdx(ca.rails),
+      numLargeGaps: ca.numLargeGaps ?? 0,
     }))
     setBeRailsData(railsData)
 
-    // Convert to bases format (include diagonals)
+    // Convert to bases format (flatten per-row dict, tag each base with _panelRowIdx)
+    const flattenBasesWithRowIdx = (d) => {
+      if (!d) return []
+      if (Array.isArray(d)) return d
+      const result = []
+      for (const [rowIdx, items] of Object.entries(d)) {
+        for (const item of items) {
+          result.push({ ...item, _panelRowIdx: Number(rowIdx) })
+        }
+      }
+      return result
+    }
     const basesData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
-      bases: ca.bases || [],
+      bases: flattenBasesWithRowIdx(ca.bases),
       diagonals: ca.diagonals || [],
     }))
     setBeBasesData(basesData)
@@ -231,7 +257,7 @@ function App() {
 
   const handleTabSave = useCallback(async (tabName, opts) => {
     if (!s.cloudProjectId) return
-    
+
     // 'areas' tab is view-only, no backend save needed
     if (tabName === 'areas') return
     
@@ -505,6 +531,7 @@ function App() {
             setUploadedImageMode={s.setUploadedImageMode}
             backendStatus={s.backendStatus}
             uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             handleImageUploaded={s.handleImageUploaded}
             imageRef={s.imageRef}
             setImageRef={s.setImageRef}
@@ -529,6 +556,7 @@ function App() {
         {s.currentStep === 2 && (
           <Step2PanelPlacement
             uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             roofPolygon={s.roofPolygon}
             refinedArea={s.refinedArea}
             imageRef={s.imageRef}
@@ -554,6 +582,7 @@ function App() {
             refreshAreaTrapezoids={s.refreshAreaTrapezoids}
             rebuildPanelGrid={s.rebuildPanelGrid}
             recordPanelDeletion={s.recordPanelDeletion}
+            clearDeletedPanelsForArea={s.clearDeletedPanelsForArea}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -561,16 +590,42 @@ function App() {
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             rectAreas={s.rectAreas}
             setRectAreas={s.setRectAreas}
-            onAddRectArea={(rawRect) => {
+            onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
                 const idx = prev.length
+                if (addToGroupId != null) {
+                  // Adding a new row to an existing area group (addToGroupId is numeric)
+                  const parentArea = prev.find(a => a.areaGroupId === addToGroupId)
+                  const groupRows = prev.filter(a => a.areaGroupId === addToGroupId)
+                  const nextRowIndex = groupRows.length
+                  return [...prev, {
+                    ...rawRect,
+                    id: `${parentArea?.label ?? ''}_r${nextRowIndex}`,
+                    label: parentArea?.label ?? '',
+                    color: parentArea?.color ?? AREA_PALETTE[idx % AREA_PALETTE.length],
+                    frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
+                    angle: parentArea?.angle ?? s.panelAngle ?? '',
+                    areaGroupId: addToGroupId,
+                    rowIndex: nextRowIndex,
+                    areaVertical: parentArea?.areaVertical ?? false,
+                    rotation: parentArea?.rotation ?? 0,
+                    manualTrapezoids: false,
+                    manualColTrapezoids: {},
+                  }]
+                }
+                // New standalone area — assign temporary numeric areaGroupId
+                // Use -(idx+1) as temp ID; BE will assign permanent positive ID on first save
+                const newLabel = String.fromCharCode(65 + idx % 26)
+                const tempGroupId = -(idx + 1)
                 return [...prev, {
                   ...rawRect,
-                  id: String.fromCharCode(65 + idx % 26),
-                  label: String.fromCharCode(65 + idx % 26),
+                  id: newLabel,
+                  label: newLabel,
                   color: AREA_PALETTE[idx % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
+                  areaGroupId: tempGroupId,
+                  rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},
                 }]
@@ -602,9 +657,12 @@ function App() {
           <Step3ConstructionPlanning
             panels={s.panels}
             refinedArea={s.refinedArea}
+            uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             railsComputing={railsComputing}
             onTabSave={handleTabSave}
             onTabReset={handleTabReset}
+            onActiveTabChange={(tab) => { step3ActiveTabRef.current = tab }}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
@@ -647,11 +705,14 @@ function App() {
             areas={s.areas}
             project={s.currentProject}
             projectId={s.cloudProjectId}
+            uploadedImageData={s.uploadedImageData}
+            imageSrc={s.imageSrc}
             trapSettingsMap={step4PdfData.trapSettingsMap}
             trapLineRailsMap={step4PdfData.trapLineRailsMap}
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
             bomDeltas={s.step5BomDeltas ?? {}}
@@ -735,6 +796,14 @@ function App() {
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
               if (savedId) {
+                // Save current tab first to persist any pending edits (e.g., custom base offsets)
+                if (stepBeforeNext === 3) {
+                  const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+                  const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
+                  if (currentTab && currentTab !== 'areas') {
+                    try { await handleTabSave(currentTab) } catch (e) { console.error(e) }
+                  }
+                }
                 // Tell the BE about the step transition — it resets dependent data
                 // and computes rails+bases on 2→3 (returned in response)
                 try {

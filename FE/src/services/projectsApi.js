@@ -146,3 +146,48 @@ export async function getBackendVersion() {
 export function getFrontendVersion() {
   return '0.0.1' // Keep in sync with package.json
 }
+
+// ── Images ──────────────────────────────────────────────────────────────────
+
+/**
+ * Upload an image for a project. Replaces any existing image.
+ * @param {string} projectId - Project UUID
+ * @param {Blob} imageBlob - Image file blob
+ * @returns {Promise<{imageId: string, width: number, height: number, contentType: string, fileSize: number}>}
+ */
+export async function uploadProjectImage(projectId, imageBlob) {
+  const formData = new FormData()
+  formData.append('file', imageBlob, 'image.jpg')
+  
+  const res = await mgpRequest(`/projects/${projectId}/image`, {
+    method: 'POST',
+    body: formData,
+    // FormData is detected automatically - Content-Type will be set by browser with boundary
+  })
+  
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to upload image' }))
+    throw new Error(error.detail || 'Failed to upload image')
+  }
+  
+  return res.json()
+}
+
+/**
+ * Get the URL for fetching a project's image.
+ * @param {string} projectId - Project UUID
+ * @returns {string} - Image path (not full URL, for use with mgpRequest)
+ */
+export function getProjectImageUrl(projectId) {
+  return `/projects/${projectId}/image`
+}
+
+/**
+ * Check if a project has an uploaded image (separate from base64 in layout).
+ * @param {string} projectId - Project UUID
+ * @returns {Promise<boolean>}
+ */
+export async function projectHasImage(projectId) {
+  const res = await mgpRequest(`/projects/${projectId}/image`, { method: 'HEAD' })
+  return res.ok
+}

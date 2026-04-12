@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
 import { PANEL_V } from '../../utils/panelCodes'
@@ -15,10 +15,11 @@ import useSelectedGeometry from '../../hooks/useSelectedGeometry'
 
 export default function Step3ConstructionPlanning({
   panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs,
+  uploadedImageData, imageSrc,
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
-  railsComputing = false, onTabSave, onTabReset,
+  railsComputing = false, onTabSave, onTabReset, onActiveTabChange,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
   roofType = 'concrete',
@@ -28,8 +29,9 @@ export default function Step3ConstructionPlanning({
   const { t } = useLang()
 
   // ── UI state ───────────────────────────────────────────────────────────
-  const [selectedRowIdx, setSelectedRowIdx] = useState(0)
+  const [selectedRowIdx, setSelectedRowIdx] = useState(null)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
+  const [selectedPanelRowIdx, setSelectedPanelRowIdx] = useState(0)
   // Treat null, "null" string, and undefined as no saved tab - default to 'areas'
   const [activeTab, setActiveTab] = useState((initialTab && initialTab !== 'null') ? initialTab : 'areas')
   const [highlightParam, setHighlightParam] = useState(null)
@@ -37,9 +39,29 @@ export default function Step3ConstructionPlanning({
   const [userEditedBases, setUserEditedBases] = useState(new Set())
 
   // ── Settings hook ──────────────────────────────────────────────────────
+  // Pre-compute areaByGroupKey for settings (needed before useRowData runs)
+  const areaByGroupKey = useMemo(() => {
+    const map = {}
+    const areaByLabel = {}
+    for (const a of areas) { if (a.label) areaByLabel[a.label] = a }
+    // Group panels by areaGroupKey, find area via trapezoidId
+    const seen = new Set()
+    for (const p of panels) {
+      const gk = p.areaGroupKey ?? p.area ?? 0
+      if (seen.has(gk)) continue
+      seen.add(gk)
+      const tid = p.trapezoidId
+      const matched = areas.find(a => a.trapezoidIds?.includes(tid)) ?? areaByLabel[tid?.replace(/\d+$/, '')]
+      if (matched) map[gk] = matched
+      else if (areas[gk]) map[gk] = areas[gk]
+    }
+    return map
+  }, [panels, areas])
+
   const settings = useStep3Settings({
     initialGlobalSettings, initialAreaSettings, SETTINGS_DEFAULTS, PARAM_SCHEMA,
     appDefaults, panelSpec, trapezoidConfigs, setTrapezoidConfigs, areas,
+    areaByGroupKey,
     onTabSave, onTabReset, onSettingsChange,
   })
 
@@ -47,7 +69,7 @@ export default function Step3ConstructionPlanning({
   const getLineOrientations = useCallback((areaKey, trapId) => {
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
-    const areaGroup = areas[areaKey] || {}
+    const areaGroup = areaByGroupKey[areaKey] ?? areas[areaKey] ?? {}
     return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
   }, [refinedArea, trapezoidConfigs, areas])
 
@@ -83,10 +105,13 @@ export default function Step3ConstructionPlanning({
   // ── Tab save on switch ─────────────────────────────────────────────────
   const prevTabRef = useRef(activeTab)
   useEffect(() => {
-    // On tab switch, save the new tab to update navigation.tab
+    const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+    const currentMapped = tabMap[activeTab] || activeTab
+    onActiveTabChange?.(currentMapped)
     if (prevTabRef.current !== activeTab) {
-      const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-      onTabSave?.(tabMap[activeTab] || activeTab)
+      // Save the PREVIOUS tab first (to persist any edits like custom base offsets)
+      const prevTab = tabMap[prevTabRef.current] || prevTabRef.current
+      onTabSave?.(prevTab)
     }
     prevTabRef.current = activeTab
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,19 +126,28 @@ export default function Step3ConstructionPlanning({
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync effects ───────────────────────────────────────────────────────
+  // Seed customBasesMap with per-row keys ("trapId:rowIdx") from BE data
   useEffect(() => {
     if (!beBasesData) return
     const map = {}
     for (const areaData of beBasesData) {
-      const bdMap = areaData.basesDataMap || {}
+      // Group bases by panelRowIdx
+      const byRow = {}
       for (const base of (areaData.bases || [])) {
-        const tid = base.trapezoidId
-        const frameStart = bdMap[tid]?.frameStartCm ?? 0
-        if (!map[tid]) map[tid] = []
-        map[tid].push(Math.round((base.offsetFromStartCm - frameStart) * 10))
+        const ri = base._panelRowIdx ?? 0
+        if (!byRow[ri]) byRow[ri] = []
+        byRow[ri].push(base)
+      }
+      for (const [riStr, rowBases] of Object.entries(byRow)) {
+        for (const base of rowBases) {
+          const tid = base.trapezoidId
+          const key = `${tid}:${riStr}`
+          if (!map[key]) map[key] = []
+          map[key].push(Math.round(base.offsetFromStartCm * 10))
+        }
       }
     }
-    for (const tid of Object.keys(map)) map[tid].sort((a, b) => a - b)
+    for (const k of Object.keys(map)) map[k].sort((a, b) => a - b)
     setCustomBasesMap(map)
   }, [beBasesData])
 
@@ -175,7 +209,8 @@ export default function Step3ConstructionPlanning({
       <Step3Sidebar
         rowConstructions={rowConstructions} rowKeys={rowKeys}
         areaTrapezoidMap={areaTrapezoidMap} areaLabel={settings.areaLabel}
-        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={setSelectedRowIdx}
+        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={(idx) => { setSelectedRowIdx(idx); setSelectedPanelRowIdx(0) }}
+        selectedPanelRowIdx={selectedPanelRowIdx} setSelectedPanelRowIdx={setSelectedPanelRowIdx}
         selectedTrapezoidId={selectedTrapezoidId} setSelectedTrapezoidId={setSelectedTrapezoidId}
         effectiveSelectedTrapId={effectiveSelectedTrapId}
         trapezoidConfigs={trapezoidConfigs} panels={panels}
@@ -225,7 +260,7 @@ export default function Step3ConstructionPlanning({
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} />}
+          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} />}
 
           {activeTab === 'detail' && (() => {
             const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
@@ -264,6 +299,7 @@ export default function Step3ConstructionPlanning({
             <div style={{ height: '100%', overflow: 'hidden' }}>
               <RailLayoutTab
                 panels={panels} refinedArea={refinedArea}
+                uploadedImageData={uploadedImageData} imageSrc={imageSrc}
                 selectedRowIdx={selectedRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
@@ -284,7 +320,9 @@ export default function Step3ConstructionPlanning({
           <div style={{ display: activeTab === 'bases' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <BasesPlanTab
               panels={panels} refinedArea={refinedArea} areas={areas}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
+              selectedPanelRowIdx={selectedPanelRowIdx}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}
               trapRCMap={rowData.trapRCMap}
@@ -292,9 +330,10 @@ export default function Step3ConstructionPlanning({
               beBasesData={beBasesData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              onBasesChange={(trapId, offsets) => {
-                setCustomBasesMap(prev => ({ ...prev, [trapId]: offsets }))
-                setUserEditedBases(prev => new Set([...prev, trapId]))
+              onBasesChange={(trapId, offsets, panelRowIdx) => {
+                const key = `${trapId}:${panelRowIdx ?? selectedPanelRowIdx}`
+                setCustomBasesMap(prev => ({ ...prev, [key]: offsets }))
+                setUserEditedBases(prev => new Set([...prev, key]))
               }}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
                 clearTrap: (tid) => {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
-import { createProject, updateProject } from '../services/projectsApi'
+import { createProject, updateProject, uploadProjectImage, getProjectImageUrl } from '../services/projectsApi'
+import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
@@ -152,7 +153,8 @@ export function useProjectState() {
   const generateWhiteCanvas = () => {
     const W = 3000, H = 2000
     const canvas = document.createElement('canvas')
-    canvas.width = W; canvas.height = H
+    canvas.width = W
+    canvas.height = H
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, W, H)
@@ -191,6 +193,12 @@ export function useProjectState() {
     refreshAppSettings()
 
     const layout = data.layout || {}
+    
+    // Regenerate white canvas imageData if missing (for projects saved after optimization)
+    if (layout.uploadedImageData?.isWhiteboard && !layout.uploadedImageData.imageData) {
+      const whiteCanvas = generateWhiteCanvas()
+      layout.uploadedImageData.imageData = whiteCanvas.imageData
+    }
     const s2     = data.step2  || {}
     const s3     = data.step3  || {}
     const s4     = data.step4  || {}
@@ -215,14 +223,51 @@ export function useProjectState() {
       lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
     }))
     const grid = {}
-    ;(s2.areas || []).forEach(a => { if (a.panelGrid) grid[a.label ?? a.id] = a.panelGrid })
+    ;(s2.areas || []).forEach(a => {
+      const label = a.label ?? a.id
+      if (a.panelRows?.length > 0) {
+        // New format: panelRows array
+        grid[label] = a.panelRows.map(pr => pr.panelGrid).filter(Boolean)
+      } else if (a.panelGrid) {
+        // Legacy format: single panelGrid → wrap as array
+        grid[label] = [a.panelGrid]
+      }
+    })
 
     // ── Enrich rectAreas with step2 area data ──
+    // Multi-row areas: s2.areas has fewer entries than layout.rectAreas (one per group).
+    // Use panelRows count to assign rectAreas to s2.areas sequentially.
     let enrichedRectAreas = layout.rectAreas || []
     if (layout.rectAreas && s2.areas) {
+      // Build a sequential mapping: rectArea index → { s2Area, rowIndex }
+      const rectToArea = []
+      let raIdx = 0
+      for (const s2a of s2.areas) {
+        const rowCount = Math.max(1, s2a.panelRows?.length ?? 1)
+        for (let ri = 0; ri < rowCount && raIdx < layout.rectAreas.length; ri++) {
+          rectToArea.push({ s2a, rowIndex: ri })
+          raIdx++
+        }
+      }
+      // Assign any remaining rectAreas (shouldn't happen, but be safe)
+      while (raIdx < layout.rectAreas.length) {
+        rectToArea.push({ s2a: {}, rowIndex: 0 })
+        raIdx++
+      }
+
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        const s2a = s2.areas[idx] || s2.areas.find(a => a.id === ra.id || String(a.id) === String(ra.id)) || {}
-        return { ...ra, id: s2a.id ?? ra.id, label: s2a.label ?? ra.id, frontHeight: String(s2a.frontHeightCm ?? ''), angle: String(s2a.angleDeg ?? '') }
+        const { s2a, rowIndex: derivedRowIndex } = rectToArea[idx] || { s2a: {}, rowIndex: 0 }
+        // areaGroupId = BE-assigned numeric area ID (stable across saves)
+        const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
+        const rowIndex = ra.rowIndex ?? derivedRowIndex
+        return {
+          ...ra,
+          label: s2a.label ?? ra.id,
+          frontHeight: String(s2a.frontHeightCm ?? ''),
+          angle: String(s2a.angleDeg ?? ''),
+          areaGroupId: numericGroupId,
+          rowIndex,
+        }
       })
     }
     if (enrichedRectAreas.length > 0) skipRecomputeRef.current = 'load'
@@ -236,7 +281,17 @@ export function useProjectState() {
         referenceLineLengthCm: layout.referenceLineLengthCm != null ? String(layout.referenceLineLengthCm) : null,
         pixelToCmRatio: layout.pixelToCmRatio ?? null,
         baseline: layout.baseline ?? null,
-        panels: layout.panels ? layout.panels.map(p => ({ ...p, area: p.area ?? p.row ?? 0, trapezoidId: p.trapezoidId ?? 'A' })) : [],
+        panels: layout.panels ? layout.panels.map(p => {
+          const areaIdx = p.area ?? p.row ?? 0
+          const ra = enrichedRectAreas[areaIdx]
+          const panelRowIdx = p.panelRowIdx ?? ra?.rowIndex ?? 0
+          // areaGroupKey: index of the first rectArea in this group
+          const groupId = ra?.areaGroupId
+          const areaGroupKey = groupId != null
+            ? enrichedRectAreas.findIndex(a => a.areaGroupId === groupId)
+            : areaIdx
+          return { ...p, area: areaIdx, trapezoidId: p.trapezoidId ?? 'A', panelRowIdx, areaGroupKey: areaGroupKey >= 0 ? areaGroupKey : areaIdx }
+        }) : [],
         rectAreas: enrichedRectAreas,
         deletedPanelKeys: layout.deletedPanelKeys ?? {},
       },
@@ -266,16 +321,26 @@ export function useProjectState() {
 
   const getLayoutData = () => {
     const l = pState.layout
+    const hasImageRef = l.uploadedImageData?.imageRef
+    const isWhiteboard = l.uploadedImageData?.isWhiteboard
+    
     return {
       ...l,
       currentStep,
       pixelToCmRatio: refinedArea?.pixelToCmRatio ?? l.pixelToCmRatio ?? null,
       // Strip FE-only fields before saving
-      uploadedImageData: l.uploadedImageData ? { ...l.uploadedImageData, file: undefined } : null,
+      // If imageRef exists, don't send base64 imageData (reduces payload by ~1-2MB)
+      // For white canvas, exclude imageData (can be regenerated on load)
+      uploadedImageData: l.uploadedImageData ? {
+        ...l.uploadedImageData,
+        file: undefined,
+        imageData: (hasImageRef || isWhiteboard) ? undefined : l.uploadedImageData.imageData,
+      } : null,
       rectAreas: l.rectAreas.map(ra => ({
         id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
         color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
+        areaGroupId: ra.areaGroupId, rowIndex: ra.rowIndex ?? 0,
       })),
     }
   }
@@ -287,16 +352,77 @@ export function useProjectState() {
       id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
     }))
     // Enrich areas with rectAreas geometry + panel-derived trapezoidIds
-    const enrichedAreas = d.step2.areas.map((a, idx) => {
-      const ra = rectAreas[idx]
-      const areaTrapIds = [...new Set(panels.filter(p => p.area === idx).map(p => p.trapezoidId).filter(Boolean))]
+    // d.step2.areas has one entry per area GROUP (not per rectArea).
+    // Build a robust panel→area mapping using multiple strategies.
+
+    // Pre-build: for each rectArea index, which areaGroupKey and label?
+    const raGroupKeys = {}  // rectAreaIdx → areaGroupKey
+    const raLabels = {}     // rectAreaIdx → label
+    rectAreas.forEach((ra, idx) => {
+      const gid = ra.areaGroupId
+      raLabels[idx] = ra.label || ra.id
+      // Find the first rectArea with this groupId
+      const firstIdx = rectAreas.findIndex(r => r.areaGroupId === gid)
+      raGroupKeys[idx] = firstIdx >= 0 ? firstIdx : idx
+    })
+
+    const enrichedAreas = d.step2.areas.map((a) => {
+      const groupLabel = a.label
+      const areaId = a.id  // BE-assigned numeric ID
+
+      // Strategy 1: find rectArea by numeric areaGroupId matching area.id,
+      // then fallback to label match
+      const ra = (typeof areaId === 'number' ? rectAreas.find(r => r.areaGroupId === areaId) : null)
+        || rectAreas.find(r => r.label === groupLabel)
+
+      // Strategy 2: find panels belonging to this area group via multiple methods
+      let areaPanels
+      if (ra) {
+        const groupKey = rectAreas.indexOf(ra)
+        // Match by areaGroupKey
+        areaPanels = panels.filter(p => p.areaGroupKey === groupKey)
+        // Fallback: match by rectArea label
+        if (areaPanels.length === 0) {
+          const matchingRaIdxs = rectAreas
+            .map((r, i) => ((r.areaGroupId) === groupLabel) ? i : -1)
+            .filter(i => i >= 0)
+          areaPanels = panels.filter(p => matchingRaIdxs.includes(p.area))
+        }
+      } else {
+        // No rectArea match: find panels whose rectArea label matches
+        areaPanels = panels.filter(p => raLabels[p.area] === groupLabel)
+      }
+
+      // Strategy 3: if still empty, try matching by trapezoidId prefix (e.g., "D" → D1, D2, D3)
+      if (areaPanels.length === 0) {
+        areaPanels = panels.filter(p => {
+          const tid = p.trapezoidId || ''
+          return tid === groupLabel || tid.replace(/\d+$/, '') === groupLabel
+        })
+      }
+
+      // Derive trapezoidIds from panels (primary source of truth)
+      const panelDerivedTrapIds = [...new Set(areaPanels.map(p => p.trapezoidId).filter(Boolean))]
+      // Use panel-derived IDs, but keep stored IDs that panels might have lost during recompute
+      const storedTrapIds = a.trapezoidIds ?? []
+      // Only use stored as base if panel-derived is empty; otherwise panel-derived wins
+      // but validate stored IDs belong to this area (prefix matches label)
+      const validStoredIds = storedTrapIds.filter(tid =>
+        tid === groupLabel || tid.startsWith(groupLabel)
+      )
+      const areaTrapIds = panelDerivedTrapIds.length > 0
+        ? panelDerivedTrapIds
+        : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
+
       return {
         ...a,
-        id: ra?.id ?? a.id, label: ra?.label ?? a.label,
+        label: groupLabel,
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
-        trapezoidIds: areaTrapIds.length > 0 ? areaTrapIds : (a.trapezoidIds ?? []),
-        panelGrid: d.step2.panelGrid[ra?.label ?? a.label] ?? null,
+        trapezoidIds: areaTrapIds,
+        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
+          rowIndex: ri, panelGrid: pg ?? null,
+        })),
       }
     })
     const { trapezoidConfigs: _tc, panelGrid: _pg, ...step2Rest } = d.step2
@@ -319,14 +445,48 @@ export function useProjectState() {
     const roofSpec = currentProject?.roofSpec || null
     const layout   = getLayoutData()
     const data     = getProjectData()
+    
+    let projectId
     if (cloudProjectId) {
       await updateProject(cloudProjectId, { name, location, layout, data }, step)
-      return cloudProjectId
+      projectId = cloudProjectId
     } else {
       const saved = await createProject(name, location, layout, data, roofSpec)
       setCloudProjectId(saved.id)
-      return saved.id
+      projectId = saved.id
     }
+    
+    // After project is saved, upload image if it hasn't been uploaded yet
+    // Skip white canvas - it can be regenerated on-the-fly
+    if (projectId && uploadedImageData && uploadedImageData.imageData && !uploadedImageData.imageRef && !uploadedImageData.isWhiteboard) {
+      try {
+        // Convert base64 to blob (for uploaded images)
+        const imageBlob = uploadedImageData.file || dataURLtoBlob(uploadedImageData.imageData)
+        const result = await uploadProjectImage(projectId, imageBlob)
+        
+        // Update state with imageRef
+        const updatedImageData = { ...uploadedImageData, imageRef: result.imageId }
+        setUploadedImageData(updatedImageData)
+        
+        // Update project again to use imageRef (this time without base64)
+        const updatedLayout = {
+          ...layout,
+          uploadedImageData: {
+            ...updatedImageData,
+            imageData: undefined,  // Remove base64 now that we have imageRef
+            file: undefined,
+          }
+        }
+        await updateProject(projectId, { layout: updatedLayout }, step)
+        
+        console.log('✅ Image uploaded and project updated with imageRef:', result.imageId)
+      } catch (error) {
+        console.error('Failed to upload image after project save:', error)
+        // Continue - project was saved with base64
+      }
+    }
+    
+    return projectId
   }
 
   // ── Panel layout handlers ─────────────────────────────────────────────────
@@ -384,7 +544,7 @@ export function useProjectState() {
 
   const refreshAreaTrapezoids = (areaIdx) => {
     const result = refreshAreaTrapezoidsAction({
-      areaIdx, area: rectAreas[areaIdx], panels, referenceLine, referenceLineLengthCm,
+      areaIdx, area: rectAreas[areaIdx], panels, rectAreas, referenceLine, referenceLineLengthCm,
       panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
     })
     if (!result) return
@@ -446,10 +606,16 @@ export function useProjectState() {
     }
   }
 
-  const handleImageUploaded = (imageData) => {
+  const handleImageUploaded = async (imageData) => {
+    // Store image data immediately
+    // Actual upload to backend happens in handleSaveProject after project exists
     setUploadedImageData(imageData)
     setUploadedImageMode(true)
-    setRoofPolygon({ coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], area: imageData.width * imageData.height, confidence: 1 })
+    setRoofPolygon({ 
+      coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], 
+      area: imageData.width * imageData.height, 
+      confidence: 1 
+    })
     setReferenceLine(null)
     setReferenceLineLengthCm('')
   }
@@ -527,10 +693,13 @@ export function useProjectState() {
 
     setPanelGrid(result.panelGrid)
     setPanels(result.panels)
-    setAreas(prev => result.areas.map((a, idx) => ({
-      ...prev[idx],  // preserve existing fields like id, trapezoidIds from server
-      ...a,
-    })))
+    setAreas(prev => {
+      return result.areas.map((a) => {
+        // Match previous area by label (not index — lengths may differ for multi-trap areas)
+        const prevMatch = prev.find(p => p.label === a.label)
+        return { ...prevMatch, ...a }
+      })
+    })
     setTrapezoidConfigs(result.trapezoidConfigs)
   }
 
@@ -542,6 +711,21 @@ export function useProjectState() {
       const existing = prev[areaIdx] ?? []
       if (existing.includes(key)) return prev
       return { ...prev, [areaIdx]: [...existing, key] }
+    })
+  }
+
+  const clearDeletedPanelsForArea = (areaIdx) => {
+    setDeletedPanelKeys(prev => {
+      const next = { ...prev }
+      delete next[areaIdx]
+      // Shift higher indices down (area deletion shifts all subsequent indices)
+      const shifted = {}
+      for (const [k, v] of Object.entries(next)) {
+        const idx = Number(k)
+        if (idx > areaIdx) shifted[idx - 1] = v
+        else shifted[k] = v
+      }
+      return shifted
     })
   }
 
@@ -648,6 +832,49 @@ export function useProjectState() {
     }
   }
 
+  // ── Computed image source (handles both base64 and imageRef) ──
+  const [imageSrc, setImageSrc] = useState(null)
+  
+  useEffect(() => {
+    if (!uploadedImageData) {
+      setImageSrc(null)
+      return
+    }
+    
+    // New flow: fetch image from backend if imageRef exists
+    if (uploadedImageData.imageRef && cloudProjectId) {
+      const fetchImage = async () => {
+        try {
+          const url = getProjectImageUrl(cloudProjectId)
+          const response = await mgpRequest(url)
+          
+          if (!response.ok) {
+            console.error('Failed to fetch image:', response.status)
+            // Fallback to base64 if available
+            setImageSrc(uploadedImageData.imageData || null)
+            return
+          }
+          
+          const blob = await response.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          setImageSrc(blobUrl)
+          
+          // Cleanup function to revoke blob URL when component unmounts or deps change
+          return () => URL.revokeObjectURL(blobUrl)
+        } catch (error) {
+          console.error('Error fetching image:', error)
+          // Fallback to base64 if available
+          setImageSrc(uploadedImageData.imageData || null)
+        }
+      }
+      
+      fetchImage()
+    } else {
+      // Legacy flow: use base64 imageData
+      setImageSrc(uploadedImageData.imageData || null)
+    }
+  }, [uploadedImageData?.imageRef, uploadedImageData?.imageData, cloudProjectId])
+
   return {
     // Screen
     appScreen, setAppScreen,
@@ -660,6 +887,7 @@ export function useProjectState() {
     isProcessing,
     uploadedImageMode, setUploadedImageMode,
     uploadedImageData, setUploadedImageData,
+    imageSrc, // Computed: imageRef URL or base64 imageData
     imageRef, setImageRef,
     // Step 2
     refinedArea,
@@ -687,6 +915,7 @@ export function useProjectState() {
     panelGrid,
     rebuildPanelGrid,
     recordPanelDeletion,
+    clearDeletedPanelsForArea,
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,

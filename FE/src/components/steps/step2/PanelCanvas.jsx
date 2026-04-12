@@ -16,7 +16,7 @@ import CanvasNavigator from '../../shared/CanvasNavigator'
 import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from '../../../utils/rectPanelService'
 
 export default function PanelCanvas({
-  uploadedImageData, viewZoom, setViewZoom,
+  uploadedImageData, imageSrc, viewZoom, setViewZoom,
   imageRef, setImageRef,
   roofPolygon, baseline,
   panels, setPanels,
@@ -614,7 +614,7 @@ export default function PanelCanvas({
       >
         <img
           ref={imgRefCallback}
-          src={uploadedImageData.imageData}
+          src={imageSrc}
           alt="Roof with panels"
           style={{
             display: 'block',
@@ -784,16 +784,22 @@ export default function PanelCanvas({
               const handleR = Math.max(5, (imageRef?.naturalWidth ?? 1000) * 0.006)
               const isYLocked = area.mode === 'ylocked'
               const pivotIdx = area.pivotIdx ?? 0
+              // Multi-row: only show label on the first row (rowIndex 0) of each group
+              const isSubRow = (area.rowIndex ?? 0) > 0
+              const groupId = area.areaGroupId
+              void groupId // used for future convex hull rendering
               return (
-                <g key={area.id} style={{ pointerEvents: 'auto' }}>
+                <g key={`${area.id}-${areaIdx}`} style={{ pointerEvents: 'auto' }}>
                   <polygon
                     points={pts}
                     fill={`${area.color}15`}
                     stroke={area.color}
-                    strokeWidth={lineW * 2}
+                    strokeWidth={isSubRow ? lineW : lineW * 2}
                     strokeDasharray={isYLocked ? undefined : dashArray}
                     style={{ pointerEvents: 'none' }}
                   />
+                  {/* Only show label on primary row (rowIndex 0) */}
+                  {!isSubRow && (
                   <text
                     x={labelCx} y={labelCy}
                     textAnchor="middle" dominantBaseline="middle"
@@ -804,6 +810,7 @@ export default function PanelCanvas({
                   >
                     {area.label}{isYLocked ? ' ⊟' : ''}
                   </text>
+                  )}
                   {area.vertices.map((v, cornerIdx) => {
                     const isPivot = cornerIdx === pivotIdx
                     const isDraggable = !isPivot || isYLocked
@@ -1077,7 +1084,7 @@ let fill, borderColor, ibw
           onZoomOut={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
           onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
           onZoomIn={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
-          imageData={uploadedImageData.imageData}
+          imageData={imageSrc}
           mmWidth={MM_W}
           mmHeight={MM_H}
           onPanToPoint={panToMinimapPoint}

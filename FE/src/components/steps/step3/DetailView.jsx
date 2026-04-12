@@ -3,6 +3,7 @@ import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
+import { calculateDiagonalPosition } from '../../../utils/trapezoidGeometry'
 import LayersPanel from './LayersPanel'
 import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
@@ -159,15 +160,16 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       const ov = diagOverrides[d.spanIdx] ?? {}
       const topPct = ov.topPct ?? d.topPct
       const botPct = ov.botPct ?? d.botPct
-      // Diagonal spans the gap: right edge of leg A to left edge of leg B
-      const xA = allLegEndXs[d.spanIdx], xB = allLegXs[d.spanIdx + 1]
-      const spanW = xB - xA
-      const topX = xA + topPct * spanW
-      const botX = xA + botPct * spanW
-      // Interpolate slope Y between the two legs
-      const hATopY = allLegTopYs[d.spanIdx], hBTopY = allLegTopYs[d.spanIdx + 1]
-      const topY = hATopY + topPct * (hBTopY - hATopY)
-      const botY = baseY + BEAM_THICK_PX / 2
+      const { xA, xB, spanW, topX, botX, topY, botY } = calculateDiagonalPosition({
+        spanIdx: d.spanIdx,
+        topPct,
+        botPct,
+        legXs: allLegXs,
+        legEndXs: allLegEndXs,
+        legHeights: allLegHeights,
+        baseY,
+        beamThickPx: BEAM_THICK_PX,
+      })
       const _dx = botX - topX, _dy = botY - topY
       const _len = Math.sqrt(_dx * _dx + _dy * _dy)
       const ux = _len > 0 ? _dx / _len : 0, uy = _len > 0 ? _dy / _len : 0
@@ -712,7 +714,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const nonDiag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
                   .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
-                const diag = activeDiags.map(d => ({ x: d.botX, label: fmt((d.botX - bbX0) / SC), origin: 'diagonal' }))
+                const diag = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'base' && p.origin === 'diagonal')
+                  .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: 'diagonal' }))
                 return <DetailPunchSketch which="bot" ry={blockBotY + 130}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
@@ -731,10 +735,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const nonDiag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
                   .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: p.origin }))
-                const diag = activeDiags.map(d => {
-                  const pos = (d.topX - legX0) / SC
-                  return { x: d.topX, label: fmt(reverseBlockPunches ? slopeLen - pos : pos), origin: 'diagonal' }
-                })
+                const diag = (beDetailData?.punches ?? [])
+                  .filter(p => p.beamType === 'slope' && p.origin === 'diagonal')
+                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: 'diagonal' }))
                 return <DetailPunchSketch which="top" ry={blockBotY + 52}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}

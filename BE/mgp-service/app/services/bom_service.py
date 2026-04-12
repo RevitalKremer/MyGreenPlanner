@@ -60,6 +60,17 @@ def _get_area_field(area: dict, key: str, default=None):
     return default
 
 
+def _flatten_row_dict(d: dict | list) -> list:
+    """Flatten a dict[rowIndex → list] or legacy list into a single list."""
+    if isinstance(d, list):
+        return d
+    items = []
+    for v in d.values():
+        if isinstance(v, list):
+            items.extend(v)
+    return items
+
+
 def _derive_row_construction(
     area: dict,
     computed_area: dict | None,
@@ -68,47 +79,60 @@ def _derive_row_construction(
 ) -> dict | None:
     """
     Derive per-area row-construction data from step2 area + step3 computed data.
+    Aggregates across all panel rows in the area.
     Returns dict with keys matching FE rowConstructions, or None if data is incomplete.
     """
     if not computed_area:
         return None
 
-    panel_grid = area.get('panelGrid') or {}
-    rails = computed_area.get('rails') or []
-    bases = computed_area.get('bases') or []
+    # Aggregate panel counts across all panel rows
+    panel_rows = area.get('panelRows', [])
+    if not panel_rows:
+        # Legacy fallback
+        pg = area.get('panelGrid')
+        panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
+
+    total_panel_count = 0
+    max_num_lines = 0
+    for pr in panel_rows:
+        pg = pr.get('panelGrid') or {}
+        total_panel_count += _count_panels(pg)
+        nl = _count_lines(pg)
+        if nl > max_num_lines:
+            max_num_lines = nl
+    if max_num_lines == 0:
+        max_num_lines = 1
+
+    # Flatten rails and bases across all panel rows
+    all_rails = _flatten_row_dict(computed_area.get('rails') or {})
+    all_bases = _flatten_row_dict(computed_area.get('bases') or {})
     trap_ids = _get_area_field(area, 'trapezoidIds') or []
 
     if not trap_ids:
         return None
 
-    # Panel count + lines (needed for all roof types)
-    panel_count = _count_panels(panel_grid)
-    num_lines = _count_lines(panel_grid)
-    if num_lines == 0:
-        num_lines = 1
-
     # Rails (needed for all roof types)
-    num_rails = len(rails)
+    num_rails = len(all_rails)
     num_rail_connectors = 0
-    for r in rails:
+    for r in all_rails:
         segs = r.get('stockSegmentsMm') or []
         if len(segs) > 1:
             num_rail_connectors += len(segs) - 1
     row_length = 0
-    if rails:
-        row_length = max(r.get('lengthCm', 0) for r in rails)
-    num_large_gaps = area.get('numLargeGaps', 0)
+    if all_rails:
+        row_length = max(r.get('lengthCm', 0) for r in all_rails)
+    num_large_gaps = computed_area.get('numLargeGaps', 0)
 
     # Tiles: no frame geometry needed — only rails + clamps + hooks
     if roof_type == 'tiles':
         return {
             'rowLength': row_length,
             'angle': 0, 'frontHeight': 0, 'heightRear': 0, 'heightFront': 0,
-            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0, 'diagonalLength': 0,
+            'baseLength': 0, 'baseBeamLength': 0, 'topBeamLength': 0,
             'numTrapezoids': 0,
-            'panelCount': panel_count,
+            'panelCount': total_panel_count,
             'numRails': num_rails,
-            'numLines': num_lines,
+            'numLines': max_num_lines,
             'numLargeGaps': num_large_gaps,
             'numRailConnectors': num_rail_connectors,
         }
@@ -125,9 +149,9 @@ def _derive_row_construction(
     if not geom:
         return None
 
-    # numTrapezoids: count unique base positions (distinct offsetFromStartCm)
+    # numTrapezoids: count unique base positions across all rows
     unique_base_positions = set()
-    for b in bases:
+    for b in all_bases:
         unique_base_positions.add(round(b.get('offsetFromStartCm', 0), 2))
     num_trapezoids = len(unique_base_positions) if unique_base_positions else 1
 
@@ -140,11 +164,10 @@ def _derive_row_construction(
         'baseLength': geom.get('baseLength', 0),
         'baseBeamLength': geom.get('baseBeamLength', 0),
         'topBeamLength': geom.get('topBeamLength', 0),
-        'diagonalLength': geom.get('diagonalLength', 0),
         'numTrapezoids': num_trapezoids,
-        'panelCount': panel_count,
+        'panelCount': total_panel_count,
         'numRails': num_rails,
-        'numLines': num_lines,
+        'numLines': max_num_lines,
         'numLargeGaps': num_large_gaps,
         'numRailConnectors': num_rail_connectors,
     }
@@ -177,11 +200,29 @@ def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute diagonal brace BOM."""
-    T = rc['numTrapezoids']
-    nS = T - 1
-    if nS > 0 and rc['diagonalLength'] > 0:
-        return [{'areaLabel': area_label, 'element': 'angle_profile_40x40_diag', 'totalLengthM': nS * rc['diagonalLength'] / 100, 'qty': nS}]
+    """Compute diagonal brace BOM from actual diagonal lengths."""
+    # Sum actual diagonal brace lengths from trapezoid details
+    total_length_cm = 0
+    count = 0
+    
+    # rc may contain trapezoid details with diagonal data
+    if 'trapezoidDetails' in rc:
+        for trap_detail in rc['trapezoidDetails'].values():
+            for diag in trap_detail.get('diagonals', []):
+                if not diag.get('disabled', False):
+                    length = diag.get('lengthCm', 0)
+                    if length > 0:
+                        multiplier = 2 if diag.get('double', False) else 1
+                        total_length_cm += length * multiplier
+                        count += 1
+    
+    if count > 0 and total_length_cm > 0:
+        return [{
+            'areaLabel': area_label,
+            'element': 'angle_profile_40x40_diag',
+            'totalLengthM': total_length_cm / 100,
+            'qty': count
+        }]
     return []
 
 

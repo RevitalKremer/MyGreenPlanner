@@ -4,6 +4,16 @@ import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 
 /**
+ * Flatten rails/bases from dict[rowIndex → list] to a single list.
+ * Handles both new dict format and legacy list format.
+ */
+function flattenRowDict(d) {
+  if (!d) return []
+  if (Array.isArray(d)) return d  // legacy list format
+  return Object.values(d).flat()
+}
+
+/**
  * Derives row-level data: panel counts, row keys, line rails,
  * trapezoid maps, and construction geometry from BE data.
  */
@@ -23,7 +33,7 @@ export default function useRowData({
   const rowPanelCounts = useMemo(() => {
     const map = {}
     panels.forEach(p => {
-      const key = (p.area ?? p.row) ?? 'unassigned'
+      const key = p.areaGroupKey ?? (p.area ?? p.row) ?? 'unassigned'
       map[key] = (map[key] || 0) + 1
     })
     return map
@@ -34,6 +44,30 @@ export default function useRowData({
     [rowPanelCounts]
   )
 
+  // Map areaGroupKey → areas entry. rowKeys are areaGroupKeys (rectArea indices),
+  // but `areas` is a compact array from the server. Match by finding the area whose
+  // panels have this areaGroupKey, or fall back to label matching via panels.
+  const areaByGroupKey = useMemo(() => {
+    const map = {}
+    // Build label → area lookup
+    const areaByLabel = {}
+    for (const a of areas) { if (a.label) areaByLabel[a.label] = a }
+    // For each rowKey, find which area's panels use this groupKey
+    for (const key of rowKeys) {
+      const samplePanel = panels.find(p => p.areaGroupKey === key)
+      if (samplePanel) {
+        const trapId = samplePanel.trapezoidId
+        // Find area containing this trapezoidId
+        const matched = areas.find(a => a.trapezoidIds?.includes(trapId))
+          ?? areaByLabel[trapId?.replace(/\d+$/, '')]
+        if (matched) { map[key] = matched; continue }
+      }
+      // Fallback: use areas by index (single-row compat)
+      if (areas[key]) map[key] = areas[key]
+    }
+    return map
+  }, [rowKeys, areas, panels])
+
   // ── Line rails resolution ──────────────────────────────────────────────
   // lineRails convention: keys are numeric integers (0, 1, 2...) representing line indices.
   // BE responses may return string keys after JSON serialization. Consumers should handle
@@ -41,12 +75,14 @@ export default function useRowData({
   const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]
-    const area    = areas[areaKey]
+    const area    = areaByGroupKey[areaKey]
     if (!area) return null
     const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
-    if (!beArea?.rails?.length) return null
+    // Use only first row's rails (lineRails is per-trapezoid, shared across rows)
+    const firstRowRails = (beArea?.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === 0)
+    if (!firstRowRails.length) return null
     const map = {}
-    for (const r of beArea.rails) {
+    for (const r of firstRowRails) {
       if (!map[r.lineIdx]) map[r.lineIdx] = []
       map[r.lineIdx].push(r.offsetFromLineFrontCm)
     }
@@ -71,7 +107,7 @@ export default function useRowData({
     const map = {}
     rowKeys.forEach(areaKey => {
       const letter = String.fromCharCode(65 + areaKey)
-      const areaObj = areas[areaKey]
+      const areaObj = areaByGroupKey[areaKey]
       const serverIds = areaObj?.trapezoidIds
       if (serverIds?.length > 0) {
         map[areaKey] = serverIds
@@ -120,9 +156,9 @@ export default function useRowData({
       const railOffsetCm = lineRails[0]?.[0] ?? 0
       const frontLegH    = Math.max(0, panelFrontH - s.blockHeightCm + railOffsetCm * Math.sin(angleRad) - crossRailH * Math.cos(angleRad))
 
-      const areaObj    = areas[areaKey]
+      const areaObj    = areaByGroupKey[areaKey]
       const beAreaData = beRailsData?.find(a => (a.areaId != null && areaObj?.id != null ? a.areaId === areaObj.id : a.areaLabel === areaObj?.label))
-      const rails      = beAreaData?.rails ?? []
+      const rails      = flattenRowDict(beAreaData?.rails)
 
       const measuredRowLength = rails.length > 0 ? Math.max(...rails.map(r => r.roundedLengthCm ?? r.lengthCm)) : undefined
       const numRailConnectors = rails.reduce((sum, r) => sum + Math.max(0, r.stockSegmentsMm.length - 1), 0)
@@ -137,12 +173,12 @@ export default function useRowData({
         return {
           angle: 0, frontHeight: 0, panelCount,
           rowLength: measuredRowLength,
-          baseLength: 0, diagonalLength: 0,
+          baseLength: 0,
           heightRear: 0, heightFront: 0,
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
           railOverhang,
-          panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+          panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
           numRails, numLines,
           numLargeGaps: beAreaData?.numLargeGaps ?? 0,
           numRailConnectors,
@@ -157,11 +193,10 @@ export default function useRowData({
         angle, frontHeight: frontLegH, panelCount,
         rowLength: measuredRowLength,
         baseLength: beGeom.baseBeamLength,
-        diagonalLength: beGeom.diagonalLength ?? 0,
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,
-        panelsPerLine: (areas[areaKey]?.panelGrid?.rows ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+        panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
         numRails, numLines,
         numLargeGaps: beAreaData?.numLargeGaps ?? 0,
         numRailConnectors,
@@ -208,7 +243,7 @@ export default function useRowData({
     const globalCfg = refinedArea?.panelConfig || {}
     rowKeys.forEach((areaKey) => {
       const trapIdsList = areaTrapezoidMap[areaKey] || []
-      const areaGroup   = areas[areaKey] || {}
+      const areaGroup   = areaByGroupKey[areaKey] || {}
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
         const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
@@ -224,7 +259,7 @@ export default function useRowData({
   }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    rowPanelCounts, rowKeys,
+    rowPanelCounts, rowKeys, areaByGroupKey,
     getLineRails, areaTrapezoidMap,
     applyBasesToAll, rowConstructions,
     trapLineRailsMap, trapSettingsMap, trapRCMap, trapPanelLinesMap,
