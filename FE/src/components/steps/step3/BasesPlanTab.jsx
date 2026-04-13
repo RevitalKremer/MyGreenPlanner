@@ -17,7 +17,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
@@ -197,9 +197,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     return expandBboxForImage(panelBbox, uploadedImageData)
   }, [nonEmptyPanels, uploadedImageData])
 
-  const PAD  = 60, MAX_W = 900  // PAD=60 gives room for edit bars above/below the panel bbox
+  const PAD = printMode ? 12 : 60  // edit needs room for edit bars; print is tight
+  const MAX_W = 779  // edit-mode width target
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
-  const sc   = bboxW > 0 ? MAX_W / bboxW : 1
+  const sc   = printMode && printSc != null
+    ? printSc
+    : (bboxW > 0 ? MAX_W / bboxW : 1)
 
   // Center view on initial mount at 100% zoom (like Step 2)
   // Use layoutEffect to run before paint and avoid flicker
@@ -231,7 +234,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
       </div>
     )
   }
-  const svgW = MAX_W + PAD * 2
+  const svgW = printMode ? bboxW * sc + PAD * 2 : MAX_W + PAD * 2
   const svgH = bboxH * sc + PAD * 2
   const toSvg = (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
 

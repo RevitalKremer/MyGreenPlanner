@@ -23,6 +23,25 @@ export function getPanelsBoundingBox(panels) {
   return { minX, maxX, minY, maxY }
 }
 
+/**
+ * Compute optimal print-mode scale and natural size to maximally fill a
+ * fixed content area while preserving the bbox aspect ratio.
+ * Returns { sc, naturalW, naturalH } where one of (naturalW, naturalH)
+ * equals the corresponding (contentW, contentH) and the other is smaller.
+ */
+export function computePrintFit(bboxW, bboxH, contentW, contentH, pad) {
+  const availW = Math.max(1, contentW - 2 * pad)
+  const availH = Math.max(1, contentH - 2 * pad)
+  const sc = bboxW > 0 && bboxH > 0
+    ? Math.min(availW / bboxW, availH / bboxH)
+    : 1
+  return {
+    sc,
+    naturalW: bboxW * sc + 2 * pad,
+    naturalH: bboxH * sc + 2 * pad,
+  }
+}
+
 /** Expand a bounding box to include the full image dimensions if image exists */
 export function expandBboxForImage(panelBbox, uploadedImageData) {
   if (!uploadedImageData) return panelBbox

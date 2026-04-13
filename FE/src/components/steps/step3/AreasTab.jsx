@@ -9,8 +9,9 @@ import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 
-const PAD      = 40   // SVG padding around panel content
-const MAX_W    = 900  // SVG content width (same as rails/bases tabs)
+const PAD_EDIT  = 40  // edit-mode SVG padding around panel content
+const PAD_PRINT = 12  // print-mode tighter padding (no minimap or canvas chrome)
+const MAX_W    = 819  // SVG content width — sized so MAX_W + PAD*2 ≈ PDF CONTENT_W
 const CSS_PAD  = 20   // div padding around SVG
 const POLY_PAD = 12   // expansion around each area polygon (SVG px)
 
@@ -33,7 +34,7 @@ function convexHull(pts) {
 
 // Compute convex hull polygon around an area's panels, expanded outward by POLY_PAD.
 // Returns SVG-space [x, y] pairs.
-function areaPolygonPoints(areaPanels, bbox, sc) {
+function areaPolygonPoints(areaPanels, bbox, sc, PAD) {
   if (areaPanels.length === 0) return null
 
   // Collect all 4 corners of every panel in screen space
@@ -73,6 +74,7 @@ export default function AreasTab({
   rowKeys = [], areaLabel = () => '',
   printMode = false,
   printShowAreas = true, printShowCounts = true, printShowRoofImage = true,
+  printSc = null,
   uploadedImageData, imageSrc,
 }) {
   const { t } = useLang()
@@ -98,8 +100,11 @@ export default function AreasTab({
 
   const bboxW = bbox.maxX - bbox.minX
   const bboxH = bbox.maxY - bbox.minY
-  const sc    = bboxW > 0 ? MAX_W / bboxW : 1
-  const svgW  = MAX_W + PAD * 2
+  const PAD   = printMode ? PAD_PRINT : PAD_EDIT
+  const sc    = printMode && printSc != null
+    ? printSc
+    : (bboxW > 0 ? MAX_W / bboxW : 1)
+  const svgW  = printMode ? bboxW * sc + PAD * 2 : MAX_W + PAD * 2
   const svgH  = bboxH * sc + PAD * 2
 
   // Center view on initial mount at 100% zoom (like Step 2)
@@ -143,7 +148,7 @@ export default function AreasTab({
       const areaPanels = rowGroups[areaKey] ?? []
       if (areaPanels.length === 0) return null
 
-      const pts = areaPolygonPoints(areaPanels, bbox, sc)
+      const pts = areaPolygonPoints(areaPanels, bbox, sc, PAD)
       if (!pts) return null
 
       // Label center = centroid of polygon
@@ -165,7 +170,7 @@ export default function AreasTab({
     ))
 
     return items.map(item => ({ ...item, fontSize }))
-  }, [rowKeys, rowGroups, bbox, sc, areaLabel])
+  }, [rowKeys, rowGroups, bbox, sc, PAD, areaLabel])
 
   if (nonEmptyPanels.length === 0) {
     return (
@@ -188,59 +193,75 @@ export default function AreasTab({
     >{count}</text>
   ))
 
+  // Effective layer toggles — print mode uses the explicit print* props,
+  // edit mode uses the user-controlled layer panel state.
+  const sRoofImage = printMode ? printShowRoofImage : showRoofImage
+  const sAreas     = printMode ? printShowAreas     : showAreas
+  const sCounts    = printMode ? printShowCounts    : showCounts
+
+  const svgLayers = (
+    <>
+      {sRoofImage && <BackgroundImageLayer
+        imageSrc={imageSrc}
+        uploadedImageData={uploadedImageData}
+        bbox={bbox}
+        toSvg={toSvg}
+        sc={sc}
+      />}
+
+      {sAreas && areaData.map(({ areaKey, pts }) => (
+        <polygon key={`poly-${areaKey}`}
+          points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
+          fill={BLUE} fillOpacity={0.13}
+          stroke={BLUE} strokeOpacity={0.65} strokeWidth={2}
+          style={{ pointerEvents: 'none' }}
+        />
+      ))}
+
+      <HatchedPanels
+        panels={nonEmptyPanels}
+        selectedTrapId={null}
+        toSvg={toSvg}
+        sc={sc}
+        pixelToCmRatio={1}
+        clipIdPrefix={printMode ? 'atpm' : 'at'}
+      />
+
+      {sAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
+        const down = yDir === 'ttb'
+        const r = rotation * Math.PI / 180
+        const chevW = fontSize * 1.0
+        const chevH = fontSize * 0.6
+        const dist = fontSize * 1.1
+        const ldx = -Math.sin(r), ldy = Math.cos(r)
+        const cupSign = down ? -1 : 1
+        const chevX = svgCx + ldx * cupSign * dist
+        const chevY = svgCy + ldy * cupSign * dist
+        const chevPts = down
+          ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
+          : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
+        return (
+          <g key={`lbl-${areaKey}`} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            <text x={svgCx} y={svgCy}
+              textAnchor="middle" dominantBaseline="middle"
+              fill={BLUE} fontSize={fontSize} fontWeight="800"
+              stroke={WHITE} strokeWidth={fontSize * 0.2} paintOrder="stroke"
+            >{label}</text>
+            <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
+              <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke={WHITE} strokeWidth={chevH * 0.18} strokeLinejoin="round" />
+            </g>
+          </g>
+        )
+      })}
+
+      {sCounts && countLabels}
+    </>
+  )
+
   if (printMode) {
     return (
       <svg width={svgW} height={svgH} style={{ display: 'block' }}>
-        {/* Background image - first layer */}
-        {printShowRoofImage && <BackgroundImageLayer 
-          imageSrc={imageSrc}
-          uploadedImageData={uploadedImageData}
-          bbox={bbox}
-          toSvg={toSvg}
-          sc={sc}
-        />}
-        {printShowAreas && areaData.map(({ areaKey, pts }) => (
-          <polygon key={`poly-${areaKey}`}
-            points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
-            fill={BLUE} fillOpacity={0.13}
-            stroke={BLUE} strokeOpacity={0.65} strokeWidth={2}
-          />
-        ))}
-        <HatchedPanels
-          panels={nonEmptyPanels}
-          selectedTrapId={null}
-          toSvg={toSvg}
-          sc={sc}
-          pixelToCmRatio={1}
-          clipIdPrefix="atpm"
-        />
-        {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
-          const down = yDir === 'ttb'
-          const r = rotation * Math.PI / 180
-          const chevW = fontSize * 1.0
-          const chevH = fontSize * 0.6
-          const dist = fontSize * 1.1
-          const ldx = -Math.sin(r), ldy = Math.cos(r)
-          const cupSign = down ? -1 : 1
-          const chevX = svgCx + ldx * cupSign * dist
-          const chevY = svgCy + ldy * cupSign * dist
-          const chevPts = down
-            ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
-            : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
-          return (
-            <g key={`lbl-${areaKey}`}>
-              <text x={svgCx} y={svgCy}
-                textAnchor="middle" dominantBaseline="middle"
-                fill={BLUE} fontSize={fontSize} fontWeight="800"
-                stroke={WHITE} strokeWidth={fontSize * 0.2} paintOrder="stroke"
-              >{label}</text>
-              <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
-                <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke={WHITE} strokeWidth={chevH * 0.18} strokeLinejoin="round" />
-              </g>
-            </g>
-          )
-        })}
-        {printShowCounts && countLabels}
+        {svgLayers}
       </svg>
     )
   }
@@ -258,66 +279,7 @@ export default function AreasTab({
         <div ref={contentRef} style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
           <div style={{ padding: CSS_PAD }}>
             <svg width={svgW} height={svgH} style={{ display: 'block' }}>
-
-              {/* Background image - first layer */}
-              {showRoofImage && <BackgroundImageLayer 
-                imageSrc={imageSrc}
-                uploadedImageData={uploadedImageData}
-                bbox={bbox}
-                toSvg={toSvg}
-                sc={sc}
-              />}
-
-              {/* Area polygons — drawn behind panels */}
-              {showAreas && areaData.map(({ areaKey, pts }) => (
-                <polygon key={`poly-${areaKey}`}
-                  points={pts.map(([x, y]) => `${x},${y}`).join(' ')}
-                  fill={BLUE} fillOpacity={0.13}
-                  stroke={BLUE} strokeOpacity={0.65} strokeWidth={2}
-                  style={{ pointerEvents: 'none' }}
-                />
-              ))}
-
-              {/* Panels */}
-              <HatchedPanels
-                panels={nonEmptyPanels}
-                selectedTrapId={null}
-                toSvg={toSvg}
-                sc={sc}
-                pixelToCmRatio={1}
-                clipIdPrefix="at"
-              />
-
-              {/* Area labels with slope chevron — on top of panels */}
-              {showAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
-                const down = yDir === 'ttb'
-                const r = rotation * Math.PI / 180
-                const chevW = fontSize * 1.0
-                const chevH = fontSize * 0.6
-                const dist = fontSize * 1.1
-                const ldx = -Math.sin(r), ldy = Math.cos(r)
-                const cupSign = down ? -1 : 1
-                const chevX = svgCx + ldx * cupSign * dist
-                const chevY = svgCy + ldy * cupSign * dist
-                const chevPts = down
-                  ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
-                  : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
-                return (
-                  <g key={`lbl-${areaKey}`} style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                    <text x={svgCx} y={svgCy}
-                      textAnchor="middle" dominantBaseline="middle"
-                      fill={BLUE} fontSize={fontSize} fontWeight="800"
-                      stroke="white" strokeWidth={fontSize * 0.2} paintOrder="stroke"
-                    >{label}</text>
-                    <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
-                      <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke="white" strokeWidth={chevH * 0.18} strokeLinejoin="round" />
-                    </g>
-                  </g>
-                )
-              })}
-
-              {/* Panel count labels per line */}
-              {showCounts && countLabels}
+              {svgLayers}
             </svg>
           </div>
         </div>

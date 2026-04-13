@@ -82,9 +82,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
-  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
-  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40)
-  const padB = blockH + 330
+  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 40)
+  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 30)
+  const padB = blockH + 230
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
