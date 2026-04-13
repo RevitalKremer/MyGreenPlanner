@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, TRAP_L_PROFILE_FILL, TRAP_L_PROFILE_STROKE, TRAP_BLOCK_FILL, TRAP_BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { calculateDiagonalPosition } from '../../../utils/trapezoidGeometry'
@@ -83,7 +84,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
   const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
   const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40)
-  const padB = blockH + 290
+  const padB = blockH + 330
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
@@ -329,29 +330,22 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   })()
   const activePanelEndBot   = panelBottomPos(lastActiveDepth)
 
-  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 13 }) => {
-    const col = tbd ? TC : DC
-    const mk  = tbd ? 't' : 'k'
+  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false }) => {
     const dx = ax2 - ax1, dy = ay2 - ay1
     const len = Math.sqrt(dx * dx + dy * dy)
     if (len < 2) return null
     const nx = -dy / len * off, ny = dx / len * off
-    const lx1 = ax1 + nx, ly1 = ay1 + ny
-    const lx2 = ax2 + nx, ly2 = ay2 + ny
-    const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI
-    const ta = ang > 90 || ang < -90 ? ang + 180 : ang
+    const measurePts = [[ax1, ay1], [ax2, ay2]]
+    const annPts     = [[ax1 + nx, ay1 + ny], [ax2 + nx, ay2 + ny]]
+    const col = tbd ? TC : DC
     return (
-      <g>
-        <line x1={ax1} y1={ay1} x2={lx1} y2={ly1} stroke={col} strokeWidth="0.5" />
-        <line x1={ax2} y1={ay2} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.5" />
-        <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.8"
-          markerStart={`url(#arr-${mk})`} markerEnd={`url(#arr-${mk})`} />
-        <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-          fontSize={fs} fontWeight="600" fill={col}
-          transform={`rotate(${ta} ${mx} ${my})`}
-        >{tbd ? 'TBD' : label}</text>
-      </g>
+      <DimensionAnnotation
+        measurePts={measurePts}
+        annPts={annPts}
+        labels={[tbd ? 'TBD' : label]}
+        zoom={1}
+        color={col}
+      />
     )
   }
 
@@ -394,12 +388,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 />
               )}
               <defs>
-                <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                  <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
-                </marker>
-                <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                  <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
-                </marker>
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
@@ -650,7 +638,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 {(() => {
                   if (!hasActiveZone) return null
                   // Panel distance dimensions: all on the beam line (parallel to panel)
-                  const panelOff = -(PANEL_OFFSET_PX + 28)
+                  const panelOff = -(PANEL_OFFSET_PX + 38)
                   const psx = atSlope(firstActiveDepth).x
                   const pex = atSlope(lastActiveDepth).x
                   const r1x = railItems[0]?.cx ?? psx
@@ -677,9 +665,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                      ax2={activePanelStartBot.x} ay2={activePanelStartBot.y}
                   label={fmt(geom.panelFrontHeight ?? 0)}
                   off={-22} />
-
-                {BLOCK_H_CM > 0 && <Dim ax1={legX0} ay1={blockTopY} ax2={legX0} ay2={blockBotY}
-                  label={fmt(BLOCK_H_CM)} off={-14} />}
 
                 {/* Right leg height: from BE data, annotation on OUTSIDE (right) */}
                 {(() => {
@@ -717,7 +702,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const diag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'base' && p.origin === 'diagonal')
                   .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: 'diagonal' }))
-                return <DetailPunchSketch which="bot" ry={blockBotY + 130}
+                return <DetailPunchSketch which="bot" ry={blockBotY + 150}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
                   showDiagHandles={showDiagHandles} printMode={printMode}
@@ -738,7 +723,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const diag = (beDetailData?.punches ?? [])
                   .filter(p => p.beamType === 'slope' && p.origin === 'diagonal')
                   .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: 'diagonal' }))
-                return <DetailPunchSketch which="top" ry={blockBotY + 52}
+                return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
                   showDiagHandles={showDiagHandles} printMode={printMode}

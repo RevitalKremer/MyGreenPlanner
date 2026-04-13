@@ -1,4 +1,5 @@
-import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, TEXT_DARKEST } from '../../../styles/colors'
+import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK } from '../../../styles/colors'
+import DimensionAnnotation from './DimensionAnnotation'
 
 /**
  * RailsOverlay — renders rail lines, material summary, connectors,
@@ -106,13 +107,17 @@ export default function RailsOverlay({
       const [rx1, ry1] = toSvg(lineRail.screenStart.x, lineRail.screenStart.y)
       const [rx2, ry2] = toSvg(lineRail.screenEnd.x, lineRail.screenEnd.y)
       const ang = Math.atan2(ry2 - ry1, rx2 - rx1) * 180 / Math.PI
+      const bgW = text.length * fontSize * 0.55 + 6 / zoom
+      const bgH = fontSize + 4 / zoom
       return (
-        <text key={`${prefix}-ms-${li}`} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-          fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5"
-          transform={`rotate(${ang}, ${cx}, ${cy})`}
-          style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
-          {text}
-        </text>
+        <g key={`${prefix}-ms-${li}`} transform={`rotate(${ang}, ${cx}, ${cy})`} style={{ pointerEvents: 'none' }}>
+          <rect x={cx - bgW / 2} y={cy - bgH / 2} width={bgW} height={bgH}
+            fill="white" fillOpacity={0.8} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+            fontSize={fontSize} fontWeight="600" fill={BLACK}>
+            {text}
+          </text>
+        </g>
       )
     })
   }
@@ -160,29 +165,23 @@ export default function RailsOverlay({
       if (railLen < 2) return null
       const ux = dx / railLen, uy = dy / railLen
       const totalMm = segs.reduce((s, v) => s + v, 0)
-      const fontSize = Math.max(10, 13 / zoom)
       const perpX = -uy, perpY = ux
       const labelOff = railProfile / 2 + 8 + zoom * 2
-      const ang = Math.atan2(dy, dx) * 180 / Math.PI
-      let cumMm = 0
+
+      // Build boundary points along the rail (rail-side) and offset annotation points.
+      const boundsMm = [0]
+      let acc = 0
+      for (const segMm of segs) { acc += segMm; boundsMm.push(acc) }
+      const measurePts = boundsMm.map(mm => {
+        const dPx = (mm / totalMm) * railLen
+        return [x1 + ux * dPx, y1 + uy * dPx]
+      })
+      const annPts = measurePts.map(([px, py]) => [px + perpX * labelOff, py + perpY * labelOff])
+      const labels = segs.map(mm => String(mm))
+
       return (
         <g key={`${prefix}-segs-${rail.railId}`}>
-          {segs.map((segMm, si) => {
-            const segStart = cumMm / totalMm * railLen
-            cumMm += segMm
-            const segEnd = cumMm / totalMm * railLen
-            const midPx = (segStart + segEnd) / 2
-            const mx = x1 + ux * midPx + perpX * labelOff
-            const my = y1 + uy * midPx + perpY * labelOff
-            return (
-              <text key={si} x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                fontSize={fontSize} fontWeight="600" fill={TEXT_DARKEST} stroke="#d0d0d0" strokeWidth="0.5"
-                transform={`rotate(${ang}, ${mx}, ${my})`}
-                style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
-                {String(segMm)}
-              </text>
-            )
-          })}
+          <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} zoom={zoom} />
         </g>
       )
     })

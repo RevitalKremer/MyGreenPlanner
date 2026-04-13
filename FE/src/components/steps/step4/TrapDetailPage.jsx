@@ -36,7 +36,7 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
   const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
   const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40)
-  const padB = blockH + 290
+  const padB = blockH + 330
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
