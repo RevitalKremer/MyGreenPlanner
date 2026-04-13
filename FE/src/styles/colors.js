@@ -63,11 +63,20 @@ export const GHOST_FILL   = 'white'   // fill for ghosted structural elements
 export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
 export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
 
-// ── Structural beams / blocks (DetailView) ────────────────────────────────
-export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
-export const BLOCK_STROKE = '#777'     // concrete block stroke
-export const L_PROFILE_FILL    = '#40404080'  // main beam fill
-export const L_PROFILE_STROKE  = '#606060'  // main beam stroke
+// ── Structural beams / blocks ─────────────────────────────────────────────
+// Trapezoid cross-section (DetailView) — lighter for readability against
+// dimension annotations and detail callouts.
+export const TRAP_BLOCK_FILL        = '#c0c0c0'  // concrete block fill
+export const TRAP_BLOCK_STROKE      = '#777'     // concrete block stroke
+export const TRAP_L_PROFILE_FILL    = '#40404080'  // main beam fill
+export const TRAP_L_PROFILE_STROKE  = '#606060'  // main beam stroke
+
+// Bases diagram (BasesPlanTab) — darker so blocks/profiles read clearly
+// against the panel hatching in top-down view.
+export const BLOCK_FILL        = '#4a4a4a'  // concrete block fill
+export const BLOCK_STROKE      = '#1a1a1a'  // concrete block stroke
+export const L_PROFILE_FILL    = '#2a2a2a'  // main beam fill
+export const L_PROFILE_STROKE  = '#1a1a1a'  // main beam stroke
 
 // ── Panel bars ────────────────────────────────────────────────────────────
 export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill

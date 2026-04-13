@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, TRAP_L_PROFILE_FILL, TRAP_L_PROFILE_STROKE, TRAP_BLOCK_FILL, TRAP_BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { calculateDiagonalPosition } from '../../../utils/trapezoidGeometry'
@@ -82,7 +82,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
   const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
-  const padT = printMode ? Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40) : 55
+  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40)
   const padB = blockH + 290
 
   const svgW = bW + padL + padR
@@ -202,7 +202,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const ang = Math.atan2(dy, dx) * 180 / Math.PI
     const h = sw || 1
     return <rect x={-(len / 2 + cap)} y={-h / 2} width={len + 2 * cap} height={h}
-      fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1"
+      fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1"
       transform={`translate(${mx},${my}) rotate(${ang})`} />
   }
 
@@ -329,7 +329,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   })()
   const activePanelEndBot   = panelBottomPos(lastActiveDepth)
 
-  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
+  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 13 }) => {
     const col = tbd ? TC : DC
     const mk  = tbd ? 't' : 'k'
     const dx = ax2 - ax1, dy = ay2 - ay1
@@ -418,9 +418,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     const label = blkPunch ? fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
                       <g key={bi}>
-                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={TRAP_BLOCK_FILL} stroke={TRAP_BLOCK_STROKE} strokeWidth="1" />
                         {showPunches && label && (
-                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
                         )}
                       </g>
                     )
@@ -432,7 +432,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {(() => {
                 const baseBeamW = (geom.baseBeamLength ?? (legBW / SC)) * SC
                 const firstLegPos = (beLegs[0]?.positionCm ?? 0) * SC
-                return <rect x={legX0 - firstLegPos} y={baseY} width={baseBeamW} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                return <rect x={legX0 - firstLegPos} y={baseY} width={baseBeamW} height={BEAM_THICK_PX} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
               })()}
 
               {/* ── All legs — uniform: rect from positionCm to positionEndCm ── */}
@@ -445,12 +445,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 if (legH <= 0) return null
                 return (
                   <g key={`leg-${li}`}>
-                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
                     {leg.isDouble && (<>
                       <line x1={lx + lw / 2} y1={slopeTopY} x2={lx + lw / 2} y2={slopeTopY + legH}
                         stroke={DANGER} strokeWidth="1" strokeLinecap="square"
                         strokeDasharray="4,4" opacity="0.6" />
-                      <text x={lx + lw / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
+                      <text x={lx + lw / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight="900" fill={DANGER}>×2</text>
                     </>)}
                   </g>
                 )
@@ -472,7 +472,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                         const ly = d.topY + t * (d.botY - d.topY)
                         return (
                           <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
-                            fontSize="8" fontWeight="800" fill={DANGER}
+                            fontSize="11" fontWeight="800" fill={DANGER}
                             transform={`rotate(${ang}, ${lx}, ${ly})`}>×2</text>
                         )
                       })}
@@ -562,7 +562,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     </g>
                     {showPunches && <text x={lx} y={ly}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize="7.5" fontWeight="700" fill={railStroke}
+                      fontSize="10" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
                     >{fmt(globalOffsetCm - originCm)}</text>}
                   </g>
@@ -639,7 +639,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               )}
 
               {/* ── Angle label inside trapezoid ── */}
-              <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
+              <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="12" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
 
               {/* ── Dimension dimensions ── */}
               {showDimensions && <>

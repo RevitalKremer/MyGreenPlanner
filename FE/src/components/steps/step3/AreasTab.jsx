@@ -217,8 +217,8 @@ export default function AreasTab({
         {printShowAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
           const down = yDir === 'ttb'
           const r = rotation * Math.PI / 180
-          const chevW = fontSize * 2.2
-          const chevH = fontSize * 1.3
+          const chevW = fontSize * 1.0
+          const chevH = fontSize * 0.6
           const dist = fontSize * 1.1
           const ldx = -Math.sin(r), ldy = Math.cos(r)
           const cupSign = down ? -1 : 1

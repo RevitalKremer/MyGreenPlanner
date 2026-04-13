@@ -369,7 +369,22 @@ export default function Step4PdfReport({
       const clone = svg.cloneNode(true)
       clone.setAttribute('width', w)
       clone.setAttribute('height', h)
-      
+
+      // Inject a <style> element so serialized SVG text uses the same font-family
+      // as the page. Without this the standalone SVG document has no CSS context and
+      // browsers fall back to a default serif font, which renders blurry/illegible
+      // at the small sizes used in CAD annotations.
+      const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+      styleEl.textContent = `
+        text, tspan {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+            'Helvetica Neue', Arial, sans-serif;
+          text-rendering: geometricPrecision;
+          shape-rendering: geometricPrecision;
+        }
+      `
+      clone.insertBefore(styleEl, clone.firstChild)
+
       // Convert <image> elements in SVG to embedded data URLs so they're captured properly
       const svgImages = clone.querySelectorAll('image')
       for (const svgImg of svgImages) {
@@ -437,7 +452,7 @@ export default function Step4PdfReport({
 
       const swaps = await rasterizeSvgs(el)
       const canvas = await html2canvas(el, {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',

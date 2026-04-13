@@ -13,7 +13,7 @@ import { TEXT_SECONDARY } from '../../../styles/colors'
  */
 export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null }) {
   const TICK = 4 / zoom
-  const fontSize = 11 / zoom
+  const fontSize = 14 / zoom
 
   return (
     <g>

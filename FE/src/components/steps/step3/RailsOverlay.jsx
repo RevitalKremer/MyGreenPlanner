@@ -80,7 +80,7 @@ export default function RailsOverlay({
       if (!(rail.lineIdx in railByLine)) railByLine[rail.lineIdx] = rail
     }
     const { center, angleRad } = rl.frame
-    const fontSize = Math.max(20, 25 / zoom)
+    const fontSize = Math.max(14, 18 / zoom)
     const lineRects = {}
     for (const pr of rl.panelLocalRects) {
       if (!lineRects[pr.line]) lineRects[pr.line] = []
@@ -160,7 +160,7 @@ export default function RailsOverlay({
       if (railLen < 2) return null
       const ux = dx / railLen, uy = dy / railLen
       const totalMm = segs.reduce((s, v) => s + v, 0)
-      const fontSize = Math.max(12, 18 / zoom)
+      const fontSize = Math.max(10, 13 / zoom)
       const perpX = -uy, perpY = ux
       const labelOff = railProfile / 2 + 8 + zoom * 2
       const ang = Math.atan2(dy, dx) * 180 / Math.PI

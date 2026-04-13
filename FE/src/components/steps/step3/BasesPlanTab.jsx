@@ -249,7 +249,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const sBases    = printMode || showBases
   const sBlocks   = printMode || showBlocks
   const sBaseIDs  = printMode || showBaseIDs
-  const sRails    = printMode || showRailLines
+  const sRails    = !printMode && showRailLines
   const sDiags    = printMode || showDiagonals
   const sDims     = printMode || showDimensions
   const sEditBar  = !printMode && showEditBar
@@ -376,7 +376,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     return (
                       <g key={`base-${ai}-${sbi}`}>
                         <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
-                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={28} fontWeight="700" fill={WHITE} stroke={BLACK} strokeWidth={0.5/zoom} paintOrder="stroke" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
+                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={Math.max(14, 20 / effZoom)} fontWeight="700" fill={WHITE} stroke={BLACK} strokeWidth={0.5/zoom} paintOrder="stroke" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
                       </g>
                     )
                   })
@@ -435,7 +435,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                     const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
                     const diagLabel = (d.diagLengthMm / 1000).toFixed(2)
-                    const fs = 11 / effZoom, bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom, dotR = 7 / effZoom
+                    const fs = 11 / effZoom, bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom
+                    // Cap diagonal endpoint circle to half the block width so it never
+                    // visually overflows the block it sits on.
+                    const blockWCm = trapSettingsMap[baseA.trapezoidId]?.blockWidthCm ?? 24
+                    const blockWSvg = (blockWCm / pixelToCmRatio) * sc
+                    const dotR = Math.min(7 / effZoom, blockWSvg / 2)
 
                     return (
                       <g key={`diag-${ai}-${di}`}>
