@@ -139,10 +139,13 @@ async def update_step(
     if new_step < 1 or new_step > 5:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Step must be 1-5")
 
-    result = await project_service.update_project_step(
-        db, project, new_step,
-        rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
-    )
+    try:
+        result = await project_service.update_project_step(
+            db, project, new_step,
+            rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return result
 
 

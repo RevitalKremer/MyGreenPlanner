@@ -108,6 +108,10 @@ export function useProjectState() {
   // 'load' → also run reSyncLoadedPanelCols; 'reset' → just skip the recompute.
   const skipRecomputeRef = useRef(null)
 
+  // Pending save overrides: handleNext writes refreshed panels/trapConfigs here
+  // synchronously so getLayoutData/getProjectData can read them before state flushes.
+  const pendingSaveRef = useRef(null)
+
   // Step 3-5: reads from reducer, writes via dispatch
   const step3GlobalSettings = pState.data.step3.globalSettings
   const setStep3GlobalSettings = (v) => pDispatch({ type: A.SET_STEP3_GLOBAL, value: v })
@@ -321,11 +325,14 @@ export function useProjectState() {
 
   const getLayoutData = () => {
     const l = pState.layout
+    const pending = pendingSaveRef.current
     const hasImageRef = l.uploadedImageData?.imageRef
     const isWhiteboard = l.uploadedImageData?.isWhiteboard
-    
+
     return {
       ...l,
+      // Use refreshed panels from handleNext if state hasn't flushed yet
+      ...(pending?.panels ? { panels: pending.panels } : {}),
       currentStep,
       pixelToCmRatio: refinedArea?.pixelToCmRatio ?? l.pixelToCmRatio ?? null,
       // Strip FE-only fields before saving
@@ -347,8 +354,12 @@ export function useProjectState() {
 
   const getProjectData = () => {
     const d = pState.data
+    const pending = pendingSaveRef.current
     // Convert FE trapezoidConfigs object to server trapezoids array
-    const trapezoids = Object.entries(d.step2.trapezoidConfigs).map(([id, cfg]) => ({
+    // Use refreshed configs from handleNext if state hasn't flushed yet
+    const effectiveTrapConfigs = pending?.trapezoidConfigs ?? d.step2.trapezoidConfigs
+    const effectivePanels = pending?.panels ?? panels
+    const trapezoids = Object.entries(effectiveTrapConfigs).map(([id, cfg]) => ({
       id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
     }))
     // Enrich areas with rectAreas geometry + panel-derived trapezoidIds
@@ -380,22 +391,22 @@ export function useProjectState() {
       if (ra) {
         const groupKey = rectAreas.indexOf(ra)
         // Match by areaGroupKey
-        areaPanels = panels.filter(p => p.areaGroupKey === groupKey)
+        areaPanels = effectivePanels.filter(p => p.areaGroupKey === groupKey)
         // Fallback: match by rectArea label
         if (areaPanels.length === 0) {
           const matchingRaIdxs = rectAreas
             .map((r, i) => ((r.areaGroupId) === groupLabel) ? i : -1)
             .filter(i => i >= 0)
-          areaPanels = panels.filter(p => matchingRaIdxs.includes(p.area))
+          areaPanels = effectivePanels.filter(p => matchingRaIdxs.includes(p.area))
         }
       } else {
         // No rectArea match: find panels whose rectArea label matches
-        areaPanels = panels.filter(p => raLabels[p.area] === groupLabel)
+        areaPanels = effectivePanels.filter(p => raLabels[p.area] === groupLabel)
       }
 
       // Strategy 3: if still empty, try matching by trapezoidId prefix (e.g., "D" → D1, D2, D3)
       if (areaPanels.length === 0) {
-        areaPanels = panels.filter(p => {
+        areaPanels = effectivePanels.filter(p => {
           const tid = p.trapezoidId || ''
           return tid === groupLabel || tid.replace(/\d+$/, '') === groupLabel
         })
@@ -445,6 +456,7 @@ export function useProjectState() {
     const roofSpec = currentProject?.roofSpec || null
     const layout   = getLayoutData()
     const data     = getProjectData()
+    pendingSaveRef.current = null  // consumed — clear so subsequent saves use state
     
     let projectId
     if (cloudProjectId) {
@@ -821,6 +833,8 @@ export function useProjectState() {
       })
       setPanels(currentPanels)
       setTrapezoidConfigs(currentTrapConfigs)
+      // Store in ref so the next save reads refreshed data (state hasn't flushed yet)
+      pendingSaveRef.current = { panels: currentPanels, trapezoidConfigs: currentTrapConfigs }
       // Snapshot the panel grid — step 3 reads it but never writes it
       rebuildPanelGrid(currentPanels)
     }

@@ -167,6 +167,116 @@ def _assign_area_ids(data: dict) -> None:
             next_id += 1
 
 
+_REAL_ORIENTATIONS = {'V', 'H', 'vertical', 'horizontal'}
+
+
+def _validate_step2_trapezoids(project: Project) -> list[str]:
+    """
+    Validate that panel trapezoidIds are consistent with step2 area/trap configs.
+
+    Returns a list of error strings (empty = valid).
+
+    Checks:
+      1. Every panel trapezoidId exists in step2.trapezoids
+      2. Every panel trapezoidId is listed in its area's trapezoidIds
+      3. Each trapezoid's lineOrientations length matches the actual number of
+         panel lines for that trap within each physical row
+    """
+    panels = (project.layout or {}).get('panels', [])
+    step2 = (project.data or {}).get('step2', {})
+    areas = step2.get('areas', [])
+    traps = {t['id']: t for t in step2.get('trapezoids', [])}
+    errors = []
+
+    if not panels or not areas:
+        return errors
+
+    # Build area lookup: area index → area config
+    area_by_id = {a['id']: a for a in areas if 'id' in a}
+
+    # Build map: areaGroupKey → area (areas are matched to panels via the area
+    # field on each panel, which stores the rectArea index, grouped by
+    # areaGroupKey for multi-row areas)
+    area_trap_ids = {}  # areaGroupKey → set of allowed trapezoidIds
+    for a in areas:
+        aid = a.get('id')
+        tids = set(a.get('trapezoidIds', []))
+        if aid is not None:
+            area_trap_ids[aid] = tids
+
+    # Group panels by (areaGroupKey, panelRowIdx, trapezoidId) to count lines
+    from collections import defaultdict
+    row_trap_lines = defaultdict(set)  # (areaGroupKey, panelRowIdx, trapId) → set of line indices
+
+    for p in panels:
+        if p.get('isEmpty'):
+            continue
+        tid = p.get('trapezoidId')
+        if not tid:
+            continue
+
+        # Check 1: trapezoidId exists in step2.trapezoids
+        if tid not in traps:
+            errors.append(f"Panel {p.get('id')}: trapezoidId '{tid}' not in step2.trapezoids")
+            continue
+
+        # Collect line indices per (areaGroupKey, panelRowIdx, trapId)
+        agk = p.get('areaGroupKey', p.get('area', 0))
+        pri = p.get('panelRowIdx', 0)
+        line = p.get('line', 0)
+        row_trap_lines[(agk, pri, tid)].add(line)
+
+    # Check 2: panel trapezoidIds are in their area's trapezoidIds
+    # We need to map areaGroupKey → area. Panels store areaGroupKey which
+    # corresponds to the area's id or index.
+    agk_to_area_tids = {}
+    for p in panels:
+        if p.get('isEmpty'):
+            continue
+        agk = p.get('areaGroupKey', p.get('area', 0))
+        if agk in agk_to_area_tids:
+            continue
+        # Find the area for this panel: try matching by trapezoidId through areas
+        tid = p.get('trapezoidId')
+        matched = None
+        for a in areas:
+            if tid in a.get('trapezoidIds', []):
+                matched = a
+                break
+        if matched:
+            agk_to_area_tids[agk] = set(matched.get('trapezoidIds', []))
+
+    for p in panels:
+        if p.get('isEmpty'):
+            continue
+        tid = p.get('trapezoidId')
+        if not tid:
+            continue
+        agk = p.get('areaGroupKey', p.get('area', 0))
+        allowed = agk_to_area_tids.get(agk)
+        if allowed is not None and tid not in allowed:
+            errors.append(
+                f"Panel {p.get('id')}: trapezoidId '{tid}' not in area's "
+                f"trapezoidIds {allowed}"
+            )
+
+    # Check 3: lineOrientations length matches actual line count per row
+    for (agk, pri, tid), lines in row_trap_lines.items():
+        trap_cfg = traps.get(tid)
+        if not trap_cfg:
+            continue
+        line_ors = trap_cfg.get('lineOrientations', [])
+        real_line_count = sum(1 for o in line_ors if o in _REAL_ORIENTATIONS)
+        actual_line_count = len(lines)
+        if real_line_count != actual_line_count:
+            errors.append(
+                f"Trap '{tid}' (area {agk}, row {pri}): lineOrientations has "
+                f"{real_line_count} real lines but panels have {actual_line_count} lines"
+            )
+
+    return errors
+
+
 def get_project_areas(project: Project) -> list:
     """Return the step2 areas list."""
     return (project.data or {}).get('step2', {}).get('areas', [])
@@ -725,6 +835,28 @@ async def update_project_step(
         project.data = data
         flag_modified(project, 'data')
         await db.commit()
+
+    # ── Validate trapezoid assignments before computing step 3 ──
+    # Log mismatches as warnings — does not block the transition (yet).
+    # Will be promoted to a blocking error once FE save ordering is fixed.
+    if new_step >= 3 and 'step3' in cleared:
+        trap_errors = _validate_step2_trapezoids(project)
+        if trap_errors:
+            logger.warning(
+                "[trap validate] %d issues for project %s: %s",
+                len(trap_errors), project.id, '; '.join(trap_errors[:3]),
+            )
+
+        # Compare server-computed trap assignments with client-provided ones.
+        # Log mismatches as warnings — does not block the transition (yet).
+        from app.services.trapezoid_split_service import compare_with_client
+        trap_mismatches = compare_with_client(project)
+        if trap_mismatches:
+            logger.warning(
+                "Trapezoid split mismatch for project %s (%d issues): %s",
+                project.id, len(trap_mismatches),
+                '; '.join(trap_mismatches[:5]),
+            )
 
     # ── Compute rails → bases → trapezoid details → external diagonals ──
     trapezoid_details = None
