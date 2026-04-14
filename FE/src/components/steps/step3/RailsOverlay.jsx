@@ -81,7 +81,7 @@ export default function RailsOverlay({
       if (!(rail.lineIdx in railByLine)) railByLine[rail.lineIdx] = rail
     }
     const { center, angleRad } = rl.frame
-    const fontSize = Math.max(14, 18 / zoom)
+    const fontSize = Math.max(9, 11 / zoom)
     const lineRects = {}
     for (const pr of rl.panelLocalRects) {
       if (!lineRects[pr.line]) lineRects[pr.line] = []
@@ -112,9 +112,9 @@ export default function RailsOverlay({
       return (
         <g key={`${prefix}-ms-${li}`} transform={`rotate(${ang}, ${cx}, ${cy})`} style={{ pointerEvents: 'none' }}>
           <rect x={cx - bgW / 2} y={cy - bgH / 2} width={bgW} height={bgH}
-            fill="white" fillOpacity={0.8} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
+            fill="white" fillOpacity={0.7} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-            fontSize={fontSize} fontWeight="600" fill={BLACK}>
+            fontSize={fontSize} fontWeight="700" fill={BLACK}>
             {text}
           </text>
         </g>
@@ -166,7 +166,7 @@ export default function RailsOverlay({
       const ux = dx / railLen, uy = dy / railLen
       const totalMm = segs.reduce((s, v) => s + v, 0)
       const perpX = -uy, perpY = ux
-      const labelOff = railProfile / 2 + 8 + zoom * 2
+      const labelOff = railProfile / 2 + 18 + zoom * 2
 
       // Build boundary points along the rail (rail-side) and offset annotation points.
       const boundsMm = [0]

@@ -18,8 +18,11 @@ export default function RailsLayoutPage({
 }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
-    if (!panels.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
-    const panelBbox = getPanelsBoundingBox(panels)
+    // Match RailLayoutTab's bbox computation (uses non-empty panels) so the
+    // geometry is centered correctly inside the wrapper.
+    const nonEmpty = panels.filter(p => !p.isEmpty)
+    if (!nonEmpty.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmpty)
     const bbox = expandBboxForImage(panelBbox, uploadedImageData)
     return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PM_PAD)
   }, [panels, uploadedImageData])

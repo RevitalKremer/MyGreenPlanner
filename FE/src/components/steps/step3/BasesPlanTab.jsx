@@ -451,7 +451,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                           <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/effZoom} />
                           <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={BLUE} strokeWidth={2/effZoom} />
                           <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-                            <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill={WHITE} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
+                            <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
                             <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{diagLabel}</text>
                           </g>
                       </g>
@@ -492,9 +492,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const apX = outSign * perpX, apY = outSign * perpY
                     const extremeLocalY = outSign >= 0 ? refLB.maxY : refLB.minY
 
-                    const ANN_OFF = 16 / effZoom, EXT_GAP = 2 / effZoom
+                    const EXT_GAP = 2 / effZoom
                     const edgeSvg = (lx) => { const s = localToScreen({ x: lx, y: extremeLocalY }, refCenter, refAngle); return toSvg(s.x, s.y) }
-                    const annSvg  = (lx) => { const [ex, ey] = edgeSvg(lx); return [ex + apX * ANN_OFF, ey + apY * ANN_OFF] }
+                    // Place annotation line exactly on the row edge (no outward offset)
+                    const annSvg  = edgeSvg
 
                     const areaKey = String(areaData.areaId ?? areaData.areaLabel ?? ai)
                     const isSelectedArea = areaKey === String(selectedArea)
