@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
+import AreaLabel from '../../shared/AreaLabel'
 import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -379,7 +380,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     return (
                       <g key={`base-${ai}-${sbi}`}>
                         <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
-                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={Math.max(14, 20 / effZoom)} fontWeight="700" fill={WHITE} stroke={BLACK} strokeWidth={0.5/zoom} paintOrder="stroke" style={{ userSelect: 'none' }}>{sb.trapezoidId}</text></g>}
+                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><AreaLabel x={mx} y={my} label={sb.trapezoidId} fontSize={Math.max(14, 20 / effZoom)} showChevron={false} /></g>}
                       </g>
                     )
                   })

@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, TEXT_DARKEST, WHITE, BLACK } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -8,6 +8,7 @@ import BackgroundImageLayer from './BackgroundImageLayer'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
+import AreaLabel from '../../shared/AreaLabel'
 
 const PAD_EDIT  = 40  // edit-mode SVG padding around panel content
 const PAD_PRINT = 12  // print-mode tighter padding (no minimap or canvas chrome)
@@ -138,7 +139,7 @@ export default function AreasTab({
       const [cx, cy] = toSvg(leftmost.x + leftmost.width / 2, leftmost.y + leftmost.height / 2)
       const panelW = leftmost.width * sc
       const panelH = leftmost.height * sc
-      const fontSize = Math.max(6, Math.min(panelW, panelH) * 0.38)
+      const fontSize = Math.max(8, Math.min(panelW, panelH) * 0.5)
       return { count: group.length, cx, cy, fontSize }
     })
   }, [nonEmptyPanels, toSvg, sc])
@@ -182,15 +183,10 @@ export default function AreasTab({
 
   // Shared count labels SVG fragment (used in both modes)
   const countLabels = lineCounts.map(({ count, cx, cy, fontSize }, i) => (
-    <text
-      key={`cnt-${i}`}
-      x={cx} y={cy}
-      textAnchor="middle" dominantBaseline="middle"
-      fontSize={fontSize} fontWeight="700"
-      fill={TEXT_DARKEST}
-      stroke="white" strokeWidth={fontSize * 0.25} paintOrder="stroke"
-      style={{ pointerEvents: 'none', userSelect: 'none' }}
-    >{count}</text>
+    <AreaLabel key={`cnt-${i}`}
+      x={cx} y={cy} label={String(count)}
+      fontSize={fontSize} showChevron={false}
+    />
   ))
 
   // Effective layer toggles — print mode uses the explicit print* props,
@@ -227,32 +223,12 @@ export default function AreasTab({
         clipIdPrefix={printMode ? 'atpm' : 'at'}
       />
 
-      {sAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => {
-        const down = yDir === 'ttb'
-        const r = rotation * Math.PI / 180
-        const chevW = fontSize * 1.0
-        const chevH = fontSize * 0.6
-        const dist = fontSize * 1.1
-        const ldx = -Math.sin(r), ldy = Math.cos(r)
-        const cupSign = down ? -1 : 1
-        const chevX = svgCx + ldx * cupSign * dist
-        const chevY = svgCy + ldy * cupSign * dist
-        const chevPts = down
-          ? `0,${-chevH/2} ${-chevW/2},${chevH/2} ${chevW/2},${chevH/2}`
-          : `${-chevW/2},${-chevH/2} ${chevW/2},${-chevH/2} 0,${chevH/2}`
-        return (
-          <g key={`lbl-${areaKey}`} style={{ pointerEvents: 'none', userSelect: 'none' }}>
-            <text x={svgCx} y={svgCy}
-              textAnchor="middle" dominantBaseline="middle"
-              fill={BLUE} fontSize={fontSize} fontWeight="800"
-              stroke={WHITE} strokeWidth={fontSize * 0.2} paintOrder="stroke"
-            >{label}</text>
-            <g transform={`translate(${chevX},${chevY}) rotate(${rotation})`}>
-              <polygon points={chevPts} fill={BLUE} fillOpacity={0.85} stroke={WHITE} strokeWidth={chevH * 0.18} strokeLinejoin="round" />
-            </g>
-          </g>
-        )
-      })}
+      {sAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => (
+        <AreaLabel key={`lbl-${areaKey}`}
+          x={svgCx} y={svgCy} label={label}
+          fontSize={fontSize * 2} rotation={rotation} yDir={yDir}
+        />
+      ))}
 
       {sCounts && countLabels}
     </>

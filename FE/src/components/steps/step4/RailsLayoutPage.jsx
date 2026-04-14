@@ -14,7 +14,7 @@ export default function RailsLayoutPage({
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {},
   beRailsData = null,
-  project, panelType, panelWp, totalKw, date, pageRef, user,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
@@ -34,6 +34,7 @@ export default function RailsLayoutPage({
       pageRef={pageRef}
       pageName={t('step4.pdf.rails')}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}

@@ -41,7 +41,7 @@ function LV({ label, value, vStyle }) {
 // Layout (9 cols, 2 rows):
 // Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
 // Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
-function TitleBlock({ project, panelType, totalKw, count, date, panelWp, pageName, user, t }) {
+function TitleBlock({ project, projectId, panelType, totalKw, count, date, panelWp, pageName, user, t }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
@@ -70,7 +70,7 @@ function TitleBlock({ project, panelType, totalKw, count, date, panelWp, pageNam
 
           {/* col2 row1: project number */}
           <Cell>
-            <LV label={t('step4.tb.projectNum')} value={project?.number || 'TBD'} />
+            <LV label={t('step4.tb.projectNum')} value={projectId || '—'} vStyle={{ fontSize: '5px', wordBreak: 'break-all', lineHeight: 1.1 }} />
           </Cell>
 
           {/* col3 row1: created by name */}
@@ -155,7 +155,7 @@ function TitleBlock({ project, panelType, totalKw, count, date, panelWp, pageNam
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, user }) {
+export function CadPage({ project, projectId, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, user }) {
   const { t } = useLang()
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
@@ -210,6 +210,7 @@ export function CadPage({ project, panelType, panelWp, totalKw, count, date, chi
       }}>
         <TitleBlock
           project={project}
+          projectId={projectId}
           panelType={panelType}
           panelWp={panelWp}
           totalKw={totalKw}
@@ -639,7 +640,7 @@ export default function Step4PdfReport({
               pageRef={page1Ref}
               panels={panels}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -648,7 +649,7 @@ export default function Step4PdfReport({
               pageRef={page2Ref}
               panels={panels} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -660,7 +661,7 @@ export default function Step4PdfReport({
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -671,7 +672,7 @@ export default function Step4PdfReport({
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               beRailsData={beRailsData}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -687,7 +688,7 @@ export default function Step4PdfReport({
                 beDetailData={beTrapezoidsData?.[trapId]}
                 fullTrapGhost={fullTrapGhostMap[trapId] ?? null}
                 count={(beBasesData ?? []).reduce((n, ad) => n + (ad.bases ?? []).filter(b => b.trapezoidId === trapId).length, 0) || null}
-                project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+                project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
               />
             </ScaledPage>
           ))}

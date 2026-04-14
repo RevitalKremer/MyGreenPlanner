@@ -14,7 +14,7 @@ export default function BasesLayoutPage({
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   beBasesData = null, beTrapezoidsData = null,
-  project, panelType, panelWp, totalKw, date, pageRef, user,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
@@ -33,6 +33,7 @@ export default function BasesLayoutPage({
       pageRef={pageRef}
       pageName={t('step4.pdf.bases')}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}

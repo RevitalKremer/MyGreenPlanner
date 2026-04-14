@@ -8,7 +8,7 @@ const PAD = 12  // print mode — minimal padding
 const CONTENT_W = (297 - 2 * 8) * 3.2
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
-export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, panelType, panelWp, totalKw, date, pageRef, user }) {
+export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, projectId, panelType, panelWp, totalKw, date, pageRef, user }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
@@ -38,6 +38,7 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
       pageRef={pageRef}
       pageName={t('step4.pdf.panels')}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}

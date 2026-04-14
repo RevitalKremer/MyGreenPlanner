@@ -12,7 +12,7 @@ const PAD = 12  // print mode — minimal padding
 export default function AreasLayoutPage({
   panels = [], areas = {},
   uploadedImageData, imageSrc,
-  project, panelType, panelWp, totalKw, date, pageRef, user,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
@@ -56,6 +56,7 @@ export default function AreasLayoutPage({
       pageRef={pageRef}
       pageName={t('step4.pdf.areas')}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
