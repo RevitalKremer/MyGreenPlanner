@@ -521,8 +521,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   if (seg.isEmpty) return null
                   const ex = atSlope(dCm).x
                   const sy = beamYFromLegs(sx), ey = beamYFromLegs(ex)
-                  const cx  = (sx + ex) / 2
-                  const cy  = (sy + ey) / 2 - PANEL_OFFSET_PX
+                  const beamRad = beamAngleDeg * Math.PI / 180
+                  const cx  = (sx + ex) / 2 + PANEL_OFFSET_PX * Math.sin(beamRad)
+                  const cy  = (sy + ey) / 2 - PANEL_OFFSET_PX * Math.cos(beamRad)
                   const len = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
                   return (
                     <g key={idx}>
