@@ -36,7 +36,7 @@ export default function BasesLayoutPage({
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={panels.length}
+      count={panels.length}
       date={date}
       user={user}
     >

@@ -41,13 +41,13 @@ function LV({ label, value, vStyle }) {
 // Layout (9 cols, 2 rows):
 // Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
 // Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
-function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pageName, user, t }) {
+function TitleBlock({ project, panelType, totalKw, count, date, panelWp, pageName, user, t }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
-  const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : 'TBD'
-  const wpStr       = panelWp ? `${panelWp}W`             : 'TBD'
-  const qtyStr      = panelCount != null ? String(panelCount) : 'TBD'
+  const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : '—'
+  const wpStr       = panelWp ? `${panelWp}W`             : '—'
+  const qtyStr      = count != null ? String(count) : '—'
   const approvalLines = t('step4.tb.approvalReq').split('\n')
 
   return (
@@ -155,7 +155,7 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pa
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date, children, pageRef, pageName, user }) {
+export function CadPage({ project, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, user }) {
   const { t } = useLang()
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
@@ -213,7 +213,7 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
           panelType={panelType}
           panelWp={panelWp}
           totalKw={totalKw}
-          panelCount={panelCount}
+          count={count}
           date={date}
           pageName={pageName}
           user={user}
@@ -319,7 +319,7 @@ export default function Step4PdfReport({
     return () => { el.removeEventListener('wheel', blockCtrl); ro.disconnect() }
   }, [activeTab])
 
-  const panelCount = panels.length
+  const count = panels.length
   const panelType  = refinedArea?.panelType ?? null
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
@@ -359,7 +359,7 @@ export default function Step4PdfReport({
     const m = panelType.match(/[A-Z0-9](\d{3})[^0-9]/)
     return m ? parseInt(m[1], 10) : null
   })()
-  const totalKw = panelWp ? (panelCount * panelWp) / 1000 : null
+  const totalKw = panelWp ? (count * panelWp) / 1000 : null
 
   // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas
   // doesn't need to parse SVG (which it handles poorly for complex/transformed content).
@@ -686,7 +686,7 @@ export default function Step4PdfReport({
                 panelLines={trapPanelLinesMap[trapId] ?? null}
                 beDetailData={beTrapezoidsData?.[trapId]}
                 fullTrapGhost={fullTrapGhostMap[trapId] ?? null}
-                panelCount={(areaGroupMap[trapId] ?? [trapId]).length}
+                count={(beBasesData ?? []).reduce((n, ad) => n + (ad.bases ?? []).filter(b => b.trapezoidId === trapId).length, 0) || null}
                 project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
               />
             </ScaledPage>

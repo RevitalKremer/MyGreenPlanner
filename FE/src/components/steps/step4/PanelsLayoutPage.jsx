@@ -41,7 +41,7 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={panels.filter(p => !p.isEmpty).length}
+      count={panels.filter(p => !p.isEmpty).length}
       date={date}
       user={user}
     >
