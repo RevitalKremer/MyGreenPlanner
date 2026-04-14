@@ -734,8 +734,30 @@ export function useProjectState() {
       referenceLine, referenceLineLengthCm, rectAreas, panels, panelSpec, appDefaults,
     })
     if (!result) return
-    setPanels(result.panels)
+    // After re-syncing cols, also refresh trapezoid assignments so multi-row
+    // areas get correct per-row trap IDs (older projects may have stale IDs).
+    let currentPanels = result.panels
+    let currentTrapConfigs = { ...trapezoidConfigs }
+    const processedGroups = new Set()
+    rectAreas.forEach((area, idx) => {
+      if (area.manualTrapezoids) return
+      const groupId = area.areaGroupId ?? idx
+      if (processedGroups.has(groupId)) return
+      processedGroups.add(groupId)
+      const refreshResult = refreshAreaTrapezoidsAction({
+        areaIdx: idx, area, panels: currentPanels, rectAreas,
+        referenceLine, referenceLineLengthCm,
+        panelSpec, appDefaults, panelFrontHeight, panelAngle,
+        trapezoidConfigs: currentTrapConfigs,
+      })
+      if (refreshResult) {
+        currentPanels = refreshResult.updatedPanels
+        currentTrapConfigs = refreshResult.mergedTrapConfigs
+      }
+    })
+    setPanels(currentPanels)
     setPanelGrid(result.panelGrid)
+    setTrapezoidConfigs(currentTrapConfigs)
   }
 
   const rebuildPanelGrid = (updatedPanels) => {
@@ -776,12 +798,31 @@ export function useProjectState() {
 
     // Finalise panel data before entering step 3 (construction planning)
     if (nextStep === 3) {
-      // Re-split trapezoids from current panel state (step 2 responsibility, last chance)
+      // Re-split trapezoids from current panel state (step 2 responsibility, last chance).
+      // Batch all groups into a single pass so each group's result feeds into the next.
+      let currentPanels = panels
+      let currentTrapConfigs = { ...trapezoidConfigs }
+      const processedGroups = new Set()
       rectAreas.forEach((area, idx) => {
-        if (!area.manualTrapezoids) refreshAreaTrapezoids(idx)
+        if (area.manualTrapezoids) return
+        const groupId = area.areaGroupId ?? idx
+        if (processedGroups.has(groupId)) return
+        processedGroups.add(groupId)
+        const result = refreshAreaTrapezoidsAction({
+          areaIdx: idx, area, panels: currentPanels, rectAreas,
+          referenceLine, referenceLineLengthCm,
+          panelSpec, appDefaults, panelFrontHeight, panelAngle,
+          trapezoidConfigs: currentTrapConfigs,
+        })
+        if (result) {
+          currentPanels = result.updatedPanels
+          currentTrapConfigs = result.mergedTrapConfigs
+        }
       })
+      setPanels(currentPanels)
+      setTrapezoidConfigs(currentTrapConfigs)
       // Snapshot the panel grid — step 3 reads it but never writes it
-      rebuildPanelGrid(panels)
+      rebuildPanelGrid(currentPanels)
     }
 
     setCurrentStep(nextStep)
