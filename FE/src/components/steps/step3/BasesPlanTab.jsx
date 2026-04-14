@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, DIAGONAL_DOT } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import AreaLabel from '../../shared/AreaLabel'
 import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
@@ -425,12 +425,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
                     const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
 
-                    // Y: base startCm + diagonal offset along the base beam.
-                    // Use point A's depth for BOTH endpoints so the line is parallel to rails.
+                    // Y: start point at exact depth on base A.
+                    // Endpoint shifts inward by one block length (to the block's inner edge
+                    // on base B), separating diagonals from dimension labels visually.
                     const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
                     const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
                     const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
-                    const lyB = lyA
+                    const blockLen = (beTrapezoidsData?.[baseB.trapezoidId]?.geometry?.blockLengthCm ?? 50) / pixelToCmRatio
+                    const areaMiddleY = ((lineA?.minY ?? tLB.minY) + (lineA?.maxY ?? tLB.maxY)) / 2
+                    const lyB = lyA + (lyA < areaMiddleY ? blockLen : -blockLen)
 
                     const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
                     const pb = localToScreen({ x: lxB, y: lyB }, tFrame.center, tAngle)
@@ -444,19 +447,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const diagLabel = (d.diagLengthMm / 1000).toFixed(2)
                     const fs = Math.max(4, dimMaxFontSize != null ? Math.min(11 / effZoom, dimMaxFontSize) : 11 / effZoom)
                     const bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom
-                    // Cap diagonal endpoint circle to half the block width so it never
-                    // visually overflows the block it sits on.
-                    const blockWCm = trapSettingsMap[baseA.trapezoidId]?.blockWidthCm ?? 24
-                    const blockWSvg = (blockWCm / pixelToCmRatio) * sc
-                    const dotR = Math.min(7 / effZoom, blockWSvg / 2)
-
                     return (
                       <g key={`diag-${ai}-${di}`}>
                           <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={DIAGONAL_STROKE} strokeWidth={PROFILE_THICK} />
-                          <circle cx={x1} cy={y1} r={dotR} fill={DIAGONAL_DOT} stroke={TEXT_DARKEST} strokeWidth={1/effZoom} />
-                          <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={DIAGONAL_DOT} strokeWidth={2/effZoom} />
                           <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-                            <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
+                            <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" fillOpacity={0.45} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
                             <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{diagLabel}</text>
                           </g>
                       </g>
