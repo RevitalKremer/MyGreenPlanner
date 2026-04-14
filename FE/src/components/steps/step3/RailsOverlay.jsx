@@ -107,8 +107,8 @@ export default function RailsOverlay({
       const [rx1, ry1] = toSvg(lineRail.screenStart.x, lineRail.screenStart.y)
       const [rx2, ry2] = toSvg(lineRail.screenEnd.x, lineRail.screenEnd.y)
       const ang = Math.atan2(ry2 - ry1, rx2 - rx1) * 180 / Math.PI
-      const bgW = text.length * fontSize * 0.55 + 6 / zoom
-      const bgH = fontSize + 4 / zoom
+      const bgW = text.length * fontSize * 0.65 + 10 / zoom
+      const bgH = fontSize + 6 / zoom
       return (
         <g key={`${prefix}-ms-${li}`} transform={`rotate(${ang}, ${cx}, ${cy})`} style={{ pointerEvents: 'none' }}>
           <rect x={cx - bgW / 2} y={cy - bgH / 2} width={bgW} height={bgH}
@@ -153,6 +153,16 @@ export default function RailsOverlay({
   // ── Segment labels (length in mm, first rail per line) ───────────────
 
   const renderSegmentLabels = (rl, beSegsFn, railProfile, prefix) => {
+    if (!rl.panelLocalRects || !rl.frame) return null
+    const { center, angleRad } = rl.frame
+
+    // Group panel rects by line to find the edge Y per panel row
+    const lineRects = {}
+    for (const pr of rl.panelLocalRects) {
+      if (!lineRects[pr.line]) lineRects[pr.line] = []
+      lineRects[pr.line].push(pr)
+    }
+
     const seenLines = new Set()
     return rl.rails.map(rail => {
       if (seenLines.has(rail.lineIdx)) return null
@@ -165,18 +175,40 @@ export default function RailsOverlay({
       if (railLen < 2) return null
       const ux = dx / railLen, uy = dy / railLen
       const totalMm = segs.reduce((s, v) => s + v, 0)
-      const perpX = -uy, perpY = ux
-      const labelOff = railProfile / 2 + 18 + zoom * 2
 
-      // Build boundary points along the rail (rail-side) and offset annotation points.
+      // Place annotation on the panel row edge (maxY in local coords),
+      // not offset from the rail, so labels don't overlap adjacent rows.
+      const rects = lineRects[rail.lineIdx] ?? []
+      const edgeLocalY = rects.length > 0
+        ? Math.max(...rects.map(r => r.localY + r.height))
+        : null
+
       const boundsMm = [0]
       let acc = 0
       for (const segMm of segs) { acc += segMm; boundsMm.push(acc) }
+
       const measurePts = boundsMm.map(mm => {
         const dPx = (mm / totalMm) * railLen
         return [x1 + ux * dPx, y1 + uy * dPx]
       })
-      const annPts = measurePts.map(([px, py]) => [px + perpX * labelOff, py + perpY * labelOff])
+
+      // Annotation points: project each rail X position onto the panel row edge Y
+      // so labels sit on the edge and don't overlap adjacent rows.
+      const lsX = rail.localStart.x, leX = rail.localEnd.x
+      const annPts = edgeLocalY != null
+        ? boundsMm.map(mm => {
+            const frac = mm / totalMm
+            const lx = lsX + frac * (leX - lsX)
+            const sx = center.x + lx * Math.cos(angleRad) - edgeLocalY * Math.sin(angleRad)
+            const sy = center.y + lx * Math.sin(angleRad) + edgeLocalY * Math.cos(angleRad)
+            return toSvg(sx, sy)
+          })
+        : measurePts.map(([px, py]) => {
+            const perpX = -uy, perpY = ux
+            const off = railProfile / 2 + 18 + zoom * 2
+            return [px + perpX * off, py + perpY * off]
+          })
+
       const labels = segs.map(mm => String(mm))
 
       return (
