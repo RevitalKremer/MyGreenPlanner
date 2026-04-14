@@ -162,12 +162,14 @@ export default function AreasTab({
       const samplePanel = areaPanels[0]
       const yDir = samplePanel?.yDir ?? 'ttb'
       const rotation = samplePanel?.rotation ?? 0
-      return { areaKey, pts, svgCx, svgCy, extW, extH, label: areaLabel(areaKey, i), yDir, rotation }
+      // Font size = panel short side (height in portrait, width in landscape)
+      const panelSvgH = Math.min(samplePanel.width, samplePanel.height) * sc
+      return { areaKey, pts, svgCx, svgCy, extW, extH, label: areaLabel(areaKey, i), yDir, rotation, panelSvgH }
     }).filter(Boolean)
 
-    // Use the smallest area to determine font size so it fits in every area
+    // Use the smallest panel height across all areas so labels fit everywhere
     const fontSize = items.length === 0 ? 14 : Math.max(14, Math.min(
-      ...items.map(({ extH, extW }) => Math.min(extH * 0.3, extW * 0.12))
+      ...items.map(({ panelSvgH }) => panelSvgH * 0.9)
     ))
 
     return items.map(item => ({ ...item, fontSize }))
@@ -226,7 +228,7 @@ export default function AreasTab({
       {sAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => (
         <AreaLabel key={`lbl-${areaKey}`}
           x={svgCx} y={svgCy} label={label}
-          fontSize={fontSize * 2} rotation={rotation} yDir={yDir}
+          fontSize={fontSize} rotation={rotation} yDir={yDir}
         />
       ))}
 
