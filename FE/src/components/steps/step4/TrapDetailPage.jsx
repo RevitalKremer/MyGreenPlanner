@@ -7,13 +7,16 @@ const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 
 // Compute the natural size of a DetailView (printMode) for given geometry.
 // Mirrors the padT formula in DetailView so the fitZoom is accurate.
-function computeNaturalSize(rc, settings, lineRails, panelLines) {
+// Mirror DetailView's layout math exactly, using BE geometry as source of truth.
+function computeNaturalSize(settings, lineRails, panelLines, beDetailData) {
+  const geom = beDetailData?.geometry
+  if (!geom) return { w: 500, h: 400 }
+
   const SC = 2.2
-  const railOffsetCm   = lineRails?.[0]?.[0] ?? 0
-  const blockHeightCm  = settings.blockHeightCm
+  const railOffsetCm   = lineRails?.[0]?.[0] ?? lineRails?.['0']?.[0] ?? 0
   const panelLengthCm  = settings.panelLengthCm
   const baseOverhangCm = settings.baseOverhangCm
-  const { heightRear, heightFront, baseLength, angle } = rc
+  const { heightRear, heightFront, baseLength, angle } = geom
 
   const angleRad = angle * Math.PI / 180
   const bW       = baseLength    * SC
@@ -21,16 +24,17 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
   const hR       = heightRear    * SC
   const hF       = heightFront   * SC
   const railOffH = railOffsetCm  * Math.cos(angleRad) * SC
-  const blockH   = blockHeightCm * SC
+  const blockH   = (geom.blockHeightCm ?? 0) * SC
 
   const segments = (panelLines && panelLines.length > 0)
     ? panelLines
     : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
-  const totalPanelDepthCm = segments.reduce((s, seg) => s + seg.gapBeforeCm + seg.depthCm, 0)
+  const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const padL = Math.max(120, railOffH + OHx + 40)
+  const rearExtPx = (geom.rearExtensionCm ?? 0) * SC
+  const padL = Math.max(120, railOffH + OHx + (geom.frontExtensionCm ?? 0) * SC + 40)
   const panelExtCm = (totalPanelDepthCm - railOffsetCm) * Math.cos(angleRad) - baseLength
-  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx) + 70)
+  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
 
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
@@ -53,7 +57,7 @@ export default function TrapDetailPage({
 }) {
   if (!rc) return null
 
-  const { w: naturalW, h: naturalH } = computeNaturalSize(rc, settings, lineRails, panelLines)
+  const { w: naturalW, h: naturalH } = computeNaturalSize(settings, lineRails, panelLines, beDetailData)
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
   return (

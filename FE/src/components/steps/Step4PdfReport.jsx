@@ -6,7 +6,7 @@ import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEX
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
-import { buildTrapezoidGroups } from './step3/tabUtils'
+import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
@@ -338,20 +338,14 @@ export default function Step4PdfReport({
     return map
   }, [areas])
 
-  // Build ghost map: for each trapId, find the full-trap in its area (if different)
+  // Build ghost map: for each non-full trapId, find the full-trap in its area
+  // with the same cross-section family (line count, angle, front height).
   const fullTrapGhostMap = useMemo(() => {
     const map = {}
     for (const tid of trapIds) {
       const areaTids = areaGroupMap[tid] ?? [tid]
-      if (areaTids.length < 2) continue  // single-trap area — no ghost needed
-      const fullTid = areaTids.find(t => beTrapezoidsData?.[t]?.isFullTrap)
-      if (!fullTid || fullTid === tid) continue
-      map[tid] = {
-        beDetailData: beTrapezoidsData[fullTid],
-        panelLines: trapPanelLinesMap[fullTid] ?? null,
-        lineRails: trapLineRailsMap[fullTid] ?? null,
-        rc: trapRCMap[fullTid] ?? null,
-      }
+      const ghost = buildFullTrapGhost(tid, areaTids, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap)
+      if (ghost) map[tid] = ghost
     }
     return map
   }, [trapIds, areaGroupMap, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])

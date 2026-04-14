@@ -83,3 +83,34 @@ export function buildTrapezoidGroups(panels) {
   const keys = Object.keys(map).sort()
   return { map, keys }
 }
+
+/**
+ * Build the ghost object for a non-full trap, or null if not applicable.
+ * Returns { beDetailData, panelLines, lineRails, rc } from the matching
+ * full trap in the same area with the same cross-section family
+ * (line count, angle, front height).
+ */
+export function buildFullTrapGhost(trapId, areaTrapIds, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap) {
+  if (beTrapezoidsData?.[trapId]?.isFullTrap) return null
+  if (!areaTrapIds || areaTrapIds.length < 2) return null
+  const lineCount = trapPanelLinesMap[trapId]?.length ?? 0
+  const rc = trapRCMap[trapId]
+  const angle = Math.round(rc?.angle ?? 0)
+  const frontH = Math.round(rc?.frontHeight ?? 0)
+  const fullTid = areaTrapIds.find(tid => {
+    if (tid === trapId) return false
+    if (!beTrapezoidsData?.[tid]?.isFullTrap) return false
+    if ((trapPanelLinesMap[tid]?.length ?? 0) !== lineCount) return false
+    const cRC = trapRCMap[tid]
+    if (Math.round(cRC?.angle ?? 0) !== angle) return false
+    if (Math.round(cRC?.frontHeight ?? 0) !== frontH) return false
+    return true
+  })
+  if (!fullTid) return null
+  return {
+    beDetailData: beTrapezoidsData[fullTid],
+    panelLines: trapPanelLinesMap[fullTid] ?? null,
+    lineRails: trapLineRailsMap[fullTid] ?? null,
+    rc: trapRCMap[fullTid] ?? null,
+  }
+}
