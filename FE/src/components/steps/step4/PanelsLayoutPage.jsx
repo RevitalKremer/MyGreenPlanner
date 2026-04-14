@@ -8,7 +8,7 @@ const PAD = 12  // print mode — minimal padding
 const CONTENT_W = (297 - 2 * 8) * 3.2
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
-export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, panelType, panelWp, totalKw, date, pageRef }) {
+export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, panelType, panelWp, totalKw, date, pageRef, user }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
@@ -43,6 +43,7 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
       totalKw={totalKw}
       panelCount={panels.filter(p => !p.isEmpty).length}
       date={date}
+      user={user}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{

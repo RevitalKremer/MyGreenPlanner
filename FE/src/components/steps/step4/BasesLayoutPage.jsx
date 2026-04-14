@@ -14,7 +14,7 @@ export default function BasesLayoutPage({
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   beBasesData = null, beTrapezoidsData = null,
-  project, panelType, panelWp, totalKw, date, pageRef,
+  project, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
@@ -38,6 +38,7 @@ export default function BasesLayoutPage({
       totalKw={totalKw}
       panelCount={panels.length}
       date={date}
+      user={user}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{

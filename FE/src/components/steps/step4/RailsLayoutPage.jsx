@@ -14,7 +14,7 @@ export default function RailsLayoutPage({
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {},
   beRailsData = null,
-  project, panelType, panelWp, totalKw, date, pageRef,
+  project, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const { naturalW, naturalH, sc } = useMemo(() => {
@@ -39,6 +39,7 @@ export default function RailsLayoutPage({
       totalKw={totalKw}
       panelCount={panels.length}
       date={date}
+      user={user}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{

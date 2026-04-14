@@ -700,6 +700,7 @@ function App() {
 
         {s.currentStep === 5 && (
           <Step5PdfReport
+            user={auth.user}
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
