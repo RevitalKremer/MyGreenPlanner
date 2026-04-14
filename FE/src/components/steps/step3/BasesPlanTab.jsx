@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, WHITE, BLOCK_FILL, BLOCK_STROKE, TEXT_DARKEST, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, DIAGONAL_DOT } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import AreaLabel from '../../shared/AreaLabel'
 import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
@@ -453,9 +453,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
                     return (
                       <g key={`diag-${ai}-${di}`}>
-                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={BLUE} strokeWidth={PROFILE_THICK} />
-                          <circle cx={x1} cy={y1} r={dotR} fill={BLUE} stroke={TEXT_DARKEST} strokeWidth={1/effZoom} />
-                          <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={BLUE} strokeWidth={2/effZoom} />
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={DIAGONAL_STROKE} strokeWidth={PROFILE_THICK} />
+                          <circle cx={x1} cy={y1} r={dotR} fill={DIAGONAL_DOT} stroke={TEXT_DARKEST} strokeWidth={1/effZoom} />
+                          <circle cx={x2} cy={y2} r={dotR} fill={WHITE} stroke={DIAGONAL_DOT} strokeWidth={2/effZoom} />
                           <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
                             <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
                             <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{diagLabel}</text>
