@@ -18,7 +18,7 @@ export default function AreaLabel({ x, y, label, fontSize, rotation = 0, yDir = 
   const r = rotation * Math.PI / 180
   const chevW = fs * 1.0
   const chevH = fs * 0.6
-  const dist = fs * 1.1
+  const dist = fs * 0.7
   const ldx = -Math.sin(r), ldy = Math.cos(r)
   const cupSign = down ? -1 : 1
   const chevX = x + ldx * cupSign * dist
