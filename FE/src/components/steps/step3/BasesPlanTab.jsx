@@ -239,6 +239,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const svgH = bboxH * sc + PAD * 2
   const toSvg = (sx, sy) => [PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
 
+  // Cap dimension font size so a 4-char label fits within one panel width
+  const smallestPanelW = nonEmptyPanels.reduce((min, p) => Math.min(min, Math.min(p.width, p.height) * sc), Infinity)
+  const dimMaxFontSize = isFinite(smallestPanelW) ? smallestPanelW / (4 * 0.6) : undefined
+
   if (!dataReady) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: TEXT_VERY_LIGHT, fontSize: '0.95rem' }}>
@@ -513,7 +517,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
                     return (
                       <g key={`area-ann-${ai}-r${ri}`} style={hlStyle}>
-                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} />
+                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} maxFontSize={dimMaxFontSize} />
                       </g>
                     )
                   })

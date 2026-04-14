@@ -162,6 +162,9 @@ export default function RailsOverlay({
       if (!lineRects[pr.line]) lineRects[pr.line] = []
       lineRects[pr.line].push(pr)
     }
+    // Cap font size so a 4-char label fits within one panel width
+    const smallestPanelW = rl.panelLocalRects.reduce((min, pr) => Math.min(min, pr.width), Infinity)
+    const dimMaxFs = isFinite(smallestPanelW) ? (smallestPanelW * sc) / (4 * 0.6) : undefined
 
     const seenLines = new Set()
     return rl.rails.map(rail => {
@@ -213,7 +216,7 @@ export default function RailsOverlay({
 
       return (
         <g key={`${prefix}-segs-${rail.railId}`}>
-          <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} zoom={zoom} />
+          <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} zoom={zoom} maxFontSize={dimMaxFs} />
         </g>
       )
     })

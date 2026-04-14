@@ -10,10 +10,11 @@ import { TEXT_SECONDARY, BLACK } from '../../../styles/colors'
  *   zoom        number
  *   color       string         — default colour for all segments
  *   colors      [string, ...]  — optional per-segment colour override
+ *   maxFontSize number         — cap font size (useful when panels are small)
  */
-export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null }) {
+export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, maxFontSize }) {
   const TICK = 4 / zoom
-  const fontSize = 14 / zoom
+  const fontSize = maxFontSize != null ? Math.min(14 / zoom, maxFontSize) : 14 / zoom
 
   return (
     <g>
