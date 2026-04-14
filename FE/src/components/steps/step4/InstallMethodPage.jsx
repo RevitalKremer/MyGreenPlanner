@@ -1,8 +1,16 @@
 import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
-import AreasTab from '../step3/AreasTab'
+import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
 import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
+import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
+
+const ROOF_COLOR_MAP = {
+  concrete: ROOF_CONCRETE,
+  tiles: ROOF_TILES,
+  iskurit: ROOF_CORRUGATED,
+  insulated_panel: ROOF_CORRUGATED,
+}
 
 const CONTENT_W = (297 - 2 * 8) * 3.2
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
@@ -60,6 +68,7 @@ export default function InstallMethodPage({
             printShowInstallMethod
           />
         </div>
+        <InstallMethodLegend roofType={roofType} roofColor={ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE} t={t} />
       </div>
     </CadPage>
   )

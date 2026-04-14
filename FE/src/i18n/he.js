@@ -85,8 +85,8 @@ const he = {
   'welcome.required':               '*',
 
   // ── Roof Specification ───────────────────────────────────────────────────
-  'roofSpec.type.concrete':           'גג בטון',
-  'roofSpec.type.tiles':              'גג רעפים',
+  'roofSpec.type.concrete':           'בטון',
+  'roofSpec.type.tiles':              'רעפים',
   'roofSpec.type.iskurit':            'אזכורית',
   'roofSpec.type.insulatedPanel':     'פנל מבודד',
   'roofSpec.distanceBetweenPurlins':  'מרחק בין פתות (ס״מ)',

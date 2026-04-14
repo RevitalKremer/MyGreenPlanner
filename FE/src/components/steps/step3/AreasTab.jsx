@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLACK, ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -75,6 +75,32 @@ const ROOF_COLOR_MAP = {
   tiles: ROOF_TILES,
   iskurit: ROOF_CORRUGATED,
   insulated_panel: ROOF_CORRUGATED,
+}
+
+const ROOF_TYPE_I18N = {
+  concrete: 'roofSpec.type.concrete',
+  tiles: 'roofSpec.type.tiles',
+  iskurit: 'roofSpec.type.iskurit',
+  insulated_panel: 'roofSpec.type.insulatedPanel',
+}
+
+export function InstallMethodLegend({ roofType, roofColor, t }) {
+  const label = t(ROOF_TYPE_I18N[roofType] ?? ROOF_TYPE_I18N.concrete)
+  return (
+    <div style={{
+      position: 'absolute', bottom: 12, right: 12,
+      display: 'flex', alignItems: 'center', gap: 8,
+      background: 'rgba(255,255,255,0.92)', border: `1px solid rgba(0,0,0,0.15)`,
+      borderRadius: 4, padding: '6px 12px', pointerEvents: 'none',
+    }}>
+      <div style={{
+        width: 28, height: 16, borderRadius: 3,
+        background: roofColor, opacity: 0.6,
+        border: `1px solid ${roofColor}`,
+      }} />
+      <span style={{ fontSize: 13, fontWeight: 600, color: BLACK, opacity: 0.75 }}>{label}</span>
+    </div>
+  )
 }
 
 export default function AreasTab({
@@ -291,6 +317,8 @@ export default function AreasTab({
           </div>
         </div>
       </div>
+
+      {sInstallMethod && <InstallMethodLegend roofType={roofType} roofColor={roofColor} t={t} />}
 
       <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc} containerRef={containerRef} />
 

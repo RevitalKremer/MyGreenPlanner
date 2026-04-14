@@ -85,8 +85,8 @@ const en = {
   'welcome.required':             '*',
 
   // ── Roof Specification ───────────────────────────────────────────────────
-  'roofSpec.type.concrete':           'Concrete Roof',
-  'roofSpec.type.tiles':              'Tiles Roof',
+  'roofSpec.type.concrete':           'Concrete',
+  'roofSpec.type.tiles':              'Tiles',
   'roofSpec.type.iskurit':            'Iskurit (Corrugated Metal)',
   'roofSpec.type.insulatedPanel':     'Insulated Panel',
   'roofSpec.distanceBetweenPurlins':  'Distance Between Purlins (cm)',
