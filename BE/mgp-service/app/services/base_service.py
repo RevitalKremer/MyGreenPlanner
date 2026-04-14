@@ -294,11 +294,15 @@ def compute_external_diagonals(
     Returns flat list of diagonal dicts with area-wide baseIdxA/baseIdxB.
     """
     trap_geom = {}
+    geom_by_beam_len: dict[float, dict] = {}
     for ct in computed_trapezoids:
         tid = ct.get('trapezoidId', '')
         geom = ct.get('geometry', {})
         if geom:
             trap_geom[tid] = geom
+            tbl = round(geom.get('topBeamLength', 0), 1)
+            if tbl > 0:
+                geom_by_beam_len[tbl] = geom
 
     # Build area-wide offset per trap (matches how all_bases is built)
     trap_area_offset = {}
@@ -326,7 +330,11 @@ def compute_external_diagonals(
         rear_leg_depth_cm = bd.get('rearLegDepthCm', 0)
         front_leg_depth_cm = bd.get('frontLegDepthCm', 0)
 
-        geom = trap_geom.get(trap_id, {})
+        # Prefer geometry matching the actual base depth (baseLengthCm ≈ topBeamLength).
+        # This handles multi-row areas where consolidation assigns bases to a deeper
+        # trap but the row's physical geometry matches a different trapezoid.
+        base_len_key = round(bd.get('baseLengthCm', 0), 1)
+        geom = geom_by_beam_len.get(base_len_key) or trap_geom.get(trap_id, {})
         height_rear = geom.get('heightRear', 0)
         height_front = geom.get('heightFront', 0)
 
