@@ -452,6 +452,20 @@ const en = {
   'step3.bases.scheduleTitle':  'Base Schedule',
   'step3.bases.count':          '{n} base{s}',  // plural: 's' for n > 1
 
+  // ── Step 4 – PDF title block ────────────────────────────────────────────
+  'step4.tb.template':     'Template',
+  'step4.tb.projectNum':   'Project No.',
+  'step4.tb.approvalReq':  'Structural\nApproval Req.',
+  'step4.tb.totalPower':   'Total Power',
+  'step4.tb.panelType':    'Panel Type',
+  'step4.tb.projectName':  'Project Name',
+  'step4.tb.forApproval':  'For Approval',
+  'step4.tb.power':        'Power',
+  'step4.tb.quantity':     'Quantity',
+  'step4.tb.date':         'Date',
+  'step4.tb.location':     'Location',
+  'step4.tb.createdBy':    'Created By',
+
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   'Area {n}',
   'step4.pdf.areas':  'Areas',

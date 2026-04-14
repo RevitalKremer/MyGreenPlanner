@@ -27,6 +27,7 @@ export default function RailLayoutTab({
   highlightGroup = null,
   printMode = false,
   printShowRoofImage = true,
+  printSc = null,   // pre-computed scale to maximize page fit (PDF only)
   trapSettingsMap = {},
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
@@ -144,9 +145,11 @@ export default function RailLayoutTab({
     return expandBboxForImage(panelBbox, uploadedImageData)
   }, [nonEmptyPanels, uploadedImageData])
 
-  const PAD = 24, PAD_LEFT = 180, MAX_W = 900
+  const PAD = 24, PAD_LEFT = 180, MAX_W = 851  // edit-mode width target
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY
-  const sc = bboxW > 0 ? MAX_W / bboxW : 1
+  const sc = printMode && printSc != null
+    ? printSc
+    : (bboxW > 0 ? MAX_W / bboxW : 1)
   const svgW = MAX_W + PAD_LEFT + PAD, svgH = bboxH * sc + PAD * 2
   const toSvgFn = (sx, sy) => [PAD_LEFT + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
 
@@ -193,23 +196,47 @@ export default function RailLayoutTab({
     sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
   }
 
+  // Effective layer toggles — print forces all layers on; edit uses panel state.
+  const sRoofImage      = printMode ? printShowRoofImage : showRoofImage
+  const sRails          = printMode ? true : showRails
+  const sDimensions     = printMode ? true : showDimensions
+  const sMaterialSummary = printMode ? true : showMaterialSummary
+  const sConnectors     = printMode ? true : showConnectors
+
+  const renderSvgLayers = (toSvgFn, zoomVal, clipPrefix) => (
+    <>
+      {sRoofImage && <BackgroundImageLayer
+        imageSrc={imageSrc}
+        uploadedImageData={uploadedImageData}
+        bbox={bbox}
+        toSvg={toSvgFn}
+        sc={sc}
+      />}
+      <HatchedPanels
+        panels={panels}
+        selectedTrapId={null}
+        selectedArea={!printMode && rowKeys.length > 1 && selectedRowIdx != null ? rowKeys[selectedRowIdx] : null}
+        toSvg={toSvgFn}
+        sc={sc}
+        pixelToCmRatio={pixelToCmRatio}
+        clipIdPrefix={clipPrefix}
+      />
+      <RailsOverlay {...overlayProps} toSvg={toSvgFn} zoom={zoomVal}
+        selectedRowIdx={printMode ? null : selectedRowIdx}
+        highlightGroup={printMode ? null : highlightGroup}
+        layers={{ rails: sRails, dimensions: sDimensions, materialSummary: sMaterialSummary, connectors: sConnectors }} />
+    </>
+  )
+
   if (printMode) {
     const PM_PAD = 24
-    const svgW_pm  = MAX_W + PM_PAD * 2
-    const toSvg_pm = (sx, sy) => [PM_PAD + (sx - bbox.minX) * sc, PAD + (sy - bbox.minY) * sc]
+    const svgW_pm  = bboxW * sc + PM_PAD * 2
+    const svgH_pm  = bboxH * sc + PM_PAD * 2
+    const toSvg_pm = (sx, sy) => [PM_PAD + (sx - bbox.minX) * sc, PM_PAD + (sy - bbox.minY) * sc]
 
     return (
-      <svg width={svgW_pm} height={svgH} style={{ display: 'block' }}>
-        {(printMode ? printShowRoofImage : showRoofImage) && <BackgroundImageLayer 
-          imageSrc={imageSrc}
-          uploadedImageData={uploadedImageData}
-          bbox={bbox}
-          toSvg={toSvg_pm}
-          sc={sc}
-        />}
-        <HatchedPanels panels={panels} selectedTrapId={null} toSvg={toSvg_pm} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp-pm" />
-        <RailsOverlay {...overlayProps} toSvg={toSvg_pm} zoom={1}
-          layers={{ rails: true, dimensions: true, materialSummary: true, connectors: true }} />
+      <svg width={svgW_pm} height={svgH_pm} style={{ display: 'block' }}>
+        {renderSvgLayers(toSvg_pm, 1, 'rcp-pm')}
       </svg>
     )
   }
@@ -236,20 +263,7 @@ export default function RailLayoutTab({
                 <svg ref={svgRef} width={svgW} height={svgH} style={{ display: 'block' }}>
                   <defs><style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style></defs>
 
-                  {showRoofImage && <BackgroundImageLayer 
-                    imageSrc={imageSrc}
-                    uploadedImageData={uploadedImageData}
-                    bbox={bbox}
-                    toSvg={toSvg}
-                    sc={sc}
-                  />}
-
-                  <HatchedPanels panels={panels} selectedArea={rowKeys.length <= 1 || selectedRowIdx == null ? null : rowKeys[selectedRowIdx]} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="rcp" />
-
-                  {/* Rails + layers */}
-                  <RailsOverlay {...overlayProps} toSvg={toSvg} zoom={zoom}
-                    selectedRowIdx={selectedRowIdx} highlightGroup={highlightGroup}
-                    layers={{ rails: showRails, dimensions: showDimensions, materialSummary: showMaterialSummary, connectors: showConnectors }} />
+                  {renderSvgLayers(toSvg, zoom, 'rcp')}
 
                   {/* Edit bar — rendered last so it draws on top of all rails */}
                   {showEditBar && (

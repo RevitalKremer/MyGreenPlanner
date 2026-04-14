@@ -36,7 +36,7 @@ export default function DetailPunchSketch({
 
   return (
     <g>
-      <text x={activeBoundL} y={ry - 5} fontSize="8" fill={TEXT_PLACEHOLDER} fontWeight="600">{t(labelKey)}</text>
+      <text x={activeBoundL} y={ry - 5} fontSize="11" fill={TEXT_PLACEHOLDER} fontWeight="600">{t(labelKey)}</text>
       <rect x={barX0} y={ry} width={barW} height={barH}
         fill={PUNCH_BAR_FILL} stroke={PUNCH_BAR_STROKE} strokeWidth="1" rx="2"
         style={{ cursor: showDiagHandles ? 'crosshair' : 'default' }}
@@ -47,7 +47,7 @@ export default function DetailPunchSketch({
       {punches.map((p, i) => (
         <g key={`wp-${i}`}>
           <circle cx={p.x} cy={barCy} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
-          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="8" fill={TEXT_SECONDARY} fontWeight="600">
+          <text x={p.x} y={ry + barH + 10} textAnchor="middle" fontSize="11" fill={TEXT_SECONDARY} fontWeight="600">
             {p.label}
           </text>
         </g>

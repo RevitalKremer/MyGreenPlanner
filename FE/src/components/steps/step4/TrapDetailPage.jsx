@@ -34,9 +34,9 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
 
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
-  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
-  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40)
-  const padB = blockH + 290
+  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 40)
+  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 30)
+  const padB = blockH + 230
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
@@ -48,8 +48,8 @@ function computeNaturalSize(rc, settings, lineRails, panelLines) {
 
 export default function TrapDetailPage({
   trapId, rc, settings = {}, lineRails = null, panelLines = null,
-  beDetailData = null, fullTrapGhost = null,
-  project, panelType, panelWp, totalKw, date, pageRef,
+  beDetailData = null, fullTrapGhost = null, count = null,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   if (!rc) return null
 
@@ -61,11 +61,13 @@ export default function TrapDetailPage({
       pageRef={pageRef}
       pageName={trapId}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={null}
+      count={count}
       date={date}
+      user={user}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', pointerEvents: 'none' }}>
         <div style={{

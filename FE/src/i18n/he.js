@@ -452,6 +452,20 @@ const he = {
   'step3.bases.scheduleTitle':  'לוח בסיסים',
   'step3.bases.count':          '{n} בסיסים',
 
+  // ── Step 4 – PDF title block ────────────────────────────────────────────
+  'step4.tb.template':     'תבנית',
+  'step4.tb.projectNum':   'מספר פרויקט',
+  'step4.tb.approvalReq':  'דרוש אישור\nקונסטרוקטור',
+  'step4.tb.totalPower':   'הספק כולל',
+  'step4.tb.panelType':    'סוג פאנל',
+  'step4.tb.projectName':  'שם פרויקט',
+  'step4.tb.forApproval':  'לאישור',
+  'step4.tb.power':        'הספק',
+  'step4.tb.quantity':     'כמות',
+  'step4.tb.date':         'תאריך',
+  'step4.tb.location':     'מיקום',
+  'step4.tb.createdBy':    'נוצר ע״י',
+
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   '{n} אזור',
   'step4.pdf.areas':  'אזורים',
