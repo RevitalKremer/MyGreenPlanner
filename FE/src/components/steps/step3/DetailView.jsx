@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, L_PROFILE_FILL, L_PROFILE_STROKE, BLOCK_FILL, BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, TRAP_L_PROFILE_FILL, TRAP_L_PROFILE_STROKE, TRAP_BLOCK_FILL, TRAP_BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { calculateDiagonalPosition } from '../../../utils/trapezoidGeometry'
@@ -81,9 +82,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
-  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 30)
-  const padT = printMode ? Math.max(55, hR - hF + _slopeAbove + _annotAbove + 40) : 55
-  const padB = blockH + 290
+  const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 40)
+  const padT = Math.max(55, hR - hF + _slopeAbove + _annotAbove + 30)
+  const padB = blockH + 230
 
   const svgW = bW + padL + padR
   const svgH = hF + padT + padB
@@ -202,7 +203,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const ang = Math.atan2(dy, dx) * 180 / Math.PI
     const h = sw || 1
     return <rect x={-(len / 2 + cap)} y={-h / 2} width={len + 2 * cap} height={h}
-      fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1"
+      fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1"
       transform={`translate(${mx},${my}) rotate(${ang})`} />
   }
 
@@ -290,11 +291,44 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const handleContainerMouseUp   = (e) => { stopPan(e) }
   const handleContainerMouseLeave = (e) => { stopPan(e) }
 
+  // Marks a structural profile (leg or diagonal) as doubled: dashed red
+  // outline of the profile rectangle plus three "×2" labels along its length.
+  const DoubleProfileMarker = ({ x1, y1, x2, y2, thickness }) => {
+    const dx = x2 - x1, dy = y2 - y1
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len < 1) return null
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI
+    return (
+      <g transform={`rotate(${ang}, ${x1}, ${y1})`}>
+        <rect x={x1} y={y1 - thickness / 2} width={len} height={thickness}
+          fill="none" stroke={DANGER} strokeWidth="2" strokeDasharray="5,3" />
+        {[0.08, 0.5, 0.92].map((t, i) => (
+          <text key={i} x={x1 + t * len} y={y1} textAnchor="middle" dominantBaseline="middle"
+            fontSize="11" fontWeight="800" fill={DANGER}>×2</text>
+        ))}
+      </g>
+    )
+  }
+
   const DC = TEXT_DARKEST
   const TC = TEXT_VERY_LIGHT
 
   // Format to 1 decimal, stripping trailing ".0"
   const fmt = (v) => parseFloat(v.toFixed(1)).toString()
+
+  // Build the sorted punch-points array fed to DetailPunchSketch.
+  // `excludeOrigin` is filtered out in addition to the implicit non-diagonal
+  // bucket; diagonal punches are appended after the others so that ties in x
+  // preserve nonDiag-first order under stable sort.
+  const buildPunchPoints = (beamType, excludeOrigin, atFn, labelFor) => {
+    const all = beDetailData?.punches ?? []
+    const matches = (origin) => (p) =>
+      p.beamType === beamType && p.origin !== excludeOrigin && origin(p.origin)
+    const toPoint = (origin) => (p) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
+    const nonDiag = all.filter(matches(o => o !== 'diagonal')).map(p => toPoint(p.origin)(p))
+    const diag    = all.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
+    return [...nonDiag, ...diag].sort((a, b) => a.x - b.x)
+  }
 
   const beamAngleDeg = legBW > 0
     ? Math.atan2(allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0], legX1 - legX0) * 180 / Math.PI
@@ -329,29 +363,22 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   })()
   const activePanelEndBot   = panelBottomPos(lastActiveDepth)
 
-  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false, fs = 8 }) => {
-    const col = tbd ? TC : DC
-    const mk  = tbd ? 't' : 'k'
+  const Dim = ({ ax1, ay1, ax2, ay2, label, off = 12, tbd = false }) => {
     const dx = ax2 - ax1, dy = ay2 - ay1
     const len = Math.sqrt(dx * dx + dy * dy)
     if (len < 2) return null
     const nx = -dy / len * off, ny = dx / len * off
-    const lx1 = ax1 + nx, ly1 = ay1 + ny
-    const lx2 = ax2 + nx, ly2 = ay2 + ny
-    const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI
-    const ta = ang > 90 || ang < -90 ? ang + 180 : ang
+    const measurePts = [[ax1, ay1], [ax2, ay2]]
+    const annPts     = [[ax1 + nx, ay1 + ny], [ax2 + nx, ay2 + ny]]
+    const col = tbd ? TC : DC
     return (
-      <g>
-        <line x1={ax1} y1={ay1} x2={lx1} y2={ly1} stroke={col} strokeWidth="0.5" />
-        <line x1={ax2} y1={ay2} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.5" />
-        <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={col} strokeWidth="0.8"
-          markerStart={`url(#arr-${mk})`} markerEnd={`url(#arr-${mk})`} />
-        <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-          fontSize={fs} fontWeight="600" fill={col}
-          transform={`rotate(${ta} ${mx} ${my})`}
-        >{tbd ? 'TBD' : label}</text>
-      </g>
+      <DimensionAnnotation
+        measurePts={measurePts}
+        annPts={annPts}
+        labels={[tbd ? 'TBD' : label]}
+        zoom={1}
+        color={col}
+      />
     )
   }
 
@@ -394,12 +421,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 />
               )}
               <defs>
-                <marker id="arr-k" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                  <path d="M0,0 L0,5 L5,2.5 z" fill={DC} />
-                </marker>
-                <marker id="arr-t" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
-                  <path d="M0,0 L0,5 L5,2.5 z" fill={TC} />
-                </marker>
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
@@ -418,9 +439,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     const label = blkPunch ? fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
                     return (
                       <g key={bi}>
-                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={BLOCK_FILL} stroke={BLOCK_STROKE} strokeWidth="1" />
+                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={TRAP_BLOCK_FILL} stroke={TRAP_BLOCK_STROKE} strokeWidth="1" />
                         {showPunches && label && (
-                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
                         )}
                       </g>
                     )
@@ -432,7 +453,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {(() => {
                 const baseBeamW = (geom.baseBeamLength ?? (legBW / SC)) * SC
                 const firstLegPos = (beLegs[0]?.positionCm ?? 0) * SC
-                return <rect x={legX0 - firstLegPos} y={baseY} width={baseBeamW} height={BEAM_THICK_PX} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
+                return <rect x={legX0 - firstLegPos} y={baseY} width={baseBeamW} height={BEAM_THICK_PX} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
               })()}
 
               {/* ── All legs — uniform: rect from positionCm to positionEndCm ── */}
@@ -445,13 +466,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 if (legH <= 0) return null
                 return (
                   <g key={`leg-${li}`}>
-                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={L_PROFILE_FILL} stroke={L_PROFILE_STROKE} strokeWidth="1" />
-                    {leg.isDouble && (<>
-                      <line x1={lx + lw / 2} y1={slopeTopY} x2={lx + lw / 2} y2={slopeTopY + legH}
-                        stroke={DANGER} strokeWidth="1" strokeLinecap="square"
-                        strokeDasharray="4,4" opacity="0.6" />
-                      <text x={lx + lw / 2} y={slopeTopY + legH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="900" fill={DANGER}>×2</text>
-                    </>)}
+                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
+                    {leg.isDouble && (
+                      <DoubleProfileMarker
+                        x1={lx + lw / 2} y1={slopeTopY}
+                        x2={lx + lw / 2} y2={slopeTopY + legH}
+                        thickness={lw} />
+                    )}
                   </g>
                 )
               })}
@@ -459,24 +480,15 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Slope beam ── */}
               {lProfileLine({ x1: legX0, y1: allLegTopYs[0], x2: legX1, y2: allLegTopYs[allLegTopYs.length - 1], strokeWidth: BEAM_THICK_PX })}
               {diagonals.map((d, di) => {
-                const ang = Math.atan2(d.botY - d.topY, d.botX - d.topX) * 180 / Math.PI
                 return (
                   <g key={di}>
                     {lProfileLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, capExtend: d.halfCap })}
-                    {d.isDouble && (<>
-                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
-                        stroke={DANGER} strokeWidth="1" strokeLinecap="square"
-                        strokeDasharray="4,4" opacity="0.6" />
-                      {[0.08, 0.5, 0.92].map((t, i) => {
-                        const lx = d.topX + t * (d.botX - d.topX)
-                        const ly = d.topY + t * (d.botY - d.topY)
-                        return (
-                          <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
-                            fontSize="8" fontWeight="800" fill={DANGER}
-                            transform={`rotate(${ang}, ${lx}, ${ly})`}>×2</text>
-                        )
-                      })}
-                    </>)}
+                    {d.isDouble && (
+                      <DoubleProfileMarker
+                        x1={d.topX} y1={d.topY}
+                        x2={d.botX} y2={d.botY}
+                        thickness={BEAM_THICK_PX * 0.75} />
+                    )}
                     {hl('diagonal') && (
                       <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
                         stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
@@ -509,8 +521,9 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   if (seg.isEmpty) return null
                   const ex = atSlope(dCm).x
                   const sy = beamYFromLegs(sx), ey = beamYFromLegs(ex)
-                  const cx  = (sx + ex) / 2
-                  const cy  = (sy + ey) / 2 - PANEL_OFFSET_PX
+                  const beamRad = beamAngleDeg * Math.PI / 180
+                  const cx  = (sx + ex) / 2 + PANEL_OFFSET_PX * Math.sin(beamRad)
+                  const cy  = (sy + ey) / 2 - PANEL_OFFSET_PX * Math.cos(beamRad)
                   const len = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
                   return (
                     <g key={idx}>
@@ -562,7 +575,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                     </g>
                     {showPunches && <text x={lx} y={ly}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize="7.5" fontWeight="700" fill={railStroke}
+                      fontSize="10" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
                     >{fmt(globalOffsetCm - originCm)}</text>}
                   </g>
@@ -581,22 +594,24 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
               {showPunches && <>
                 {(beDetailData?.punches ?? []).filter(p => p.origin !== 'diagonal').map((p, i) => {
+                  const isBlock = p.origin === 'block'
+                  const r = isBlock ? 3.5 : 2
                   if (p.beamType === 'base') {
                     const bbX0 = legX0 - firstLegPos * SC
                     const px = bbX0 + p.positionCm * SC
-                    return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
+                    return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={r}
                       fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                   }
                   const px = legX0 + (p.positionCm / (topBeamLength || 1)) * legBW
                   const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
-                  return <circle key={`p-${i}`} cx={px} cy={slopeY} r={2}
+                  return <circle key={`p-${i}`} cx={px} cy={slopeY} r={r}
                     fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                 })}
                 {activeDiags.map((d, di) => {
                   const slopeY = allLegTopYs[0] + (d.topX - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
                   return (<g key={`dp-${di}`}>
-                    <circle cx={d.topX} cy={slopeY} r={2.5} fill="white" stroke={BLUE} strokeWidth="1" />
-                    <circle cx={d.botX} cy={baseY + BEAM_THICK_PX / 2} r={2.5} fill="white" stroke={BLUE} strokeWidth="1" />
+                    <circle cx={d.topX} cy={slopeY} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
+                    <circle cx={d.botX} cy={baseY + BEAM_THICK_PX / 2} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                   </g>)
                 })}
               </>}
@@ -639,7 +654,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               )}
 
               {/* ── Angle label inside trapezoid ── */}
-              <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="9" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
+              <text x={activeBeamR - 32} y={beamYFromLegs(activeBeamR) + 22} fontSize="12" fill={TEXT_SECONDARY} fontWeight="700">{angle}°</text>
 
               {/* ── Dimension dimensions ── */}
               {showDimensions && <>
@@ -650,7 +665,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 {(() => {
                   if (!hasActiveZone) return null
                   // Panel distance dimensions: all on the beam line (parallel to panel)
-                  const panelOff = -(PANEL_OFFSET_PX + 28)
+                  const panelOff = -(PANEL_OFFSET_PX + 38)
                   const psx = atSlope(firstActiveDepth).x
                   const pex = atSlope(lastActiveDepth).x
                   const r1x = railItems[0]?.cx ?? psx
@@ -677,9 +692,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                      ax2={activePanelStartBot.x} ay2={activePanelStartBot.y}
                   label={fmt(geom.panelFrontHeight ?? 0)}
                   off={-22} />
-
-                {BLOCK_H_CM > 0 && <Dim ax1={legX0} ay1={blockTopY} ax2={legX0} ay2={blockBotY}
-                  label={fmt(BLOCK_H_CM)} off={-14} />}
 
                 {/* Right leg height: from BE data, annotation on OUTSIDE (right) */}
                 {(() => {
@@ -711,15 +723,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const bbX0 = legX0 - flp * SC
                 const bbW = baseBeamLen * SC
                 const atBase = (posCm) => bbX0 + (posCm / baseBeamLen) * bbW
-                const nonDiag = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'base' && p.origin !== 'block' && p.origin !== 'diagonal')
-                  .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: p.origin }))
-                const diag = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'base' && p.origin === 'diagonal')
-                  .map(p => ({ x: atBase(p.positionCm), label: fmt(p.positionCm), origin: 'diagonal' }))
-                return <DetailPunchSketch which="bot" ry={blockBotY + 130}
+                const points = buildPunchPoints('base', 'block', atBase, p => fmt(p.positionCm))
+                return <DetailPunchSketch which="bot" ry={blockBotY + 150}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
-                  punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
+                  punches={points} activeDiags={activeDiags}
                   showDiagHandles={showDiagHandles} printMode={printMode}
                   barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
@@ -732,15 +739,11 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {showPunches && (() => {
                 const slopeLen = topBeamLength
                 const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
-                const nonDiag = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'slope' && p.origin !== 'rail' && p.origin !== 'diagonal')
-                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: p.origin }))
-                const diag = (beDetailData?.punches ?? [])
-                  .filter(p => p.beamType === 'slope' && p.origin === 'diagonal')
-                  .map(p => ({ x: atSlope2(p.positionCm), label: fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm), origin: 'diagonal' }))
-                return <DetailPunchSketch which="top" ry={blockBotY + 52}
+                const slopeLabel = (p) => fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm)
+                const points = buildPunchPoints('slope', 'rail', atSlope2, slopeLabel)
+                return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
-                  punches={[...nonDiag, ...diag].sort((a, b) => a.x - b.x)} activeDiags={activeDiags}
+                  punches={points} activeDiags={activeDiags}
                   showDiagHandles={showDiagHandles} printMode={printMode}
                   barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}

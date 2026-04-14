@@ -1,43 +1,49 @@
 import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
-import BasesPlanTab from '../step3/BasesPlanTab'
+import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
 import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
+import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
 
-const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
-const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
+const ROOF_COLOR_MAP = {
+  concrete: ROOF_CONCRETE,
+  tiles: ROOF_TILES,
+  iskurit: ROOF_CORRUGATED,
+  insulated_panel: ROOF_CORRUGATED,
+}
 
-const PAD = 12  // print mode — minimal padding, edit bars are hidden
+const CONTENT_W = (297 - 2 * 8) * 3.2
+const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
-export default function BasesLayoutPage({
-  panels = [], refinedArea, areas = [],
-  uploadedImageData, imageSrc,
-  trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
-  beBasesData = null, beTrapezoidsData = null,
+const PAD = 12
+
+export default function InstallMethodPage({
+  panels = [], uploadedImageData, imageSrc,
+  roofType = 'concrete',
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
+  const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
+
   const { naturalW, naturalH, sc } = useMemo(() => {
-    // Match BasesPlanTab's bbox computation (uses non-empty panels)
-    const nonEmpty = panels.filter(p => !p.isEmpty)
-    if (!nonEmpty.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
-    const panelBbox = getPanelsBoundingBox(nonEmpty)
+    if (!nonEmptyPanels.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+    const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
     const bbox = expandBboxForImage(panelBbox, uploadedImageData)
     return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
-  }, [panels, uploadedImageData])
+  }, [nonEmptyPanels, uploadedImageData])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={t('step4.pdf.bases')}
+      pageName={t('step4.pdf.installMethod')}
       project={project}
       projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      count={panels.length}
+      count={nonEmptyPanels.length}
       date={date}
       user={user}
     >
@@ -50,22 +56,19 @@ export default function BasesLayoutPage({
           transform: `scale(${fitZoom})`,
           transformOrigin: 'top left',
         }}>
-          <BasesPlanTab
+          <AreasTab
             panels={panels}
-            refinedArea={refinedArea}
-            areas={areas}
             uploadedImageData={uploadedImageData}
             imageSrc={imageSrc}
-            trapSettingsMap={trapSettingsMap}
-            trapLineRailsMap={trapLineRailsMap}
-            trapRCMap={trapRCMap}
-            customBasesMap={customBasesMap}
-            beBasesData={beBasesData}
-            beTrapezoidsData={beTrapezoidsData}
+            roofType={roofType}
             printMode
             printSc={sc}
+            printShowAreas={false}
+            printShowCounts={false}
+            printShowInstallMethod
           />
         </div>
+        <InstallMethodLegend roofType={roofType} roofColor={ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE} t={t} />
       </div>
     </CadPage>
   )

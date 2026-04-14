@@ -210,9 +210,11 @@ export default function useRowData({
     const map = {}
     rowKeys.forEach((areaKey, i) => {
       const trapIds = areaTrapezoidMap[areaKey] || []
-      const lineOrs = getLineOrientations(areaKey, trapIds[0] ?? `${String.fromCharCode(65 + areaKey)}1`)
-      const rails   = getLineRails(i, lineOrs)
-      trapIds.forEach(trapId => { map[trapId] = rails })
+      trapIds.forEach(trapId => {
+        const lineOrs = getLineOrientations(areaKey, trapId)
+        const rails = getLineRails(i, lineOrs)
+        map[trapId] = rails
+      })
     })
     return map
   }, [rowKeys, areaTrapezoidMap, getLineOrientations, getLineRails])

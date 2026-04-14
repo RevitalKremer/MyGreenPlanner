@@ -2,18 +2,17 @@ import { useMemo, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import AreasTab from '../step3/AreasTab'
-import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from '../step3/tabUtils'
+import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups, computePrintFit } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 
-// Must match PAD and MAX_W inside AreasTab
-const PAD = 40, MAX_W = 900
+const PAD = 12  // print mode — minimal padding
 
 export default function AreasLayoutPage({
   panels = [], areas = {},
   uploadedImageData, imageSrc,
-  project, panelType, panelWp, totalKw, date, pageRef,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
@@ -43,15 +42,11 @@ export default function AreasLayoutPage({
     return g ? `${g}` : t('step4.pdf.area', { n: i + 1 })
   }, [areas, areaByGroupKey, t])
 
-  const { naturalW, naturalH } = useMemo(() => {
-    if (!nonEmptyPanels.length) return { naturalW: MAX_W + PAD * 2, naturalH: 200 }
+  const { naturalW, naturalH, sc } = useMemo(() => {
+    if (!nonEmptyPanels.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
     const bbox = expandBboxForImage(panelBbox, uploadedImageData)
-    
-    const bboxW = bbox.maxX - bbox.minX
-    const bboxH = bbox.maxY - bbox.minY
-    const sc    = bboxW > 0 ? MAX_W / bboxW : 1
-    return { naturalW: MAX_W + PAD * 2, naturalH: bboxH * sc + PAD * 2 }
+    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
   }, [nonEmptyPanels, uploadedImageData])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
@@ -61,11 +56,13 @@ export default function AreasLayoutPage({
       pageRef={pageRef}
       pageName={t('step4.pdf.areas')}
       project={project}
+      projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      panelCount={panels.length}
+      count={panels.length}
       date={date}
+      user={user}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{
@@ -84,6 +81,7 @@ export default function AreasLayoutPage({
             uploadedImageData={uploadedImageData}
             imageSrc={imageSrc}
             printMode
+            printSc={sc}
             printShowCounts={false}
           />
         </div>

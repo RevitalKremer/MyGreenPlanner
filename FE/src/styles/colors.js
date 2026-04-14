@@ -63,11 +63,24 @@ export const GHOST_FILL   = 'white'   // fill for ghosted structural elements
 export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
 export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
 
-// ── Structural beams / blocks (DetailView) ────────────────────────────────
-export const BLOCK_FILL   = '#c0c0c0'  // concrete block fill
-export const BLOCK_STROKE = '#777'     // concrete block stroke
-export const L_PROFILE_FILL    = '#40404080'  // main beam fill
-export const L_PROFILE_STROKE  = '#606060'  // main beam stroke
+// ── Structural beams / blocks ─────────────────────────────────────────────
+// Trapezoid cross-section (DetailView) — lighter for readability against
+// dimension annotations and detail callouts.
+export const TRAP_BLOCK_FILL        = '#c0c0c0'  // concrete block fill
+export const TRAP_BLOCK_STROKE      = '#777'     // concrete block stroke
+export const TRAP_L_PROFILE_FILL    = '#40404080'  // main beam fill
+export const TRAP_L_PROFILE_STROKE  = '#606060'  // main beam stroke
+
+// External diagonal (BasesPlanTab) — cyan for visibility over panels
+export const DIAGONAL_STROKE = '#00ACC1'  // external diagonal line + fill dot
+export const DIAGONAL_DOT    = '#00ACC1'  // external diagonal endpoint dot
+
+// Bases diagram (BasesPlanTab) — darker so blocks/profiles read clearly
+// against the panel hatching in top-down view.
+export const BLOCK_FILL        = '#4a4a4a'  // concrete block fill
+export const BLOCK_STROKE      = '#1a1a1a'  // concrete block stroke
+export const L_PROFILE_FILL    = '#2a2a2a'  // main beam fill
+export const L_PROFILE_STROKE  = '#1a1a1a'  // main beam stroke
 
 // ── Panel bars ────────────────────────────────────────────────────────────
 export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
@@ -86,6 +99,11 @@ export const PUNCH_BAR_STROKE = '#999'     // punch sketch bar stroke
 export const DANGER        = '#dc2626'    // delete / danger action
 export const ADD_GREEN     = '#22c55e'    // add / success indicator
 export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
+
+// ── Roof type / installation method overlay ──────────────────────────────
+export const ROOF_CONCRETE         = '#3e3e3e'   // gray — concrete roof
+export const ROOF_TILES            = '#c0392b'   // tile red — tiles roof
+export const ROOF_CORRUGATED       = '#bdbdbd'   // light gray — iskurit / insulated panel
 
 // ── Area overlay palette (AreasTab polygons) ─────────────────────────────
 export const AREA_PALETTE = ['#5fa8e0', '#5ec89a', '#e09455', '#a855d4', '#d4c832', '#32c8c8', '#e05f8a', '#8ae05f']

@@ -6,12 +6,13 @@ import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEX
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
-import { buildTrapezoidGroups } from './step3/tabUtils'
+import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
 import BasesLayoutPage from './step4/BasesLayoutPage'
+import InstallMethodPage from './step4/InstallMethodPage'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -21,31 +22,34 @@ const FOOTER_H_MM = 26  // title block height
 
 // ─── Shared cell styles ───────────────────────────────────────────────────────
 const B  = `0.5px solid ${BLACK}`
-const cellBase = { borderLeft: B, padding: '1px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
-const LBL = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, direction: 'rtl', whiteSpace: 'nowrap', marginBottom: '1px' }
-const VAL = { fontSize: '7.5px', fontWeight: '600', color: BLACK, direction: 'rtl', lineHeight: 1.2 }
+const cellBase = { borderLeft: B, padding: '2px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
+const LBL = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, whiteSpace: 'nowrap', textAlign: 'center' }
+const VAL = { fontSize: '9px', fontWeight: '800', color: BLACK, lineHeight: 1.2, textAlign: 'center' }
 
 function Cell({ style, children }) {
   return <td style={{ ...cellBase, ...style }}>{children}</td>
 }
 function LV({ label, value, vStyle }) {
-  return <>
-    <div style={LBL}>{label}</div>
-    <div style={{ ...VAL, ...vStyle }}>{value}</div>
-  </>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+      <div style={LBL}>{label}</div>
+      <div style={{ ...VAL, ...vStyle }}>{value}</div>
+    </div>
+  )
 }
 
 // ─── CAD Title Block ─────────────────────────────────────────────────────────
 // Layout (9 cols, 2 rows):
 // Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
 // Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
-function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pageName }) {
+function TitleBlock({ project, projectId, panelType, totalKw, count, date, panelWp, pageName, user, t }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
-  const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : 'TBD'
-  const wpStr       = panelWp ? `${panelWp}W`             : 'TBD'
-  const qtyStr      = panelCount != null ? String(panelCount) : 'TBD'
+  const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : '—'
+  const wpStr       = panelWp ? `${panelWp}W`             : '—'
+  const qtyStr      = count != null ? String(count) : '—'
+  const approvalLines = t('step4.tb.approvalReq').split('\n')
 
   return (
     <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', borderTop: B }}>
@@ -57,46 +61,42 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pa
         {/* ── Row 1 ─────────────────────────────────────────────────────── */}
         <tr style={{ height: '50%', borderBottom: B }}>
 
-          {/* col1 row1: תבנית / page name */}
+          {/* col1 row1: template / page name */}
           <Cell style={{ borderLeft: 'none' }}>
             {pageName
-              ? <LV label="תבנית" value={pageName} vStyle={{ fontSize: '10px', fontWeight: '900' }} />
-              : <LV label="תבנית" value="D3" />
+              ? <LV label={t('step4.tb.template')} value={pageName} />
+              : <LV label={t('step4.tb.template')} value="D3" />
             }
           </Cell>
 
-          {/* col2 row1: מספר פרויקט */}
+          {/* col2 row1: project number */}
           <Cell>
-            <LV label="מספר פרויקט" value={project?.number || 'TBD'} />
+            <LV label={t('step4.tb.projectNum')} value={projectId || '—'} vStyle={{ fontSize: '5px', wordBreak: 'break-all', lineHeight: 1.1 }} />
           </Cell>
 
-          {/* col3: approval — rowspan=2 */}
-          <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{ fontSize: '5.5px', color: TEXT, direction: 'rtl', lineHeight: 1.5, marginBottom: '3px' }}>
-              דרישה אישור<br />קונסטרוקטור
-            </div>
-            <span style={{ background: ERROR_DARK, color: WHITE, fontWeight: '900', fontSize: '9px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
-          </td>
-
-          {/* col4 row1: הספק כולל */}
-          <Cell style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={LBL}>הספק כולל</div>
-            <div style={{ ...VAL, fontSize: '9.5px', fontWeight: '900' }}>{kWstr}</div>
+          {/* col3 row1: created by name */}
+          <Cell>
+            <LV label={t('step4.tb.createdBy')} value={user?.full_name || '—'} />
           </Cell>
 
-          {/* col5-6 row1: סוג פאנל (colspan=2) */}
+          {/* col4 row1: total power */}
+          <Cell>
+            <LV label={t('step4.tb.totalPower')} value={kWstr} />
+          </Cell>
+
+          {/* col5-6 row1: panel type (colspan=2) */}
           <td colSpan={2} style={{ ...cellBase }}>
-            <LV label="סוג פאנל" value={panelType || 'TBD'} vStyle={{ fontSize: '6.5px' }} />
+            <LV label={t('step4.tb.panelType')} value={panelType} />
           </td>
 
-          {/* col7-8 row1: שם פרויקט (colspan=2) */}
+          {/* col7-8 row1: project name (colspan=2) */}
           <td colSpan={2} style={{ ...cellBase }}>
-            <LV label="שם פרויקט" value={projectName} vStyle={{ fontSize: '6.5px' }} />
+            <LV label={t('step4.tb.projectName')} value={projectName} />
           </td>
 
           {/* col9: logo — rowspan=2 */}
           <td rowSpan={2} style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center', padding: '3px 5px' }}>
-            <img src="/sadotenergylogo.png" alt="שדרות אנרגיה"
+            <img src="/sadotenergylogo.png" alt="logo"
               style={{ maxWidth: '100%', maxHeight: '40px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           </td>
         </tr>
@@ -104,37 +104,47 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pa
         {/* ── Row 2 ─────────────────────────────────────────────────────── */}
         <tr style={{ height: '50%' }}>
 
-          {/* col1 row2: לאישור */}
+          {/* col1 row2: for approval */}
           <td style={{ ...cellBase, borderLeft: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{ background: '#2563eb', color: '#fff', fontWeight: '800', fontSize: '7px', borderRadius: '2px', padding: '2px 6px', display: 'inline-block', direction: 'rtl' }}>לאישור</div>
+            <div style={{ background: '#2563eb', color: '#fff', fontWeight: '800', fontSize: '9px', borderRadius: '2px', padding: '2px 6px', display: 'inline-block' }}>{t('step4.tb.forApproval')}</div>
           </td>
 
-          {/* col2 row2: blank */}
-          <Cell />
+          {/* col2 row2: approval required */}
+          <td style={{ ...cellBase, verticalAlign: 'middle', textAlign: 'center' }}>
+            <div style={{ fontSize: '7px', fontWeight: '700', color: TEXT, lineHeight: 1.4, marginBottom: '3px' }}>
+              {approvalLines.map((line, i) => <span key={i}>{line}{i < approvalLines.length - 1 && <br />}</span>)}
+            </div>
+            <span style={{ background: ERROR_DARK, color: WHITE, fontWeight: '900', fontSize: '10px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
+          </td>
 
-          {/* col3 spanned — skip */}
+          {/* col3 row2: created by email */}
+          <Cell>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+              <div style={{ ...VAL, fontSize: '6px', fontWeight: '400' }}>{user?.email || '—'}</div>
+            </div>
+          </Cell>
 
           {/* col4 row2: blank */}
           <Cell />
 
-          {/* col5 row2: הספק */}
+          {/* col5 row2: power */}
           <Cell>
-            <LV label="הספק" value={wpStr} />
+            <LV label={t('step4.tb.power')} value={wpStr} />
           </Cell>
 
-          {/* col6 row2: כמות */}
+          {/* col6 row2: quantity */}
           <Cell>
-            <LV label="כמות" value={qtyStr} />
+            <LV label={t('step4.tb.quantity')} value={qtyStr} />
           </Cell>
 
-          {/* col7 row2: תאריך */}
+          {/* col7 row2: date */}
           <Cell>
-            <LV label="תאריך" value={dateStr} vStyle={{ fontSize: '6.5px' }} />
+            <LV label={t('step4.tb.date')} value={dateStr} />
           </Cell>
 
-          {/* col8 row2: מיקום */}
+          {/* col8 row2: location */}
           <Cell>
-            <LV label="מיקום" value={location} vStyle={{ fontSize: '6.5px' }} />
+            <LV label={t('step4.tb.location')} value={location} />
           </Cell>
 
           {/* col9 spanned — skip */}
@@ -146,7 +156,8 @@ function TitleBlock({ project, panelType, totalKw, panelCount, date, panelWp, pa
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date, children, pageRef, pageName }) {
+export function CadPage({ project, projectId, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, user }) {
+  const { t } = useLang()
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
 
@@ -200,12 +211,15 @@ export function CadPage({ project, panelType, panelWp, totalKw, panelCount, date
       }}>
         <TitleBlock
           project={project}
+          projectId={projectId}
           panelType={panelType}
           panelWp={panelWp}
           totalKw={totalKw}
-          panelCount={panelCount}
+          count={count}
           date={date}
           pageName={pageName}
+          user={user}
+          t={t}
         />
       </div>
     </div>
@@ -229,10 +243,11 @@ function ScaledPage({ scale, children }) {
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
 export default function Step4PdfReport({
+  user = null,
   panels = [], refinedArea, areas = [], project, projectId,
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
-  trapPanelLinesMap = {},
+  trapPanelLinesMap = {}, roofType = 'concrete',
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
@@ -241,6 +256,7 @@ export default function Step4PdfReport({
   const page2Ref = useRef(null)
   const page3Ref = useRef(null)
   const page4Ref = useRef(null)
+  const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
   const { lang } = useLang()
@@ -306,35 +322,33 @@ export default function Step4PdfReport({
     return () => { el.removeEventListener('wheel', blockCtrl); ro.disconnect() }
   }, [activeTab])
 
-  const panelCount = panels.length
+  const count = panels.length
   const panelType  = refinedArea?.panelType ?? null
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
-  // Build ghost map: for each trapId, find the full-trap in its area (if different)
-  const fullTrapGhostMap = useMemo(() => {
-    // Group trapIds by area using actual area data (not string manipulation)
-    const areaGroupMap = {}
+  // Map trapId → all trapezoidIds in the same area (used for ghost + trap count)
+  const areaGroupMap = useMemo(() => {
+    const map = {}
     for (const area of (areas ?? [])) {
       for (const tid of (area.trapezoidIds ?? [])) {
-        areaGroupMap[tid] = area.trapezoidIds
-      }
-    }
-    const map = {}
-    for (const tid of trapIds) {
-      const areaTids = areaGroupMap[tid] ?? [tid]
-      if (areaTids.length < 2) continue  // single-trap area — no ghost needed
-      const fullTid = areaTids.find(t => beTrapezoidsData?.[t]?.isFullTrap)
-      if (!fullTid || fullTid === tid) continue
-      map[tid] = {
-        beDetailData: beTrapezoidsData[fullTid],
-        panelLines: trapPanelLinesMap[fullTid] ?? null,
-        lineRails: trapLineRailsMap[fullTid] ?? null,
-        rc: trapRCMap[fullTid] ?? null,
+        map[tid] = area.trapezoidIds
       }
     }
     return map
-  }, [trapIds, areas, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
+  }, [areas])
+
+  // Build ghost map: for each non-full trapId, find the full-trap in its area
+  // with the same cross-section family (line count, angle, front height).
+  const fullTrapGhostMap = useMemo(() => {
+    const map = {}
+    for (const tid of trapIds) {
+      const areaTids = areaGroupMap[tid] ?? [tid]
+      const ghost = buildFullTrapGhost(tid, areaTids, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap)
+      if (ghost) map[tid] = ghost
+    }
+    return map
+  }, [trapIds, areaGroupMap, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
 
   // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
   const panelWp = (() => {
@@ -342,7 +356,7 @@ export default function Step4PdfReport({
     const m = panelType.match(/[A-Z0-9](\d{3})[^0-9]/)
     return m ? parseInt(m[1], 10) : null
   })()
-  const totalKw = panelWp ? (panelCount * panelWp) / 1000 : null
+  const totalKw = panelWp ? (count * panelWp) / 1000 : null
 
   // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas
   // doesn't need to parse SVG (which it handles poorly for complex/transformed content).
@@ -369,7 +383,22 @@ export default function Step4PdfReport({
       const clone = svg.cloneNode(true)
       clone.setAttribute('width', w)
       clone.setAttribute('height', h)
-      
+
+      // Inject a <style> element so serialized SVG text uses the same font-family
+      // as the page. Without this the standalone SVG document has no CSS context and
+      // browsers fall back to a default serif font, which renders blurry/illegible
+      // at the small sizes used in CAD annotations.
+      const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+      styleEl.textContent = `
+        text, tspan {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+            'Helvetica Neue', Arial, sans-serif;
+          text-rendering: geometricPrecision;
+          shape-rendering: geometricPrecision;
+        }
+      `
+      clone.insertBefore(styleEl, clone.firstChild)
+
       // Convert <image> elements in SVG to embedded data URLs so they're captured properly
       const svgImages = clone.querySelectorAll('image')
       for (const svgImg of svgImages) {
@@ -421,7 +450,7 @@ export default function Step4PdfReport({
 
   const handleExportPdf = async () => {
     setIsExporting(true)
-    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
 
@@ -437,7 +466,7 @@ export default function Step4PdfReport({
 
       const swaps = await rasterizeSvgs(el)
       const canvas = await html2canvas(el, {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -607,7 +636,7 @@ export default function Step4PdfReport({
               pageRef={page1Ref}
               panels={panels}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -616,30 +645,40 @@ export default function Step4PdfReport({
               pageRef={page2Ref}
               panels={panels} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+            />
+          </ScaledPage>
+
+          <ScaledPage scale={pageScale}>
+            <InstallMethodPage
+              pageRef={page3Ref}
+              panels={panels}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
+              roofType={roofType}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
           <ScaledPage scale={pageScale}>
             <BasesLayoutPage
-              pageRef={page3Ref}
+              pageRef={page4Ref}
               panels={panels} refinedArea={refinedArea} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
           <ScaledPage scale={pageScale}>
             <RailsLayoutPage
-              pageRef={page4Ref}
+              pageRef={page5Ref}
               panels={panels} refinedArea={refinedArea}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               beRailsData={beRailsData}
-              project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>
 
@@ -654,7 +693,8 @@ export default function Step4PdfReport({
                 panelLines={trapPanelLinesMap[trapId] ?? null}
                 beDetailData={beTrapezoidsData?.[trapId]}
                 fullTrapGhost={fullTrapGhostMap[trapId] ?? null}
-                project={project} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr}
+                count={(beBasesData ?? []).reduce((n, ad) => n + (ad.bases ?? []).filter(b => b.trapezoidId === trapId).length, 0) || null}
+                project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
               />
             </ScaledPage>
           ))}

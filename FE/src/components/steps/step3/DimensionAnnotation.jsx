@@ -1,4 +1,4 @@
-import { TEXT_SECONDARY } from '../../../styles/colors'
+import { TEXT_SECONDARY, BLACK } from '../../../styles/colors'
 
 /**
  * DimensionAnnotation — reusable SVG dimension-line component.
@@ -10,10 +10,11 @@ import { TEXT_SECONDARY } from '../../../styles/colors'
  *   zoom        number
  *   color       string         — default colour for all segments
  *   colors      [string, ...]  — optional per-segment colour override
+ *   maxFontSize number         — cap font size (useful when panels are small)
  */
-export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null }) {
+export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, maxFontSize }) {
   const TICK = 4 / zoom
-  const fontSize = 11 / zoom
+  const fontSize = maxFontSize != null ? Math.min(14 / zoom, maxFontSize) : 14 / zoom
 
   return (
     <g>
@@ -49,8 +50,8 @@ export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, 
             <line x1={ax1 - px * TICK} y1={ay1 - py * TICK} x2={ax1 + px * TICK} y2={ay1 + py * TICK} stroke={c} strokeWidth={1.2 / zoom} />
             <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke={c} strokeWidth={1.2 / zoom} />
             <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
-              <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH} fill="white" stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
-              <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={c}>{label}</text>
+              <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH} fill="white" fillOpacity={0.7} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
+              <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={BLACK}>{label}</text>
             </g>
           </g>
         )

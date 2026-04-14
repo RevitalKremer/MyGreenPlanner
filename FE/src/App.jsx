@@ -700,6 +700,7 @@ function App() {
 
         {s.currentStep === 5 && (
           <Step5PdfReport
+            user={auth.user}
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -712,6 +713,7 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}

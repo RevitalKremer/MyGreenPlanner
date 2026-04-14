@@ -23,6 +23,25 @@ export function getPanelsBoundingBox(panels) {
   return { minX, maxX, minY, maxY }
 }
 
+/**
+ * Compute optimal print-mode scale and natural size to maximally fill a
+ * fixed content area while preserving the bbox aspect ratio.
+ * Returns { sc, naturalW, naturalH } where one of (naturalW, naturalH)
+ * equals the corresponding (contentW, contentH) and the other is smaller.
+ */
+export function computePrintFit(bboxW, bboxH, contentW, contentH, pad) {
+  const availW = Math.max(1, contentW - 2 * pad)
+  const availH = Math.max(1, contentH - 2 * pad)
+  const sc = bboxW > 0 && bboxH > 0
+    ? Math.min(availW / bboxW, availH / bboxH)
+    : 1
+  return {
+    sc,
+    naturalW: bboxW * sc + 2 * pad,
+    naturalH: bboxH * sc + 2 * pad,
+  }
+}
+
 /** Expand a bounding box to include the full image dimensions if image exists */
 export function expandBboxForImage(panelBbox, uploadedImageData) {
   if (!uploadedImageData) return panelBbox
@@ -63,4 +82,35 @@ export function buildTrapezoidGroups(panels) {
   }
   const keys = Object.keys(map).sort()
   return { map, keys }
+}
+
+/**
+ * Build the ghost object for a non-full trap, or null if not applicable.
+ * Returns { beDetailData, panelLines, lineRails, rc } from the matching
+ * full trap in the same area with the same cross-section family
+ * (line count, angle, front height).
+ */
+export function buildFullTrapGhost(trapId, areaTrapIds, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap) {
+  if (beTrapezoidsData?.[trapId]?.isFullTrap) return null
+  if (!areaTrapIds || areaTrapIds.length < 2) return null
+  const lineCount = trapPanelLinesMap[trapId]?.length ?? 0
+  const rc = trapRCMap[trapId]
+  const angle = Math.round(rc?.angle ?? 0)
+  const frontH = Math.round(rc?.frontHeight ?? 0)
+  const fullTid = areaTrapIds.find(tid => {
+    if (tid === trapId) return false
+    if (!beTrapezoidsData?.[tid]?.isFullTrap) return false
+    if ((trapPanelLinesMap[tid]?.length ?? 0) !== lineCount) return false
+    const cRC = trapRCMap[tid]
+    if (Math.round(cRC?.angle ?? 0) !== angle) return false
+    if (Math.round(cRC?.frontHeight ?? 0) !== frontH) return false
+    return true
+  })
+  if (!fullTid) return null
+  return {
+    beDetailData: beTrapezoidsData[fullTid],
+    panelLines: trapPanelLinesMap[fullTid] ?? null,
+    lineRails: trapLineRailsMap[fullTid] ?? null,
+    rc: trapRCMap[fullTid] ?? null,
+  }
 }

@@ -7,6 +7,7 @@ import BasesPlanTab  from './step3/BasesPlanTab'
 import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
 import DetailView from './step3/DetailView'
+import { buildFullTrapGhost } from './step3/tabUtils'
 import useStep3Settings from '../../hooks/useStep3Settings'
 import useRowData from '../../hooks/useRowData'
 import useSelectedGeometry from '../../hooks/useSelectedGeometry'
@@ -264,15 +265,10 @@ export default function Step3ConstructionPlanning({
 
           {activeTab === 'detail' && (() => {
             const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
-            const fullTrapId = areaTrapIds.find(tid =>
-              beTrapezoidsData?.[tid]?.isFullTrap && tid !== effectiveSelectedTrapId
+            const fullTrapGhost = buildFullTrapGhost(
+              effectiveSelectedTrapId, areaTrapIds,
+              beTrapezoidsData, rowData.trapPanelLinesMap, rowData.trapLineRailsMap, rowData.trapRCMap,
             )
-            const fullTrapGhost = fullTrapId ? {
-              beDetailData: beTrapezoidsData[fullTrapId],
-              panelLines: rowData.trapPanelLinesMap[fullTrapId],
-              lineRails: rowData.trapLineRailsMap[fullTrapId],
-              rc: rowData.trapRCMap[fullTrapId],
-            } : null
             return (
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 <DetailView

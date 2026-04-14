@@ -85,8 +85,8 @@ const he = {
   'welcome.required':               '*',
 
   // ── Roof Specification ───────────────────────────────────────────────────
-  'roofSpec.type.concrete':           'גג בטון',
-  'roofSpec.type.tiles':              'גג רעפים',
+  'roofSpec.type.concrete':           'בטון',
+  'roofSpec.type.tiles':              'רעפים',
   'roofSpec.type.iskurit':            'אזכורית',
   'roofSpec.type.insulatedPanel':     'פנל מבודד',
   'roofSpec.distanceBetweenPurlins':  'מרחק בין פתות (ס״מ)',
@@ -415,6 +415,7 @@ const he = {
   'step3.layer.railLines':       'קווי קושרות',
   'step3.layer.diagonals':       'אלכסונים',
   'step3.layer.roofLine':        'קו גג',
+  'step3.layer.installMethod':   'שיטת התקנה',
   'step3.detail.membersTitle':   'רכיבים לטרפז',
   'step3.detail.element':        'רכיב',
   'step3.detail.length':         'אורך (סמ)',
@@ -452,12 +453,27 @@ const he = {
   'step3.bases.scheduleTitle':  'לוח בסיסים',
   'step3.bases.count':          '{n} בסיסים',
 
+  // ── Step 4 – PDF title block ────────────────────────────────────────────
+  'step4.tb.template':     'תבנית',
+  'step4.tb.projectNum':   'מספר פרויקט',
+  'step4.tb.approvalReq':  'דרוש אישור\nקונסטרוקטור',
+  'step4.tb.totalPower':   'הספק כולל',
+  'step4.tb.panelType':    'סוג פאנל',
+  'step4.tb.projectName':  'שם פרויקט',
+  'step4.tb.forApproval':  'לאישור',
+  'step4.tb.power':        'הספק',
+  'step4.tb.quantity':     'כמות',
+  'step4.tb.date':         'תאריך',
+  'step4.tb.location':     'מיקום',
+  'step4.tb.createdBy':    'נוצר ע״י',
+
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step4.pdf.area':   '{n} אזור',
   'step4.pdf.areas':  'אזורים',
   'step4.pdf.bases':  'פריסת בסיסים',
   'step4.pdf.panels': 'פריסת פנלים',
   'step4.pdf.rails':  'פריסת קושרות',
+  'step4.pdf.installMethod': 'שיטת התקנה',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':              'החשבון שלי',
