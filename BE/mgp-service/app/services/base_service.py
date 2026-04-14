@@ -275,6 +275,59 @@ def compute_area_bases(
 
 # ── External diagonals (runs after trapezoid details) ────────────────────────
 
+def _diagonal_pairs(n: int) -> list[list[int]]:
+    """Compute diagonal base pairs: consecutive pairs from both ends, meeting inward.
+
+    Pattern: [0,1] and [n-2,n-1] always; then [2,3] from left, [n-4,n-3] from right,
+    alternating inward until a pair would overlap with an already-connected base.
+    Stops when at most 1 base remains unattached.
+    """
+    if n < 2:
+        return []
+
+    connected: set[int] = set()
+    pairs: list[list[int]] = []
+
+    # Always add outermost pairs (left→right for left, right→left for right)
+    pairs.append([0, 1])
+    connected.update([0, 1])
+    if n > 2:
+        pairs.append([n - 1, n - 2])
+        connected.update([n - 1, n - 2])
+
+    # Expand inward from both ends
+    left_next = 2
+    right_next = n - 3
+
+    while True:
+        added = False
+
+        # Left side: left→right direction
+        if left_next + 1 < n:
+            a, b = left_next, left_next + 1
+            if a not in connected and b not in connected:
+                pairs.append([a, b])
+                connected.update([a, b])
+                left_next += 2
+                added = True
+
+        # Right side: right→left direction
+        if right_next - 1 >= 0:
+            a, b = right_next, right_next - 1
+            if a not in connected and b not in connected:
+                pairs.append([a, b])
+                connected.update([a, b])
+                right_next -= 2
+                added = True
+
+        if not added:
+            break
+
+    return pairs
+
+
+
+
 def compute_external_diagonals(
     trap_ids: list[str],
     bases_data_map: dict[str, dict],
@@ -322,7 +375,7 @@ def compute_external_diagonals(
         if n < 2:
             continue
 
-        diag_pairs = [[0, 1]] if n == 2 else [[0, 1], [n - 1, n - 2]]
+        diag_pairs = _diagonal_pairs(n)
         area_offset = trap_area_offset.get(trap_id, 0)
 
         base_top_depth_cm = bd.get('baseTopDepthCm', 0)
