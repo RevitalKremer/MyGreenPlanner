@@ -17,6 +17,53 @@ from app.utils.math_helpers import round_to_2dp
 from app.utils.panel_geometry import infer_row_orientation, default_panel_positions, PANEL_V, PANEL_H
 
 
+# ── Edge-offset tolerance optimisation ────────────────────────────────────────
+
+def _optimize_edge_offset(
+    edge_offset_mm: float,
+    frame_length_mm: float,
+    spacing_mm: float,
+    tolerance_pct: float,
+) -> float:
+    """Return the smallest edge offset (within tolerance) that minimises base count.
+
+    Algorithm:
+    1. Compute base count at the original edge offset.
+    2. Compute base count at max tolerance (edge_offset * (1 + pct/100)).
+    3. If the toleranced count is not fewer → return original edge offset.
+    4. Otherwise, analytically solve for the minimum edge offset that
+       achieves the reduced span count:
+         num_spans_reduced * spacing_mm ≤ frame_length_mm − 2 * new_edge
+       ⇒ new_edge ≥ (frame_length_mm − num_spans_reduced * spacing_mm) / 2
+    """
+    if tolerance_pct <= 0 or spacing_mm <= 0:
+        return edge_offset_mm
+
+    inner_span_mm = frame_length_mm - 2 * edge_offset_mm
+    num_spans_orig = max(1, math.ceil(inner_span_mm / spacing_mm))
+
+    max_edge_mm = edge_offset_mm * (1 + tolerance_pct / 100)
+    inner_span_tol = frame_length_mm - 2 * max_edge_mm
+    if inner_span_tol <= 0:
+        return edge_offset_mm
+    num_spans_tol = max(1, math.ceil(inner_span_tol / spacing_mm))
+
+    if num_spans_tol >= num_spans_orig:
+        return edge_offset_mm
+
+    # Find minimum edge offset that achieves the reduced span count.
+    # We need: ceil(inner_span / spacing) <= num_spans_tol
+    # i.e. inner_span <= num_spans_tol * spacing  (since ceil(x) <= n iff x <= n)
+    # i.e. frame_length - 2*edge >= ... is already satisfied;
+    # we want the threshold where the span count just drops:
+    #   inner_span == num_spans_tol * spacing
+    #   edge == (frame_length - num_spans_tol * spacing) / 2
+    min_edge_mm = (frame_length_mm - num_spans_tol * spacing_mm) / 2
+
+    # Clamp: must be at least the original, at most the max tolerance
+    return max(edge_offset_mm, min(min_edge_mm, max_edge_mm))
+
+
 # ── Main computation ──────────────────────────────────────────────────────────
 
 def compute_area_bases(
@@ -35,6 +82,7 @@ def compute_area_bases(
     trap_end_cm: float | None = None,
     custom_offsets: list[float] | None = None,
     roof_spec: dict | None = None,
+    edge_offset_tolerance_pct: float = 0,
 ) -> dict | None:
     """
     Compute base layout for one area (or trapezoid sub-range).
@@ -102,11 +150,16 @@ def compute_area_bases(
             for i in range(num_bases)
         ]
     else:
-        num_spans = max(1, math.ceil(inner_span_mm / spacing_mm))
-        actual_spacing_cm = (inner_span_mm / num_spans) / 10
+        effective_edge_mm = _optimize_edge_offset(
+            edge_offset_mm, frame_length_mm, spacing_mm,
+            edge_offset_tolerance_pct,
+        )
+        effective_inner_span_mm = frame_length_mm - 2 * effective_edge_mm
+        num_spans = max(1, math.ceil(effective_inner_span_mm / spacing_mm))
+        actual_spacing_cm = (effective_inner_span_mm / num_spans) / 10
         num_bases = num_spans + 1
         base_offsets_cm = [
-            round_to_2dp(edge_offset_mm / 10 + i * actual_spacing_cm)
+            round_to_2dp(effective_edge_mm / 10 + i * actual_spacing_cm)
             for i in range(num_bases)
         ]
 

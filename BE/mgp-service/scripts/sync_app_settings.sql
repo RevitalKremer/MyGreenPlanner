@@ -15,7 +15,7 @@ UPDATE app_settings SET visible = false WHERE key IN (
 
 UPDATE app_settings SET visible = true WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
-    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',
+    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
     'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
     'diagTopPct', 'diagBasePct',
     'purlinBufferCm', 'extendFront', 'extendRear'
@@ -54,8 +54,8 @@ UPDATE app_settings SET roof_types = '["concrete"]'::jsonb WHERE key IN (
 -- Concrete + purlin types (not tiles)
 UPDATE app_settings SET roof_types = '["concrete", "iskurit", "insulated_panel"]'::jsonb WHERE key IN (
     'diagTopPct', 'diagBasePct', 'diagSkipBelowCm', 'diagDoubleAboveCm',
-    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'angleProfileSizeMm',
-    'punchOverlapMarginCm', 'punchInnerOffsetCm'
+    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
+    'angleProfileSizeMm', 'punchOverlapMarginCm', 'punchInnerOffsetCm'
 );
 
 -- Purlin types only

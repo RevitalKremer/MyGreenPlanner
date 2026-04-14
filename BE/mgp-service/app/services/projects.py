@@ -565,6 +565,7 @@ def _build_base_inputs(
         'trap_end_cm':         trap_end_cm,
         'custom_offsets':      custom_offsets,
         'roof_spec':           roof_spec,
+        'edge_offset_tolerance_pct': trap_cfg.get('baseEdgeOffsetTolerance', app_defaults.get('baseEdgeOffsetTolerance', 0)),
     }
 
 async def compute_and_save_bases(
