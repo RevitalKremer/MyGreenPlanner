@@ -425,13 +425,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
                     const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
 
-                    // Y: base startCm + diagonal offset along the base beam
+                    // Y: base startCm + diagonal offset along the base beam.
+                    // Use point A's depth for BOTH endpoints so the line is parallel to rails.
                     const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
-                    const lineB = tLines?.find(l => l.lineIdx === baseB.panelLineIdx) ?? tLines?.[0]
                     const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
-                    const depthB = (baseB.startCm + (d.endBaseOffsetCm ?? 0)) / pixelToCmRatio
                     const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
-                    const lyB = tIsBtt ? (lineB?.maxY ?? tLB.maxY) - depthB : (lineB?.minY ?? tLB.minY) + depthB
+                    const lyB = lyA
 
                     const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
                     const pb = localToScreen({ x: lxB, y: lyB }, tFrame.center, tAngle)
