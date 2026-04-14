@@ -72,8 +72,7 @@ export const TRAP_L_PROFILE_FILL    = '#40404080'  // main beam fill
 export const TRAP_L_PROFILE_STROKE  = '#606060'  // main beam stroke
 
 // External diagonal (BasesPlanTab) — cyan for visibility over panels
-export const DIAGONAL_STROKE = '#00ACC1'  // external diagonal line + fill dot
-export const DIAGONAL_DOT    = '#00ACC1'  // external diagonal endpoint dot
+export const DIAGONAL_STROKE = 'cyan' // '#00ACC1'  // external diagonal line + fill dot
 
 // Bases diagram (BasesPlanTab) — darker so blocks/profiles read clearly
 // against the panel hatching in top-down view.
