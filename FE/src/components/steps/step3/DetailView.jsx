@@ -594,15 +594,17 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
               {showPunches && <>
                 {(beDetailData?.punches ?? []).filter(p => p.origin !== 'diagonal').map((p, i) => {
+                  const isBlock = p.origin === 'block'
+                  const r = isBlock ? 3.5 : 2
                   if (p.beamType === 'base') {
                     const bbX0 = legX0 - firstLegPos * SC
                     const px = bbX0 + p.positionCm * SC
-                    return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={2}
+                    return <circle key={`p-${i}`} cx={px} cy={baseY + BEAM_THICK_PX / 2} r={r}
                       fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                   }
                   const px = legX0 + (p.positionCm / (topBeamLength || 1)) * legBW
                   const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
-                  return <circle key={`p-${i}`} cx={px} cy={slopeY} r={2}
+                  return <circle key={`p-${i}`} cx={px} cy={slopeY} r={r}
                     fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                 })}
                 {activeDiags.map((d, di) => {
