@@ -568,46 +568,26 @@ def _build_base_inputs(
         'edge_offset_tolerance_pct': trap_cfg.get('baseEdgeOffsetTolerance', app_defaults.get('baseEdgeOffsetTolerance', 0)),
     }
 
-async def compute_and_save_bases(
-    db: AsyncSession, project: Project, bs,
-    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
-) -> list:
-    """Compute bases for all areas, persist to step3.computedAreas, return per-area results."""
-    await db.refresh(project)
-    data = copy.deepcopy(project.data or {})
-    if step3_data is not None:
-        existing_step3 = data.get('step3', {})
-        for k in _SERVER_COMPUTED_STEP3_KEYS:
-            if k in existing_step3 and k not in step3_data:
-                step3_data[k] = existing_step3[k]
-        # Deep merge globalSettings and areaSettings to preserve unrelated keys
-        if 'globalSettings' in step3_data:
-            existing_global = existing_step3.get('globalSettings') or {}
-            step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
-        if 'areaSettings' in step3_data:
-            existing_area = existing_step3.get('areaSettings') or {}
-            step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
-        existing_step3.update(step3_data)
-        data['step3'] = existing_step3
-    step3 = data.setdefault('step3', {})
-    areas = data.get('step2', {}).get('areas', [])
-    step2 = data.get('step2', {})
-    trapezoids = _trapezoids_by_id(step2)
-    result = []
+def _merge_step3_data(data: dict, step3_data: dict) -> None:
+    """Merge incoming step3 payload into project data, preserving server-computed keys."""
+    existing_step3 = data.get('step3', {})
+    for k in _SERVER_COMPUTED_STEP3_KEYS:
+        if k in existing_step3 and k not in step3_data:
+            step3_data[k] = existing_step3[k]
+    if 'globalSettings' in step3_data:
+        existing_global = existing_step3.get('globalSettings') or {}
+        step3_data['globalSettings'] = _deep_merge_settings(existing_global, step3_data['globalSettings'])
+    if 'areaSettings' in step3_data:
+        existing_area = existing_step3.get('areaSettings') or {}
+        step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
+    existing_step3.update(step3_data)
+    data['step3'] = existing_step3
 
-    # Get settings from cache (no DB query)
-    app_defaults = settings_cache.get_all_settings()
 
-    roof_spec = project.roof_spec or {'type': 'concrete'}
-
-    # Tiles: no construction frame — skip base computation entirely
-    if roof_spec.get('type') == 'tiles':
-        project.data = data
-        flag_modified(project, 'data')
-        await db.commit()
-        return []
-
-    # Persist custom offsets (per-row keys "trapId:rowIdx")
+def _sync_custom_offsets(
+    step3: dict, trapezoid_configs: dict | None,
+) -> dict:
+    """Persist/clear FE-sent custom offsets into step3. Returns the stored_custom dict."""
     stored_custom = step3.get('customBasesOffsets') or {}
     if trapezoid_configs:
         for trap_id, cfg in trapezoid_configs.items():
@@ -620,6 +600,115 @@ async def compute_and_save_bases(
                 else:
                     stored_custom.pop(row_key, None)
     step3['customBasesOffsets'] = stored_custom
+    return stored_custom
+
+
+def _resolve_trap_custom_offsets(
+    trap_id: str, row_idx: int,
+    effective_configs: dict, stored_custom: dict,
+    has_existing_bases: bool, trap_frame_mm: float | None,
+) -> None:
+    """Resolve custom offsets for one trapezoid: FE-sent → stored DB.
+
+    Mutates effective_configs[trap_id] and stored_custom in place.
+    """
+    trap_cfg = effective_configs[trap_id]
+    row_custom_key = f'{trap_id}:{row_idx}'
+
+    if 'customOffsets' in trap_cfg:
+        # FE explicitly sent offsets (or reset with empty list) — use as-is
+        if not trap_cfg['customOffsets']:
+            trap_cfg.pop('customOffsets', None)
+            stored_custom.pop(row_custom_key, None)
+    else:
+        # No FE override — try to restore from stored DB data
+        stored = stored_custom.get(row_custom_key)
+        if stored and has_existing_bases:
+            frame_check = trap_frame_mm
+            if frame_check is not None:
+                if len(stored) >= 2 and max(stored) <= frame_check:
+                    trap_cfg['customOffsets'] = stored
+                else:
+                    stored_custom.pop(row_custom_key, None)
+            elif len(stored) >= 2:
+                trap_cfg['customOffsets'] = stored
+
+
+def _compute_row_bases(
+    bs, data: dict, area: dict, area_idx: int,
+    trap_ids: list[str], trapezoids: dict,
+    app_defaults: dict, roof_spec: dict,
+    trapezoid_configs: dict | None,
+    stored_custom: dict, has_existing_bases: bool,
+    panel_grid: dict, row_idx: int,
+) -> tuple[list, dict[str, dict | None], dict]:
+    """Compute bases for one panel row across all trapezoids.
+
+    Returns (row_bases, bases_data_map, consolidated).
+    """
+    step2 = data.get('step2', {})
+
+    bases_data_map: dict[str, dict | None] = {}
+    for trap_id in trap_ids:
+        trap_start, trap_end = _compute_trap_x_range(
+            panel_grid, trap_id, trap_ids, trapezoids,
+            step2['panelWidthCm'], step2['panelLengthCm'],
+            app_defaults['panelGapCm'],
+        )
+        trap_frame_mm = (
+            round((trap_end - trap_start) * 10)
+            if trap_start is not None and trap_end is not None else None
+        )
+
+        effective_configs = dict(trapezoid_configs or {})
+        if trap_id not in effective_configs:
+            effective_configs[trap_id] = {}
+
+        _resolve_trap_custom_offsets(
+            trap_id, row_idx, effective_configs, stored_custom,
+            has_existing_bases, trap_frame_mm,
+        )
+
+        inputs = _build_base_inputs(
+            data, area, area_idx, app_defaults, trap_id, effective_configs,
+            trap_start, trap_end, roof_spec,
+            panel_grid=panel_grid, row_index=row_idx,
+        )
+        bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
+
+    consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
+    row_bases = []
+    for trap_id in trap_ids:
+        row_bases.extend(consolidated.get(trap_id, []))
+
+    return row_bases, bases_data_map, consolidated
+
+
+async def compute_and_save_bases(
+    db: AsyncSession, project: Project, bs,
+    step3_data: dict | None = None, trapezoid_configs: dict | None = None,
+) -> list:
+    """Compute bases for all areas, persist to step3.computedAreas, return per-area results."""
+    await db.refresh(project)
+    data = copy.deepcopy(project.data or {})
+    if step3_data is not None:
+        _merge_step3_data(data, step3_data)
+    step3 = data.setdefault('step3', {})
+    step2 = data.get('step2', {})
+    areas = step2.get('areas', [])
+    trapezoids = _trapezoids_by_id(step2)
+    app_defaults = settings_cache.get_all_settings()
+    roof_spec = project.roof_spec or {'type': 'concrete'}
+
+    # Tiles: no construction frame — skip base computation entirely
+    if roof_spec.get('type') == 'tiles':
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
+        return []
+
+    stored_custom = _sync_custom_offsets(step3, trapezoid_configs)
+    result = []
 
     for i, area in enumerate(areas):
         area_id = area.get('id', i + 1)
@@ -628,84 +717,35 @@ async def compute_and_save_bases(
         if not trap_ids:
             trap_ids = [label]
 
-        # Check if this area already has computed bases
         computed_area = _get_computed_area(data, area_id)
         existing_bases = computed_area.get('bases', {}) if computed_area else {}
         has_existing_bases = bool(existing_bases) and any(
             len(v) > 0 for v in (existing_bases.values() if isinstance(existing_bases, dict) else [existing_bases])
         )
 
-        # Iterate panel rows (multi-row areas)
         panel_rows = area.get('panelRows', [])
         if not panel_rows:
             pg = area.get('panelGrid')
             panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
 
         all_row_bases: dict[int, list] = {}
-        # Use first row's bases_data_map for trapezoid detail computation
         first_bases_data_map: dict[str, dict | None] = {}
-        per_row_data: dict[int, dict] = {}  # rowIdx → { basesDataMap, consolidated }
+        per_row_data: dict[int, dict] = {}
 
         for pr in panel_rows:
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
 
-            bases_data_map: dict[str, dict | None] = {}
-            for trap_id in trap_ids:
-                trap_start, trap_end = _compute_trap_x_range(
-                    pg, trap_id, trap_ids,
-                    trapezoids,
-                    step2['panelWidthCm'], step2['panelLengthCm'],
-                    app_defaults['panelGapCm'],
-                )
-
-                trap_frame_mm = round((trap_end - trap_start) * 10) if trap_start is not None and trap_end is not None else None
-
-                effective_configs = dict(trapezoid_configs or {})
-                if trap_id not in effective_configs:
-                    effective_configs[trap_id] = {}
-
-                # Per-row custom offsets keyed by "trapId:rowIdx"
-                row_custom_key = f'{trap_id}:{row_idx}'
-                if 'customOffsets' in effective_configs[trap_id]:
-                    # FE explicitly sent offsets (or reset with empty list) — use as-is
-                    if not effective_configs[trap_id]['customOffsets']:
-                        # Explicit reset: clear stored
-                        effective_configs[trap_id].pop('customOffsets', None)
-                        stored_custom.pop(row_custom_key, None)
-                else:
-                    # No FE override — try to restore from stored DB data
-                    stored = stored_custom.get(row_custom_key)
-                    if stored and has_existing_bases:
-                        # Validate offsets fit within frame (single-trap areas have no frame bounds → skip validation)
-                        frame_check = trap_frame_mm or (round((trap_end - trap_start) * 10) if trap_start is not None else None)
-                        if frame_check is not None:
-                            if len(stored) >= 2 and max(stored) <= frame_check:
-                                effective_configs[trap_id]['customOffsets'] = stored
-                            else:
-                                stored_custom.pop(row_custom_key, None)
-                        elif len(stored) >= 2:
-                            # No frame bounds (single-trap area) — trust stored offsets
-                            effective_configs[trap_id]['customOffsets'] = stored
-
-                inputs = _build_base_inputs(
-                    data, area, i, app_defaults, trap_id, effective_configs,
-                    trap_start, trap_end, roof_spec,
-                    panel_grid=pg, row_index=row_idx,
-                )
-                bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
-
-            consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
-
-            row_bases = []
-            for trap_id in trap_ids:
-                row_bases.extend(consolidated.get(trap_id, []))
+            row_bases, bases_data_map, consolidated = _compute_row_bases(
+                bs, data, area, i,
+                trap_ids, trapezoids,
+                app_defaults, roof_spec,
+                trapezoid_configs, stored_custom, has_existing_bases,
+                panel_grid=pg, row_idx=row_idx,
+            )
             all_row_bases[row_idx] = row_bases
-
-            # Keep first row's data for trapezoid detail computation
             if not first_bases_data_map:
                 first_bases_data_map = bases_data_map
-            # Keep per-row data for external diagonal computation
             per_row_data[row_idx] = {'basesDataMap': bases_data_map, 'consolidated': consolidated}
 
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
