@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -70,18 +70,28 @@ function areaPolygonPoints(areaPanels, bbox, sc, PAD) {
   })
 }
 
+const ROOF_COLOR_MAP = {
+  concrete: ROOF_CONCRETE,
+  tiles: ROOF_TILES,
+  iskurit: ROOF_CORRUGATED,
+  insulated_panel: ROOF_CORRUGATED,
+}
+
 export default function AreasTab({
   panels, areas,
   rowKeys = [], areaLabel = () => '',
   printMode = false,
   printShowAreas = true, printShowCounts = true, printShowRoofImage = true,
+  printShowInstallMethod = false,
   printSc = null,
+  roofType = 'concrete',
   uploadedImageData, imageSrc,
 }) {
   const { t } = useLang()
   const [showAreas, setShowAreas] = useState(true)
   const [showCounts, setShowCounts] = useState(true)
   const [showRoofImage, setShowRoofImage] = useState(true)
+  const [showInstallMethod, setShowInstallMethod] = useState(false)
   const [rulerActive, setRulerActive] = useState(false)
 
   const {
@@ -193,9 +203,12 @@ export default function AreasTab({
 
   // Effective layer toggles — print mode uses the explicit print* props,
   // edit mode uses the user-controlled layer panel state.
-  const sRoofImage = printMode ? printShowRoofImage : showRoofImage
-  const sAreas     = printMode ? printShowAreas     : showAreas
-  const sCounts    = printMode ? printShowCounts    : showCounts
+  const sRoofImage      = printMode ? printShowRoofImage      : showRoofImage
+  const sAreas          = printMode ? printShowAreas          : showAreas
+  const sCounts         = printMode ? printShowCounts         : showCounts
+  const sInstallMethod  = printMode ? printShowInstallMethod  : showInstallMethod
+
+  const roofColor = ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE
 
   const svgLayers = (
     <>
@@ -224,6 +237,22 @@ export default function AreasTab({
         pixelToCmRatio={1}
         clipIdPrefix={printMode ? 'atpm' : 'at'}
       />
+
+      {/* Installation method overlay — colored rect per panel */}
+      {sInstallMethod && nonEmptyPanels.map(panel => {
+        const [sx, sy] = toSvg(panel.x, panel.y)
+        const sw = panel.width * sc, sh = panel.height * sc
+        const scx = sx + sw / 2, scy = sy + sh / 2
+        return (
+          <rect key={`im-${panel.id}`}
+            x={sx} y={sy} width={sw} height={sh}
+            fill={roofColor} fillOpacity={0.4}
+            stroke={roofColor} strokeWidth={1} strokeOpacity={0.6}
+            transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}
+            style={{ pointerEvents: 'none' }}
+          />
+        )
+      })}
 
       {sAreas && areaData.map(({ areaKey, svgCx, svgCy, fontSize, label, yDir, rotation }) => (
         <AreaLabel key={`lbl-${areaKey}`}
@@ -270,6 +299,7 @@ export default function AreasTab({
           { label: t('step3.layer.roofImage'), checked: showRoofImage, setter: setShowRoofImage },
           { label: t('step3.areas.label'), checked: showAreas, setter: setShowAreas },
           { label: t('step3.areas.panelCounts'), checked: showCounts, setter: setShowCounts },
+          { label: t('step3.layer.installMethod'), checked: showInstallMethod, setter: setShowInstallMethod },
         ]}
         actions={[
           { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },

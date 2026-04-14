@@ -415,6 +415,7 @@ const en = {
   'step3.layer.railLines':       'Rail lines',
   'step3.layer.diagonals':       'Diagonals',
   'step3.layer.roofLine':        'Roof Line',
+  'step3.layer.installMethod':   'Installation Method',
   'step3.detail.membersTitle':   'Trapezoid Members',
   'step3.detail.element':        'Element',
   'step3.detail.length':         'Length (cm)',
@@ -472,6 +473,7 @@ const en = {
   'step4.pdf.bases':  'Bases Layout',
   'step4.pdf.panels': 'Panels Layout',
   'step4.pdf.rails':  'Rails Layout',
+  'step4.pdf.installMethod': 'Installation Method',
 
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':        'My Account',

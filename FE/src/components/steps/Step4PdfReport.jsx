@@ -12,6 +12,7 @@ import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
 import BasesLayoutPage from './step4/BasesLayoutPage'
+import InstallMethodPage from './step4/InstallMethodPage'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -246,7 +247,7 @@ export default function Step4PdfReport({
   panels = [], refinedArea, areas = [], project, projectId,
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
-  trapPanelLinesMap = {},
+  trapPanelLinesMap = {}, roofType = 'concrete',
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
@@ -255,6 +256,7 @@ export default function Step4PdfReport({
   const page2Ref = useRef(null)
   const page3Ref = useRef(null)
   const page4Ref = useRef(null)
+  const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
   const { lang } = useLang()
@@ -454,7 +456,7 @@ export default function Step4PdfReport({
 
   const handleExportPdf = async () => {
     setIsExporting(true)
-    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
 
@@ -654,8 +656,18 @@ export default function Step4PdfReport({
           </ScaledPage>
 
           <ScaledPage scale={pageScale}>
-            <BasesLayoutPage
+            <InstallMethodPage
               pageRef={page3Ref}
+              panels={panels}
+              uploadedImageData={uploadedImageData} imageSrc={imageSrc}
+              roofType={roofType}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+            />
+          </ScaledPage>
+
+          <ScaledPage scale={pageScale}>
+            <BasesLayoutPage
+              pageRef={page4Ref}
               panels={panels} refinedArea={refinedArea} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
@@ -667,7 +679,7 @@ export default function Step4PdfReport({
 
           <ScaledPage scale={pageScale}>
             <RailsLayoutPage
-              pageRef={page4Ref}
+              pageRef={page5Ref}
               panels={panels} refinedArea={refinedArea}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}

@@ -100,6 +100,11 @@ export const DANGER        = '#dc2626'    // delete / danger action
 export const ADD_GREEN     = '#22c55e'    // add / success indicator
 export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
 
+// ── Roof type / installation method overlay ──────────────────────────────
+export const ROOF_CONCRETE         = '#3e3e3e'   // gray — concrete roof
+export const ROOF_TILES            = '#c0392b'   // tile red — tiles roof
+export const ROOF_CORRUGATED       = '#bdbdbd'   // light gray — iskurit / insulated panel
+
 // ── Area overlay palette (AreasTab polygons) ─────────────────────────────
 export const AREA_PALETTE = ['#5fa8e0', '#5ec89a', '#e09455', '#a855d4', '#d4c832', '#32c8c8', '#e05f8a', '#8ae05f']
 

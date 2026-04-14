@@ -713,6 +713,7 @@ function App() {
             trapRCMap={step4PdfData.trapRCMap}
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
