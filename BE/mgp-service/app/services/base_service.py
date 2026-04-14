@@ -275,12 +275,15 @@ def compute_area_bases(
 
 # ── External diagonals (runs after trapezoid details) ────────────────────────
 
-def _diagonal_pairs(n: int) -> list[list[int]]:
-    """Compute diagonal base pairs: consecutive pairs from both ends, meeting inward.
+def _diagonal_pairs(n: int, base_lengths: list[float] | None = None) -> list[list[int]]:
+    """Compute diagonal base pairs: outer pairs + corner pairs + inward expansion.
 
-    Pattern: [0,1] and [n-2,n-1] always; then [2,3] from left, [n-4,n-3] from right,
-    alternating inward until a pair would overlap with an already-connected base.
-    Stops when at most 1 base remains unattached.
+    Step 1 — always add outer pairs [0,1] and [n-1,n-2].
+    Corner detection — scan inward from each side; where base length changes
+    (short→long), add a corner pair at the first two long bases. This covers
+    the structural "corners" of irregular area shapes (e.g. L-shaped).
+    Expansion — from all seed pairs, continue inward with consecutive pairs,
+    alternating left/right, stop when pairs overlap.
     """
     if n < 2:
         return []
@@ -288,37 +291,70 @@ def _diagonal_pairs(n: int) -> list[list[int]]:
     connected: set[int] = set()
     pairs: list[list[int]] = []
 
-    # Always add outermost pairs (left→right for left, right→left for right)
-    pairs.append([0, 1])
-    connected.update([0, 1])
-    if n > 2:
-        pairs.append([n - 1, n - 2])
-        connected.update([n - 1, n - 2])
+    def _add(a: int, b: int) -> None:
+        pairs.append([a, b])
+        connected.update([a, b])
 
-    # Expand inward from both ends
-    left_next = 2
-    right_next = n - 3
+    # ── Step 1: outer pairs ───────────────────────────────────────────────
+    _add(0, 1)
+    if n > 2:
+        _add(n - 1, n - 2)
+
+    # ── Corner pairs: detect length transitions from each side ────────────
+    lens = base_lengths or []
+    threshold = 1.0  # cm
+
+    if len(lens) >= n:
+        # From left: scan inward, find first short→long transition
+        for i in range(n - 2):
+            if lens[i + 1] - lens[i] > threshold:
+                # Corner: add first two long bases (left→right)
+                if i + 2 < n and (i + 1) not in connected:
+                    _add(i + 1, i + 2)
+                elif i + 2 < n and (i + 2) not in connected:
+                    _add(i + 1, i + 2)
+                break
+            if lens[i] - lens[i + 1] > threshold:
+                break  # getting shorter — no corner from this side
+
+        # From right: scan inward, find first short→long transition
+        for i in range(n - 1, 0, -1):
+            if lens[i - 1] - lens[i] > threshold:
+                # Corner: add first two long bases (right→left)
+                if i - 2 >= 0 and (i - 1) not in connected:
+                    _add(i - 1, i - 2)
+                elif i - 2 >= 0 and (i - 2) not in connected:
+                    _add(i - 1, i - 2)
+                break
+            if lens[i] - lens[i - 1] > threshold:
+                break  # getting shorter — no corner from this side
+
+    # ── Expansion: inward from both ends ──────────────────────────────────
+    left_next = min((i for i in range(n) if i not in connected), default=n)
+    right_next = max((i for i in range(n) if i not in connected), default=-1)
 
     while True:
         added = False
 
-        # Left side: left→right direction
-        if left_next + 1 < n:
+        # Left side: find next unconnected consecutive pair (left→right)
+        while left_next + 1 < n:
             a, b = left_next, left_next + 1
             if a not in connected and b not in connected:
-                pairs.append([a, b])
-                connected.update([a, b])
-                left_next += 2
+                _add(a, b)
+                left_next = b + 1
                 added = True
+                break
+            left_next += 1
 
-        # Right side: right→left direction
-        if right_next - 1 >= 0:
+        # Right side: find next unconnected consecutive pair (right→left)
+        while right_next - 1 >= 0:
             a, b = right_next, right_next - 1
             if a not in connected and b not in connected:
-                pairs.append([a, b])
-                connected.update([a, b])
-                right_next -= 2
+                _add(a, b)
+                right_next = b - 1
                 added = True
+                break
+            right_next -= 1
 
         if not added:
             break
@@ -375,7 +411,8 @@ def compute_external_diagonals(
         if n < 2:
             continue
 
-        diag_pairs = _diagonal_pairs(n)
+        base_lens = [b.get('lengthCm', 0) for b in trap_bases]
+        diag_pairs = _diagonal_pairs(n, base_lens)
         area_offset = trap_area_offset.get(trap_id, 0)
 
         base_top_depth_cm = bd.get('baseTopDepthCm', 0)
