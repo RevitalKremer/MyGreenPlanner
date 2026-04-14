@@ -384,7 +384,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     return (
                       <g key={`base-${ai}-${sbi}`}>
                         <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
-                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><AreaLabel x={mx} y={my} label={sb.trapezoidId} fontSize={Math.max(14, 20 / effZoom)} showChevron={false} /></g>}
+                        {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><AreaLabel x={mx} y={my} label={sb.trapezoidId} fontSize={Math.max(6, Math.min(Math.max(14, 20 / effZoom), smallestPanelW / (2 * 0.6)))} showChevron={false} /></g>}
                       </g>
                     )
                   })
@@ -443,7 +443,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                     const labelAngle = ang > 90 || ang < -90 ? ang + 180 : ang
                     const diagLabel = (d.diagLengthMm / 1000).toFixed(2)
-                    const fs = 11 / effZoom, bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom
+                    const fs = Math.max(4, dimMaxFontSize != null ? Math.min(11 / effZoom, dimMaxFontSize) : 11 / effZoom)
+                    const bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom
                     // Cap diagonal endpoint circle to half the block width so it never
                     // visually overflows the block it sits on.
                     const blockWCm = trapSettingsMap[baseA.trapezoidId]?.blockWidthCm ?? 24
