@@ -167,7 +167,7 @@ const he = {
   'step2.sidebar.frontHPlaceholder': 'לדוגמה: 35',
   'step2.sidebar.angle':             'זווית (°)',
   'step2.sidebar.angleRange':        '0–30',
-  'step2.sidebar.applyToAll':        'החל על כל האזורים',
+  'step2.sidebar.applyToAll':        'החל על כל השורות',
   'step2.sidebar.drawHint':          'בחר את כלי השרטוט וגרור על הקנבס ליצירת אזור פנלים.',
   'step2.sidebar.areas':             'אזורים',
   'step2.sidebar.addToArea':         'הוסף לאזור\u2026',

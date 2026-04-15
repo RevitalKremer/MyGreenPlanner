@@ -20,6 +20,8 @@ export default function TrapezoidConfigEditor({
   frontHeightMin,
   frontHeightMax,
   panelSpec,
+  rowMounting,
+  setRowMounting,
 }) {
   if (!selectedRow) return null
 
@@ -31,20 +33,25 @@ export default function TrapezoidConfigEditor({
 
   const areaKey = getAreaKey(selectedRow[0])
   const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
-  const angleRaw = area?.angle ?? ''
-  const frontHeightRaw = area?.frontHeight ?? ''
-
-  // Update all rows in the same areaGroupId when a shared property changes
-  const updateGroupProp = (updates) => {
-    const groupId = area?.areaGroupId
-    setRectAreas?.(prev => prev.map(a =>
-      a.areaGroupId === groupId ? { ...a, ...updates } : a
-    ))
-  }
-
-  const angle = angleRaw !== '' ? parseFloat(angleRaw) || 0 : defaultAngle
-  const frontHeight = frontHeightRaw !== '' ? parseFloat(frontHeightRaw) || 0 : defaultFrontHeight
+  // Owning row of the selected trap: derive from selected panels' panelRowIdx
+  const rowIdx = selectedRow[0]?.panelRowIdx ?? area?.rowIndex ?? 0
+  const groupLabel = area?.label
+  const rowEntry = (rowMounting?.[groupLabel] || [])[rowIdx]
+  // Row a/h is the source of truth for trap a/h. Editing here writes to the row.
+  const angle = rowEntry?.angleDeg ?? parseFloat(area?.angle) ?? defaultAngle
+  const frontHeight = rowEntry?.frontHeightCm ?? parseFloat(area?.frontHeight) ?? defaultFrontHeight
   const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
+
+  const updateRow = (patch) => {
+    if (!setRowMounting || !groupLabel) return
+    setRowMounting(prev => {
+      const next = { ...(prev || {}) }
+      const rows = [...(next[groupLabel] || [])]
+      rows[rowIdx] = { ...(rows[rowIdx] || {}), ...patch }
+      next[groupLabel] = rows
+      return next
+    })
+  }
 
   // ── Derive lines from actual panel layout ────────────────────────────────
   const rowMap = new Map()
@@ -108,10 +115,12 @@ export default function TrapezoidConfigEditor({
           <button
             onClick={() => {
               resetTrapezoidConfig()
-              if (setRectAreas && areaKey !== null && areaKey !== undefined) {
-                const resetAngle = String(parseFloat(panelAngle) || defaultAngle || 0)
-                const resetFH = String(parseFloat(panelFrontHeight) || defaultFrontHeight || 0)
-                updateGroupProp({ angle: resetAngle, frontHeight: resetFH })
+              // Reset this row's a/h to the global defaults
+              if (groupLabel && setRowMounting) {
+                updateRow({
+                  angleDeg: parseFloat(panelAngle) || defaultAngle || 0,
+                  frontHeightCm: parseFloat(panelFrontHeight) || defaultFrontHeight || 0,
+                })
               }
             }}
             style={{ flex: 1, padding: '0.28rem 0.4rem', fontSize: '0.68rem', fontWeight: '600', background: 'white', color: TEXT_PLACEHOLDER, border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer' }}
@@ -149,27 +158,20 @@ export default function TrapezoidConfigEditor({
         })()}
       </svg>
 
-      {/* Angle + Front Height inputs (hidden for tiles) */}
+      {/* Read-only row a/h display. Trap a/h is derived from its owning row;
+          to change a/h, select the row and edit it in the Row window. */}
       {showMounting && <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Angle (°)</div>
-          <input
-            type="number" min={angleMin} max={angleMax} step="0.5"
-            value={angleRaw !== '' ? angleRaw : defaultAngle}
-            onChange={e => updateGroupProp({ angle: e.target.value })}
-            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateGroupProp({ angle: String(Math.min(angleMax, Math.max(angleMin, v))) }) }}
-            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-          />
+          <div style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: BG_SUBTLE, color: TEXT_SECONDARY }}>
+            {angle.toFixed(1)}
+          </div>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>Front H (cm)</div>
-          <input
-            type="number" min={frontHeightMin} max={frontHeightMax} step="0.5"
-            value={frontHeightRaw !== '' ? frontHeightRaw : defaultFrontHeight}
-            onChange={e => updateGroupProp({ frontHeight: e.target.value })}
-            onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateGroupProp({ frontHeight: String(Math.min(frontHeightMax, Math.max(frontHeightMin, v))) }) }}
-            style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
-          />
+          <div style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: BG_SUBTLE, color: TEXT_SECONDARY }}>
+            {frontHeight.toFixed(1)}
+          </div>
         </div>
       </div>}
 

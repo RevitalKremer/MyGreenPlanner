@@ -57,6 +57,8 @@ export default function Step2PanelPlacement({
   appDefaults,
   paramLimits = {},
   roofType,
+  rowMounting,
+  setRowMounting,
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
@@ -74,9 +76,19 @@ export default function Step2PanelPlacement({
   // Multi-row: when set, the next drawn area will be added to this areaGroupId
   const [addRowToGroup, setAddRowToGroup] = useState(null)
 
-  // Clear trapezoid override whenever selection changes
+  // Clear trapezoid override when selection changes to something that isn't
+  // the override's trap. Needed so a canvas/panel click drops the override,
+  // but explicit trap clicks (which set both selectedPanels and trapIdOverride
+  // in the same render) are preserved.
   useEffect(() => {
-    setTrapIdOverride(null)
+    if (!trapIdOverride) return
+    if (selectedPanels.length === 0) { setTrapIdOverride(null); return }
+    const trapPanelIds = new Set(
+      panels.filter(p => p.trapezoidId === trapIdOverride).map(p => p.id)
+    )
+    const allSelectedBelongToTrap = selectedPanels.every(id => trapPanelIds.has(id))
+    if (!allSelectedBelongToTrap) setTrapIdOverride(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPanels])
 
   // ── Auto-recalc trapezoids with 1s debounce ──
@@ -188,10 +200,15 @@ export default function Step2PanelPlacement({
       const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
       if (areaPanels.length > 0) {
         setSelectedPanels(prev => {
-          // In move/rotate: if all selected panels still exist, keep exact selection (e.g. after drag)
+          // If the current selection is still valid (all IDs exist in panels),
+          // leave it alone — preserves row/trap sub-selections. The resync is
+          // only needed after a panel recompute where IDs actually changed.
+          if (prev.length > 0 && prev.every(id => panels.some(p => p.id === id))) return prev
+          // In move/rotate: if all selected panels still exist in the area,
+          // keep exact selection (e.g. after drag)
           const tool = activeToolRef.current
           if ((tool === 'move' || tool === 'rotate') && prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
-          // Otherwise (draw mode, or recompute with new IDs) — re-sync to full area
+          // Otherwise (recompute with new IDs) — re-sync to full area
           const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
           return same ? prev : areaPanels
         })
@@ -473,19 +490,24 @@ export default function Step2PanelPlacement({
   }, [panels, rectAreas])
 
   const sharedTrapIds = useMemo(() => {
-    const trapToAreas = {}
+    // A trap is "shared" only if it appears in ≥ 2 distinct area GROUPS
+    // (areaGroupId). Multi-row areas have multiple rectArea indices sharing
+    // one areaGroupId — traps spanning rows of the same area should NOT be
+    // marked as shared.
+    const trapToGroups = {}
     Object.entries(areaTrapezoidMap).forEach(([areaKey, trapIds]) => {
+      const groupId = rectAreas[areaKey]?.areaGroupId ?? areaKey
       trapIds.forEach(trapId => {
-        if (!trapToAreas[trapId]) trapToAreas[trapId] = []
-        trapToAreas[trapId].push(areaKey)
+        if (!trapToGroups[trapId]) trapToGroups[trapId] = new Set()
+        trapToGroups[trapId].add(groupId)
       })
     })
     const shared = new Set()
-    Object.entries(trapToAreas).forEach(([trapId, areaKeys]) => {
-      if (areaKeys.length > 1) shared.add(trapId)
+    Object.entries(trapToGroups).forEach(([trapId, groups]) => {
+      if (groups.size > 1) shared.add(trapId)
     })
     return shared
-  }, [areaTrapezoidMap])
+  }, [areaTrapezoidMap, rectAreas])
 
   const resetTrapezoidConfig = () => {
     if (!selectedTrapezoidId) return
@@ -604,6 +626,7 @@ export default function Step2PanelPlacement({
             setPanelAngle={setPanelAngle}
             selectedRow={selectedRow}
             selectedTrapezoidId={selectedTrapezoidId}
+            trapIdOverride={trapIdOverride}
             selectedAreaLabel={selectedAreaLabel}
             refinedArea={refinedArea}
             resetTrapezoidConfig={resetTrapezoidConfig}
@@ -615,6 +638,8 @@ export default function Step2PanelPlacement({
             frontHeightMin={fhLim.min}
             frontHeightMax={fhLim.max}
             roofType={roofType}
+            rowMounting={rowMounting}
+            setRowMounting={setRowMounting}
           />
         )}
 

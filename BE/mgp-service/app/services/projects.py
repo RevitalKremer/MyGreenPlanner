@@ -181,11 +181,17 @@ def _validate_step2_trapezoids(project: Project) -> list[str]:
       2. Every panel trapezoidId is listed in its area's trapezoidIds
       3. Each trapezoid's lineOrientations length matches the actual number of
          panel lines for that trap within each physical row
+      4. Each trapezoid's angleDeg/frontHeightCm matches its owning row's a/h
+         (with area a/h and step2 default a/h as fallbacks). Row a/h is the
+         source of truth — FE computes trap a/h from owning row, and this
+         check verifies FE/BE produce matching results.
     """
     panels = (project.layout or {}).get('panels', [])
     step2 = (project.data or {}).get('step2', {})
     areas = step2.get('areas', [])
     traps = {t['id']: t for t in step2.get('trapezoids', [])}
+    default_angle = step2.get('defaultAngleDeg', 0) or 0
+    default_fh = step2.get('defaultFrontHeightCm', 0) or 0
     errors = []
 
     if not panels or not areas:
@@ -272,6 +278,68 @@ def _validate_step2_trapezoids(project: Project) -> list[str]:
             errors.append(
                 f"Trap '{tid}' (area {agk}, row {pri}): lineOrientations has "
                 f"{real_line_count} real lines but panels have {actual_line_count} lines"
+            )
+
+    # Check 4: trap a/h matches owning row a/h (with area + default fallbacks).
+    # Row a/h is the source of truth; FE derives trap a/h from owning row.
+    # This check enforces that FE/BE compute the same value.
+    AH_TOL = 0.01  # tolerance for float comparison
+    seen_traps: set[str] = set()
+    for (agk, pri, tid), _lines in row_trap_lines.items():
+        if tid in seen_traps:
+            continue
+        seen_traps.add(tid)
+        trap_cfg = traps.get(tid)
+        if not trap_cfg:
+            continue
+        # Resolve owning area: panel's area carries the rectArea index, but
+        # the area we want is the one whose trapezoidIds contains tid.
+        owning_area = None
+        for a in areas:
+            if tid in (a.get('trapezoidIds') or []):
+                owning_area = a
+                break
+        if owning_area is None:
+            continue
+        # Resolve owning row by panelRowIdx within the area's panelRows.
+        # Skip None entries (sparse arrays appear when rowIndex is not 0-based,
+        # e.g. single-row area whose only row has rowIndex=2 → panelRows is
+        # serialized as [null, null, {...}]).
+        owning_row = None
+        for r in (owning_area.get('panelRows') or []):
+            if r is None:
+                continue
+            if r.get('rowIndex', 0) == pri:
+                owning_row = r
+                break
+
+        # Expected a/h: row → area → step2 default
+        if owning_row is not None and owning_row.get('angleDeg') is not None:
+            expected_angle = owning_row['angleDeg']
+        elif owning_area.get('angleDeg') is not None:
+            expected_angle = owning_area['angleDeg']
+        else:
+            expected_angle = default_angle
+
+        if owning_row is not None and owning_row.get('frontHeightCm') is not None:
+            expected_fh = owning_row['frontHeightCm']
+        elif owning_area.get('frontHeightCm') is not None:
+            expected_fh = owning_area['frontHeightCm']
+        else:
+            expected_fh = default_fh
+
+        actual_angle = trap_cfg.get('angleDeg', 0) or 0
+        actual_fh = trap_cfg.get('frontHeightCm', 0) or 0
+
+        if abs(actual_angle - expected_angle) > AH_TOL:
+            errors.append(
+                f"Trap '{tid}' (area {agk}, row {pri}): angleDeg {actual_angle} "
+                f"does not match owning row a/h {expected_angle}"
+            )
+        if abs(actual_fh - expected_fh) > AH_TOL:
+            errors.append(
+                f"Trap '{tid}' (area {agk}, row {pri}): frontHeightCm {actual_fh} "
+                f"does not match owning row a/h {expected_fh}"
             )
 
     return errors
@@ -423,6 +491,11 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
         all_row_rails: dict[int, list] = {}
         total_large_gaps = 0
         for pr in panel_rows:
+            # Skip None entries — panelRows can be sparse when a row's rowIndex
+            # is not 0-based (e.g. single-row area with rowIndex=2 serializes as
+            # [null, null, {...}]).
+            if pr is None:
+                continue
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
             computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults, panel_grid=pg))
@@ -733,6 +806,10 @@ async def compute_and_save_bases(
         per_row_data: dict[int, dict] = {}
 
         for pr in panel_rows:
+            # Skip None entries — panelRows can be sparse when a row's rowIndex
+            # is not 0-based (e.g. single-row area with rowIndex=2).
+            if pr is None:
+                continue
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
 
