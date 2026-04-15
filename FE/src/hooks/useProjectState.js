@@ -102,6 +102,8 @@ export function useProjectState() {
   const setTrapezoidConfigs = (v) => pDispatch({ type: A.SET_TRAPEZOID_CONFIGS, value: v })
   const panelGrid = pState.data.step2.panelGrid
   const setPanelGrid = (v) => pDispatch({ type: A.SET_PANEL_GRID, value: v })
+  const rowMounting = pState.data.step2.rowMounting || {}
+  const setRowMounting = (v) => pDispatch({ type: A.SET_ROW_MOUNTING, value: v })
 
 
   // Set before operations that call setRectAreas but already handle panel state themselves.
@@ -227,14 +229,35 @@ export function useProjectState() {
       lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
     }))
     const grid = {}
+    const rowMtg = {}  // areaLabel → [{angleDeg, frontHeightCm}, ...]
     ;(s2.areas || []).forEach(a => {
       const label = a.label ?? a.id
       if (a.panelRows?.length > 0) {
         // New format: panelRows array
         grid[label] = a.panelRows.map(pr => pr.panelGrid).filter(Boolean)
+        // Row a/h: prefer panelRow's a/h. Backfill from area / first matching trap if missing.
+        rowMtg[label] = a.panelRows.map((pr, ri) => {
+          let ang = pr.angleDeg
+          let fh  = pr.frontHeightCm
+          if (ang == null || fh == null) {
+            // Backfill from a trap that has panels in this row
+            const panels = (layout.panels || []).filter(p =>
+              !p.isEmpty && (p.panelRowIdx ?? 0) === (pr.rowIndex ?? ri)
+            )
+            const tid = panels.map(p => p.trapezoidId).find(t => t && (a.trapezoidIds || []).includes(t))
+            const trap = tid ? (s2.trapezoids || []).find(t => t.id === tid) : null
+            if (ang == null) ang = trap?.angleDeg ?? a.angleDeg ?? s2.defaultAngleDeg ?? 0
+            if (fh  == null) fh  = trap?.frontHeightCm ?? a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0
+          }
+          return { angleDeg: ang, frontHeightCm: fh }
+        })
       } else if (a.panelGrid) {
         // Legacy format: single panelGrid → wrap as array
         grid[label] = [a.panelGrid]
+        rowMtg[label] = [{
+          angleDeg: a.angleDeg ?? s2.defaultAngleDeg ?? 0,
+          frontHeightCm: a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0,
+        }]
       }
     })
 
@@ -310,6 +333,7 @@ export function useProjectState() {
           areas: feAreas,
           trapezoidConfigs,
           panelGrid: grid,
+          rowMounting: rowMtg,
         },
         step3: { globalSettings: s3.globalSettings || {}, areaSettings: s3.areaSettings || {},
                  customDiagonals: s3.customDiagonals || {}, customBasesOffsets: s3.customBasesOffsets || {} },
@@ -425,6 +449,7 @@ export function useProjectState() {
         ? panelDerivedTrapIds
         : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
 
+      const areaRowMounting = (d.step2.rowMounting || {})[groupLabel] || []
       return {
         ...a,
         label: groupLabel,
@@ -432,11 +457,14 @@ export function useProjectState() {
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
         trapezoidIds: areaTrapIds,
         panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
-          rowIndex: ri, panelGrid: pg ?? null,
+          rowIndex: ri,
+          panelGrid: pg ?? null,
+          angleDeg: areaRowMounting[ri]?.angleDeg ?? null,
+          frontHeightCm: areaRowMounting[ri]?.frontHeightCm ?? null,
         })),
       }
     })
-    const { trapezoidConfigs: _tc, panelGrid: _pg, ...step2Rest } = d.step2
+    const { trapezoidConfigs: _tc, panelGrid: _pg, rowMounting: _rm, ...step2Rest } = d.step2
     return {
       ...d,
       step2: {
@@ -558,6 +586,7 @@ export function useProjectState() {
     const result = refreshAreaTrapezoidsAction({
       areaIdx, area: rectAreas[areaIdx], panels, rectAreas, referenceLine, referenceLineLengthCm,
       panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
+      rowMounting,
     })
     if (!result) return
     setPanels(result.updatedPanels)
@@ -692,6 +721,7 @@ export function useProjectState() {
       panels, deletedPanelKeys: _deletedKeysOverride ?? deletedPanelKeys,
       panelFrontHeight, panelAngle,
       panelGrid, trapezoidConfigs,
+      rowMounting,
       roofPolygon, panelType,
       onlyAreaIdx: _onlyAreaIdx,
     })
@@ -713,6 +743,7 @@ export function useProjectState() {
       })
     })
     setTrapezoidConfigs(result.trapezoidConfigs)
+    if (result.rowMounting) setRowMounting(result.rowMounting)
   }
 
   const recordPanelDeletion = (panel) => {
@@ -761,6 +792,7 @@ export function useProjectState() {
         referenceLine, referenceLineLengthCm,
         panelSpec, appDefaults, panelFrontHeight, panelAngle,
         trapezoidConfigs: currentTrapConfigs,
+        rowMounting,
       })
       if (refreshResult) {
         currentPanels = refreshResult.updatedPanels
@@ -799,7 +831,7 @@ export function useProjectState() {
     }, 5)
     return () => { if (computeTimerRef.current) clearTimeout(computeTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults])
+  }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults, rowMounting])
 
   const handleNext = (totalSteps) => {
     if (currentStep >= totalSteps) return
@@ -825,6 +857,7 @@ export function useProjectState() {
           referenceLine, referenceLineLengthCm,
           panelSpec, appDefaults, panelFrontHeight, panelAngle,
           trapezoidConfigs: currentTrapConfigs,
+          rowMounting,
         })
         if (result) {
           currentPanels = result.updatedPanels
@@ -968,6 +1001,7 @@ export function useProjectState() {
     viewZoom, setViewZoom,
     trapezoidConfigs, setTrapezoidConfigs,
     panelGrid,
+    rowMounting, setRowMounting,
     rebuildPanelGrid,
     recordPanelDeletion,
     clearDeletedPanelsForArea,

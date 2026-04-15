@@ -95,6 +95,10 @@ def _derive_row_construction(
     total_panel_count = 0
     max_num_lines = 0
     for pr in panel_rows:
+        # Skip None entries — panelRows can be sparse when a row's rowIndex
+        # is not 0-based (e.g. single-row area with rowIndex=2).
+        if pr is None:
+            continue
         pg = pr.get('panelGrid') or {}
         total_panel_count += _count_panels(pg)
         nl = _count_lines(pg)

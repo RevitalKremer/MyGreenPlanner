@@ -17,6 +17,7 @@ export const A = Object.freeze({
   SET_AREAS:              'SET_AREAS',
   SET_TRAPEZOID_CONFIGS:  'SET_TRAPEZOID_CONFIGS',
   SET_PANEL_GRID:         'SET_PANEL_GRID',
+  SET_ROW_MOUNTING:       'SET_ROW_MOUNTING',
   // Step 3
   SET_STEP3_GLOBAL:       'SET_STEP3_GLOBAL',
   SET_STEP3_AREA:         'SET_STEP3_AREA',
@@ -62,6 +63,9 @@ export const initialProjectState = {
       areas: [],
       trapezoidConfigs: {},
       panelGrid: {},
+      // rowMounting[areaLabel] = [{ angleDeg, frontHeightCm }, ...] per row.
+      // Row a/h is the source of truth; trap a/h derives from owning row.
+      rowMounting: {},
     },
     step3: {
       globalSettings: {},
@@ -162,6 +166,11 @@ export function projectReducer(state, action) {
     case A.SET_PANEL_GRID: {
       const panelGrid = typeof action.value === 'function' ? action.value(state.data.step2.panelGrid) : action.value
       return { ...state, data: { ...state.data, step2: { ...state.data.step2, panelGrid } } }
+    }
+
+    case A.SET_ROW_MOUNTING: {
+      const rowMounting = typeof action.value === 'function' ? action.value(state.data.step2.rowMounting || {}) : action.value
+      return { ...state, data: { ...state.data, step2: { ...state.data.step2, rowMounting } } }
     }
 
     // ── Step 3 settings ──

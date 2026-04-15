@@ -167,7 +167,7 @@ const en = {
   'step2.sidebar.frontHPlaceholder': 'e.g. 35',
   'step2.sidebar.angle':          'Angle (°)',
   'step2.sidebar.angleRange':     '0–30',
-  'step2.sidebar.applyToAll':     'Apply to All Areas',
+  'step2.sidebar.applyToAll':     'Apply to All Rows',
   'step2.sidebar.drawHint':       'Select the Draw tool and drag on the canvas to create a panel area.',
   'step2.sidebar.areas':          'Areas',
   'step2.sidebar.addToArea':      'Add to area\u2026',

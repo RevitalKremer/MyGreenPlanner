@@ -19,7 +19,8 @@ from app.services.trapezoid_detail_service import _compute_block_punches, trim_t
 from app.services import settings_cache
 from app.utils.math_helpers import round_to_1dp
 from app.utils.panel_geometry import (
-    is_empty_orientation, PANEL_V, PANEL_H, PANEL_EH, REAL_PANELS
+    is_empty_orientation, infer_row_orientation,
+    PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
 
 
@@ -181,11 +182,17 @@ def _validate_step2_trapezoids(project: Project) -> list[str]:
       2. Every panel trapezoidId is listed in its area's trapezoidIds
       3. Each trapezoid's lineOrientations length matches the actual number of
          panel lines for that trap within each physical row
+      4. Each trapezoid's angleDeg/frontHeightCm matches its owning row's a/h
+         (with area a/h and step2 default a/h as fallbacks). Row a/h is the
+         source of truth — FE computes trap a/h from owning row, and this
+         check verifies FE/BE produce matching results.
     """
     panels = (project.layout or {}).get('panels', [])
     step2 = (project.data or {}).get('step2', {})
     areas = step2.get('areas', [])
     traps = {t['id']: t for t in step2.get('trapezoids', [])}
+    default_angle = step2.get('defaultAngleDeg', 0) or 0
+    default_fh = step2.get('defaultFrontHeightCm', 0) or 0
     errors = []
 
     if not panels or not areas:
@@ -272,6 +279,68 @@ def _validate_step2_trapezoids(project: Project) -> list[str]:
             errors.append(
                 f"Trap '{tid}' (area {agk}, row {pri}): lineOrientations has "
                 f"{real_line_count} real lines but panels have {actual_line_count} lines"
+            )
+
+    # Check 4: trap a/h matches owning row a/h (with area + default fallbacks).
+    # Row a/h is the source of truth; FE derives trap a/h from owning row.
+    # This check enforces that FE/BE compute the same value.
+    AH_TOL = 0.01  # tolerance for float comparison
+    seen_traps: set[str] = set()
+    for (agk, pri, tid), _lines in row_trap_lines.items():
+        if tid in seen_traps:
+            continue
+        seen_traps.add(tid)
+        trap_cfg = traps.get(tid)
+        if not trap_cfg:
+            continue
+        # Resolve owning area: panel's area carries the rectArea index, but
+        # the area we want is the one whose trapezoidIds contains tid.
+        owning_area = None
+        for a in areas:
+            if tid in (a.get('trapezoidIds') or []):
+                owning_area = a
+                break
+        if owning_area is None:
+            continue
+        # Resolve owning row by panelRowIdx within the area's panelRows.
+        # Skip None entries (sparse arrays appear when rowIndex is not 0-based,
+        # e.g. single-row area whose only row has rowIndex=2 → panelRows is
+        # serialized as [null, null, {...}]).
+        owning_row = None
+        for r in (owning_area.get('panelRows') or []):
+            if r is None:
+                continue
+            if r.get('rowIndex', 0) == pri:
+                owning_row = r
+                break
+
+        # Expected a/h: row → area → step2 default
+        if owning_row is not None and owning_row.get('angleDeg') is not None:
+            expected_angle = owning_row['angleDeg']
+        elif owning_area.get('angleDeg') is not None:
+            expected_angle = owning_area['angleDeg']
+        else:
+            expected_angle = default_angle
+
+        if owning_row is not None and owning_row.get('frontHeightCm') is not None:
+            expected_fh = owning_row['frontHeightCm']
+        elif owning_area.get('frontHeightCm') is not None:
+            expected_fh = owning_area['frontHeightCm']
+        else:
+            expected_fh = default_fh
+
+        actual_angle = trap_cfg.get('angleDeg', 0) or 0
+        actual_fh = trap_cfg.get('frontHeightCm', 0) or 0
+
+        if abs(actual_angle - expected_angle) > AH_TOL:
+            errors.append(
+                f"Trap '{tid}' (area {agk}, row {pri}): angleDeg {actual_angle} "
+                f"does not match owning row a/h {expected_angle}"
+            )
+        if abs(actual_fh - expected_fh) > AH_TOL:
+            errors.append(
+                f"Trap '{tid}' (area {agk}, row {pri}): frontHeightCm {actual_fh} "
+                f"does not match owning row a/h {expected_fh}"
             )
 
     return errors
@@ -423,6 +492,11 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
         all_row_rails: dict[int, list] = {}
         total_large_gaps = 0
         for pr in panel_rows:
+            # Skip None entries — panelRows can be sparse when a row's rowIndex
+            # is not 0-based (e.g. single-row area with rowIndex=2 serializes as
+            # [null, null, {...}]).
+            if pr is None:
+                continue
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
             computed = rs.compute_area_rails(**_build_rail_inputs(data, area, i, app_defaults, panel_grid=pg))
@@ -634,6 +708,223 @@ def _resolve_trap_custom_offsets(
                 trap_cfg['customOffsets'] = stored
 
 
+# ── Base → trap validation (signature-based) ───────────────────────────────
+#
+# Geometric cross-check: at each base's x-position, probe every line of the
+# row's panelGrid and read the cell (V/H/EV/EH) at that x. The resulting
+# per-line sequence is the base's "column signature". That signature must
+# match exactly one of the area's trapezoids' lineOrientations — that's
+# the trap the base truly belongs to.
+#
+# This independent method is used to validate the trapezoidId already assigned
+# by compute_area_bases. Any mismatch is logged.
+
+
+def _calc_base_trap_signature(
+    base_x_cm: float,
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+) -> list[str | None]:
+    """Build the per-line signature at base_x_cm by probing each line.
+
+    Returns a list whose entries are 'V', 'H', 'EV', 'EH' (or None if the
+    line has no orientation / pitch is invalid).
+
+    A line's cells array may not span the full row width (e.g. an H-line with
+    4 real panels covers less x than a V-line with 10 cols). When col_idx is
+    beyond the array, or the probe lands in the inter-panel gap, the line is
+    treated as carrying an implicit empty slot matching its orientation —
+    this matches how the FE composes the trap's lineOrientations ('EV'/'EH'
+    for virtual gaps within the row extent).
+    """
+    rows = panel_grid.get('rows', []) or []
+    sig: list[str | None] = []
+    for cells in rows:
+        orient = infer_row_orientation(cells)
+        if not orient:
+            sig.append(None)
+            continue
+        is_h = orient == PANEL_H
+        empty_code = PANEL_EH if is_h else PANEL_EV
+        panel_along = panel_length_cm if is_h else panel_width_cm
+        pitch = panel_along + panel_gap_cm
+        if pitch <= 0:
+            sig.append(None)
+            continue
+        col_idx = int(base_x_cm // pitch)
+        within = base_x_cm - col_idx * pitch
+        if col_idx < 0 or col_idx >= len(cells):
+            # Probe is off the explicit grid for this line — treat as an
+            # implicit empty slot of the line's orientation.
+            sig.append(empty_code)
+            continue
+        if within >= panel_along:
+            # Inter-panel gap on this line — also an implicit empty slot.
+            sig.append(empty_code)
+            continue
+        sig.append(cells[col_idx])
+    return sig
+
+
+def _calc_base_trap_signature_with_fallback(
+    base_x_cm: float,
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+) -> list[str | None]:
+    """Signature probe with ± offset fallbacks.
+
+    If the base falls in a gap and one or more lines return None, retry with
+    small offsets (panel_gap_cm) and then a larger nudge (panel_width/4).
+    Return the signature with the most real (V/H) entries.
+    """
+    nudges = [
+        0.0,
+        panel_gap_cm,
+        -panel_gap_cm,
+        panel_width_cm / 4,
+        -panel_width_cm / 4,
+    ]
+    best_sig: list[str | None] = []
+    best_real = -1
+    for off in nudges:
+        sig = _calc_base_trap_signature(
+            base_x_cm + off, panel_grid,
+            panel_width_cm, panel_length_cm, panel_gap_cm,
+        )
+        real_count = sum(1 for s in sig if s in REAL_PANELS)
+        if real_count > best_real:
+            best_real = real_count
+            best_sig = sig
+            if real_count == len([s for s in sig if s is not None]):
+                # Every non-None line resolved to a real panel — good enough
+                break
+    return best_sig
+
+
+def _match_trap_by_signature(
+    sig: list[str | None],
+    trap_ids: list[str],
+    trapezoids_by_id: dict,
+    row_angle_deg: float | None = None,
+    row_front_height_cm: float | None = None,
+) -> str | None:
+    """Return the trap id that best matches the signature at the base.
+
+    Primary key: `lineOrientations == sig`.
+    Secondary (disambiguating) key: the row's a/h. Two traps with identical
+    signatures but different mounting (angleDeg / frontHeightCm) can coexist
+    within a single area when two rows share a column layout but differ in
+    their row-level a/h — see Phase A (sigToTrap keys by signature + a/h on FE).
+
+    Resolution:
+      1. If exactly one trap matches the signature → that one.
+      2. If several match → prefer the one whose a/h matches the row's a/h
+         (within a tight tolerance). Fall back to the first signature match
+         if a/h isn't supplied or nothing matches a/h.
+    """
+    AH_TOL = 0.01
+    candidates: list[str] = []
+    for tid in trap_ids:
+        t = trapezoids_by_id.get(tid)
+        if not t:
+            continue
+        if list(t.get('lineOrientations') or []) == sig:
+            candidates.append(tid)
+
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple sig matches — disambiguate by row a/h if available.
+    if row_angle_deg is not None or row_front_height_cm is not None:
+        for tid in candidates:
+            t = trapezoids_by_id.get(tid, {})
+            t_ang = t.get('angleDeg')
+            t_fh = t.get('frontHeightCm')
+            ang_ok = (
+                row_angle_deg is None
+                or t_ang is None
+                or abs((t_ang or 0) - (row_angle_deg or 0)) <= AH_TOL
+            )
+            fh_ok = (
+                row_front_height_cm is None
+                or t_fh is None
+                or abs((t_fh or 0) - (row_front_height_cm or 0)) <= AH_TOL
+            )
+            if ang_ok and fh_ok:
+                return tid
+
+    # No a/h info or nothing matched — first signature match wins.
+    return candidates[0]
+
+
+def _reassign_row_base_traps_by_signature(
+    bases: list,
+    panel_grid: dict,
+    trap_ids: list[str],
+    trapezoids_by_id: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+    area_label: str,
+    row_idx: int,
+    row_angle_deg: float | None = None,
+    row_front_height_cm: float | None = None,
+) -> None:
+    """Assign each base's trapezoidId from its geometric column signature.
+
+    Signature-based matching is the authoritative method: for each base we
+    probe the row's panelGrid at the base's x position and read the per-line
+    orientation (V/H/EV/EH). The resulting signature exactly matches one of
+    the area's trapezoid configs — that's the correct trap.
+
+    The original trapezoidId (from compute_area_bases + consolidation) is
+    preserved only if the signature fails to resolve. Any disagreement
+    between the two methods is logged as a warning for observability.
+    """
+    if not bases or not panel_grid or not trap_ids:
+        return
+    for i, base in enumerate(bases):
+        base_x = base.get('offsetFromStartCm')
+        if base_x is None:
+            continue
+        sig = _calc_base_trap_signature_with_fallback(
+            base_x, panel_grid,
+            panel_width_cm, panel_length_cm, panel_gap_cm,
+        )
+        expected = _match_trap_by_signature(
+            sig, trap_ids, trapezoids_by_id,
+            row_angle_deg=row_angle_deg,
+            row_front_height_cm=row_front_height_cm,
+        )
+        original = base.get('trapezoidId')
+        if expected is None:
+            # Signature didn't match any trap — leave the original alone but
+            # log so we can investigate.
+            logger.warning(
+                "[base trap sig] area %s row %s base %s (x=%s): no trap matches "
+                "signature %s — keeping actual=%s",
+                area_label, row_idx, base.get('baseId', f'B{i + 1}'),
+                base_x, sig, original,
+            )
+            continue
+        if original and original != expected:
+            # Old method (compute_area_bases + consolidation) disagrees with
+            # the geometric signature. Log and override — signature wins.
+            logger.warning(
+                "[base trap sig] area %s row %s base %s (x=%s): "
+                "old=%s, sig=%s → using sig (old kept as validation)",
+                area_label, row_idx, base.get('baseId', f'B{i + 1}'),
+                base_x, original, expected,
+            )
+        base['trapezoidId'] = expected
+
+
 def _compute_row_bases(
     bs, data: dict, area: dict, area_idx: int,
     trap_ids: list[str], trapezoids: dict,
@@ -733,6 +1024,10 @@ async def compute_and_save_bases(
         per_row_data: dict[int, dict] = {}
 
         for pr in panel_rows:
+            # Skip None entries — panelRows can be sparse when a row's rowIndex
+            # is not 0-based (e.g. single-row area with rowIndex=2).
+            if pr is None:
+                continue
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
 
@@ -747,6 +1042,26 @@ async def compute_and_save_bases(
             if not first_bases_data_map:
                 first_bases_data_map = bases_data_map
             per_row_data[row_idx] = {'basesDataMap': bases_data_map, 'consolidated': consolidated}
+
+            # Authoritative trap assignment — probe each base's x-position
+            # against the row's panelGrid to derive the column signature
+            # (V/H/EV/EH per line) and match it to the owning trap. Row a/h
+            # disambiguates traps with identical signatures but different
+            # mounting (Phase A: sigToTrap keys on signature + a/h).
+            row_ang = pr.get('angleDeg')
+            if row_ang is None:
+                row_ang = area.get('angleDeg')
+            row_fh = pr.get('frontHeightCm')
+            if row_fh is None:
+                row_fh = area.get('frontHeightCm')
+            _reassign_row_base_traps_by_signature(
+                row_bases, pg, trap_ids, trapezoids,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
+                label, row_idx,
+                row_angle_deg=row_ang,
+                row_front_height_cm=row_fh,
+            )
 
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
@@ -1252,52 +1567,6 @@ def _align_blocks_across_trapezoids(
     return area_trap_map
 
 
-def _reassign_base_trapezoid_ids(
-    step3: dict,
-    result: dict,
-    area_trap_map: dict[str, list[str]],
-) -> None:
-    """
-    Reassign trapezoidId on consolidated bases using topBeamLength matching.
-    
-    Ensures bases with different depths get correct trap assignment in multi-trap areas.
-    Modifies step3.computedAreas[].bases in place.
-    """
-    for area_data in step3.get('computedAreas', []):
-        label = area_data.get('label', '')
-        area_tids = set(area_trap_map.get(label, []))
-        if len(area_tids) <= 1:
-            continue  # single-trap areas don't need reassignment
-        depth_to_trap: dict[float, str] = {}
-        trap_to_depth: dict[str, float] = {}
-        for tid in area_tids:
-            detail = result.get(tid)
-            if not detail:
-                continue
-            tbl = detail.get('geometry', {}).get('topBeamLength', 0)
-            if tbl:
-                key = round(tbl, 1)
-                if key not in depth_to_trap or detail.get('isFullTrap'):
-                    depth_to_trap[key] = tid
-                trap_to_depth[tid] = key
-        # Iterate all bases across all panel rows (dict[rowIdx → list[Base]])
-        bases_by_row = area_data.get('bases', {})
-        all_bases = []
-        if isinstance(bases_by_row, dict):
-            for row_bases in bases_by_row.values():
-                all_bases.extend(row_bases if isinstance(row_bases, list) else [])
-        else:
-            all_bases = bases_by_row  # legacy list format
-        for base in all_bases:
-            base_len = round(base.get('lengthCm', 0), 1)
-            current_tid = base.get('trapezoidId', '')
-            current_depth = trap_to_depth.get(current_tid)
-            # Reassign if: trapId missing from results, or base length doesn't match its trap's depth
-            if current_tid not in result or (current_depth is not None and base_len != current_depth):
-                if base_len in depth_to_trap:
-                    base['trapezoidId'] = depth_to_trap[base_len]
-
-
 async def compute_and_save_trapezoid_details(
     db: AsyncSession, project: Project, tds,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
@@ -1368,13 +1637,13 @@ async def compute_and_save_trapezoid_details(
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
 
-    # ── Align blocks across area trapezoids (extracted) ─────────────────────────
-    area_trap_map = _align_blocks_across_trapezoids(result, areas, tds)
+    # ── Align blocks across area trapezoids ─────────────────────────────────────
+    # (Legacy length-based base-trap reassignment removed — base trap IDs are
+    # now assigned authoritatively in compute_and_save_bases via the geometric
+    # column-signature method _reassign_row_base_traps_by_signature.)
+    _align_blocks_across_trapezoids(result, areas, tds)
 
-    # ── Reassign base trapezoid IDs (extracted) ─────────────────────────────────
-    _reassign_base_trapezoid_ids(step3, result, area_trap_map)
-
-    # ── Persist aligned blocks + reassigned bases ──────────────────────────────
+    # ── Persist aligned blocks ────────────────────────────────────────────────
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
 

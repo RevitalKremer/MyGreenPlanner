@@ -649,6 +649,8 @@ function App() {
             appDefaults={s.appDefaults}
             paramLimits={s.paramLimits}
             roofType={s.currentProject?.roofSpec?.type}
+            rowMounting={s.rowMounting}
+            setRowMounting={s.setRowMounting}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
