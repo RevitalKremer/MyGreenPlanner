@@ -809,15 +809,58 @@ def _match_trap_by_signature(
     sig: list[str | None],
     trap_ids: list[str],
     trapezoids_by_id: dict,
+    row_angle_deg: float | None = None,
+    row_front_height_cm: float | None = None,
 ) -> str | None:
-    """Return the trap id whose lineOrientations exactly match sig, else None."""
+    """Return the trap id that best matches the signature at the base.
+
+    Primary key: `lineOrientations == sig`.
+    Secondary (disambiguating) key: the row's a/h. Two traps with identical
+    signatures but different mounting (angleDeg / frontHeightCm) can coexist
+    within a single area when two rows share a column layout but differ in
+    their row-level a/h — see Phase A (sigToTrap keys by signature + a/h on FE).
+
+    Resolution:
+      1. If exactly one trap matches the signature → that one.
+      2. If several match → prefer the one whose a/h matches the row's a/h
+         (within a tight tolerance). Fall back to the first signature match
+         if a/h isn't supplied or nothing matches a/h.
+    """
+    AH_TOL = 0.01
+    candidates: list[str] = []
     for tid in trap_ids:
         t = trapezoids_by_id.get(tid)
         if not t:
             continue
         if list(t.get('lineOrientations') or []) == sig:
-            return tid
-    return None
+            candidates.append(tid)
+
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple sig matches — disambiguate by row a/h if available.
+    if row_angle_deg is not None or row_front_height_cm is not None:
+        for tid in candidates:
+            t = trapezoids_by_id.get(tid, {})
+            t_ang = t.get('angleDeg')
+            t_fh = t.get('frontHeightCm')
+            ang_ok = (
+                row_angle_deg is None
+                or t_ang is None
+                or abs((t_ang or 0) - (row_angle_deg or 0)) <= AH_TOL
+            )
+            fh_ok = (
+                row_front_height_cm is None
+                or t_fh is None
+                or abs((t_fh or 0) - (row_front_height_cm or 0)) <= AH_TOL
+            )
+            if ang_ok and fh_ok:
+                return tid
+
+    # No a/h info or nothing matched — first signature match wins.
+    return candidates[0]
 
 
 def _reassign_row_base_traps_by_signature(
@@ -830,6 +873,8 @@ def _reassign_row_base_traps_by_signature(
     panel_gap_cm: float,
     area_label: str,
     row_idx: int,
+    row_angle_deg: float | None = None,
+    row_front_height_cm: float | None = None,
 ) -> None:
     """Assign each base's trapezoidId from its geometric column signature.
 
@@ -852,7 +897,11 @@ def _reassign_row_base_traps_by_signature(
             base_x, panel_grid,
             panel_width_cm, panel_length_cm, panel_gap_cm,
         )
-        expected = _match_trap_by_signature(sig, trap_ids, trapezoids_by_id)
+        expected = _match_trap_by_signature(
+            sig, trap_ids, trapezoids_by_id,
+            row_angle_deg=row_angle_deg,
+            row_front_height_cm=row_front_height_cm,
+        )
         original = base.get('trapezoidId')
         if expected is None:
             # Signature didn't match any trap — leave the original alone but
@@ -996,12 +1045,22 @@ async def compute_and_save_bases(
 
             # Authoritative trap assignment — probe each base's x-position
             # against the row's panelGrid to derive the column signature
-            # (V/H/EV/EH per line) and match it to the owning trap.
+            # (V/H/EV/EH per line) and match it to the owning trap. Row a/h
+            # disambiguates traps with identical signatures but different
+            # mounting (Phase A: sigToTrap keys on signature + a/h).
+            row_ang = pr.get('angleDeg')
+            if row_ang is None:
+                row_ang = area.get('angleDeg')
+            row_fh = pr.get('frontHeightCm')
+            if row_fh is None:
+                row_fh = area.get('frontHeightCm')
             _reassign_row_base_traps_by_signature(
                 row_bases, pg, trap_ids, trapezoids,
                 step2['panelWidthCm'], step2['panelLengthCm'],
                 app_defaults['panelGapCm'],
                 label, row_idx,
+                row_angle_deg=row_ang,
+                row_front_height_cm=row_fh,
             )
 
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
