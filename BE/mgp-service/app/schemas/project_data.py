@@ -58,9 +58,13 @@ class PanelGrid(BaseModel):
 
 
 class PanelRowData(BaseModel):
-    """One panel row within an area. Each row has its own panel grid."""
+    """One panel row within an area. Each row has its own panel grid and
+    physical mounting (angle/front-height). Row a/h is the source of truth;
+    trap a/h is computed from the owning row."""
     rowIndex: int = 0
     panelGrid: Optional[PanelGrid] = None
+    angleDeg: Optional[float] = None       # row-level mounting angle (deg)
+    frontHeightCm: Optional[float] = None  # row-level front-edge height (cm)
 
 
 class Step2Area(BaseModel):

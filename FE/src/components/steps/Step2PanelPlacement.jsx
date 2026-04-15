@@ -57,6 +57,8 @@ export default function Step2PanelPlacement({
   appDefaults,
   paramLimits = {},
   roofType,
+  rowMounting,
+  setRowMounting,
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
@@ -74,9 +76,19 @@ export default function Step2PanelPlacement({
   // Multi-row: when set, the next drawn area will be added to this areaGroupId
   const [addRowToGroup, setAddRowToGroup] = useState(null)
 
-  // Clear trapezoid override whenever selection changes
+  // Clear trapezoid override when selection changes to something that isn't
+  // the override's trap. Needed so a canvas/panel click drops the override,
+  // but explicit trap clicks (which set both selectedPanels and trapIdOverride
+  // in the same render) are preserved.
   useEffect(() => {
-    setTrapIdOverride(null)
+    if (!trapIdOverride) return
+    if (selectedPanels.length === 0) { setTrapIdOverride(null); return }
+    const trapPanelIds = new Set(
+      panels.filter(p => p.trapezoidId === trapIdOverride).map(p => p.id)
+    )
+    const allSelectedBelongToTrap = selectedPanels.every(id => trapPanelIds.has(id))
+    if (!allSelectedBelongToTrap) setTrapIdOverride(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPanels])
 
   // ── Auto-recalc trapezoids with 1s debounce ──
@@ -188,10 +200,15 @@ export default function Step2PanelPlacement({
       const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
       if (areaPanels.length > 0) {
         setSelectedPanels(prev => {
-          // In move/rotate: if all selected panels still exist, keep exact selection (e.g. after drag)
+          // If the current selection is still valid (all IDs exist in panels),
+          // leave it alone — preserves row/trap sub-selections. The resync is
+          // only needed after a panel recompute where IDs actually changed.
+          if (prev.length > 0 && prev.every(id => panels.some(p => p.id === id))) return prev
+          // In move/rotate: if all selected panels still exist in the area,
+          // keep exact selection (e.g. after drag)
           const tool = activeToolRef.current
           if ((tool === 'move' || tool === 'rotate') && prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
-          // Otherwise (draw mode, or recompute with new IDs) — re-sync to full area
+          // Otherwise (recompute with new IDs) — re-sync to full area
           const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
           return same ? prev : areaPanels
         })
@@ -473,19 +490,24 @@ export default function Step2PanelPlacement({
   }, [panels, rectAreas])
 
   const sharedTrapIds = useMemo(() => {
-    const trapToAreas = {}
+    // A trap is "shared" only if it appears in ≥ 2 distinct area GROUPS
+    // (areaGroupId). Multi-row areas have multiple rectArea indices sharing
+    // one areaGroupId — traps spanning rows of the same area should NOT be
+    // marked as shared.
+    const trapToGroups = {}
     Object.entries(areaTrapezoidMap).forEach(([areaKey, trapIds]) => {
+      const groupId = rectAreas[areaKey]?.areaGroupId ?? areaKey
       trapIds.forEach(trapId => {
-        if (!trapToAreas[trapId]) trapToAreas[trapId] = []
-        trapToAreas[trapId].push(areaKey)
+        if (!trapToGroups[trapId]) trapToGroups[trapId] = new Set()
+        trapToGroups[trapId].add(groupId)
       })
     })
     const shared = new Set()
-    Object.entries(trapToAreas).forEach(([trapId, areaKeys]) => {
-      if (areaKeys.length > 1) shared.add(trapId)
+    Object.entries(trapToGroups).forEach(([trapId, groups]) => {
+      if (groups.size > 1) shared.add(trapId)
     })
     return shared
-  }, [areaTrapezoidMap])
+  }, [areaTrapezoidMap, rectAreas])
 
   const resetTrapezoidConfig = () => {
     if (!selectedTrapezoidId) return
@@ -591,6 +613,78 @@ export default function Step2PanelPlacement({
                 })
               })
             }}
+            onDetachRowToNewArea={() => {
+              // Opposite of group: take the single selected row out of its
+              // multi-row area and give it its own areaGroupId + label.
+              const selectedAreaIdxs = [...new Set(
+                panels.filter(p => selectedPanels.includes(p.id)).map(p => p.area)
+              )]
+              if (selectedAreaIdxs.length !== 1) return
+              const rowAreaIdx = selectedAreaIdxs[0]
+              setRectAreas(prev => {
+                const row = prev[rowAreaIdx]
+                if (!row) return prev
+                // Only meaningful when the parent group has ≥ 2 rows
+                const siblings = prev.filter(a => a.areaGroupId === row.areaGroupId)
+                if (siblings.length < 2) return prev
+                // Next temp groupId = one less than current min (always unique)
+                const minGid = Math.min(0, ...prev.map(a => a.areaGroupId ?? 0))
+                const newGroupId = minGid - 1
+                // Next available single-letter label
+                const used = new Set(prev.map(a => a.label).filter(Boolean))
+                let newLabel = null
+                for (let i = 0; i < 26; i++) {
+                  const l = String.fromCharCode(65 + i)
+                  if (!used.has(l)) { newLabel = l; break }
+                }
+                if (!newLabel) newLabel = `A${Date.now() % 1000}`
+                return prev.map((a, idx) => {
+                  if (idx !== rowAreaIdx) return a
+                  return {
+                    ...a,
+                    areaGroupId: newGroupId,
+                    label: newLabel,
+                    rowIndex: 0,
+                  }
+                })
+              })
+            }}
+            onGroupSelectedRowsIntoArea={() => {
+              // Take every rectArea index that owns at least one selected panel
+              // and re-point all of them to a single areaGroupId (the first
+              // one in document order "wins"). Preserves each row's own a/h.
+              const selectedAreaIdxs = new Set(
+                panels
+                  .filter(p => selectedPanels.includes(p.id))
+                  .map(p => p.area)
+              )
+              if (selectedAreaIdxs.size < 2) return
+              setRectAreas(prev => {
+                const groupIds = [...new Set(
+                  [...selectedAreaIdxs]
+                    .map(i => prev[i]?.areaGroupId)
+                    .filter(g => g != null)
+                )]
+                if (groupIds.length < 2) return prev  // already one group
+                const targetGroupId = groupIds[0]
+                const targetArea = prev.find(a => a.areaGroupId === targetGroupId)
+                const targetLabel = targetArea?.label ?? String(targetGroupId)
+                let nextRowIndex = prev.filter(a => a.areaGroupId === targetGroupId).length
+                return prev.map((a, idx) => {
+                  if (!selectedAreaIdxs.has(idx)) return a
+                  if (a.areaGroupId === targetGroupId) return a
+                  const updated = {
+                    ...a,
+                    areaGroupId: targetGroupId,
+                    label: targetLabel,
+                    rowIndex: nextRowIndex,
+                    color: targetArea?.color ?? a.color,
+                  }
+                  nextRowIndex++
+                  return updated
+                })
+              })
+            }}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
             rectAreas={rectAreas}
@@ -604,6 +698,7 @@ export default function Step2PanelPlacement({
             setPanelAngle={setPanelAngle}
             selectedRow={selectedRow}
             selectedTrapezoidId={selectedTrapezoidId}
+            trapIdOverride={trapIdOverride}
             selectedAreaLabel={selectedAreaLabel}
             refinedArea={refinedArea}
             resetTrapezoidConfig={resetTrapezoidConfig}
@@ -615,6 +710,8 @@ export default function Step2PanelPlacement({
             frontHeightMin={fhLim.min}
             frontHeightMax={fhLim.max}
             roofType={roofType}
+            rowMounting={rowMounting}
+            setRowMounting={setRowMounting}
           />
         )}
 

@@ -66,6 +66,7 @@ export function computePanelsAction({
   rectAreas, panels, deletedPanelKeys,
   panelFrontHeight, panelAngle,
   panelGrid, trapezoidConfigs,
+  rowMounting,
   roofPolygon, panelType,
   onlyAreaIdx,
 }) {
@@ -133,11 +134,21 @@ export function computePanelsAction({
 
   let panelId = allPanels.length > 0 ? Math.max(...allPanels.map(p => p.id)) + 1 : 1
   const pendingGroupPanels = {}  // groupId → [{ areaIdx, areaLabel, computed, filtered, ... }]
+  // Updated row a/h (areaLabel → [{angleDeg, frontHeightCm}]). Built from input
+  // rowMounting when present, falling back to area defaults for new rows.
+  const newRowMounting = {}
   rectAreas.forEach((area, areaIdx) => {
     if (onlyAreaIdx !== undefined && areaIdx !== onlyAreaIdx) return
     const areaLabel = area.label || area.id || `area-${areaIdx}`
     const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
     const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
+    // Resolve this row's a/h: existing row a/h → area default → panel default
+    const ri = area.rowIndex ?? 0
+    const inMtg = (rowMounting?.[areaLabel] || [])[ri]
+    const rAngle = inMtg?.angleDeg ?? aAngle
+    const rFront = inMtg?.frontHeightCm ?? aFront
+    if (!newRowMounting[areaLabel]) newRowMounting[areaLabel] = []
+    newRowMounting[areaLabel][ri] = { angleDeg: rAngle, frontHeightCm: rFront }
     const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
     let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
     // Remove panels manually deleted by the user
@@ -169,11 +180,12 @@ export function computePanelsAction({
     const derivedOrients = lineRows.map(r => rowOrient[r])
     areaLineConfigs[areaIdx] = { lineOrientations: derivedOrients }
 
-    // Store filtered panels temporarily for group-level trapezoid assignment
+    // Store filtered panels temporarily for group-level trapezoid assignment.
+    // rAngle/rFront are the row-level a/h (source of truth for trap a/h).
     const groupId = getGroupKey(areaIdx)
     if (!pendingGroupPanels[groupId]) pendingGroupPanels[groupId] = []
     pendingGroupPanels[groupId].push({
-      areaIdx, areaLabel, aFront, aAngle, rowIdx, area,
+      areaIdx, areaLabel, aFront, aAngle, rAngle, rFront, rowIdx, area,
       computed, filtered,
     })
   })
@@ -181,20 +193,24 @@ export function computePanelsAction({
   // ── Group-level trapezoid assignment ──────────────────────────────────────
   // For each area group, merge all rows' computed panels and derive column signatures
   // across the UNION of all rows. This ensures multi-row areas get consistent trap IDs.
+  // Trap a/h is taken from each row's a/h (rAngle/rFront), not the area default.
+  // Two rows can share a trap only if they have BOTH the same column signature AND
+  // the same row a/h — different a/h forces a separate trap.
   for (const [, groupEntries] of Object.entries(pendingGroupPanels)) {
-    const { areaLabel, aFront, aAngle } = groupEntries[0]
+    const { areaLabel } = groupEntries[0]
     const isManual = groupEntries[0].area.manualTrapezoids
 
     if (!isManual) {
-      // Compute column signatures PER physical row, then collect unique signatures
-      // across ALL rows to form the area's trapezoid list.
-      // Each row has its own col/row indices that don't overlap with other rows.
+      // sigToTrap key = `${sig}::${rAngle}::${rFront}` so different row a/h
+      // produces distinct traps even when columns match.
       const sigToTrap = new Map()
+      // trapAh tracks the row a/h that produced each trap (used when emitting trap config)
+      const trapAh = new Map()  // trapId → { angle, frontHeight }
       let n = 1
-      const perRowColSig = []  // [{ ge, colSig: (col) => sig }]
+      const perRowColSig = []  // [{ ge, colSig: (col) => sig, sigKey: (col) => key }]
 
       groupEntries.forEach(ge => {
-        const { computed, filtered } = ge
+        const { computed, filtered, rAngle, rFront } = ge
         // Lines and orientations from computed (full polygon grid shape)
         const computedAllLines = [...new Set(computed.map(p => p.row))].sort((a, b) => a - b)
         const computedLineOrient = {}
@@ -210,7 +226,6 @@ export function computePanelsAction({
           const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
           cols.forEach(c => {
             if (!colLinesComputed.has(c)) colLinesComputed.set(c, new Set())
-            // Only mark as present if this column+line exists in filtered
             if (filtered.some(fp => {
               const fpCols = fp.coveredCols?.length > 0 ? fp.coveredCols : [fp.col ?? 0]
               return fpCols.includes(c) && fp.row === p.row
@@ -224,48 +239,59 @@ export function computePanelsAction({
           computedAllLines.map(r =>
             colLinesComputed.get(col)?.has(r) ? computedLineOrient[r] : (computedLineOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
           ).join('|')
+        const sigKey = (col) => `${colSig(col)}::${rAngle}::${rFront}`
 
-        // Register unique signatures from this row
+        // Register unique sig+a/h keys from this row
         ;[...colLinesComputed.keys()].sort((a, b) => a - b).forEach(col => {
-          const s = colSig(col)
-          if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n++}`)
+          const k = sigKey(col)
+          if (!sigToTrap.has(k)) {
+            const trapId = `${areaLabel}${n++}`
+            sigToTrap.set(k, trapId)
+            trapAh.set(trapId, { angle: rAngle, frontHeight: rFront })
+          }
         })
 
-        perRowColSig.push({ ge, colSig })
+        perRowColSig.push({ ge, colSig, sigKey })
       })
 
       if (sigToTrap.size === 1) {
-        const [[sig]] = [...sigToTrap.entries()]
-        sigToTrap.set(sig, areaLabel)
+        const [[k, prevTrap]] = [...sigToTrap.entries()]
+        const ah = trapAh.get(prevTrap)
+        sigToTrap.set(k, areaLabel)
+        trapAh.delete(prevTrap)
+        if (ah) trapAh.set(areaLabel, ah)
       }
 
-      sigToTrap.forEach((trapId, sig) => {
+      sigToTrap.forEach((trapId, key) => {
+        const sig = key.split('::')[0]
         const shape = sig.split('|')
-        const trapBack = computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm)
-        groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: trapBack, lineOrientations: shape }
+        const ah = trapAh.get(trapId) || { angle: groupEntries[0].aAngle, frontHeight: groupEntries[0].aFront }
+        const trapBack = computePanelBackHeight(ah.frontHeight, ah.angle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+        groupTrapConfigs[trapId] = { angle: ah.angle, frontHeight: ah.frontHeight, backHeight: trapBack, lineOrientations: shape }
       })
 
-      // Assign trapezoidId to each filtered panel using per-row colSig
-      perRowColSig.forEach(({ ge, colSig }) => {
+      // Assign trapezoidId to each filtered panel using per-row sigKey
+      perRowColSig.forEach(({ ge, sigKey }) => {
         ge.filtered.forEach(p => {
           const physCol = p.coveredCols?.[0] ?? p.col ?? 0
-          const sig = colSig(physCol)
+          const k = sigKey(physCol)
           allPanels.push({ ...p, id: panelId++, area: ge.areaIdx, areaGroupKey: getGroupKey(ge.areaIdx), panelRowIdx: ge.rowIdx,
-            trapezoidId: sigToTrap.get(sig) || areaLabel,
+            trapezoidId: sigToTrap.get(k) || areaLabel,
             xDir: ge.area.xDir ?? 'ltr', yDir: ge.area.yDir ?? 'ttb' })
         })
       })
     } else {
-      // Manual mode: per-row, use stored column→trapId assignments
+      // Manual mode: per-row, use stored column→trapId assignments.
+      // Trap configs use the row's a/h (each row owns its mounting).
       groupEntries.forEach(ge => {
-        const { area, areaIdx, rowIdx, filtered } = ge
+        const { area, areaIdx, rowIdx, filtered, rAngle, rFront } = ge
         const derivedOrients = areaLineConfigs[areaIdx]?.lineOrientations ?? [PANEL_V]
         const colToTrap = area.manualColTrapezoids || {}
         const defaultTrap = areaLabel
-        const aBack = computePanelBackHeight(aFront, aAngle, derivedOrients, appDefaults?.lineGapCm ?? appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
+        const rBack = computePanelBackHeight(rFront, rAngle, derivedOrients, appDefaults?.lineGapCm ?? appDefaults?.panelGapCm, panelSpec.lengthCm, panelSpec.widthCm)
         const usedTraps = new Set([defaultTrap, ...Object.values(colToTrap)])
         usedTraps.forEach(trapId => {
-          groupTrapConfigs[trapId] = { angle: aAngle, frontHeight: aFront, backHeight: aBack, lineOrientations: derivedOrients }
+          groupTrapConfigs[trapId] = { angle: rAngle, frontHeight: rFront, backHeight: rBack, lineOrientations: derivedOrients }
         })
         filtered.forEach(p => {
           const trapId = colToTrap[String(p.col ?? 0)] ?? defaultTrap
@@ -314,11 +340,18 @@ export function computePanelsAction({
     panelConfig: { frontHeight: 0, backHeight: 0, angle: 0, lineOrientations: [PANEL_V] },
   }
 
+  // Merge new row mounting with existing (single-area recompute keeps other areas)
+  const mergedRowMounting = { ...(rowMounting || {}) }
+  Object.entries(newRowMounting).forEach(([label, rows]) => {
+    mergedRowMounting[label] = rows
+  })
+
   return {
     panels: allPanels,
     areas: updatedAreas,
     trapezoidConfigs: mergedTrapConfigs,
     panelGrid: newPanelGrid,
+    rowMounting: mergedRowMounting,
     refinedArea,
     emptyNewIndices,
   }
@@ -336,7 +369,8 @@ export function computePanelsAction({
 function _refreshSingleRowTrapezoids({
   areaIdx, area, panels, referenceLine, referenceLineLengthCm,
   panelSpec, appDefaults, panelFrontHeight, panelAngle,
-  areaLabel, sigToTrap, n,
+  areaLabel, sigToTrap, trapAh, n,
+  rowMounting,
 }) {
   if (!area || area.manualTrapezoids || !area.vertices?.length) return null
   if (!referenceLine || !referenceLineLengthCm) return null
@@ -367,6 +401,12 @@ function _refreshSingleRowTrapezoids({
 
   const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
   const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
+  // Row a/h is the source of truth for trap a/h. Fallback to area defaults if
+  // rowMounting has no entry for this row.
+  const ri = area.rowIndex ?? 0
+  const inMtg = (rowMounting?.[areaLabel] || [])[ri]
+  const rAngle = inMtg?.angleDeg ?? aAngle
+  const rFront = inMtg?.frontHeightCm ?? aFront
 
   const areaPanels = panels.filter(p => p.area === areaIdx)
   if (!areaPanels.length) return null
@@ -405,14 +445,21 @@ function _refreshSingleRowTrapezoids({
     allRows.map(r =>
       colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)
     ).join('|')
+  const sigKey = (col) => `${colSig(col)}::${rAngle}::${rFront}`
 
-  // Register unique signatures into the shared sigToTrap map
+  // Register unique sig+a/h keys into the shared sigToTrap map. Row a/h is part
+  // of the key so two rows with same column shape but different mounting get
+  // distinct trap IDs.
   ;[...colRowsMap.keys()].sort((a, b) => a - b).forEach(col => {
-    const s = colSig(col)
-    if (!sigToTrap.has(s)) sigToTrap.set(s, `${areaLabel}${n.value++}`)
+    const k = sigKey(col)
+    if (!sigToTrap.has(k)) {
+      const trapId = `${areaLabel}${n.value++}`
+      sigToTrap.set(k, trapId)
+      if (trapAh) trapAh.set(trapId, { angle: rAngle, frontHeight: rFront })
+    }
   })
 
-  return { areaIdx, panelWithCols, colSig, aFront, aAngle }
+  return { areaIdx, panelWithCols, colSig, sigKey, aFront, aAngle, rAngle, rFront }
 }
 
 /**
@@ -423,6 +470,7 @@ function _refreshSingleRowTrapezoids({
 export function refreshAreaTrapezoidsAction({
   areaIdx, area, panels, rectAreas, referenceLine, referenceLineLengthCm,
   panelSpec, appDefaults, panelFrontHeight, panelAngle, trapezoidConfigs,
+  rowMounting,
 }) {
   if (!area || area.manualTrapezoids || !area.vertices?.length) return null
 
@@ -434,8 +482,10 @@ export function refreshAreaTrapezoidsAction({
     ? rectAreas.map((ra, i) => ra.areaGroupId === groupId ? i : -1).filter(i => i >= 0)
     : [areaIdx]
 
-  // Shared signature→trapId map across all rows
+  // Shared sig+a/h key → trapId map. Row a/h is part of the key so traps
+  // never get shared across rows with different mounting.
   const sigToTrap = new Map()
+  const trapAh = new Map()  // trapId → { angle, frontHeight }
   const n = { value: 1 }  // mutable counter shared across rows
   const perRowResults = []
 
@@ -444,27 +494,32 @@ export function refreshAreaTrapezoidsAction({
     const result = _refreshSingleRowTrapezoids({
       areaIdx: raIdx, area: ra, panels, referenceLine, referenceLineLengthCm,
       panelSpec, appDefaults, panelFrontHeight, panelAngle,
-      areaLabel, sigToTrap, n,
+      areaLabel, sigToTrap, trapAh, n,
+      rowMounting,
     })
     if (result) perRowResults.push(result)
   }
 
   if (perRowResults.length === 0) return null
 
-  // Simplify: if only one signature, use area label directly
+  // Simplify: if only one trap, use area label directly
   if (sigToTrap.size === 1) {
-    const [[sig]] = [...sigToTrap.entries()]
-    sigToTrap.set(sig, areaLabel)
+    const [[k, prevTrap]] = [...sigToTrap.entries()]
+    const ah = trapAh.get(prevTrap)
+    sigToTrap.set(k, areaLabel)
+    trapAh.delete(prevTrap)
+    if (ah) trapAh.set(areaLabel, ah)
   }
 
-  // Build trap configs from unified signatures
-  const { aFront, aAngle } = perRowResults[0]
+  // Build trap configs using each trap's row a/h
   const newTrapConfigs = {}
-  sigToTrap.forEach((trapId, sig) => {
+  sigToTrap.forEach((trapId, key) => {
+    const sig = key.split('::')[0]
     const shape = sig.split('|')
+    const ah = trapAh.get(trapId) || { angle: perRowResults[0].rAngle, frontHeight: perRowResults[0].rFront }
     newTrapConfigs[trapId] = {
-      angle: aAngle, frontHeight: aFront,
-      backHeight: computePanelBackHeight(aFront, aAngle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm),
+      angle: ah.angle, frontHeight: ah.frontHeight,
+      backHeight: computePanelBackHeight(ah.frontHeight, ah.angle, shape, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm),
       lineOrientations: shape,
     }
   })
@@ -477,8 +532,8 @@ export function refreshAreaTrapezoidsAction({
     if (!rowResult) return p
     const updated = rowResult.panelWithCols.find(pw => pw.id === p.id)
     if (!updated) return p
-    const sig = rowResult.colSig(updated.col)
-    const newTrapId = sigToTrap.get(sig) || areaLabel
+    const k = rowResult.sigKey(updated.col)
+    const newTrapId = sigToTrap.get(k) || areaLabel
     if (newTrapId === p.trapezoidId && updated.col === p.col) return p
     return { ...p, col: updated.col, coveredCols: updated.coveredCols, trapezoidId: newTrapId }
   })

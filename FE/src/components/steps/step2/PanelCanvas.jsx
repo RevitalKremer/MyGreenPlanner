@@ -46,6 +46,9 @@ export default function PanelCanvas({
   const [mousePos, setMousePos] = useState(null)
   const [drawRectStart, setDrawRectStart] = useState(null)
   const [drawRectEnd, setDrawRectEnd] = useState(null)
+  // Group-rows marquee (Ctrl/Cmd + drag in area tool): selects all rows whose
+  // panels fall inside the rectangle, so they can be merged into one area.
+  const [groupRowsRect, setGroupRowsRect] = useState(null)
   const [yLockDragState, setYLockDragState] = useState(null)
   const [freeDragState, setFreeDragState]   = useState(null) // {areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist}
   const [moveDragState, setMoveDragState]   = useState(null) // {areaIdx, startX, startY, origVertices}
@@ -196,6 +199,11 @@ export default function PanelCanvas({
     const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
 
     if (activeTool === 'area') {
+      // Ctrl/Cmd + drag on empty canvas → group-rows marquee (NOT new area)
+      if (!clickedPanel && (e.ctrlKey || e.metaKey)) {
+        setGroupRowsRect({ startX: x, startY: y, endX: x, endY: y })
+        return
+      }
       if (clickedPanel) {
         // Select the entire area this panel belongs to
         const areaKey = clickedPanel.area ?? clickedPanel.row
@@ -418,6 +426,7 @@ export default function PanelCanvas({
 
 
     if (rectSelect) { setRectSelect(prev => ({ ...prev, endX: x, endY: y })); return }
+    if (groupRowsRect) { setGroupRowsRect(prev => ({ ...prev, endX: x, endY: y })); return }
 
     if (panRef.current && !dragState && !rotationState) {
       const dx = e.clientX - panRef.current.startX
@@ -585,6 +594,39 @@ export default function PanelCanvas({
         setSelectedPanels([])
       }
       setRectSelect(null); setDragState(null); setRotationState(null)
+      return
+    }
+
+    if (groupRowsRect) {
+      const minX = Math.min(groupRowsRect.startX, groupRowsRect.endX)
+      const maxX = Math.max(groupRowsRect.startX, groupRowsRect.endX)
+      const minY = Math.min(groupRowsRect.startY, groupRowsRect.endY)
+      const maxY = Math.max(groupRowsRect.startY, groupRowsRect.endY)
+      if (Math.max(maxX - minX, maxY - minY) > 8) {
+        // Any panel whose center is inside the marquee contributes its row.
+        // We then select ALL panels of every such (area, panelRowIdx) row —
+        // so the sidebar sees the full rows highlighted, not partial selection.
+        const rowsHit = new Set()  // "area|panelRowIdx"
+        panels.forEach(p => {
+          if (p.isEmpty) return
+          const cx = p.x + p.width / 2, cy = p.y + p.height / 2
+          if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
+            const a = p.area ?? p.row ?? 0
+            const r = p.panelRowIdx ?? 0
+            rowsHit.add(`${a}|${r}`)
+          }
+        })
+        if (rowsHit.size > 0) {
+          const selected = panels.filter(p => {
+            if (p.isEmpty) return false
+            const a = p.area ?? p.row ?? 0
+            const r = p.panelRowIdx ?? 0
+            return rowsHit.has(`${a}|${r}`)
+          })
+          setSelectedPanels(selected.map(p => p.id))
+        }
+      }
+      setGroupRowsRect(null)
       return
     }
 
@@ -1070,6 +1112,19 @@ let fill, borderColor, ibw
               return (
                 <rect x={rx} y={ry} width={rw} height={rh}
                   fill={CANVAS_SEL_FILL} stroke={CANVAS_SEL_STROKE} strokeWidth="1.5" strokeDasharray="6,3"
+                  style={{ pointerEvents: 'none' }} />
+              )
+            })()}
+
+            {/* Group-rows marquee (Ctrl/Cmd + drag in area tool) */}
+            {groupRowsRect && (() => {
+              const rx = Math.min(groupRowsRect.startX, groupRowsRect.endX)
+              const ry = Math.min(groupRowsRect.startY, groupRowsRect.endY)
+              const rw = Math.abs(groupRowsRect.endX - groupRowsRect.startX)
+              const rh = Math.abs(groupRowsRect.endY - groupRowsRect.startY)
+              return (
+                <rect x={rx} y={ry} width={rw} height={rh}
+                  fill={CANVAS_SEL_FILL} stroke={CANVAS_SEL_STROKE} strokeWidth="2" strokeDasharray="10,5"
                   style={{ pointerEvents: 'none' }} />
               )
             })()}
