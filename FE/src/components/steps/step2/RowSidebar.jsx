@@ -8,6 +8,8 @@ export default function RowSidebar({
   panels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
   rows, areaGroups, areaLabel, getAreaKey, onMergeRowIntoArea,
+  onGroupSelectedRowsIntoArea,
+  onDetachRowToNewArea,
   areaTrapezoidMap, sharedTrapIds, trapezoidConfigs,
   rectAreas = [],
   setRectAreas,
@@ -94,6 +96,44 @@ export default function RowSidebar({
   }, [selectedPanels])
 
   const displayedGroup = normalizedGroups.find(g => g.groupId === displayedAreaId) ?? normalizedGroups[0]
+
+  // Analyse the current selection — tells us whether to show:
+  //   · "Group N rows into one area"  (selection spans ≥ 2 area groups)
+  //   · "Split row into its own area" (single row selected inside a
+  //     multi-row area, i.e. 1 row from 1 group whose parent group has ≥ 2 rows)
+  const selectionInfo = useMemo(() => {
+    if (!selectedPanels || selectedPanels.length === 0) return null
+    const selSet = new Set(selectedPanels)
+    const rowKeys = new Set()   // "areaGroupId|rowIndex"
+    const groupIds = new Set()
+    const areaIdxs = new Set()  // rectArea indices
+    for (const p of (panels || [])) {
+      if (p.isEmpty || !selSet.has(p.id)) continue
+      const areaIdx = p.area ?? p.row ?? 0
+      const ra = rectAreas[areaIdx]
+      const gid = ra?.areaGroupId ?? areaIdx
+      const ri = p.panelRowIdx ?? 0
+      rowKeys.add(`${gid}|${ri}`)
+      groupIds.add(gid)
+      areaIdxs.add(areaIdx)
+    }
+    const rowCount = rowKeys.size
+    const groupCount = groupIds.size
+    if (groupCount === 0) return null
+    // Split-eligibility: exactly one rectArea selected, and that area's group
+    // currently has ≥ 2 rows (so splitting it off is meaningful).
+    let canSplit = false
+    if (areaIdxs.size === 1 && rowCount === 1) {
+      const onlyIdx = [...areaIdxs][0]
+      const gid = rectAreas[onlyIdx]?.areaGroupId
+      const siblings = rectAreas.filter(a => a?.areaGroupId === gid).length
+      if (siblings >= 2) canSplit = true
+    }
+    return {
+      rowCount, groupCount, canSplit,
+      canGroup: groupCount >= 2,
+    }
+  }, [selectedPanels, panels, rectAreas])
 
   // "Apply to all rows" — write current default a/h to every row of every area
   // and to area defaults (so newly added rows pick them up too).
@@ -211,6 +251,36 @@ export default function RowSidebar({
         <p style={{ fontSize: '0.82rem', color: TEXT_MUTED, margin: '0 0 0.5rem', lineHeight: 1.4 }}>
           {t('step2.sidebar.drawHint')}
         </p>
+      )}
+
+      {/* Selection action banner —
+          · spans ≥ 2 areas → "Group into one area"
+          · single row inside a multi-row area → "Split into its own area" */}
+      {selectionInfo?.canGroup && onGroupSelectedRowsIntoArea && (
+        <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.6rem', background: PRIMARY_BG_LIGHT, border: `2px solid ${PRIMARY}`, borderRadius: '8px' }}>
+          <div style={{ fontSize: '0.7rem', color: TEXT_DARK, marginBottom: '0.35rem', lineHeight: 1.35 }}>
+            {selectionInfo.rowCount} rows selected across {selectionInfo.groupCount} areas
+          </div>
+          <button
+            onClick={() => onGroupSelectedRowsIntoArea()}
+            style={{ width: '100%', padding: '0.35rem 0', background: PRIMARY, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700' }}
+          >
+            Group into one area
+          </button>
+        </div>
+      )}
+      {selectionInfo?.canSplit && onDetachRowToNewArea && (
+        <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.6rem', background: PRIMARY_BG_LIGHT, border: `2px solid ${PRIMARY}`, borderRadius: '8px' }}>
+          <div style={{ fontSize: '0.7rem', color: TEXT_DARK, marginBottom: '0.35rem', lineHeight: 1.35 }}>
+            Selected row is part of a multi-row area
+          </div>
+          <button
+            onClick={() => onDetachRowToNewArea()}
+            style={{ width: '100%', padding: '0.35rem 0', background: PRIMARY, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700' }}
+          >
+            Split into its own area
+          </button>
+        </div>
       )}
 
       {/* State: panels placed */}

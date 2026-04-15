@@ -613,6 +613,78 @@ export default function Step2PanelPlacement({
                 })
               })
             }}
+            onDetachRowToNewArea={() => {
+              // Opposite of group: take the single selected row out of its
+              // multi-row area and give it its own areaGroupId + label.
+              const selectedAreaIdxs = [...new Set(
+                panels.filter(p => selectedPanels.includes(p.id)).map(p => p.area)
+              )]
+              if (selectedAreaIdxs.length !== 1) return
+              const rowAreaIdx = selectedAreaIdxs[0]
+              setRectAreas(prev => {
+                const row = prev[rowAreaIdx]
+                if (!row) return prev
+                // Only meaningful when the parent group has ≥ 2 rows
+                const siblings = prev.filter(a => a.areaGroupId === row.areaGroupId)
+                if (siblings.length < 2) return prev
+                // Next temp groupId = one less than current min (always unique)
+                const minGid = Math.min(0, ...prev.map(a => a.areaGroupId ?? 0))
+                const newGroupId = minGid - 1
+                // Next available single-letter label
+                const used = new Set(prev.map(a => a.label).filter(Boolean))
+                let newLabel = null
+                for (let i = 0; i < 26; i++) {
+                  const l = String.fromCharCode(65 + i)
+                  if (!used.has(l)) { newLabel = l; break }
+                }
+                if (!newLabel) newLabel = `A${Date.now() % 1000}`
+                return prev.map((a, idx) => {
+                  if (idx !== rowAreaIdx) return a
+                  return {
+                    ...a,
+                    areaGroupId: newGroupId,
+                    label: newLabel,
+                    rowIndex: 0,
+                  }
+                })
+              })
+            }}
+            onGroupSelectedRowsIntoArea={() => {
+              // Take every rectArea index that owns at least one selected panel
+              // and re-point all of them to a single areaGroupId (the first
+              // one in document order "wins"). Preserves each row's own a/h.
+              const selectedAreaIdxs = new Set(
+                panels
+                  .filter(p => selectedPanels.includes(p.id))
+                  .map(p => p.area)
+              )
+              if (selectedAreaIdxs.size < 2) return
+              setRectAreas(prev => {
+                const groupIds = [...new Set(
+                  [...selectedAreaIdxs]
+                    .map(i => prev[i]?.areaGroupId)
+                    .filter(g => g != null)
+                )]
+                if (groupIds.length < 2) return prev  // already one group
+                const targetGroupId = groupIds[0]
+                const targetArea = prev.find(a => a.areaGroupId === targetGroupId)
+                const targetLabel = targetArea?.label ?? String(targetGroupId)
+                let nextRowIndex = prev.filter(a => a.areaGroupId === targetGroupId).length
+                return prev.map((a, idx) => {
+                  if (!selectedAreaIdxs.has(idx)) return a
+                  if (a.areaGroupId === targetGroupId) return a
+                  const updated = {
+                    ...a,
+                    areaGroupId: targetGroupId,
+                    label: targetLabel,
+                    rowIndex: nextRowIndex,
+                    color: targetArea?.color ?? a.color,
+                  }
+                  nextRowIndex++
+                  return updated
+                })
+              })
+            }}
             areaTrapezoidMap={areaTrapezoidMap} sharedTrapIds={sharedTrapIds}
             trapezoidConfigs={trapezoidConfigs}
             rectAreas={rectAreas}
