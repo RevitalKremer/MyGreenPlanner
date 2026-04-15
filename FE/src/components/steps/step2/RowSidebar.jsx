@@ -368,8 +368,16 @@ export default function RowSidebar({
                             // was explicitly picked. Using trapIdOverride (not the derived
                             // selectedTrapezoidId, which falls back to the first panel's trap).
                             const isSubSelected = r.row.some(p => selectedPanels.includes(p.id)) && !trapIdOverride
-                            const groupLabel = rectAreas[firstAreaKey]?.label
-                            const rowEntry = (rowMounting?.[groupLabel] || [])[ri] || {}
+                            // Resolve the row's actual a/h. Use the row's rectArea for the
+                            // lookup key (matches what the detail window uses). Fall back
+                            // through label → id → `ra-{idx}` so missing labels don't cause
+                            // silent misses into area defaults. Index by the row's
+                            // panelRowIndex (stable identity), not the loop position.
+                            const rowRa = rectAreas[r.areaIdx]
+                            const rowKey = rowRa?.label
+                              || (rowRa?.id != null ? String(rowRa.id) : (r.areaIdx != null ? `ra-${r.areaIdx}` : null))
+                            const rIdx = r.panelRowIndex ?? ri
+                            const rowEntry = (rowMounting?.[rowKey] || [])[rIdx] || {}
                             const aDefault = parseFloat(panelAngle) || 0
                             const fhDefault = parseFloat(panelFrontHeight) || 0
                             const rowAng = rowEntry.angleDeg ?? aDefault
@@ -386,7 +394,7 @@ export default function RowSidebar({
                                 </span>
                                 {showMounting && (
                                   <span style={{ fontSize: '0.6rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>
-                                    {rowAng.toFixed(0)}° · {rowFh.toFixed(0)}cm
+                                    {rowAng.toFixed(1).replace(/\.0$/, '')}° · {rowFh.toFixed(1).replace(/\.0$/, '')}cm
                                   </span>
                                 )}
                               </div>
@@ -482,7 +490,10 @@ export default function RowSidebar({
       {selectedRow && roofType !== 'tiles' && (() => {
         const areaKey = getAreaKey(selectedRow[0])
         const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
-        const groupLabel = area?.label
+        // Key for rowMounting lookups must tolerate missing/empty labels:
+        // falls through to the area's numeric id (or rectArea index) so the
+        // row editor still renders and persists under a stable key.
+        const groupLabel = area?.label || (area?.id != null ? String(area.id) : (areaKey != null ? `ra-${areaKey}` : null))
         const rowIdx = selectedRow[0]?.panelRowIdx ?? area?.rowIndex ?? 0
         const rowEntry = (rowMounting?.[groupLabel] || [])[rowIdx] || {}
         const aDefault = parseFloat(panelAngle) || 0
