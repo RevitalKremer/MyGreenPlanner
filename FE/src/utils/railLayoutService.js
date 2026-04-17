@@ -109,6 +109,160 @@ function splitIntoStockSegments(lengthMm, stockLengths) {
   return segments
 }
 
+/**
+ * Build a lookup map for BE rail data, keyed by multiple access patterns:
+ *   - `${areaIdx}:${panelRowIdx}:${railId}`
+ *   - `${areaLabel}:${panelRowIdx}:${railId}`
+ *   - `${areaId}:${panelRowIdx}:${railId}`
+ *   - Legacy single-row: `${areaIdx}:${railId}`, `${areaLabel}:${railId}`
+ *
+ * @param {object[]} beRailsData - array of { areaLabel, areaId, rails: [...] }
+ * @returns {object} lookup map
+ */
+export function buildBeRailLookup(beRailsData) {
+  const m = {}
+  ;(beRailsData ?? []).forEach((area, idx) => {
+    for (const r of (area.rails ?? [])) {
+      const pri = r._panelRowIdx ?? 0
+      m[`${idx}:${pri}:${r.railId}`] = r
+      m[`${area.areaLabel}:${pri}:${r.railId}`] = r
+      if (area.areaId != null) m[`${area.areaId}:${pri}:${r.railId}`] = r
+      if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
+      if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
+    }
+  })
+  return m
+}
+
+/**
+ * Build a mapping from areaGroupKey → area label string.
+ * Primary: derive from the first panel's trapezoidId (strip trailing digits).
+ * Fallback: match unmapped keys to beRailsData entries by order.
+ *
+ * @param {object[]} panels
+ * @param {number[]} rowKeys - sorted area group keys
+ * @param {object[]} [beRailsData]
+ * @returns {object} { [groupKey]: label }
+ */
+export function buildGroupKeyToLabelMap(panels, rowKeys, beRailsData) {
+  const m = {}
+  for (const p of panels) {
+    if (p.areaGroupKey != null && p.trapezoidId && !m[p.areaGroupKey]) {
+      m[p.areaGroupKey] = p.trapezoidId.replace(/\d+$/, '')
+    }
+  }
+  if (beRailsData) {
+    const unmapped = rowKeys.filter(k => !m[k])
+    const usedLabels = new Set(Object.values(m))
+    const availBE = (beRailsData || []).filter(a => !usedLabels.has(a.areaLabel))
+    unmapped.forEach((k, i) => {
+      if (availBE[i]) m[k] = availBE[i].areaLabel
+    })
+  }
+  return m
+}
+
+/**
+ * Build the rail config for one physical row of panels.
+ * Resolves which lineRails to use: the editable prop for the active row,
+ * or BE-computed positions for all others.
+ *
+ * @param {object[]} rowPanels - panels in this physical row
+ * @param {number}   ri - panelRowIdx
+ * @param {object}   opts
+ * @param {boolean}  opts.useStored - true if this area is not the selected/editable area
+ * @param {number}   opts.selectedPanelRowIdx - currently edited sub-row index
+ * @param {object}   opts.lineRails - editable lineRails from the sidebar
+ * @param {object[]} opts.beRailsData - BE rail data
+ * @param {string}   opts.areaLabel - resolved area label for BE lookup
+ * @param {object}   opts.trapSettingsMap - per-trap settings
+ * @param {number}   opts.railOverhangCm - global rail overhang
+ * @param {number[]} opts.stockLengths - global stock lengths
+ * @returns {{ lineRails, overhangCm, stockLengths }}
+ */
+export function buildRowRailConfig(rowPanels, ri, {
+  useStored, selectedPanelRowIdx, lineRails, beRailsData,
+  areaLabel, trapSettingsMap, railOverhangCm, stockLengths,
+}) {
+  const trapId = rowPanels[0]?.trapezoidId
+  const isEditableRow = !useStored && ri === selectedPanelRowIdx
+  let rowRails
+  if (isEditableRow) {
+    rowRails = lineRails
+  } else {
+    rowRails = buildLineRailsFromBE(beRailsData, areaLabel, ri) ?? lineRails
+  }
+  const ts = (trapId && trapSettingsMap[trapId]) ?? {}
+  const stored = !isEditableRow
+  return {
+    lineRails: rowRails,
+    overhangCm: stored ? (ts.railOverhangCm ?? railOverhangCm) : railOverhangCm,
+    stockLengths: stored ? (ts.stockLengths ?? stockLengths) : stockLengths,
+  }
+}
+
+/**
+ * Compute rail layouts for all area rows.
+ * Expands multi-row areas into separate layout entries.
+ *
+ * @param {object}   opts
+ * @param {number[]} opts.rowKeys - area group keys
+ * @param {object}   opts.rowGroups - { [groupKey]: panel[] }
+ * @param {number}   opts.pixelToCmRatio
+ * @param {number|null} opts.selectedRowIdx
+ * @param {number}   opts.selectedPanelRowIdx
+ * @param {boolean}  opts.printMode
+ * @param {object}   opts.lineRails - editable lineRails
+ * @param {object}   opts.trapSettingsMap
+ * @param {number}   opts.railOverhangCm
+ * @param {number[]} opts.stockLengths
+ * @param {object[]} opts.beRailsData
+ * @param {object}   opts.groupKeyToLabel - { [groupKey]: areaLabel }
+ * @returns {{ railLayouts: object[], railLayoutKeys: number[] }}
+ */
+export function computeAllRowRailLayouts({
+  rowKeys, rowGroups, pixelToCmRatio,
+  selectedRowIdx, selectedPanelRowIdx, printMode,
+  lineRails, trapSettingsMap, railOverhangCm, stockLengths,
+  beRailsData, groupKeyToLabel,
+}) {
+  const layouts = []
+  const layoutKeys = []
+  rowKeys.forEach((rowKey, i) => {
+    const areaPanels = rowGroups[rowKey] ?? []
+    const useStored = i !== selectedRowIdx || printMode
+    const panelRowGroups = {}
+    for (const p of areaPanels) {
+      const ri = p.panelRowIdx ?? 0
+      if (!panelRowGroups[ri]) panelRowGroups[ri] = []
+      panelRowGroups[ri].push(p)
+    }
+    const rowIdxKeys = Object.keys(panelRowGroups).map(Number).sort((a, b) => a - b)
+    const cfgOpts = {
+      useStored, selectedPanelRowIdx, lineRails, beRailsData,
+      areaLabel: groupKeyToLabel[rowKey],
+      trapSettingsMap, railOverhangCm, stockLengths,
+    }
+    if (rowIdxKeys.length <= 1) {
+      const cfg = buildRowRailConfig(areaPanels, 0, cfgOpts)
+      const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
+      if (rl) rl._panelRowIdx = 0
+      layouts.push(rl)
+      layoutKeys.push(rowKey)
+    } else {
+      for (const ri of rowIdxKeys) {
+        const rowPanels = panelRowGroups[ri]
+        const cfg = buildRowRailConfig(rowPanels, ri, cfgOpts)
+        const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, cfg)
+        if (rl) rl._panelRowIdx = ri
+        layouts.push(rl)
+        layoutKeys.push(rowKey)
+      }
+    }
+  })
+  return { railLayouts: layouts, railLayoutKeys: layoutKeys }
+}
+
 // Main: compute rail layout for one row's panels
 // railConfig.lineRails: { [lineIdx]: [offsetCm, ...] }  — rail positions from line's front edge
 // railConfig.overhangCm: rail overhang beyond panel extents
