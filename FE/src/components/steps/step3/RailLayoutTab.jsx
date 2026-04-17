@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { computeRowRailLayout } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, buildLineRailsFromBE } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 
 
 export default function RailLayoutTab({
-  panels = [], refinedArea, selectedRowIdx = null,
+  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
   uploadedImageData, imageSrc,
   settings = {},
   lineRails,           // { [lineIdx]: [offsetCm, ...] }
@@ -82,6 +82,9 @@ export default function RailLayoutTab({
   }, [beRailsData])
 
   // Map areaGroupKey → area label (for BE rail lookup resolution)
+  // Map areaGroupKey → area label. Works for all roof types including tiles
+  // (whose panels have trapezoidId=null). Primary: derive from trapezoidId.
+  // Fallback: match by group-key order against beRailsData entries.
   const groupKeyToLabel = useMemo(() => {
     const m = {}
     for (const p of panels) {
@@ -89,8 +92,17 @@ export default function RailLayoutTab({
         m[p.areaGroupKey] = p.trapezoidId.replace(/\d+$/, '')
       }
     }
+    // Fill gaps (tiles panels have no trapezoidId) using beRailsData order
+    if (beRailsData) {
+      const unmapped = rowKeys.filter(k => !m[k])
+      const usedLabels = new Set(Object.values(m))
+      const availBE = (beRailsData || []).filter(a => !usedLabels.has(a.areaLabel))
+      unmapped.forEach((k, i) => {
+        if (availBE[i]) m[k] = availBE[i].areaLabel
+      })
+    }
     return m
-  }, [panels])
+  }, [panels, rowKeys, beRailsData])
 
   // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
   const { railLayouts, railLayoutKeys } = useMemo(() => {
@@ -99,18 +111,7 @@ export default function RailLayoutTab({
     const layoutKeys = []  // parallel array: rowKey for each layout entry (for BE lookup)
     rowKeys.forEach((rowKey, i) => {
       const areaPanels = rowGroups[rowKey] ?? []
-      const firstTrapId = areaPanels[0]?.trapezoidId
       const useStored = i !== selectedRowIdx || printMode
-      let areaLineRails = lineRails
-      if (useStored && firstTrapId && trapLineRailsMap[firstTrapId]) {
-        areaLineRails = trapLineRailsMap[firstTrapId]
-      }
-      const areaSettings = (firstTrapId && trapSettingsMap[firstTrapId]) ?? {}
-      const cfg = {
-        lineRails: areaLineRails,
-        overhangCm: useStored ? (areaSettings.railOverhangCm ?? railOverhangCm) : railOverhangCm,
-        stockLengths: useStored ? (areaSettings.stockLengths ?? stockLengths) : stockLengths,
-      }
       // Split panels by panelRowIdx so each physical row gets its own rail layout
       const panelRowGroups = {}
       for (const p of areaPanels) {
@@ -119,14 +120,48 @@ export default function RailLayoutTab({
         panelRowGroups[ri].push(p)
       }
       const rowIdxKeys = Object.keys(panelRowGroups).map(Number).sort((a, b) => a - b)
+      // Resolve per-row trap+config. Phase A: rows in a multi-row area can
+      // have different lineOrientations (V-only vs V+H vs V+V), so each
+      // physical row must pick its OWN trap's rails — not the area's first
+      // panel's trap, which may have a different line count.
+      //
+      // The editable `lineRails` prop applies only to the currently-selected
+      // sub-row (selectedPanelRowIdx); all other sub-rows use their trap's
+      // stored rails from trapLineRailsMap.
+      // Build rail config for one physical row. Rails are per-row (not
+      // per-trap), so we prefer BE-computed positions when available —
+      // no tiles/non-tiles distinction needed. Only the currently-edited
+      // row uses the editable lineRails prop so user edits render live.
+      const buildCfgForRowPanels = (rowPanels, ri) => {
+        const trapId = rowPanels[0]?.trapezoidId
+        const isEditableRow = !useStored && ri === selectedPanelRowIdx
+        let rowRails
+        if (isEditableRow) {
+          rowRails = lineRails
+        } else {
+          // BE-computed rails are authoritative (always available on step 3)
+          rowRails = buildLineRailsFromBE(beRailsData, groupKeyToLabel[rowKey], ri)
+            ?? lineRails
+        }
+        const ts = (trapId && trapSettingsMap[trapId]) ?? {}
+        const stored = !isEditableRow
+        return {
+          lineRails: rowRails,
+          overhangCm: stored ? (ts.railOverhangCm ?? railOverhangCm) : railOverhangCm,
+          stockLengths: stored ? (ts.stockLengths ?? stockLengths) : stockLengths,
+        }
+      }
       if (rowIdxKeys.length <= 1) {
+        const cfg = buildCfgForRowPanels(areaPanels, 0)
         const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
         if (rl) rl._panelRowIdx = 0
         layouts.push(rl)
         layoutKeys.push(rowKey)
       } else {
         for (const ri of rowIdxKeys) {
-          const rl = computeRowRailLayout(panelRowGroups[ri], pixelToCmRatio, cfg)
+          const rowPanels = panelRowGroups[ri]
+          const cfg = buildCfgForRowPanels(rowPanels, ri)
+          const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, cfg)
           if (rl) rl._panelRowIdx = ri
           layouts.push(rl)
           layoutKeys.push(rowKey)  // all sub-rows map to the same area rowKey

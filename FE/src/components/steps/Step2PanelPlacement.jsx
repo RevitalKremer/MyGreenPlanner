@@ -4,6 +4,7 @@ import {
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
 import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
+import { allAreasTiles } from '../../utils/roofSpecUtils'
 // panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
 // so this null sentinel should never actually be used at render time.
 const _FALLBACK_PANEL_TYPE = null
@@ -62,8 +63,9 @@ export default function Step2PanelPlacement({
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
-  // Mounting section visible if either setting's roofTypes includes this roof (null = all)
-  const showMounting = !angLim.roofTypes || angLim.roofTypes.includes(roofType || 'concrete')
+  // Mounting section hidden only for fully-tiles projects (no construction frame).
+  // Mixed projects show mounting — per-area tiles hiding is handled in the sidebar.
+  const showMounting = !allAreasTiles(roofType, [])
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
@@ -479,10 +481,10 @@ export default function Step2PanelPlacement({
     panels.forEach(p => {
       const aKey = p.area ?? p.row
       if (aKey === undefined || aKey === null) return
-      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}`
-      const tId = p.trapezoidId || defaultTrapId
+      // Tiles panels have trapezoidId=null (no construction frame) → skip.
+      if (!p.trapezoidId) return
       if (!map[aKey]) map[aKey] = new Set()
-      map[aKey].add(tId)
+      map[aKey].add(p.trapezoidId)
     })
     const result = {}
     Object.entries(map).forEach(([k, s]) => { result[k] = [...s].sort() })
@@ -609,6 +611,8 @@ export default function Step2PanelPlacement({
                     angle: targetArea?.angle ?? a.angle,
                     frontHeight: targetArea?.frontHeight ?? a.frontHeight,
                     color: targetArea?.color ?? a.color,
+                    // Merged row inherits the target area's roof spec
+                    roofSpec: targetArea?.roofSpec ?? a.roofSpec ?? null,
                   }
                 })
               })
@@ -679,6 +683,8 @@ export default function Step2PanelPlacement({
                     label: targetLabel,
                     rowIndex: nextRowIndex,
                     color: targetArea?.color ?? a.color,
+                    // Grouped rows inherit the target area's roof spec
+                    roofSpec: targetArea?.roofSpec ?? a.roofSpec ?? null,
                   }
                   nextRowIndex++
                   return updated

@@ -447,24 +447,27 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
     # Get angleProfileSizeMm from settings cache (no DB call)
     angle_profile_size_mm = get_setting('angleProfileSizeMm')
 
-    roof_spec = project.roof_spec or {'type': 'concrete'}
-    roof_type = roof_spec.get('type', 'concrete')
+    project_roof_spec = project.roof_spec or {'type': 'concrete'}
 
     # Build label → computedArea lookup
     ca_by_label = {ca.get('label'): ca for ca in computed_areas}
 
-    # Derive row constructions for each area
+    # Derive row constructions for each area. Each area's BOM contribution
+    # is computed against its own resolved roof type — for mixed projects
+    # that means concrete / tiles / iskurit / insulated_panel per area.
+    from app.utils.settings_helpers import resolve_roof_spec
     row_constructions = []
     row_labels = []
     for area in areas:
         label = _get_area_field(area, 'label', f'Area {len(row_labels) + 1}')
         ca = ca_by_label.get(label)
-        rc = _derive_row_construction(area, ca, computed_trapezoids, roof_type)
+        area_roof_type = resolve_roof_spec(project_roof_spec, area).get('type', 'concrete')
+        rc = _derive_row_construction(area, ca, computed_trapezoids, area_roof_type)
         if rc is None:
             continue
         # Add angleProfileSizeMm from app_settings to each row construction
         rc['angleProfileSizeMm'] = angle_profile_size_mm
-        rc['roofType'] = roof_type
+        rc['roofType'] = area_roof_type
         row_constructions.append(rc)
         row_labels.append(label)
 

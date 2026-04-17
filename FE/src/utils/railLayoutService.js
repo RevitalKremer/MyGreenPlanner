@@ -1,5 +1,29 @@
 import { PANEL_H } from './panelCodes.js'
 
+/**
+ * Build a lineRails map ({ lineIdx: [offsetCm, ...] }) from BE-computed rails.
+ * Works for ALL roof types — no trap config needed.
+ *
+ * @param {object[]} beRailsData - flat array of BE area rail objects (from App.jsx applyBeResult)
+ * @param {string}   areaLabel   - label of the area to look up
+ * @param {number}   [panelRowIdx=0] - physical row index within the area
+ * @returns {object|null} { lineIdx: [sortedOffsets] } or null if not found
+ */
+export function buildLineRailsFromBE(beRailsData, areaLabel, panelRowIdx = 0) {
+  if (!beRailsData) return null
+  const beArea = beRailsData.find(a => a.areaLabel === areaLabel)
+  if (!beArea) return null
+  const rails = (beArea.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === panelRowIdx)
+  if (!rails.length) return null
+  const map = {}
+  for (const r of rails) {
+    if (!map[r.lineIdx]) map[r.lineIdx] = []
+    map[r.lineIdx].push(r.offsetFromLineFrontCm)
+  }
+  for (const li of Object.keys(map)) map[li] = [...map[li]].sort((a, b) => a - b)
+  return Object.keys(map).length > 0 ? map : null
+}
+
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm, spacingCm) {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)

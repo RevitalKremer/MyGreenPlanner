@@ -22,6 +22,7 @@ from app.utils.panel_geometry import (
     is_empty_orientation, infer_row_orientation,
     PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
+from app.utils.settings_helpers import resolve_roof_spec
 
 
 async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
@@ -889,14 +890,29 @@ def _reassign_row_base_traps_by_signature(
     """
     if not bases or not panel_grid or not trap_ids:
         return
+    kept: list[dict] = []
     for i, base in enumerate(bases):
         base_x = base.get('offsetFromStartCm')
         if base_x is None:
+            kept.append(base)
             continue
         sig = _calc_base_trap_signature_with_fallback(
             base_x, panel_grid,
             panel_width_cm, panel_length_cm, panel_gap_cm,
         )
+        # Drop bases whose probe hits no real panel on any line. These are
+        # placed outside the row's panel extent by compute_area_bases when
+        # a wider-frame trap in the same area (e.g. a V+H trap sharing the
+        # row with V-only traps) pushes frame_end beyond this row's panels.
+        has_real_panel = any(s in REAL_PANELS for s in sig if s is not None)
+        if not has_real_panel:
+            logger.info(
+                "[base trap sig] area %s row %s base %s (x=%s): signature "
+                "%s has no real panel — dropping (outside panel extent)",
+                area_label, row_idx, base.get('baseId', f'B{i + 1}'),
+                base_x, sig,
+            )
+            continue
         expected = _match_trap_by_signature(
             sig, trap_ids, trapezoids_by_id,
             row_angle_deg=row_angle_deg,
@@ -904,25 +920,71 @@ def _reassign_row_base_traps_by_signature(
         )
         original = base.get('trapezoidId')
         if expected is None:
-            # Signature didn't match any trap — leave the original alone but
-            # log so we can investigate.
-            logger.warning(
+            logger.info(
                 "[base trap sig] area %s row %s base %s (x=%s): no trap matches "
                 "signature %s — keeping actual=%s",
                 area_label, row_idx, base.get('baseId', f'B{i + 1}'),
                 base_x, sig, original,
             )
-            continue
-        if original and original != expected:
-            # Old method (compute_area_bases + consolidation) disagrees with
-            # the geometric signature. Log and override — signature wins.
-            logger.warning(
-                "[base trap sig] area %s row %s base %s (x=%s): "
-                "old=%s, sig=%s → using sig (old kept as validation)",
-                area_label, row_idx, base.get('baseId', f'B{i + 1}'),
-                base_x, original, expected,
-            )
-        base['trapezoidId'] = expected
+        else:
+            if original and original != expected:
+                logger.info(
+                    "[base trap sig] area %s row %s base %s (x=%s): "
+                    "old=%s, sig=%s → using sig (old kept as validation)",
+                    area_label, row_idx, base.get('baseId', f'B{i + 1}'),
+                    base_x, original, expected,
+                )
+            base['trapezoidId'] = expected
+        kept.append(base)
+    # Mutate the caller's list in place (row_bases and all_row_bases[row_idx]
+    # are the same reference, so re-id'ing and shrinking here propagates).
+    if len(kept) != len(bases):
+        # Reassign baseIds to stay B1..BN
+        for new_i, b in enumerate(kept):
+            b['baseId'] = f'B{new_i + 1}'
+    bases[:] = kept
+
+
+def _trap_matches_panel_grid(trap_cfg: dict, panel_grid: dict) -> bool:
+    """True if the trap's lineOrientations can be observed on at least one
+    column of this panel grid (same line count, matching cells).
+
+    V/H in the trap's lineOrientations matches either the real (V/H) or the
+    empty (EV/EH) cell of the same orientation. Cells beyond a line's length
+    only match a trap's explicitly-empty (EV/EH) orientation.
+    """
+    line_orients = trap_cfg.get('lineOrientations') or []
+    rows_cells = (panel_grid or {}).get('rows') or []
+    if not line_orients or not rows_cells:
+        return False
+    if len(rows_cells) != len(line_orients):
+        return False
+    n_cols = max((len(r) for r in rows_cells), default=0)
+    for c in range(n_cols):
+        ok = True
+        for li, want in enumerate(line_orients):
+            cell = rows_cells[li][c] if c < len(rows_cells[li]) else None
+            want_is_empty = bool(want and want.startswith('E'))
+            base_orient = want[-1] if want_is_empty else want
+            if cell is None:
+                if not want_is_empty:
+                    ok = False
+                    break
+                continue
+            if cell not in (base_orient, 'E' + base_orient):
+                ok = False
+                break
+        if ok:
+            return True
+    return False
+
+
+def _filter_trap_ids_for_row(
+    trap_ids: list[str], trapezoids: dict, panel_grid: dict,
+) -> list[str]:
+    """Keep only the trap ids that actually appear in this row's panel grid."""
+    return [tid for tid in trap_ids
+            if _trap_matches_panel_grid(trapezoids.get(tid) or {}, panel_grid)]
 
 
 def _compute_row_bases(
@@ -989,10 +1051,12 @@ async def compute_and_save_bases(
     areas = step2.get('areas', [])
     trapezoids = _trapezoids_by_id(step2)
     app_defaults = settings_cache.get_all_settings()
-    roof_spec = project.roof_spec or {'type': 'concrete'}
+    project_roof_spec = project.roof_spec
 
-    # Tiles: no construction frame — skip base computation entirely
-    if roof_spec.get('type') == 'tiles':
+    # Global tiles skip only when the PROJECT is entirely tiles. For mixed
+    # projects, the per-area check inside the loop decides whether each area
+    # contributes bases. Non-mixed non-tiles projects hit neither branch.
+    if project_roof_spec.get('type') == 'tiles':
         project.data = data
         flag_modified(project, 'data')
         await db.commit()
@@ -1007,6 +1071,12 @@ async def compute_and_save_bases(
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
             trap_ids = [label]
+
+        # Resolve this area's roof spec (per-area for mixed projects,
+        # otherwise the project spec). Skip tile areas — they have no frame.
+        roof_spec = resolve_roof_spec(project_roof_spec, area)
+        if roof_spec.get('type') == 'tiles':
+            continue
 
         computed_area = _get_computed_area(data, area_id)
         existing_bases = computed_area.get('bases', {}) if computed_area else {}
@@ -1031,9 +1101,22 @@ async def compute_and_save_bases(
             row_idx = pr.get('rowIndex', 0)
             pg = pr.get('panelGrid') or {}
 
+            # Restrict traps computed for THIS row to those whose
+            # lineOrientations both (a) have the same line count as the row's
+            # panelGrid, and (b) match the row's actual cells on at least one
+            # column. Without this, a wider-frame trap (e.g. a V+H trap) gets
+            # computed against a row that has no H cells, producing a frame
+            # that overshoots the row's real panel extent — and its bases win
+            # consolidation at positions that don't exist in the row.
+            row_trap_ids = _filter_trap_ids_for_row(trap_ids, trapezoids, pg)
+            if not row_trap_ids:
+                # Fallback: no matching trap (shouldn't happen for a well-split
+                # area). Keep the full list so we at least produce bases.
+                row_trap_ids = trap_ids
+
             row_bases, bases_data_map, consolidated = _compute_row_bases(
                 bs, data, area, i,
-                trap_ids, trapezoids,
+                row_trap_ids, trapezoids,
                 app_defaults, roof_spec,
                 trapezoid_configs, stored_custom, has_existing_bases,
                 panel_grid=pg, row_idx=row_idx,
@@ -1177,20 +1260,37 @@ async def update_project_step(
     await db.commit()
 
     # ── Tiles: force angle=0, frontHeight=0 (no construction frame) ──
-    roof_spec = project.roof_spec or {'type': 'concrete'}
-    if roof_spec.get('type') == 'tiles':
+    # For mixed projects, only zero out tile-typed areas and the traps
+    # belonging to them. For fully-tile projects, zero everything and the
+    # step2 defaults. Non-tile projects: no change.
+    project_roof_spec = project.roof_spec
+    ptype = project_roof_spec.get('type')
+    if ptype == 'tiles' or ptype == 'mixed':
         step2 = data.get('step2', {})
-        step2['defaultAngleDeg'] = 0
-        step2['defaultFrontHeightCm'] = 0
+        if ptype == 'tiles':
+            step2['defaultAngleDeg'] = 0
+            step2['defaultFrontHeightCm'] = 0
+        tile_trap_ids: set[str] = set()
         for area in step2.get('areas', []):
+            if resolve_roof_spec(project_roof_spec, area).get('type') != 'tiles':
+                continue
             area['angleDeg'] = 0
             area['frontHeightCm'] = 0
+            # Row-level a/h too (row is the authority post Phase A)
+            for pr in (area.get('panelRows') or []):
+                if pr is None:
+                    continue
+                pr['angleDeg'] = 0
+                pr['frontHeightCm'] = 0
+            tile_trap_ids.update(area.get('trapezoidIds') or [])
         for trap in step2.get('trapezoids', []):
-            trap['angleDeg'] = 0
-            trap['frontHeightCm'] = 0
-        project.data = data
-        flag_modified(project, 'data')
-        await db.commit()
+            if trap.get('id') in tile_trap_ids:
+                trap['angleDeg'] = 0
+                trap['frontHeightCm'] = 0
+        if tile_trap_ids or ptype == 'tiles':
+            project.data = data
+            flag_modified(project, 'data')
+            await db.commit()
 
     # ── Validate trapezoid assignments before computing step 3 ──
     # Log mismatches as warnings — does not block the transition (yet).
@@ -1299,17 +1399,17 @@ def _compute_all_trapezoid_details(
     trapezoid_configs: dict | None,
     stored_custom_diags: dict,
     tds,
-    roof_spec: dict,
+    project_roof_spec: dict,
 ) -> dict:
     """
     Compute structural details for all trapezoids (first pass — full trap computation).
-    
+
     Returns dict of {trapId: detail_dict}.
     """
     result = {}
     area_settings = step3.get('areaSettings', {})
     global_settings = step3.get('globalSettings', {})
-    
+
     for trap_id, trap_cfg in trapezoids.items():
         # Find the area this trap belongs to
         area = None
@@ -1327,16 +1427,65 @@ def _compute_all_trapezoid_details(
             )
             continue
 
+        # Resolve this trap's effective roof spec via its owning area.
+        # Tile areas have no construction frame → skip the trap.
+        roof_spec = resolve_roof_spec(project_roof_spec, area)
+        if roof_spec.get('type') == 'tiles':
+            continue
+
         area_id = area.get('id', 0)
 
         # Build panel lines from trap's lineOrientations
         line_orients = trap_cfg.get('lineOrientations', [PANEL_V])
 
+        # Find the trap's OWNING row. A multi-row area can have traps with
+        # different lineOrientations per row — pulling line_rails from row 0
+        # for a trap that lives in row N would give 0's rails (wrong line
+        # count). Prefer the panelRow whose panelGrid has the same number of
+        # lines AND whose column signatures match the trap's. Fallback: row 0.
+        owning_row_idx = 0
+        panel_rows = area.get('panelRows') or []
+        for pr in panel_rows:
+            if pr is None:
+                continue
+            pg = pr.get('panelGrid') or {}
+            rows_cells = pg.get('rows') or []
+            if len(rows_cells) != len(line_orients):
+                continue
+            # Column signature check: every line must have a REAL cell at the
+            # column, and its orientation must match the trap's (treating V/EV
+            # as interchangeable against a trap's V, same for H/EH). Cells
+            # beyond a line's length are implicit empty slots, so they only
+            # match a trap's explicitly-empty ('EV'/'EH') orientation.
+            n_cols = max((len(r) for r in rows_cells), default=0)
+            col_match = False
+            for c in range(n_cols):
+                ok = True
+                for li, want in enumerate(line_orients):
+                    cell = rows_cells[li][c] if c < len(rows_cells[li]) else None
+                    want_is_empty = bool(want and want.startswith('E'))
+                    base = want[-1] if want_is_empty else want
+                    if cell is None:
+                        # Out-of-bounds → implicit empty slot on this line.
+                        # Only matches when the trap expects empty here.
+                        if not want_is_empty:
+                            ok = False
+                            break
+                        continue
+                    if cell not in (base, 'E' + base):
+                        ok = False
+                        break
+                if ok:
+                    col_match = True
+                    break
+            if col_match:
+                owning_row_idx = pr.get('rowIndex', 0)
+                break
+
         # Derive line rails — only for active (non-empty) lines of this trapezoid.
         # Ghost rendering is handled by the FE overlaying the full trap's DetailView.
-        # Use first panel row (row_index=0) — trapezoid geometry is shared across rows.
         computed_area = _get_computed_area(data, area_id)
-        all_line_rails = _derive_line_rails(computed_area, row_index=0)
+        all_line_rails = _derive_line_rails(computed_area, row_index=owning_row_idx)
         line_rails = {
             li: offs for li, offs in all_line_rails.items()
             if int(li) < len(line_orients) and not is_empty_orientation(line_orients[int(li)])
@@ -1597,10 +1746,11 @@ async def compute_and_save_trapezoid_details(
     # Get settings from cache (no DB query)
     app_defaults = settings_cache.get_all_settings()
 
-    roof_spec = project.roof_spec or {'type': 'concrete'}
+    project_roof_spec = project.roof_spec
 
-    # Tiles: no construction frame — skip trapezoid detail computation entirely
-    if roof_spec.get('type') == 'tiles':
+    # Global tiles skip only for fully-tile projects. Mixed projects let
+    # the per-trap check inside _compute_all_trapezoid_details decide.
+    if project_roof_spec.get('type') == 'tiles':
         project.data = data
         flag_modified(project, 'data')
         await db.commit()
@@ -1621,7 +1771,7 @@ async def compute_and_save_trapezoid_details(
     # ── Compute all trapezoids (first pass — full trap computation) ────────────
     result = _compute_all_trapezoid_details(
         trapezoids, areas, step2, step3, data, app_defaults,
-        trapezoid_configs, stored_custom_diags, tds, roof_spec,
+        trapezoid_configs, stored_custom_diags, tds, project_roof_spec,
     )
     
     # Persist first pass results

@@ -135,6 +135,7 @@ function App() {
           frontHeight: a.frontHeightCm ?? 0,
           lineOrientations: firstTrap?.lineOrientations ?? [PANEL_V],
           panelRows: a.panelRows ?? (a.panelGrid ? [{ rowIndex: 0, panelGrid: a.panelGrid }] : []),
+          roofSpec: a.roofSpec ?? null,
         }
       }))
     }
@@ -593,6 +594,9 @@ function App() {
             onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
                 const idx = prev.length
+                // When the project is mixed, every new standalone area starts
+                // as concrete; added rows inherit their parent group's spec.
+                const isMixed = s.currentProject?.roofSpec?.type === 'mixed'
                 if (addToGroupId != null) {
                   // Adding a new row to an existing area group (addToGroupId is numeric)
                   const parentArea = prev.find(a => a.areaGroupId === addToGroupId)
@@ -611,6 +615,7 @@ function App() {
                     rotation: parentArea?.rotation ?? 0,
                     manualTrapezoids: false,
                     manualColTrapezoids: {},
+                    roofSpec: isMixed ? (parentArea?.roofSpec ?? { type: 'concrete' }) : null,
                   }]
                 }
                 // New standalone area — assign temporary numeric areaGroupId
@@ -628,6 +633,7 @@ function App() {
                   rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},
+                  roofSpec: isMixed ? { type: 'concrete' } : null,
                 }]
               })
             }}

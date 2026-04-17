@@ -6,6 +6,7 @@ import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
+import { allAreasTiles } from '../utils/roofSpecUtils'
 import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
@@ -134,7 +135,19 @@ export function useProjectState() {
     products, productByType, altsByType,
     backendStatus,
     refreshAppSettings,
-  } = useAppConfig({ panelType, currentProject })
+  } = useAppConfig({
+    panelType, currentProject,
+    // For mixed projects, paramSchemaForRoof unions the types of each area's
+    // roofSpec. Pass rectAreas (which carry the per-area roofSpec), deduped
+    // by areaGroupId so multi-row groups count once.
+    areas: (pState.layout.rectAreas || []).reduce((acc, ra) => {
+      if (!ra) return acc
+      const gid = ra.areaGroupId
+      if (gid == null || acc.some(a => a._gid === gid)) return acc
+      acc.push({ _gid: gid, roofSpec: ra.roofSpec })
+      return acc
+    }, []),
+  })
 
   // ── Sync panelSpec dimensions into reducer when panelType changes ──
   useEffect(() => {
@@ -227,6 +240,7 @@ export function useProjectState() {
       angle: a.angleDeg ?? 0,
       frontHeight: a.frontHeightCm ?? 0,
       lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
+      roofSpec: a.roofSpec ?? null,
     }))
     const grid = {}
     const rowMtg = {}  // areaLabel → [{angleDeg, frontHeightCm}, ...]
@@ -294,6 +308,10 @@ export function useProjectState() {
           angle: String(s2a.angleDeg ?? ''),
           areaGroupId: numericGroupId,
           rowIndex,
+          // Mirror the step2 area's per-area roof spec onto every rectArea in
+          // the group. Only meaningful for projects with roof_spec.type='mixed';
+          // non-mixed projects ignore this field entirely.
+          roofSpec: s2a.roofSpec ?? null,
         }
       })
     }
@@ -456,6 +474,9 @@ export function useProjectState() {
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
         trapezoidIds: areaTrapIds,
+        // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
+        // Serialize whatever is on the (first) rectArea of the group.
+        roofSpec: ra?.roofSpec ?? null,
         panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
           rowIndex: ri,
           panelGrid: pg ?? null,
@@ -724,6 +745,7 @@ export function useProjectState() {
       rowMounting,
       roofPolygon, panelType,
       onlyAreaIdx: _onlyAreaIdx,
+      roofType: currentProject?.roofSpec?.type || 'concrete',
     })
     if (!result) return
 
@@ -901,7 +923,7 @@ export function useProjectState() {
       case 2: {
         const roofType = currentProject?.roofSpec?.type || 'concrete'
         if (rectAreas.length === 0) return false
-        if (roofType === 'tiles') return true
+        if (allAreasTiles(roofType, [])) return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg

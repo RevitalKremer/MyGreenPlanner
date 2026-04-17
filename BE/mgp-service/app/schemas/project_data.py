@@ -77,6 +77,10 @@ class Step2Area(BaseModel):
     trapezoidIds: list[str] = Field(default_factory=list)
     panelRows: list[PanelRowData] = Field(default_factory=list)
     # Each entry = one drawn panel row; single-row area = list of length 1
+    # Per-area roof spec — only used when project.roof_spec.type == 'mixed'.
+    # Shape matches RoofSpec (type / distanceBetweenPurlinsCm / installationOrientation).
+    # When absent on a mixed project, the resolver defaults to concrete.
+    roofSpec: Optional[dict] = None
 
 
 class Step2Trapezoid(BaseModel):

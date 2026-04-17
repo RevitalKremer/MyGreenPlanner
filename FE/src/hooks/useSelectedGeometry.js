@@ -15,12 +15,13 @@ function flattenRowDict(d) {
  * line depths, orientations, rail positions, and spacing controls.
  */
 export default function useSelectedGeometry({
-  selectedRowIdx, effectiveSelectedTrapId,
+  selectedRowIdx, selectedPanelRowIdx = 0, effectiveSelectedTrapId,
   rowKeys, areas, refinedArea, trapezoidConfigs, areaTrapezoidMap,
   beRailsData, beTrapezoidsData,
   getSettings, getTrapBasesSettings, getLineOrientations, getLineRails,
   updateLineRails, areaSettings, globalSettings,
   panelSpec, appDefaults, PARAM_SCHEMA,
+  panels = [],
 }) {
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
@@ -62,7 +63,7 @@ export default function useSelectedGeometry({
 
   // ── Selected line rails (remapped to active lines only) ────────────────
   const selectedLineRails = useMemo(() => {
-    const allRails = getLineRails(selectedRowIdx, selectedLineOrientations)
+    const allRails = getLineRails(selectedRowIdx, selectedLineOrientations, selectedPanelRowIdx)
     const remapped = {}
     let activeIdx = 0
     for (let li = 0; li < selectedLineOrientations.length; li++) {
@@ -71,24 +72,35 @@ export default function useSelectedGeometry({
       activeIdx++
     }
     return remapped
-  }, [selectedRowIdx, selectedLineOrientations, getLineRails])
+  }, [selectedRowIdx, selectedPanelRowIdx, selectedLineOrientations, getLineRails])
 
   const selectedLinePanelDepths = useMemo(() =>
     selectedLineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm)),
     [selectedLineOrientations]
   )
 
-  // ── Area-level orientations/rails (stable across trap selection) ───────
+  // ── Selected-row-level orientations/rails ──────────────────────────────
+  // For multi-row areas, each row can have a different trap with different
+  // line counts (Phase A). Resolve the trap that owns the selected panel row
+  // so the rails tab fetches the correct number of lines for THAT row.
   const areaLineOrientations = useMemo(() => {
     const areaKey = rowKeys[selectedRowIdx]
     if (areaKey == null) return [PANEL_V]
-    const firstTrapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
-    return getLineOrientations(areaKey, firstTrapId)
-  }, [selectedRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations])
+    // Find a panel in this area+selected row → use its trap.
+    const rowTrapId = (panels || []).find(p =>
+      !p.isEmpty
+      && (p.areaGroupKey ?? p.area) === areaKey
+      && (p.panelRowIdx ?? 0) === selectedPanelRowIdx
+    )?.trapezoidId
+    const trapId = rowTrapId
+      ?? areaTrapezoidMap[areaKey]?.[0]
+      ?? `${String.fromCharCode(65 + areaKey)}1`
+    return getLineOrientations(areaKey, trapId)
+  }, [selectedRowIdx, selectedPanelRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations, panels])
 
   const areaLineRails = useMemo(() =>
-    getLineRails(selectedRowIdx, areaLineOrientations),
-    [selectedRowIdx, areaLineOrientations, getLineRails]
+    getLineRails(selectedRowIdx, areaLineOrientations, selectedPanelRowIdx),
+    [selectedRowIdx, selectedPanelRowIdx, areaLineOrientations, getLineRails]
   )
 
   const areaLinePanelDepths = useMemo(() =>

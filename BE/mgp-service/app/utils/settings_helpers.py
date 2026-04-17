@@ -39,3 +39,41 @@ def get_setting_or_override(app_defaults: dict, overrides: dict, key: str):
     if key in overrides:
         return overrides[key]
     return app_defaults[key]
+
+
+def resolve_roof_spec(project_roof_spec: dict | None, area: dict | None) -> dict:
+    """Return the effective roof spec for a step2 area.
+
+    When the project is `type == 'mixed'`, each area may carry its own
+    `roofSpec` (`data.step2.areas[].roofSpec`). We return that spec, or
+    a concrete default if an area is missing it (should not happen for
+    a fully-configured mixed project, but keeps calls safe).
+
+    When the project is not mixed (the default case for every existing
+    project), the project-level `roof_spec` applies to all areas and is
+    returned as-is.
+
+    Args:
+        project_roof_spec: `project.roof_spec` (may be None).
+        area: step2 area dict (may be None when called before areas load).
+
+    Returns:
+        A dict shaped like RoofSpec with at least a `type` key.
+
+    Examples:
+        >>> resolve_roof_spec({'type': 'concrete'}, {'id': 1})
+        {'type': 'concrete'}
+        >>> resolve_roof_spec({'type': 'mixed'}, {'roofSpec': {'type': 'tiles'}})
+        {'type': 'tiles'}
+        >>> resolve_roof_spec({'type': 'mixed'}, {'id': 1})
+        {'type': 'concrete'}
+    """
+    ps = project_roof_spec or {}
+    if ps.get('type') != 'mixed':
+        # Non-mixed projects: project spec applies to every area.
+        # Fall back to concrete if project spec is empty (shouldn't happen).
+        return ps if ps else {'type': 'concrete'}
+    # Mixed mode — read the per-area spec (or concrete default).
+    if area is None:
+        return {'type': 'concrete'}
+    return area.get('roofSpec') or {'type': 'concrete'}

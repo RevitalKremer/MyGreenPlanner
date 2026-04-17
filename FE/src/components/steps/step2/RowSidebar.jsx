@@ -3,6 +3,7 @@ import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
+import { allAreasTiles } from '../../../utils/roofSpecUtils'
 
 export default function RowSidebar({
   panels,
@@ -320,9 +321,9 @@ export default function RowSidebar({
                 const allGroupPanels = group.rows.flatMap(r => r.row)
                 const isGroupSelected = allGroupPanels.some(p => selectedPanels.includes(p.id))
                 const firstAreaKey = group.areaIndices[0]
-                const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))]
-                const totalPanels = allGroupPanels.length
 
+                const totalPanels = allGroupPanels.length
+                const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))]
                 return (
                   <div key={group.groupId}>
                     <div style={{
@@ -349,13 +350,80 @@ export default function RowSidebar({
                           onClick={ev => { ev.stopPropagation(); setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
                           style={{ fontSize: '0.82rem', fontWeight: '600', color: TEXT_DARK, background: 'transparent', border: 'none', borderBottom: isGroupSelected ? `1px solid ${PRIMARY}` : '1px solid transparent', outline: 'none', padding: '0', minWidth: 0, flex: 1, cursor: 'text' }}
                         />
-                        <span
-                          onClick={() => { setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
-                          style={{ fontSize: '0.72rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}
-                        >
-                          {isMultiRow && `${group.rows.length}r `}{totalPanels}p
-                        </span>
+                        {roofType === 'mixed' ? (
+                          <select
+                            value={rectAreas[firstAreaKey]?.roofSpec?.type || 'concrete'}
+                            onChange={e => {
+                              const type = e.target.value
+                              setRectAreas?.(prev => prev.map(a => {
+                                if (a.areaGroupId !== group.groupId) return a
+                                const prevSpec = a.roofSpec || {}
+                                // Reset purlin params when switching to a type that doesn't use them
+                                const keepPurlin = type === 'iskurit' || type === 'insulated_panel'
+                                return {
+                                  ...a,
+                                  roofSpec: {
+                                    type,
+                                    distanceBetweenPurlinsCm: keepPurlin ? (prevSpec.distanceBetweenPurlinsCm ?? null) : null,
+                                    installationOrientation: keepPurlin ? (prevSpec.installationOrientation ?? null) : null,
+                                  },
+                                }
+                              }))
+                            }}
+                            onClick={ev => { ev.stopPropagation(); setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
+                            title={t('step2.sidebar.areaRoofType')}
+                            style={{ fontSize: '0.68rem', padding: '0.15rem 0.25rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', background: 'white', cursor: 'pointer', flexShrink: 0, maxWidth: '110px' }}
+                          >
+                            <option value="concrete">{t('roofSpec.type.concrete')}</option>
+                            <option value="tiles">{t('roofSpec.type.tiles')}</option>
+                            <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
+                            <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
+                          </select>
+                        ) : (
+                          <span
+                            onClick={() => { setSelectedPanels(allGroupPanels.map(p => p.id)); setTrapIdOverride(null) }}
+                            style={{ fontSize: '0.72rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}
+                          >
+                            {isMultiRow && `${group.rows.length}r `}{totalPanels}p
+                          </span>
+                        )}
                       </div>
+
+                      {/* Per-area purlin params — only in mixed mode for iskurit/insulated_panel */}
+                      {roofType === 'mixed' && (() => {
+                        const areaSpec = rectAreas[firstAreaKey]?.roofSpec
+                        const t_ = areaSpec?.type
+                        if (t_ !== 'iskurit' && t_ !== 'insulated_panel') return null
+                        const setSpec = (patch) => {
+                          setRectAreas?.(prev => prev.map(a =>
+                            a.areaGroupId === group.groupId
+                              ? { ...a, roofSpec: { ...(a.roofSpec || {}), ...patch } }
+                              : a
+                          ))
+                        }
+                        return (
+                          <div style={{ marginTop: '0.35rem', paddingLeft: '13px', display: 'flex', gap: '0.3rem' }}>
+                            <input
+                              type="number"
+                              placeholder={t('roofSpec.distanceBetweenPurlins')}
+                              value={areaSpec?.distanceBetweenPurlinsCm ?? ''}
+                              onChange={e => {
+                                const v = e.target.value
+                                setSpec({ distanceBetweenPurlinsCm: v === '' ? null : (parseFloat(v) || 0) })
+                              }}
+                              style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px' }}
+                            />
+                            <select
+                              value={areaSpec?.installationOrientation || 'perpendicular'}
+                              onChange={e => setSpec({ installationOrientation: e.target.value })}
+                              style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+                            >
+                              <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
+                              <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
+                            </select>
+                          </div>
+                        )
+                      })()}
 
                       {/* Rows section — always shown, even for single-row areas */}
                       <div style={{ marginTop: '0.35rem', paddingLeft: '13px' }}>
@@ -487,7 +555,7 @@ export default function RowSidebar({
       )}
 
       {/* Detail window — one of two views based on selection */}
-      {selectedRow && roofType !== 'tiles' && (() => {
+      {selectedRow && !allAreasTiles(roofType, []) && (() => {
         const areaKey = getAreaKey(selectedRow[0])
         const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
         // Key for rowMounting lookups must tolerate missing/empty labels:

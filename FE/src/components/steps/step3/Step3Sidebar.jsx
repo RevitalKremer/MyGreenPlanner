@@ -409,8 +409,11 @@ export default function Step3Sidebar({
                     {hasMultiTraps && hasMultiRows && activeTab !== 'areas' && (
                       <div style={{ borderTop: `1px dashed ${BORDER_FAINT}`, margin: '0.15rem 1rem 0.15rem 1.5rem' }} />
                     )}
-                    {/* Row sub-items (shown on bases tab when multi-row) */}
-                    {hasMultiRows && activeTab === 'bases' && panelRowIdxs.map((ri, idx) => {
+                    {/* Row sub-items (shown on bases & rails tabs when multi-row).
+                        Phase A: rails differ per row when row line counts differ
+                        (e.g. one row V-only, another V+H), so the user needs
+                        per-row picking on the rails tab too. */}
+                    {hasMultiRows && (activeTab === 'bases' || activeTab === 'rails') && panelRowIdxs.map((ri, idx) => {
                       const isRowSelected = selectedPanelRowIdx === ri
                       const count = areaPanels.filter(p => (p.panelRowIdx ?? 0) === ri).length
                       return (
