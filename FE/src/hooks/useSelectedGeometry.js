@@ -152,7 +152,7 @@ export default function useSelectedGeometry({
       numTrapezoids: numSpans + 1,
       spacing: rowLength / numSpans,
       railOverhang,
-      panelsPerLine: (areas[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+      panelsPerLine: (areas[areaKey]?.panelRows?.flatMap(pr => pr?.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
       typeLetter: 'A', // will be overridden by row-level assignTypes if shown in context
     }
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, getTrapBasesSettings])

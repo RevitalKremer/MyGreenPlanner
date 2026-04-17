@@ -372,9 +372,10 @@ function App() {
       }
       setSavedActiveTab(merged.activeTab)
       s.handleImportProject(merged, cloudProject.id)
-      // Seed BE data immediately from the project's step3 data (avoids waiting for construction-data fetch)
+      // Seed BE data immediately from the project's saved data.
+      // Pass both step2 + step3 so areas get panelRows and BE rails/bases are set.
       if (cloudProject.data?.step3) {
-        applyBeResult({ step3: cloudProject.data.step3 })
+        applyBeResult(cloudProject.data)
       }
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))

@@ -3,7 +3,7 @@ import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
 // BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
-import { allAreasTiles } from '../../../utils/roofSpecUtils'
+import { isAreaTiles } from '../../../utils/roofSpecUtils'
 
 export default function RowSidebar({
   panels,
@@ -130,10 +130,11 @@ export default function RowSidebar({
       const siblings = rectAreas.filter(a => a?.areaGroupId === gid).length
       if (siblings >= 2) canSplit = true
     }
-    return {
+    const info = {
       rowCount, groupCount, canSplit,
       canGroup: groupCount >= 2,
     }
+    return info
   }, [selectedPanels, panels, rectAreas])
 
   // "Apply to all rows" — write current default a/h to every row of every area
@@ -321,6 +322,7 @@ export default function RowSidebar({
                 const allGroupPanels = group.rows.flatMap(r => r.row)
                 const isGroupSelected = allGroupPanels.some(p => selectedPanels.includes(p.id))
                 const firstAreaKey = group.areaIndices[0]
+                const areaIsTilesTyped = isAreaTiles(roofType, rectAreas[firstAreaKey])
 
                 const totalPanels = allGroupPanels.length
                 const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))]
@@ -460,7 +462,7 @@ export default function RowSidebar({
                                 <span style={{ fontSize: '0.68rem', color: isSubSelected ? TEXT_DARK : TEXT_VERY_LIGHT, flex: 1 }}>
                                   Row {ri + 1} — {r.row.length}p
                                 </span>
-                                {showMounting && (
+                                {showMounting && !areaIsTilesTyped && (
                                   <span style={{ fontSize: '0.6rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>
                                     {rowAng.toFixed(1).replace(/\.0$/, '')}° · {rowFh.toFixed(1).replace(/\.0$/, '')}cm
                                   </span>
@@ -554,8 +556,9 @@ export default function RowSidebar({
         </>
       )}
 
-      {/* Detail window — one of two views based on selection */}
-      {selectedRow && !allAreasTiles(roofType, []) && (() => {
+      {/* Detail window — one of two views based on selection.
+          Hidden for tiles areas (no construction frame → no a/h or trap details). */}
+      {selectedRow && !isAreaTiles(roofType, rectAreas[getAreaKey(selectedRow[0])]) && (() => {
         const areaKey = getAreaKey(selectedRow[0])
         const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
         // Key for rowMounting lookups must tolerate missing/empty labels:

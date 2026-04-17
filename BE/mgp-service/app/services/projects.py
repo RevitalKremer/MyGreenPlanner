@@ -1283,10 +1283,17 @@ async def update_project_step(
                 pr['angleDeg'] = 0
                 pr['frontHeightCm'] = 0
             tile_trap_ids.update(area.get('trapezoidIds') or [])
-        for trap in step2.get('trapezoids', []):
-            if trap.get('id') in tile_trap_ids:
-                trap['angleDeg'] = 0
-                trap['frontHeightCm'] = 0
+        # Remove tiles traps entirely from step2.trapezoids (tiles areas
+        # have no construction frame → traps are meaningless). Also clear
+        # the area's trapezoidIds so downstream consumers see no traps.
+        if tile_trap_ids:
+            step2['trapezoids'] = [
+                t for t in step2.get('trapezoids', [])
+                if t.get('id') not in tile_trap_ids
+            ]
+            for area in step2.get('areas', []):
+                if resolve_roof_spec(project_roof_spec, area).get('type') == 'tiles':
+                    area['trapezoidIds'] = []
         if tile_trap_ids or ptype == 'tiles':
             project.data = data
             flag_modified(project, 'data')

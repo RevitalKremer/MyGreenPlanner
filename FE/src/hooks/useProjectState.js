@@ -6,7 +6,7 @@ import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
-import { allAreasTiles } from '../utils/roofSpecUtils'
+import { allAreasTiles, isAreaTiles } from '../utils/roofSpecUtils'
 import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
@@ -248,9 +248,10 @@ export function useProjectState() {
       const label = a.label ?? a.id
       if (a.panelRows?.length > 0) {
         // New format: panelRows array
-        grid[label] = a.panelRows.map(pr => pr.panelGrid).filter(Boolean)
+        grid[label] = a.panelRows.map(pr => pr?.panelGrid).filter(Boolean)
         // Row a/h: prefer panelRow's a/h. Backfill from area / first matching trap if missing.
         rowMtg[label] = a.panelRows.map((pr, ri) => {
+          if (!pr) return { angleDeg: a.angleDeg ?? s2.defaultAngleDeg ?? 0, frontHeightCm: a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0 }
           let ang = pr.angleDeg
           let fh  = pr.frontHeightCm
           if (ang == null || fh == null) {
@@ -276,28 +277,24 @@ export function useProjectState() {
     })
 
     // ── Enrich rectAreas with step2 area data ──
-    // Multi-row areas: s2.areas has fewer entries than layout.rectAreas (one per group).
-    // Use panelRows count to assign rectAreas to s2.areas sequentially.
+    // Match each rectArea to its owning step2 area by label/id/areaGroupId
+    // (not sequential — rectAreas may be interleaved across areas).
     let enrichedRectAreas = layout.rectAreas || []
     if (layout.rectAreas && s2.areas) {
-      // Build a sequential mapping: rectArea index → { s2Area, rowIndex }
-      const rectToArea = []
-      let raIdx = 0
-      for (const s2a of s2.areas) {
-        const rowCount = Math.max(1, s2a.panelRows?.length ?? 1)
-        for (let ri = 0; ri < rowCount && raIdx < layout.rectAreas.length; ri++) {
-          rectToArea.push({ s2a, rowIndex: ri })
-          raIdx++
-        }
-      }
-      // Assign any remaining rectAreas (shouldn't happen, but be safe)
-      while (raIdx < layout.rectAreas.length) {
-        rectToArea.push({ s2a: {}, rowIndex: 0 })
-        raIdx++
+      // Build lookup maps for step2 areas
+      const s2ByLabel = {}
+      const s2ById = {}
+      for (const a of s2.areas) {
+        if (a.label) s2ByLabel[a.label] = a
+        if (a.id != null) s2ById[a.id] = a
       }
 
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        const { s2a, rowIndex: derivedRowIndex } = rectToArea[idx] || { s2a: {}, rowIndex: 0 }
+        // Match by: rectArea label/id → s2 area label, or areaGroupId → s2 area id
+        const s2a = s2ByLabel[ra.label ?? ra.id]
+          ?? (typeof ra.areaGroupId === 'number' && ra.areaGroupId > 0 ? s2ById[ra.areaGroupId] : null)
+          ?? {}
+        const derivedRowIndex = ra.rowIndex ?? 0
         // areaGroupId = BE-assigned numeric area ID (stable across saves)
         const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
         const rowIndex = ra.rowIndex ?? derivedRowIndex
@@ -929,6 +926,8 @@ export function useProjectState() {
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
         return rectAreas.every(a => {
+          // Tiles areas have no construction frame → a/h is irrelevant
+          if (isAreaTiles(roofType, a)) return true
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
           return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&
