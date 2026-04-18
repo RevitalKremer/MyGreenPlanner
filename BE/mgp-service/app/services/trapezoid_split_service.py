@@ -87,8 +87,8 @@ def _refresh_single_row_trapezoids(
     max_lx = max(v['x'] for v in local_verts)
 
     # Per-row a/h (from caller) takes priority over rectArea fields
-    a_front = row_front if row_front is not None else float(area.get('frontHeight', 0) or panel_front_height or 0)
-    a_angle = row_angle if row_angle is not None else float(area.get('angle', 0) or panel_angle or 0)
+    a_front = row_front if row_front is not None else float(area.get('frontHeightCm', 0) or panel_front_height or 0)
+    a_angle = row_angle if row_angle is not None else float(area.get('angleDeg', 0) or panel_angle or 0)
 
     area_panels = [p for p in panels if p.get('area') == area_idx]
     if not area_panels:
