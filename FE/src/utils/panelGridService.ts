@@ -11,7 +11,7 @@ import { PANEL_V, PANEL_H, PANEL_EV, PANEL_EH } from './panelCodes.js'
  */
 export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
   const filteredKeys = new Set(filtered.map(p => `${p.row}_${p.coveredCols?.[0] ?? p.col ?? 0}`))
-  const allRows = [...new Set(computed.map(p => p.row))].sort((a, b) => a - b)
+  const allRows = [...new Set(computed.map(p => p.row) as number[])].sort((a, b) => a - b)
   const rowColMap = new Map()
   computed.forEach(p => {
     const col = p.coveredCols?.[0] ?? p.col ?? 0
@@ -33,7 +33,7 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
   const rowPositions = buildRowPositions(area, computed, filtered, pixelToCmRatio)
 
   const effectiveAngle = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-  const result = { startCorner: `${yCode}${xCode}`, areaAngle: effectiveAngle, rows }
+  const result: Record<string, any> = { startCorner: `${yCode}${xCode}`, areaAngle: effectiveAngle, rows }
   if (rowPositions) result.rowPositions = rowPositions
   return result
 }

@@ -4,7 +4,7 @@ import type { Step2Area } from '../types/projectData'
 
 // Compute base placement for one row
 // Returns { frame, bases, lines, frameLengthMm, baseCount, edgeOffsetMm, spacingMm, lastGapMm }
-export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, baseConfig = {}) {
+export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record<string, any> = {}, baseConfig: Record<string, any> = {}) {
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
   if (!baseConfig.customOffsets || baseConfig.customOffsets.length === 0) return null
 
@@ -29,7 +29,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig = {}, b
   }
   // Sort by physical position (minY) so lines[0] is always the rearmost (topmost in image)
   // regardless of lineIdx ordering, which differs between yDir='ttb' and yDir='btt' areas.
-  const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
+  const lines = (Object.values(lineMap) as any[]).sort((a, b) => a.minY - b.minY)
 
   // Frame spans panel edges (not rail ends)
   const frameXMinPx   = localBounds.minX
@@ -83,7 +83,7 @@ export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
     if (bp) result[trapId] = [...bp.bases]
   }
 
-  for (const trapIds of Object.values(areaTrapsMap)) {
+  for (const trapIds of Object.values(areaTrapsMap) as string[][]) {
     if (trapIds.length <= 1) continue
 
     // Build per-trap metadata for comparison
@@ -213,7 +213,7 @@ export function computeExpandedBasePlans({
     for (const ri of rowIdxKeys) {
       const rowPanels = byRow[ri]
       const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri) ?? null
-      const cfg = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
+      const cfg: Record<string, any> = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
       bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg))
@@ -234,7 +234,7 @@ export function computeExpandedBasePlans({
  * @returns {object} { [key]: { frame, lines, isRtl, isBtt } }
  */
 export function buildAreaFrames(panels, trapAreaMap, areas) {
-  const rowPanels = {}
+  const rowPanels: Record<string, { areaKey: string; ri: number; panels: any[] }> = {}
   for (const p of panels) {
     const tid = p.trapezoidId ?? 'A1'
     const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
@@ -254,7 +254,7 @@ export function buildAreaFrames(panels, trapAreaMap, areas) {
       lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
       lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
     }
-    const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
+    const lines = (Object.values(lineMap) as any[]).sort((a, b) => a.minY - b.minY)
     const isRtl = areaPnls[0]?.xDir === 'rtl'
     const isBtt = areaPnls[0]?.yDir === 'btt'
     return { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }

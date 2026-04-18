@@ -82,10 +82,10 @@ export function computePanelsAction({
   // Areas that already had panels before this compute are "existing" — never auto-deleted
   const existingAreaIndices = new Set(panels.map(p => p.area))
 
-  const allPanels = []
-  const groupTrapConfigs = {}
-  const areaLineConfigs = {}
-  const newPanelGrid = {}
+  const allPanels: any[] = []
+  const groupTrapConfigs: Record<string, any> = {}
+  const areaLineConfigs: Record<number, any> = {}
+  const newPanelGrid: Record<string, any> = {}
 
   // When resetting a single area, carry over all other areas' panels/grids/configs unchanged
   if (onlyAreaIdx !== undefined) {
@@ -107,7 +107,7 @@ export function computePanelsAction({
         }
       }
       const existingPanels = panels.filter(p => p.area === areaIdx)
-      const lineRows = [...new Set(existingPanels.map(p => p.row))].sort((a, b) => a - b)
+      const lineRows = [...new Set(existingPanels.map(p => p.row) as number[])].sort((a, b) => a - b)
       areaLineConfigs[areaIdx] = {
         lineOrientations: lineRows.map(r => {
           const s = existingPanels.find(p => p.row === r)
@@ -135,7 +135,7 @@ export function computePanelsAction({
   }
 
   let panelId = allPanels.length > 0 ? Math.max(...allPanels.map(p => p.id)) + 1 : 1
-  const pendingGroupPanels = {}  // groupId → [{ areaIdx, areaLabel, computed, filtered, ... }]
+  const pendingGroupPanels: Record<string, any[]> = {}  // groupId → [{ areaIdx, areaLabel, computed, filtered, ... }]
   // Updated row a/h (areaLabel → [{angleDeg, frontHeightCm}]). Built from input
   // rowMounting when present, falling back to area defaults for new rows.
   const newRowMounting = {}
@@ -173,7 +173,7 @@ export function computePanelsAction({
     newPanelGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, filtered, pixelToCmRatio)
 
     // Area-level orientation (all rows, no empties) — used for areas state and step 4
-    const lineRows = [...new Set(filtered.map(p => p.row))].sort((a, b) => a - b)
+    const lineRows = [...new Set(filtered.map(p => p.row) as number[])].sort((a, b) => a - b)
     const rowOrient = {}  // row → PANEL_V|PANEL_H
     lineRows.forEach(r => {
       const s = filtered.find(p => p.row === r)
@@ -231,8 +231,8 @@ export function computePanelsAction({
       groupEntries.forEach(ge => {
         const { computed, filtered, rAngle, rFront } = ge
         // Lines and orientations from computed (full polygon grid shape)
-        const computedAllLines = [...new Set(computed.map(p => p.row))].sort((a, b) => a - b)
-        const computedLineOrient = {}
+        const computedAllLines = [...new Set(computed.map(p => p.row) as number[])].sort((a, b) => a - b)
+        const computedLineOrient: Record<number, string> = {}
         computedAllLines.forEach(r => {
           const s = computed.find(p => p.row === r)
           computedLineOrient[r] = s?.heightCm > s?.widthCm ? PANEL_V : PANEL_H
@@ -460,7 +460,7 @@ function _refreshSingleRowTrapezoids({
     })
   })
 
-  const allRows = [...new Set(panelWithCols.map(p => p.row ?? 0))].sort((a, b) => a - b)
+  const allRows = [...new Set(panelWithCols.map(p => p.row ?? 0) as number[])].sort((a, b) => a - b)
   const colSig = (col) =>
     allRows.map(r =>
       colRowsMap.get(col)?.has(r) ? rowOrient[r] : (rowOrient[r] === PANEL_H ? PANEL_EH : PANEL_EV)

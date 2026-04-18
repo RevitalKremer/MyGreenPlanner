@@ -226,7 +226,7 @@ export function useProjectState() {
     // ── Convert server trapezoids array → FE trapezoidConfigs object ──
     const trapezoidConfigs = {}
     if (s2.trapezoids) {
-      const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids).map(([id, t]) => ({ id, ...t }))
+      const traps = Array.isArray(s2.trapezoids) ? s2.trapezoids : Object.entries(s2.trapezoids as Record<string, any>).map(([id, t]) => ({ id, ...t }))
       traps.forEach(t => {
         trapezoidConfigs[t.id] = { angle: t.angleDeg, frontHeight: t.frontHeightCm, lineOrientations: t.lineOrientations }
       })
@@ -400,7 +400,7 @@ export function useProjectState() {
     // Use refreshed configs from handleNext if state hasn't flushed yet
     const effectiveTrapConfigs = pending?.trapezoidConfigs ?? d.step2.trapezoidConfigs
     const effectivePanels = pending?.panels ?? panels
-    const trapezoids = Object.entries(effectiveTrapConfigs).map(([id, cfg]) => ({
+    const trapezoids = Object.entries(effectiveTrapConfigs as Record<string, any>).map(([id, cfg]) => ({
       id, angleDeg: cfg.angle, frontHeightCm: cfg.frontHeight, lineOrientations: cfg.lineOrientations,
     }))
     // Enrich areas with rectAreas geometry + panel-derived trapezoidIds

@@ -12,7 +12,7 @@ import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showDimensions,  setShowDimensions]  = useState(true)
   const [showPunches,     setShowPunches]      = useState(true)

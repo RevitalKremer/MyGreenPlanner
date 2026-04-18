@@ -154,6 +154,7 @@ export interface Diagonal {
   botPct: number
   lengthCm: number
   isDouble: boolean
+  disabled?: boolean
 }
 
 export interface ComputedArea {

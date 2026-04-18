@@ -245,7 +245,7 @@ export function computeAllRowRailLayouts({
     }
     if (rowIdxKeys.length <= 1) {
       const cfg = buildRowRailConfig(areaPanels, 0, cfgOpts)
-      const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
+      const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg) as any
       if (rl) rl._panelRowIdx = 0
       layouts.push(rl)
       layoutKeys.push(rowKey)
@@ -253,7 +253,7 @@ export function computeAllRowRailLayouts({
       for (const ri of rowIdxKeys) {
         const rowPanels = panelRowGroups[ri]
         const cfg = buildRowRailConfig(rowPanels, ri, cfgOpts)
-        const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, cfg)
+        const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, cfg) as any
         if (rl) rl._panelRowIdx = ri
         layouts.push(rl)
         layoutKeys.push(rowKey)
@@ -267,7 +267,7 @@ export function computeAllRowRailLayouts({
 // railConfig.lineRails: { [lineIdx]: [offsetCm, ...] }  — rail positions from line's front edge
 // railConfig.overhangCm: rail overhang beyond panel extents
 // railConfig.stockLengths: available stock lengths in mm
-export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig = {}) {
+export function computeRowRailLayout(rowPanels, pixelToCmRatio, railConfig: Record<string, any> = {}) {
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
   if (!railConfig.stockLengths || !railConfig.overhangCm) return null
 
