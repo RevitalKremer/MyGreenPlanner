@@ -159,8 +159,9 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
-    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (area mode only)
-    if (activeTool === 'area') {
+    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (area mode only).
+    // Skip when Ctrl/Cmd held — that gesture is reserved for the group-rows marquee.
+    if (activeTool === 'area' && !e.ctrlKey && !e.metaKey) {
       const selAreaIdx = selectedPanels.length > 0
         ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
         : null
@@ -199,8 +200,8 @@ export default function PanelCanvas({
     const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
 
     if (activeTool === 'area') {
-      // Ctrl/Cmd + drag on empty canvas → group-rows marquee (NOT new area)
-      if (!clickedPanel && (e.ctrlKey || e.metaKey)) {
+      // Ctrl/Cmd + drag → group-rows marquee (works from any position, even on panels)
+      if (e.ctrlKey || e.metaKey) {
         setGroupRowsRect({ startX: x, startY: y, endX: x, endY: y })
         return
       }

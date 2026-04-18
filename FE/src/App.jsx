@@ -121,20 +121,24 @@ function App() {
     const step3 = data.step3 || {}
     if (!step3) return
 
-    // Sync areas from step2 (includes BE-assigned IDs)
+    // Merge step2 area data (panelRows, roofSpec, trapezoidIds) into existing
+    // areas. Don't replace — existing areas have correct structure from
+    // handleImportProject/computePanels; we only add fields the FE load skips.
     if (step2.areas) {
-      const trapById = {}
-      for (const t of (step2.trapezoids ?? [])) trapById[t.id] = t
-      s.setAreas(step2.areas.map(a => {
-        const firstTrap = (a.trapezoidIds ?? []).map(tid => trapById[tid]).find(Boolean)
+      const s2ByLabel = {}
+      const s2ById = {}
+      for (const a of step2.areas) {
+        if (a.label) s2ByLabel[a.label] = a
+        if (a.id != null) s2ById[a.id] = a
+      }
+      s.setAreas(prev => prev.map(a => {
+        const s2a = s2ByLabel[a.label] ?? (a.id != null ? s2ById[a.id] : null)
+        if (!s2a) return a
         return {
-          id: a.id,
-          label: a.label ?? a.id,
-          trapezoidIds: a.trapezoidIds ?? [],
-          angle: a.angleDeg ?? 0,
-          frontHeight: a.frontHeightCm ?? 0,
-          lineOrientations: firstTrap?.lineOrientations ?? [PANEL_V],
-          panelRows: a.panelRows ?? (a.panelGrid ? [{ rowIndex: 0, panelGrid: a.panelGrid }] : []),
+          ...a,
+          trapezoidIds: s2a.trapezoidIds ?? a.trapezoidIds,
+          panelRows: s2a.panelRows ?? a.panelRows,
+          roofSpec: s2a.roofSpec ?? a.roofSpec,
         }
       }))
     }
@@ -371,9 +375,10 @@ function App() {
       }
       setSavedActiveTab(merged.activeTab)
       s.handleImportProject(merged, cloudProject.id)
-      // Seed BE data immediately from the project's step3 data (avoids waiting for construction-data fetch)
+      // Seed BE data immediately from the project's saved data.
+      // Pass both step2 + step3 so areas get panelRows and BE rails/bases are set.
       if (cloudProject.data?.step3) {
-        applyBeResult({ step3: cloudProject.data.step3 })
+        applyBeResult(cloudProject.data)
       }
     } catch (err) {
       alert(t('app.loadProjectError', { msg: err.message }))
@@ -592,17 +597,23 @@ function App() {
             setRectAreas={s.setRectAreas}
             onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
-                const idx = prev.length
+                // When the project is mixed, every new standalone area starts
+                // as concrete; added rows inherit their parent group's spec.
+                const isMixed = s.currentProject?.roofSpec?.type === 'mixed'
+                // Unique row ID: use min of existing IDs minus 1 (never collides,
+                // even after deletions). BE may reassign positive IDs on save.
+                const minId = prev.length > 0 ? Math.min(0, ...prev.map(a => a.id ?? 0)) : 0
+                const rowId = minId - 1
                 if (addToGroupId != null) {
-                  // Adding a new row to an existing area group (addToGroupId is numeric)
+                  // Adding a new row to an existing area group
                   const parentArea = prev.find(a => a.areaGroupId === addToGroupId)
                   const groupRows = prev.filter(a => a.areaGroupId === addToGroupId)
                   const nextRowIndex = groupRows.length
                   return [...prev, {
                     ...rawRect,
-                    id: `${parentArea?.label ?? ''}_r${nextRowIndex}`,
+                    id: rowId,
                     label: parentArea?.label ?? '',
-                    color: parentArea?.color ?? AREA_PALETTE[idx % AREA_PALETTE.length],
+                    color: parentArea?.color ?? AREA_PALETTE[prev.length % AREA_PALETTE.length],
                     frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
                     angle: parentArea?.angle ?? s.panelAngle ?? '',
                     areaGroupId: addToGroupId,
@@ -611,23 +622,23 @@ function App() {
                     rotation: parentArea?.rotation ?? 0,
                     manualTrapezoids: false,
                     manualColTrapezoids: {},
+                    roofSpec: isMixed ? (parentArea?.roofSpec ?? { type: 'concrete' }) : null,
                   }]
                 }
-                // New standalone area — assign temporary numeric areaGroupId
-                // Use -(idx+1) as temp ID; BE will assign permanent positive ID on first save
-                const newLabel = String.fromCharCode(65 + idx % 26)
-                const tempGroupId = -(idx + 1)
+                // New standalone area — row id and areaGroupId start identical
+                const newLabel = String.fromCharCode(65 + prev.length % 26)
                 return [...prev, {
                   ...rawRect,
-                  id: newLabel,
+                  id: rowId,
                   label: newLabel,
-                  color: AREA_PALETTE[idx % AREA_PALETTE.length],
+                  color: AREA_PALETTE[prev.length % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
-                  areaGroupId: tempGroupId,
+                  areaGroupId: rowId,
                   rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},
+                  roofSpec: isMixed ? { type: 'concrete' } : null,
                 }]
               })
             }}

@@ -3,11 +3,12 @@ import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE } from '../../../styles/colors'
 import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
 import AreaLabel from '../../shared/AreaLabel'
-import { computeRowRailLayout, computePanelFrame, localToScreen } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, computePanelFrame, localToScreen, buildLineRailsFromBE } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildTrapezoidGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
+import { resolveAreaRoofSpec } from '../../../utils/roofSpecUtils'
 import LayersPanel from './LayersPanel'
 import BackgroundImageLayer from './BackgroundImageLayer'
 import BasesTable from './BasesTable'
@@ -18,7 +19,15 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedPanelRowIdx = 0, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+  // Resolve each area's effective roof spec using the shared helper.
+  const resolveAreaRoof = (areaData) => {
+    if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
+    const aid = areaData?.areaId
+    const lbl = areaData?.areaLabel ?? areaData?.label
+    const a = (areas || []).find(ar => ar.id === aid) || (areas || []).find(ar => ar.label === lbl)
+    return resolveAreaRoofSpec(roofType, a)
+  }
   const { t } = useLang()
   const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
@@ -46,10 +55,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     const bps = []
     const rls = []
     const eTrapIds = []
+    // Derive area label from trapId (strip trailing digits: "B1" → "B")
+    const trapLabel = (tid) => {
+      const a = (areas || []).find(ar => (ar.trapezoidIds || []).includes(tid))
+      return a?.label ?? tid.replace(/\d+$/, '')
+    }
+
     for (const trapId of trapIds) {
       const allPanels = trapGroups[trapId] ?? []
       const s = trapSettingsMap[trapId] ?? {}
-      const lineRails = trapLineRailsMap[trapId] ?? null
 
       // Split by panelRowIdx
       const byRow = {}
@@ -62,6 +76,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
       for (const ri of rowIdxKeys) {
         const rowPanels = byRow[ri]
+        // BE-computed rails are authoritative (always available on step 3)
+        const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri)
+          ?? null
 
         const cfg = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
         const customOffsets = customBasesMap[trapId]
@@ -75,7 +92,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     }
     return { expandedBasePlans: bps, expandedRailLayouts: rls, expandedTrapIds: eTrapIds }
   },
-    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap]
+    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beRailsData, areas]
   )
 
   // Wait for BE data to be ready before rendering
@@ -275,8 +292,15 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
       <HatchedPanels panels={panels} selectedTrapId={effTrapId} toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp" />
 
-      {/* Purlin lines for parallel installation — parallel to bases, starting from first base */}
-      {(roofType === 'iskurit' || roofType === 'insulated_panel') && installationOrientation === 'parallel' && purlinDistCm > 0 && (beBasesData ?? []).map((areaData, ai) => {
+      {/* Purlin lines for parallel installation — parallel to bases, starting from first base.
+          Per-area in mixed mode: each area uses its own roofSpec.type /
+          distanceBetweenPurlinsCm / installationOrientation. Non-mixed
+          projects fall through to the project-level scalar props. */}
+      {(beBasesData ?? []).map((areaData, ai) => {
+        const areaRoof = resolveAreaRoof(areaData)
+        if (areaRoof.type !== 'iskurit' && areaRoof.type !== 'insulated_panel') return null
+        if (areaRoof.installationOrientation !== 'parallel') return null
+        if (!(areaRoof.purlinDistCm > 0)) return null
         const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
         const af = areaFrames[areaKey] ?? areaFrames[areaData.areaLabel] ?? areaFrames[areaData.label]
         if (!af) return null
@@ -286,7 +310,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
         if (!allBases.length) return null
         // First base position as anchor
         const firstBaseOffsetCm = allBases[0].offsetFromStartCm
-        const purlinStepPx = purlinDistCm / pixelToCmRatio
+        const purlinStepPx = areaRoof.purlinDistCm / pixelToCmRatio
         // Base depth extent (Y range) for line length
         const firstLine = tLines?.[0]
         const yMin = firstLine?.minY ?? tLB.minY

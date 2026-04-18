@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { computeRowRailLayout } from '../../../utils/railLayoutService'
+import { buildBeRailLookup, buildGroupKeyToLabelMap, computeAllRowRailLayouts } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 
 
 export default function RailLayoutTab({
-  panels = [], refinedArea, selectedRowIdx = null,
+  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
   uploadedImageData, imageSrc,
   settings = {},
   lineRails,           // { [lineIdx]: [offsetCm, ...] }
@@ -64,76 +64,22 @@ export default function RailLayoutTab({
 
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
-  // BE rail lookup: keyed by areaLabel:panelRowIdx:railId (and legacy variants)
-  const beRailByKey = useMemo(() => {
-    const m = {}
-    ;(beRailsData ?? []).forEach((area, idx) => {
-      for (const r of (area.rails ?? [])) {
-        const pri = r._panelRowIdx ?? 0
-        m[`${idx}:${pri}:${r.railId}`] = r
-        m[`${area.areaLabel}:${pri}:${r.railId}`] = r
-        if (area.areaId != null) m[`${area.areaId}:${pri}:${r.railId}`] = r
-        // Legacy fallback (single-row areas)
-        if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
-        if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
-      }
-    })
-    return m
-  }, [beRailsData])
+  const beRailByKey = useMemo(() => buildBeRailLookup(beRailsData), [beRailsData])
 
-  // Map areaGroupKey → area label (for BE rail lookup resolution)
-  const groupKeyToLabel = useMemo(() => {
-    const m = {}
-    for (const p of panels) {
-      if (p.areaGroupKey != null && p.trapezoidId && !m[p.areaGroupKey]) {
-        m[p.areaGroupKey] = p.trapezoidId.replace(/\d+$/, '')
-      }
-    }
-    return m
-  }, [panels])
+  const groupKeyToLabel = useMemo(
+    () => buildGroupKeyToLabelMap(panels, rowKeys, beRailsData),
+    [panels, rowKeys, beRailsData],
+  )
 
   // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
   const { railLayouts, railLayoutKeys } = useMemo(() => {
     if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
-    const layouts = []
-    const layoutKeys = []  // parallel array: rowKey for each layout entry (for BE lookup)
-    rowKeys.forEach((rowKey, i) => {
-      const areaPanels = rowGroups[rowKey] ?? []
-      const firstTrapId = areaPanels[0]?.trapezoidId
-      const useStored = i !== selectedRowIdx || printMode
-      let areaLineRails = lineRails
-      if (useStored && firstTrapId && trapLineRailsMap[firstTrapId]) {
-        areaLineRails = trapLineRailsMap[firstTrapId]
-      }
-      const areaSettings = (firstTrapId && trapSettingsMap[firstTrapId]) ?? {}
-      const cfg = {
-        lineRails: areaLineRails,
-        overhangCm: useStored ? (areaSettings.railOverhangCm ?? railOverhangCm) : railOverhangCm,
-        stockLengths: useStored ? (areaSettings.stockLengths ?? stockLengths) : stockLengths,
-      }
-      // Split panels by panelRowIdx so each physical row gets its own rail layout
-      const panelRowGroups = {}
-      for (const p of areaPanels) {
-        const ri = p.panelRowIdx ?? 0
-        if (!panelRowGroups[ri]) panelRowGroups[ri] = []
-        panelRowGroups[ri].push(p)
-      }
-      const rowIdxKeys = Object.keys(panelRowGroups).map(Number).sort((a, b) => a - b)
-      if (rowIdxKeys.length <= 1) {
-        const rl = computeRowRailLayout(areaPanels, pixelToCmRatio, cfg)
-        if (rl) rl._panelRowIdx = 0
-        layouts.push(rl)
-        layoutKeys.push(rowKey)
-      } else {
-        for (const ri of rowIdxKeys) {
-          const rl = computeRowRailLayout(panelRowGroups[ri], pixelToCmRatio, cfg)
-          if (rl) rl._panelRowIdx = ri
-          layouts.push(rl)
-          layoutKeys.push(rowKey)  // all sub-rows map to the same area rowKey
-        }
-      }
+    return computeAllRowRailLayouts({
+      rowKeys, rowGroups, pixelToCmRatio,
+      selectedRowIdx, selectedPanelRowIdx, printMode,
+      lineRails, trapSettingsMap, railOverhangCm, stockLengths,
+      beRailsData, groupKeyToLabel,
     })
-    return { railLayouts: layouts, railLayoutKeys: layoutKeys }
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)

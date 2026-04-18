@@ -89,6 +89,8 @@ const he = {
   'roofSpec.type.tiles':              'רעפים',
   'roofSpec.type.iskurit':            'אזכורית',
   'roofSpec.type.insulatedPanel':     'פנל מבודד',
+  'roofSpec.type.mixed':              'מעורב (לפי אזור)',
+  'step2.sidebar.areaRoofType':       'סוג גג',
   'roofSpec.distanceBetweenPurlins':  'מרחק בין פתות (ס״מ)',
   'roofSpec.distancePlaceholder':     'לדוגמה: 120',
   'roofSpec.installationOrientation': 'כיוון התקנה',

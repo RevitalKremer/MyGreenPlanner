@@ -6,6 +6,7 @@ import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
+import { allAreasTiles, isAreaTiles } from '../utils/roofSpecUtils'
 import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
@@ -134,7 +135,19 @@ export function useProjectState() {
     products, productByType, altsByType,
     backendStatus,
     refreshAppSettings,
-  } = useAppConfig({ panelType, currentProject })
+  } = useAppConfig({
+    panelType, currentProject,
+    // For mixed projects, paramSchemaForRoof unions the types of each area's
+    // roofSpec. Pass rectAreas (which carry the per-area roofSpec), deduped
+    // by areaGroupId so multi-row groups count once.
+    areas: (pState.layout.rectAreas || []).reduce((acc, ra) => {
+      if (!ra) return acc
+      const gid = ra.areaGroupId
+      if (gid == null || acc.some(a => a._gid === gid)) return acc
+      acc.push({ _gid: gid, roofSpec: ra.roofSpec })
+      return acc
+    }, []),
+  })
 
   // ── Sync panelSpec dimensions into reducer when panelType changes ──
   useEffect(() => {
@@ -227,6 +240,7 @@ export function useProjectState() {
       angle: a.angleDeg ?? 0,
       frontHeight: a.frontHeightCm ?? 0,
       lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
+      roofSpec: a.roofSpec ?? null,
     }))
     const grid = {}
     const rowMtg = {}  // areaLabel → [{angleDeg, frontHeightCm}, ...]
@@ -234,9 +248,10 @@ export function useProjectState() {
       const label = a.label ?? a.id
       if (a.panelRows?.length > 0) {
         // New format: panelRows array
-        grid[label] = a.panelRows.map(pr => pr.panelGrid).filter(Boolean)
+        grid[label] = a.panelRows.map(pr => pr?.panelGrid).filter(Boolean)
         // Row a/h: prefer panelRow's a/h. Backfill from area / first matching trap if missing.
         rowMtg[label] = a.panelRows.map((pr, ri) => {
+          if (!pr) return { angleDeg: a.angleDeg ?? s2.defaultAngleDeg ?? 0, frontHeightCm: a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0 }
           let ang = pr.angleDeg
           let fh  = pr.frontHeightCm
           if (ang == null || fh == null) {
@@ -262,38 +277,40 @@ export function useProjectState() {
     })
 
     // ── Enrich rectAreas with step2 area data ──
-    // Multi-row areas: s2.areas has fewer entries than layout.rectAreas (one per group).
-    // Use panelRows count to assign rectAreas to s2.areas sequentially.
+    // Match each rectArea to its owning step2 area by label/id/areaGroupId
+    // (not sequential — rectAreas may be interleaved across areas).
     let enrichedRectAreas = layout.rectAreas || []
     if (layout.rectAreas && s2.areas) {
-      // Build a sequential mapping: rectArea index → { s2Area, rowIndex }
-      const rectToArea = []
-      let raIdx = 0
-      for (const s2a of s2.areas) {
-        const rowCount = Math.max(1, s2a.panelRows?.length ?? 1)
-        for (let ri = 0; ri < rowCount && raIdx < layout.rectAreas.length; ri++) {
-          rectToArea.push({ s2a, rowIndex: ri })
-          raIdx++
-        }
-      }
-      // Assign any remaining rectAreas (shouldn't happen, but be safe)
-      while (raIdx < layout.rectAreas.length) {
-        rectToArea.push({ s2a: {}, rowIndex: 0 })
-        raIdx++
+      // Build lookup maps for step2 areas
+      const s2ByLabel = {}
+      const s2ById = {}
+      for (const a of s2.areas) {
+        if (a.label) s2ByLabel[a.label] = a
+        if (a.id != null) s2ById[a.id] = a
       }
 
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        const { s2a, rowIndex: derivedRowIndex } = rectToArea[idx] || { s2a: {}, rowIndex: 0 }
+        // Match by: areaGroupId → s2 area id (primary), label fallback (legacy).
+        // areaGroupId is numeric: positive = BE-assigned, negative = temp.
+        const s2a = (typeof ra.areaGroupId === 'number' ? s2ById[ra.areaGroupId] : null)
+          ?? s2ByLabel[ra.label]
+          ?? {}
+        const derivedRowIndex = ra.rowIndex ?? 0
         // areaGroupId = BE-assigned numeric area ID (stable across saves)
         const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
         const rowIndex = ra.rowIndex ?? derivedRowIndex
         return {
           ...ra,
-          label: s2a.label ?? ra.id,
+          // id stays immutable (row identity) — don't overwrite with group id
+          label: s2a.label ?? ra.label,
           frontHeight: String(s2a.frontHeightCm ?? ''),
           angle: String(s2a.angleDeg ?? ''),
           areaGroupId: numericGroupId,
           rowIndex,
+          // Mirror the step2 area's per-area roof spec onto every rectArea in
+          // the group. Only meaningful for projects with roof_spec.type='mixed';
+          // non-mixed projects ignore this field entirely.
+          roofSpec: s2a.roofSpec ?? null,
         }
       })
     }
@@ -368,7 +385,7 @@ export function useProjectState() {
         imageData: (hasImageRef || isWhiteboard) ? undefined : l.uploadedImageData.imageData,
       } : null,
       rectAreas: l.rectAreas.map(ra => ({
-        id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
+        id: ra.id, label: ra.label, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
         color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
         areaGroupId: ra.areaGroupId, rowIndex: ra.rowIndex ?? 0,
@@ -395,7 +412,7 @@ export function useProjectState() {
     const raLabels = {}     // rectAreaIdx → label
     rectAreas.forEach((ra, idx) => {
       const gid = ra.areaGroupId
-      raLabels[idx] = ra.label || ra.id
+      raLabels[idx] = ra.label || String(ra.id ?? idx)
       // Find the first rectArea with this groupId
       const firstIdx = rectAreas.findIndex(r => r.areaGroupId === gid)
       raGroupKeys[idx] = firstIdx >= 0 ? firstIdx : idx
@@ -456,6 +473,9 @@ export function useProjectState() {
         frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
         angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
         trapezoidIds: areaTrapIds,
+        // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
+        // Serialize whatever is on the (first) rectArea of the group.
+        roofSpec: ra?.roofSpec ?? null,
         panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
           rowIndex: ri,
           panelGrid: pg ?? null,
@@ -724,6 +744,7 @@ export function useProjectState() {
       rowMounting,
       roofPolygon, panelType,
       onlyAreaIdx: _onlyAreaIdx,
+      roofType: currentProject?.roofSpec?.type || 'concrete',
     })
     if (!result) return
 
@@ -901,12 +922,14 @@ export function useProjectState() {
       case 2: {
         const roofType = currentProject?.roofSpec?.type || 'concrete'
         if (rectAreas.length === 0) return false
-        if (roofType === 'tiles') return true
+        if (allAreasTiles(roofType, [])) return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
         return rectAreas.every(a => {
+          // Tiles areas have no construction frame → a/h is irrelevant
+          if (isAreaTiles(roofType, a)) return true
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
           return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&

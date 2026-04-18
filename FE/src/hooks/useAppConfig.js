@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
 import { PANEL_V, PANEL_H } from '../utils/panelCodes.js'
+import { resolveAreaRoofType } from '../utils/roofSpecUtils'
 
 
 /**
@@ -12,7 +13,7 @@ import { PANEL_V, PANEL_H } from '../utils/panelCodes.js'
  * @param {string} options.panelType  - current project's panel type ID (for panelSpec resolution)
  * @param {object} options.currentProject - current project object (for roofType filtering)
  */
-export default function useAppConfig({ panelType, currentProject }) {
+export default function useAppConfig({ panelType, currentProject, areas }) {
   // ── Panel types ──
   const [panelTypes, setPanelTypes] = useState([])
 
@@ -44,9 +45,19 @@ export default function useAppConfig({ panelType, currentProject }) {
   }, [appSettingsRaw])
 
   const paramSchemaForRoof = useMemo(() => {
-    const roofType = currentProject?.roofSpec?.type || 'concrete'
-    return paramSchema.filter(p => p.roofTypes === null || (Array.isArray(p.roofTypes) && p.roofTypes.includes(roofType)))
-  }, [paramSchema, currentProject])
+    const projectRoofType = currentProject?.roofSpec?.type || 'concrete'
+    // For mixed projects, a param is visible if ANY area's roof type needs
+    // it. Non-mixed projects use the single project roof type.
+    const matchSet = new Set(
+      (areas || []).length > 0
+        ? (areas || []).map(a => resolveAreaRoofType(projectRoofType, a))
+        : [projectRoofType === 'mixed' ? 'concrete' : projectRoofType]
+    )
+    return paramSchema.filter(p =>
+      p.roofTypes === null ||
+      (Array.isArray(p.roofTypes) && p.roofTypes.some(rt => matchSet.has(rt)))
+    )
+  }, [paramSchema, currentProject, areas])
 
   const settingsDefaults = useMemo(() => {
     if (!paramSchema.length) return {}

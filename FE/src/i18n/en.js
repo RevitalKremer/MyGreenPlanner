@@ -89,6 +89,8 @@ const en = {
   'roofSpec.type.tiles':              'Tiles',
   'roofSpec.type.iskurit':            'Iskurit (Corrugated Metal)',
   'roofSpec.type.insulatedPanel':     'Insulated Panel',
+  'roofSpec.type.mixed':              'Mixed (per-area)',
+  'step2.sidebar.areaRoofType':       'Roof type',
   'roofSpec.distanceBetweenPurlins':  'Distance Between Purlins (cm)',
   'roofSpec.distancePlaceholder':     'e.g. 120',
   'roofSpec.installationOrientation': 'Installation Orientation',
