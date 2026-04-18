@@ -38,8 +38,8 @@ export default function TrapezoidConfigEditor({
   const groupLabel = area?.label
   const rowEntry = (rowMounting?.[groupLabel] || [])[rowIdx]
   // Row a/h is the source of truth for trap a/h. Editing here writes to the row.
-  const angle = rowEntry?.angleDeg ?? parseFloat(area?.angle) ?? defaultAngle
-  const frontHeight = rowEntry?.frontHeightCm ?? parseFloat(area?.frontHeight) ?? defaultFrontHeight
+  const angle = rowEntry?.angleDeg ?? defaultAngle
+  const frontHeight = rowEntry?.frontHeightCm ?? defaultFrontHeight
   const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
 
   const updateRow = (patch) => {

@@ -23,6 +23,7 @@ from app.utils.panel_geometry import (
     PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
 from app.utils.settings_helpers import resolve_roof_spec
+from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
 
 
 async def list_projects(
@@ -158,6 +159,8 @@ async def update_project(db: AsyncSession, project: Project, payload: ProjectUpd
 
         # Assign permanent numeric IDs to areas that don't have one
         _assign_area_ids(merged)
+        # Validate through schema — strips unknown fields, enforces types
+        _validate_data(merged)
 
         fields['data'] = merged
 
@@ -188,6 +191,22 @@ def _assign_area_ids(data: dict) -> None:
         if not isinstance(area.get('id'), int):
             area['id'] = next_id
             next_id += 1
+
+
+_STEP_SCHEMAS = {
+    'step2': Step2Data,
+    'step3': Step3Data,
+    'step4': Step4Data,
+    'step5': Step5Data,
+}
+
+
+def _validate_data(data: dict) -> None:
+    """Validate data through Pydantic schema — strips unknown fields, enforces types."""
+    for step_key, model_cls in _STEP_SCHEMAS.items():
+        raw = data.get(step_key)
+        if raw and isinstance(raw, dict):
+            data[step_key] = model_cls.model_validate(raw).model_dump()
 
 
 _REAL_ORIENTATIONS = {'V', 'H', 'vertical', 'horizontal'}

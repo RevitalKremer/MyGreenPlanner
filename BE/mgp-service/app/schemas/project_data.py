@@ -33,12 +33,17 @@ Coordinate conventions
 
 from __future__ import annotations
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _StrictBase(BaseModel):
+    """Base for all project data models — silently drops unknown fields."""
+    model_config = ConfigDict(extra='ignore')
 
 
 # ── Step 2: Panel placement (FE-owned) ──────────────────────────────────────
 
-class PanelGrid(BaseModel):
+class PanelGrid(_StrictBase):
     """
     Logical panel grid for one area.
 
@@ -57,7 +62,7 @@ class PanelGrid(BaseModel):
     rowPositions: Optional[dict[str, list[float]]] = None
 
 
-class PanelRowData(BaseModel):
+class PanelRowData(_StrictBase):
     """One panel row within an area. Each row has its own panel grid and
     physical mounting (angle/front-height). Row a/h is the source of truth;
     trap a/h is computed from the owning row."""
@@ -67,7 +72,7 @@ class PanelRowData(BaseModel):
     frontHeightCm: Optional[float] = None  # row-level front-edge height (cm)
 
 
-class Step2Area(BaseModel):
+class Step2Area(_StrictBase):
     """Basic area config set during panel placement. No computed data."""
     id: int                             # permanent numeric id, assigned by BE, never changes
     label: str                          # user-editable display label: 'A', 'B', 'C', …
@@ -83,7 +88,7 @@ class Step2Area(BaseModel):
     roofSpec: Optional[dict] = None
 
 
-class Step2Trapezoid(BaseModel):
+class Step2Trapezoid(_StrictBase):
     """Basic trapezoid config detected during panel placement."""
     id: str
     angleDeg: float = 0
@@ -91,7 +96,7 @@ class Step2Trapezoid(BaseModel):
     lineOrientations: list[str] = Field(default_factory=lambda: ['vertical'])
 
 
-class Step2Data(BaseModel):
+class Step2Data(_StrictBase):
     """Panel placement — FE-owned, locked after step 2."""
     panelType: str = 'AIKO-G670-MCH72Mw'
     panelWidthCm: float | None = None
@@ -106,7 +111,7 @@ class Step2Data(BaseModel):
 
 # Server-computed models (stored in step3.computedAreas / step3.computedTrapezoids)
 
-class Rail(BaseModel):
+class Rail(_StrictBase):
     """One physical rail computed by rail_service."""
     railId: str
     lineIdx: int
@@ -119,7 +124,7 @@ class Rail(BaseModel):
     leftoverCm: float
 
 
-class Base(BaseModel):
+class Base(_StrictBase):
     """One base beam position computed by base_service."""
     baseId: str
     trapezoidId: str
@@ -129,7 +134,7 @@ class Base(BaseModel):
     lengthCm: float
 
 
-class ExternalDiagonal(BaseModel):
+class ExternalDiagonal(_StrictBase):
     """Cross-brace connecting two adjacent base beams at a frame edge."""
     startBaseIdx: int               # area-wide index of start base (high end)
     endBaseIdx: int                 # area-wide index of end base (low end)
@@ -142,7 +147,7 @@ class ExternalDiagonal(BaseModel):
     diagLengthMm: int               # diagonal length = sqrt(horiz² + vert²) (mm)
 
 
-class ComputedArea(BaseModel):
+class ComputedArea(_StrictBase):
     """Server-computed construction data for one area.
 
     rails/bases are keyed by panel row index (int) within the area.
@@ -158,7 +163,7 @@ class ComputedArea(BaseModel):
     numLargeGaps: int = 0
 
 
-class ComputedTrapezoid(BaseModel):
+class ComputedTrapezoid(_StrictBase):
     """Server-computed structural details for one trapezoid."""
     trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
     geometry: dict = Field(default_factory=dict)
@@ -182,7 +187,7 @@ class ComputedTrapezoid(BaseModel):
     # diagonals[]: spanIdx, topPct, botPct, lengthCm, isDouble, disabled
 
 
-class Step3Data(BaseModel):
+class Step3Data(_StrictBase):
     """Construction planning — mixed FE-owned settings + server-computed results."""
     # FE-owned (user settings)
     globalSettings: Optional[dict] = None
@@ -196,19 +201,19 @@ class Step3Data(BaseModel):
 
 # ── Step 4: Plan approval (server-owned) ─────────────────────────────────────
 
-class ApprovalPerformedBy(BaseModel):
+class ApprovalPerformedBy(_StrictBase):
     userId: str
     email: str
     fullName: str
 
 
-class PlanApproval(BaseModel):
+class PlanApproval(_StrictBase):
     date: str               # ISO date string (YYYY-MM-DD)
     strictConsent: bool
     performedBy: ApprovalPerformedBy
 
 
-class Step4Data(BaseModel):
+class Step4Data(_StrictBase):
     """Plan approval step."""
     planApproval: Optional[PlanApproval] = None
 
@@ -218,14 +223,14 @@ class Step4Data(BaseModel):
 # The computed BOM lives in its own table (project_bom) — not in the JSONB.
 # Only user-made adjustments (bomDeltas) are stored here as lightweight data.
 
-class Step5Data(BaseModel):
+class Step5Data(_StrictBase):
     """BOM and PDF export step."""
     bomDeltas: Optional[dict] = None
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────
 
-class ProjectData(BaseModel):
+class ProjectData(_StrictBase):
     """
     Root schema for the `data` JSONB column.
     Source of truth for all physical project data.
