@@ -135,7 +135,6 @@ def _compute_diagonal_bracing(
     for i in range(num_spans):
         h_a = legs[i]['heightCm']
         h_b = legs[i + 1]['heightCm']
-        is_double = h_a >= double_above_cm or h_b >= double_above_cm
 
         ov_d = custom.get(str(i), {})
         skip = h_a < skip_below_cm and h_b < skip_below_cm
@@ -144,30 +143,33 @@ def _compute_diagonal_bracing(
         elif ov_d.get('disabled') is False:
             skip = False
 
+        # Pre-compute isDouble from leg heights for default attachment points.
+        # Final isDouble is re-evaluated after length is known (see below).
+        legs_double = h_a >= double_above_cm or h_b >= double_above_cm
+
         reversed_span = num_spans > 1 and i == 0
-        def_top = (0.90 if is_double else 1 - diag_top_frac) if reversed_span else (0.10 if is_double else diag_top_frac)
+        def_top = (0.90 if legs_double else 1 - diag_top_frac) if reversed_span else (0.10 if legs_double else diag_top_frac)
         def_bot = (1 - diag_base_frac) if reversed_span else diag_base_frac
 
         top_pct = ov_d.get('topPct', def_top)
         bot_pct = ov_d.get('botPct', def_bot)
 
-        # Calculate attachment positions along full beams (not just gap)
-        # Leg positions are along slope beam; use these for top attachment
         span_slope_start = legs[i]['positionCm']
         span_slope_end = legs[i + 1]['positionEndCm']
         span_slope_len = span_slope_end - span_slope_start
-        
+
         top_pos_slope = span_slope_start + top_pct * span_slope_len
         bot_pos_slope = span_slope_start + bot_pct * span_slope_len
-        
-        # Height rises as we move along slope: rise = run × sin(angle)
+
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
         height_at_top = h_a + top_pos_slope * sin_a
-        
-        # Horizontal distance uses cos_a projection
+
         horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
         length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
+
+        # isDouble: true when the diagonal LENGTH exceeds the threshold
+        is_double = length_cm >= double_above_cm
 
         raw_diagonals.append({
             'spanIdx': i,
