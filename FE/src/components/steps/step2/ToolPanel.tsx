@@ -50,7 +50,7 @@ export default function ToolPanel({
     <span style={{ fontSize: '0.58rem', fontWeight: '600', color: 'inherit' }}>{label}</span>
   )
 
-  const nudgeBtnStyle = {
+  const nudgeBtnStyle: React.CSSProperties = {
     padding: '0.3rem', background: 'white', color: TEXT_SECONDARY,
     border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer',
     fontWeight: '700', fontSize: '0.85rem', textAlign: 'center', lineHeight: 1,

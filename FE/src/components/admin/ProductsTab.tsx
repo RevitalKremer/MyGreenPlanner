@@ -142,7 +142,7 @@ export default function ProductsTab() {
       return 0
     })
 
-  const thStyle = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
+  const thStyle: React.CSSProperties = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
 
   function SortTh({ colKey, label, style = {} }) {
     const idx = sortCols.findIndex(c => c.key === colKey)

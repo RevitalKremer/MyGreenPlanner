@@ -1,10 +1,10 @@
 import { mgpRequest } from './mgpApi'
 import type { ProjectData, ProjectLayout } from '../types/projectData'
 
-export async function listProjects({ limit = null, offset = 0, search = null } = {}) {
+export async function listProjects({ limit = null, offset = 0, search = null }: { limit?: number | null; offset?: number; search?: string | null } = {}) {
   const params = new URLSearchParams()
-  if (limit != null) params.set('limit', limit)
-  if (offset > 0) params.set('offset', offset)
+  if (limit != null) params.set('limit', String(limit))
+  if (offset > 0) params.set('offset', String(offset))
   if (search) params.set('search', search)
   const qs = params.toString()
   const url = qs ? `/projects?${qs}` : '/projects'

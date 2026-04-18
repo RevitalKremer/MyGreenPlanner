@@ -22,9 +22,9 @@ const FOOTER_H_MM = 26  // title block height
 
 // ─── Shared cell styles ───────────────────────────────────────────────────────
 const B  = `0.5px solid ${BLACK}`
-const cellBase = { borderLeft: B, padding: '2px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
-const LBL = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, whiteSpace: 'nowrap', textAlign: 'center' }
-const VAL = { fontSize: '9px', fontWeight: '800', color: BLACK, lineHeight: 1.2, textAlign: 'center' }
+const cellBase: React.CSSProperties = { borderLeft: B, padding: '2px 3px', boxSizing: 'border-box', verticalAlign: 'top', overflow: 'hidden' }
+const LBL: React.CSSProperties = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, whiteSpace: 'nowrap', textAlign: 'center' }
+const VAL: React.CSSProperties = { fontSize: '9px', fontWeight: '800', color: BLACK, lineHeight: 1.2, textAlign: 'center' }
 
 function Cell({ style, children }) {
   return <td style={{ ...cellBase, ...style }}>{children}</td>
