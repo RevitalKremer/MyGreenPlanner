@@ -290,8 +290,10 @@ export function useProjectState() {
       }
 
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        // Match by: rectArea label/id → s2 area label, or areaGroupId → s2 area id
-        const s2a = s2ByLabel[ra.label ?? ra.id]
+        // Match by: rectArea label/id → s2 area label (strip _rN suffix for multi-row),
+        // or areaGroupId → s2 area id (positive = BE-assigned, negative = temp).
+        const raLabel = ((ra.label ?? ra.id) || '').split('_')[0]
+        const s2a = s2ByLabel[raLabel]
           ?? (typeof ra.areaGroupId === 'number' && ra.areaGroupId > 0 ? s2ById[ra.areaGroupId] : null)
           ?? {}
         const derivedRowIndex = ra.rowIndex ?? 0
@@ -383,7 +385,7 @@ export function useProjectState() {
         imageData: (hasImageRef || isWhiteboard) ? undefined : l.uploadedImageData.imageData,
       } : null,
       rectAreas: l.rectAreas.map(ra => ({
-        id: ra.id, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
+        id: ra.id, label: ra.label, vertices: ra.vertices, rotation: ra.rotation, mode: ra.mode,
         color: ra.color, xDir: ra.xDir, yDir: ra.yDir, areaVertical: ra.areaVertical ?? false,
         manualTrapezoids: ra.manualTrapezoids, manualColTrapezoids: ra.manualColTrapezoids,
         areaGroupId: ra.areaGroupId, rowIndex: ra.rowIndex ?? 0,

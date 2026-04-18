@@ -48,6 +48,8 @@ def _refresh_single_row_trapezoids(
     area_label: str,
     sig_to_trap: dict,   # shared mutable: signature → trapId
     counter: list[int],  # shared mutable: [next_id]
+    row_angle: float | None = None,
+    row_front: float | None = None,
 ) -> dict | None:
     """
     Compute column signatures for one physical row (rect area).
@@ -84,8 +86,9 @@ def _refresh_single_row_trapezoids(
     min_lx = min(v['x'] for v in local_verts)
     max_lx = max(v['x'] for v in local_verts)
 
-    a_front = float(area.get('frontHeight', 0) or panel_front_height or 0)
-    a_angle = float(area.get('angle', 0) or panel_angle or 0)
+    # Per-row a/h (from caller) takes priority over rectArea fields
+    a_front = row_front if row_front is not None else float(area.get('frontHeight', 0) or panel_front_height or 0)
+    a_angle = row_angle if row_angle is not None else float(area.get('angle', 0) or panel_angle or 0)
 
     area_panels = [p for p in panels if p.get('area') == area_idx]
     if not area_panels:
@@ -137,23 +140,55 @@ def _refresh_single_row_trapezoids(
                 parts.append(PANEL_EH if row_orient.get(r) == PANEL_H else PANEL_EV)
         return '|'.join(parts)
 
+    # Signature key includes row a/h so different a/h produces distinct traps
+    # (mirrors FE: sigKey = `${sig}::${rAngle}::${rFront}`)
+    def sig_key(col):
+        return f'{col_sig(col)}::{a_angle}::{a_front}'
+
     # Register unique signatures
     for col in sorted(col_rows_map.keys()):
-        s = col_sig(col)
-        if s not in sig_to_trap:
-            sig_to_trap[s] = f'{area_label}{counter[0]}'
+        k = sig_key(col)
+        if k not in sig_to_trap:
+            sig_to_trap[k] = f'{area_label}{counter[0]}'
             counter[0] += 1
 
     return {
         'area_idx': area_idx,
         'panel_with_cols': panel_with_cols,
         'col_sig_fn': col_sig,
+        'sig_key_fn': sig_key,
         'a_front': a_front,
         'a_angle': a_angle,
     }
 
 
 # ── Area-group orchestration ────────────────────────────────────────────────
+
+def _resolve_row_ah(
+    ra: dict,
+    s2_area: dict | None,
+    panel_front_height: float,
+    panel_angle: float,
+) -> tuple[float, float]:
+    """
+    Resolve per-row angle/frontHeight.
+    Priority: panelRows[rowIndex] → area default → project default.
+    Mirrors FE rowMounting resolution.
+    """
+    row_idx = ra.get('rowIndex', 0)
+    if s2_area:
+        panel_rows = s2_area.get('panelRows') or []
+        # panelRows may be sparse (null entries)
+        pr = panel_rows[row_idx] if row_idx < len(panel_rows) else None
+        if pr and pr.get('angleDeg') is not None and pr.get('frontHeightCm') is not None:
+            return float(pr['angleDeg']), float(pr['frontHeightCm'])
+        # Area-level default
+        area_angle = s2_area.get('angleDeg')
+        area_fh = s2_area.get('frontHeightCm')
+        if area_angle is not None and area_fh is not None:
+            return float(area_angle), float(area_fh)
+    return float(panel_angle or 0), float(panel_front_height or 0)
+
 
 def _refresh_area_trapezoids(
     area: dict,
@@ -175,22 +210,23 @@ def _refresh_area_trapezoids(
       'panel_trap_ids': { panelId: trapId },
     } or None.
     """
-    # Resolve area_label from step2 areas: areaGroupId matches step2 area.id
+    # Resolve area_label and owning step2 area from areaGroupId
     group_id = area.get('areaGroupId')
     area_label = None
+    s2_area = None
     if step2_areas and group_id is not None:
         for s2a in step2_areas:
             if s2a.get('id') == group_id:
                 area_label = s2a.get('label')
+                s2_area = s2a
                 break
     if not area_label:
-        # Fallback: strip _rN suffix from rectArea id
         raw_label = area.get('id') or area.get('label') or 'A'
         if isinstance(raw_label, int):
             raw_label = chr(65 + raw_label)
         area_label = raw_label.split('_')[0] if '_' in str(raw_label) else raw_label
 
-    # Find all rectArea indices in the same group (same as FE: areaGroupId match)
+    # Find all rectArea indices in the same group
     group_id = area.get('areaGroupId')
     if group_id is not None and rect_areas:
         group_indices = [i for i, ra in enumerate(rect_areas)
@@ -201,21 +237,30 @@ def _refresh_area_trapezoids(
         if not group_indices:
             group_indices = [0]
 
+    # Signature key includes row a/h so different a/h produces distinct traps
+    # (mirrors FE: sigKey = `${sig}::${rAngle}::${rFront}`)
     sig_to_trap: dict[str, str] = {}
+    trap_ah: dict[str, tuple[float, float]] = {}  # trapId → (angle, frontHeight)
     counter = [1]
     per_row_results = []
 
     for ra_idx in group_indices:
         ra = rect_areas[ra_idx] if ra_idx < len(rect_areas) else area
+        r_angle, r_front = _resolve_row_ah(ra, s2_area, panel_front_height, panel_angle)
         result = _refresh_single_row_trapezoids(
             area_idx=ra_idx, area=ra, panels=panels,
             pixel_to_cm=pixel_to_cm,
             panel_width_cm=panel_width_cm, panel_gap_cm=panel_gap_cm,
-            panel_front_height=panel_front_height, panel_angle=panel_angle,
+            panel_front_height=r_front, panel_angle=r_angle,
             area_label=area_label, sig_to_trap=sig_to_trap, counter=counter,
+            row_angle=r_angle, row_front=r_front,
         )
         if result:
             per_row_results.append(result)
+            # Record a/h for each newly created trap from this row
+            for tid in sig_to_trap.values():
+                if tid not in trap_ah:
+                    trap_ah[tid] = (result['a_angle'], result['a_front'])
 
     if not per_row_results:
         return None
@@ -223,17 +268,20 @@ def _refresh_area_trapezoids(
     # Simplify: if only one signature, use area label directly
     if len(sig_to_trap) == 1:
         only_sig = next(iter(sig_to_trap))
+        old_id = sig_to_trap[only_sig]
+        ah = trap_ah.pop(old_id, None)
         sig_to_trap[only_sig] = area_label
+        if ah:
+            trap_ah[area_label] = ah
 
-    # Build trap configs
-    a_front = per_row_results[0]['a_front']
-    a_angle = per_row_results[0]['a_angle']
+    # Build trap configs — each trap gets its row's a/h
     trap_configs: dict[str, dict] = {}
     for sig, trap_id in sig_to_trap.items():
-        shape = sig.split('|')
+        shape = sig.split('::')[0].split('|')
+        ah = trap_ah.get(trap_id)
         trap_configs[trap_id] = {
-            'angle': a_angle,
-            'frontHeight': a_front,
+            'angle': ah[0] if ah else per_row_results[0]['a_angle'],
+            'frontHeight': ah[1] if ah else per_row_results[0]['a_front'],
             'lineOrientations': shape,
         }
 
@@ -253,7 +301,7 @@ def _refresh_area_trapezoids(
         )
         if not updated:
             continue
-        sig = row_result['col_sig_fn'](updated['col'])
+        sig = row_result['sig_key_fn'](updated['col'])
         panel_trap_ids[p['id']] = sig_to_trap.get(sig, area_label)
 
     return {
