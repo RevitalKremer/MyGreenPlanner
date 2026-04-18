@@ -9,6 +9,7 @@ import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
 import HatchedPanels from './HatchedPanels'
 import AreaLabel from '../../shared/AreaLabel'
+import { resolveAreaRoofType } from '../../../utils/roofSpecUtils'
 
 const PAD_EDIT  = 40  // edit-mode SVG padding around panel content
 const PAD_PRINT = 12  // print-mode tighter padding (no minimap or canvas chrome)
@@ -84,21 +85,33 @@ const ROOF_TYPE_I18N = {
   insulated_panel: 'roofSpec.type.insulatedPanel',
 }
 
-export function InstallMethodLegend({ roofType, roofColor, t }) {
-  const label = t(ROOF_TYPE_I18N[roofType] ?? ROOF_TYPE_I18N.concrete)
+// Multi-entry legend (supports mixed projects). Pass `entries` =
+// [{type, color}, ...]; falls back to single entry when roofType/roofColor
+// are provided (backward-compat).
+export function InstallMethodLegend({ roofType, roofColor, entries, t }) {
+  const items = entries && entries.length > 0
+    ? entries
+    : [{ type: roofType, color: roofColor }]
   return (
     <div style={{
       position: 'absolute', bottom: 12, right: 12,
-      display: 'flex', alignItems: 'center', gap: 8,
+      display: 'flex', flexDirection: 'column', gap: 6,
       background: 'rgba(255,255,255,0.92)', border: `1px solid rgba(0,0,0,0.15)`,
       borderRadius: 4, padding: '6px 12px', pointerEvents: 'none',
     }}>
-      <div style={{
-        width: 28, height: 16, borderRadius: 3,
-        background: roofColor, opacity: 0.6,
-        border: `1px solid ${roofColor}`,
-      }} />
-      <span style={{ fontSize: 13, fontWeight: 600, color: BLACK, opacity: 0.75 }}>{label}</span>
+      {items.map(({ type, color }, i) => {
+        const label = t(ROOF_TYPE_I18N[type] ?? ROOF_TYPE_I18N.concrete)
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 16, borderRadius: 3,
+              background: color, opacity: 0.6,
+              border: `1px solid ${color}`,
+            }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: BLACK, opacity: 0.75 }}>{label}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -235,6 +248,25 @@ export default function AreasTab({
   const sInstallMethod  = printMode ? printShowInstallMethod  : showInstallMethod
 
   const roofColor = ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE
+  const isMixed = roofType === 'mixed'
+
+  // For mixed projects, pre-build areaGroupKey → resolved roof type.
+  // step2 areas and panel groups are in the same document order, so
+  // areas[i].roofSpec maps directly to the i-th group key.
+  const groupRoofType = useMemo(() => {
+    if (!isMixed) return null
+    const { keys } = buildRowGroups(nonEmptyPanels)
+    const map = {}
+    keys.forEach((gk, i) => {
+      map[gk] = resolveAreaRoofType(roofType, (areas || [])[i])
+    })
+    return map
+  }, [isMixed, nonEmptyPanels, areas, roofType])
+
+  const panelRoofType = (panel) => {
+    if (!isMixed) return roofType
+    return groupRoofType?.[panel?.areaGroupKey ?? panel?.area] ?? 'concrete'
+  }
 
   const svgLayers = (
     <>
@@ -264,16 +296,18 @@ export default function AreasTab({
         clipIdPrefix={printMode ? 'atpm' : 'at'}
       />
 
-      {/* Installation method overlay — colored rect per panel */}
+      {/* Installation method overlay — colored rect per panel.
+          For mixed projects each panel uses its owning area's roof color. */}
       {sInstallMethod && nonEmptyPanels.map(panel => {
         const [sx, sy] = toSvg(panel.x, panel.y)
         const sw = panel.width * sc, sh = panel.height * sc
         const scx = sx + sw / 2, scy = sy + sh / 2
+        const color = isMixed ? (ROOF_COLOR_MAP[panelRoofType(panel)] ?? roofColor) : roofColor
         return (
           <rect key={`im-${panel.id}`}
             x={sx} y={sy} width={sw} height={sh}
-            fill={roofColor} fillOpacity={0.4}
-            stroke={roofColor} strokeWidth={1} strokeOpacity={0.6}
+            fill={color} fillOpacity={0.4}
+            stroke={color} strokeWidth={1} strokeOpacity={0.6}
             transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}
             style={{ pointerEvents: 'none' }}
           />
@@ -318,7 +352,21 @@ export default function AreasTab({
         </div>
       </div>
 
-      {sInstallMethod && <InstallMethodLegend roofType={roofType} roofColor={roofColor} t={t} />}
+      {sInstallMethod && (() => {
+        // For mixed projects, list every distinct area roof type in the legend.
+        if (isMixed) {
+          const seen = new Set()
+          const entries = []
+          for (const a of (areas || [])) {
+            const typ = resolveAreaRoofType(roofType, a)
+            if (seen.has(typ)) continue
+            seen.add(typ)
+            entries.push({ type: typ, color: ROOF_COLOR_MAP[typ] ?? ROOF_CONCRETE })
+          }
+          return <InstallMethodLegend entries={entries} t={t} />
+        }
+        return <InstallMethodLegend roofType={roofType} roofColor={roofColor} t={t} />
+      })()}
 
       <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc} containerRef={containerRef} />
 

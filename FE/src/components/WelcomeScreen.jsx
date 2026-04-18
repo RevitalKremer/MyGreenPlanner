@@ -229,8 +229,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   <option value="tiles">{t('roofSpec.type.tiles')}</option>
                   <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
                   <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
+                  <option value="mixed">{t('roofSpec.type.mixed')}</option>
                 </select>
               </div>
+              {/* Global purlin params are hidden for 'mixed' — they'll be set per-area in step 2. */}
               {(roofType === 'iskurit' || roofType === 'insulated_panel') && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>

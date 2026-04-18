@@ -4,6 +4,7 @@ import {
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
 import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
+import { allAreasTiles } from '../../utils/roofSpecUtils'
 // panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
 // so this null sentinel should never actually be used at render time.
 const _FALLBACK_PANEL_TYPE = null
@@ -62,8 +63,9 @@ export default function Step2PanelPlacement({
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
-  // Mounting section visible if either setting's roofTypes includes this roof (null = all)
-  const showMounting = !angLim.roofTypes || angLim.roofTypes.includes(roofType || 'concrete')
+  // Mounting section hidden only for fully-tiles projects (no construction frame).
+  // Mixed projects show mounting — per-area tiles hiding is handled in the sidebar.
+  const showMounting = !allAreasTiles(roofType, [])
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
@@ -128,8 +130,10 @@ export default function Step2PanelPlacement({
 
   // Track newly drawn area index so we can select it once panels are computed
   const pendingNewAreaIdxRef = useRef(null)
-  // Stable area index — survives panel ID changes across recomputes
+  // Stable area index(es) — survive panel ID changes across recomputes.
+  // Single value for normal selection; array for multi-area marquee selections.
   const selectedAreaIdxRef = useRef(null)
+  const selectedAreaIdxsRef = useRef(null)  // null or [idx, idx, ...]
 
   const allYLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
 
@@ -150,6 +154,7 @@ export default function Step2PanelPlacement({
     // After deletion, indices shift: next area lands at same index, or previous if it was last
     const nextIdx = areaKey < rectAreas.length - 1 ? areaKey : areaKey - 1
     selectedAreaIdxRef.current = nextIdx >= 0 ? nextIdx : null
+    selectedAreaIdxsRef.current = null
     setPanels(prev => prev.filter(p => (p.area ?? p.row) !== areaKey))
     setRectAreas(prev => prev.filter((_, idx) => idx !== areaKey))
     clearDeletedPanelsForArea?.(areaKey)
@@ -175,9 +180,14 @@ export default function Step2PanelPlacement({
 
   // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
   useEffect(() => {
-    if (selectedPanels.length === 0) { selectedAreaIdxRef.current = null; return }
-    const found = panels.find(p => selectedPanels.includes(p.id))
-    if (found != null) selectedAreaIdxRef.current = found.area ?? null
+    if (selectedPanels.length === 0) {
+      selectedAreaIdxRef.current = null
+      selectedAreaIdxsRef.current = null
+      return
+    }
+    const selAreas = [...new Set(panels.filter(p => selectedPanels.includes(p.id)).map(p => p.area))]
+    selectedAreaIdxRef.current = selAreas[0] ?? null
+    selectedAreaIdxsRef.current = selAreas.length > 1 ? selAreas : null
   }, [selectedPanels])
 
   // Re-sync selectedPanels after panels recompute (IDs change but area index is stable)
@@ -195,20 +205,16 @@ export default function Step2PanelPlacement({
       return
     }
 
-    // Re-derive selectedPanels from the stable area index
+    // Re-derive selectedPanels from the stable area index(es)
     if (selectedAreaIdxRef.current !== null) {
-      const areaPanels = panels.filter(p => p.area === selectedAreaIdxRef.current).map(p => p.id)
+      // Multi-area selection (marquee): re-sync across all selected areas
+      const idxs = selectedAreaIdxsRef.current || [selectedAreaIdxRef.current]
+      const idxSet = new Set(idxs)
+      const areaPanels = panels.filter(p => idxSet.has(p.area)).map(p => p.id)
       if (areaPanels.length > 0) {
         setSelectedPanels(prev => {
-          // If the current selection is still valid (all IDs exist in panels),
-          // leave it alone — preserves row/trap sub-selections. The resync is
-          // only needed after a panel recompute where IDs actually changed.
-          if (prev.length > 0 && prev.every(id => panels.some(p => p.id === id))) return prev
-          // In move/rotate: if all selected panels still exist in the area,
-          // keep exact selection (e.g. after drag)
-          const tool = activeToolRef.current
-          if ((tool === 'move' || tool === 'rotate') && prev.length > 0 && prev.every(id => areaPanels.includes(id))) return prev
-          // Otherwise (recompute with new IDs) — re-sync to full area
+          const areaPanelSet = new Set(areaPanels)
+          if (prev.length > 0 && prev.every(id => areaPanelSet.has(id))) return prev
           const same = prev.length === areaPanels.length && areaPanels.every(id => prev.includes(id))
           return same ? prev : areaPanels
         })
@@ -479,10 +485,10 @@ export default function Step2PanelPlacement({
     panels.forEach(p => {
       const aKey = p.area ?? p.row
       if (aKey === undefined || aKey === null) return
-      const defaultTrapId = `${rectAreas[aKey]?.label ?? String.fromCharCode(65 + aKey)}`
-      const tId = p.trapezoidId || defaultTrapId
+      // Tiles panels have trapezoidId=null (no construction frame) → skip.
+      if (!p.trapezoidId) return
       if (!map[aKey]) map[aKey] = new Set()
-      map[aKey].add(tId)
+      map[aKey].add(p.trapezoidId)
     })
     const result = {}
     Object.entries(map).forEach(([k, s]) => { result[k] = [...s].sort() })
@@ -609,6 +615,8 @@ export default function Step2PanelPlacement({
                     angle: targetArea?.angle ?? a.angle,
                     frontHeight: targetArea?.frontHeight ?? a.frontHeight,
                     color: targetArea?.color ?? a.color,
+                    // Merged row inherits the target area's roof spec
+                    roofSpec: targetArea?.roofSpec ?? a.roofSpec ?? null,
                   }
                 })
               })
@@ -679,6 +687,8 @@ export default function Step2PanelPlacement({
                     label: targetLabel,
                     rowIndex: nextRowIndex,
                     color: targetArea?.color ?? a.color,
+                    // Grouped rows inherit the target area's roof spec
+                    roofSpec: targetArea?.roofSpec ?? a.roofSpec ?? null,
                   }
                   nextRowIndex++
                   return updated

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
 import { PANEL_V } from '../../utils/panelCodes'
+import { allAreasTiles, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -81,7 +82,7 @@ export default function Step3ConstructionPlanning({
     getSettings: settings.getSettings, getTrapBasesSettings: settings.getTrapBasesSettings,
     getLineOrientations,
     areaSettings: settings.areaSettings, globalSettings: settings.globalSettings,
-    PARAM_SCHEMA,
+    PARAM_SCHEMA, roofType,
   })
 
   const { rowKeys, areaTrapezoidMap, rowConstructions } = rowData
@@ -93,7 +94,7 @@ export default function Step3ConstructionPlanning({
 
   // ── Selected geometry hook ─────────────────────────────────────────────
   const geo = useSelectedGeometry({
-    selectedRowIdx, effectiveSelectedTrapId,
+    selectedRowIdx, selectedPanelRowIdx, effectiveSelectedTrapId,
     rowKeys, areas, refinedArea, trapezoidConfigs, areaTrapezoidMap,
     beRailsData, beTrapezoidsData,
     getSettings: settings.getSettings, getTrapBasesSettings: settings.getTrapBasesSettings,
@@ -101,6 +102,7 @@ export default function Step3ConstructionPlanning({
     updateLineRails: settings.updateLineRails,
     areaSettings: settings.areaSettings, globalSettings: settings.globalSettings,
     panelSpec, appDefaults, PARAM_SCHEMA,
+    panels,
   })
 
   // ── Tab save on switch ─────────────────────────────────────────────────
@@ -188,8 +190,8 @@ export default function Step3ConstructionPlanning({
     { key: 'bases',  label: t('step3.tabs.bases') },
     { key: 'detail', label: t('step3.tabs.detail') },
   ]
-  // Tiles: no construction frame — hide bases and detail tabs
-  const tabs = roofType === 'tiles'
+  const allTiles = allAreasTiles(roofType, areas)
+  const tabs = allTiles
     ? allTabs.filter(t => t.key === 'areas' || t.key === 'rails')
     : allTabs
 
@@ -261,7 +263,7 @@ export default function Step3ConstructionPlanning({
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} />}
+          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} roofType={roofType} />}
 
           {activeTab === 'detail' && (() => {
             const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
@@ -271,22 +273,32 @@ export default function Step3ConstructionPlanning({
             )
             return (
               <div style={{ height: '100%', overflow: 'hidden' }}>
-                <DetailView
-                  rc={geo.selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
-                  panelLines={rowData.trapPanelLinesMap[effectiveSelectedTrapId] ?? geo.selectedRowLineDepths}
-                  settings={settings.getSettings(selectedRowIdx)}
-                  lineRails={rowData.trapLineRailsMap[effectiveSelectedTrapId] ?? geo.selectedLineRails}
-                  highlightParam={highlightParam}
-                  beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
-                  fullTrapGhost={fullTrapGhost}
-                  paramGroup={PARAM_GROUP}
-                  reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
-                  onReset={() => { settings.resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
-                  onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
-                  roofType={roofType}
-                  purlinDistCm={purlinDistCm}
-                  installationOrientation={installationOrientation}
-                />
+                {(() => {
+                  // Resolve roof data for this specific trap's owning area.
+                  const owning = effectiveSelectedTrapId
+                    ? (areas || []).find(a => (a.trapezoidIds || []).includes(effectiveSelectedTrapId))
+                    : null
+                  const { type: detailRoofType, purlinDistCm: detailPurlinDistCm, installationOrientation: detailOrient } =
+                    resolveAreaRoofSpec(roofType, owning)
+                  return (
+                    <DetailView
+                      rc={geo.selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
+                      panelLines={rowData.trapPanelLinesMap[effectiveSelectedTrapId] ?? geo.selectedRowLineDepths}
+                      settings={settings.getSettings(selectedRowIdx)}
+                      lineRails={rowData.trapLineRailsMap[effectiveSelectedTrapId] ?? geo.selectedLineRails}
+                      highlightParam={highlightParam}
+                      beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
+                      fullTrapGhost={fullTrapGhost}
+                      paramGroup={PARAM_GROUP}
+                      reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
+                      onReset={() => { settings.resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
+                      onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
+                      roofType={detailRoofType}
+                      purlinDistCm={detailPurlinDistCm}
+                      installationOrientation={detailOrient}
+                    />
+                  )
+                })()}
               </div>
             )
           })()}
@@ -296,7 +308,7 @@ export default function Step3ConstructionPlanning({
               <RailLayoutTab
                 panels={panels} refinedArea={refinedArea}
                 uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-                selectedRowIdx={selectedRowIdx}
+                selectedRowIdx={selectedRowIdx} selectedPanelRowIdx={selectedPanelRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
                 panelDepthsCm={geo.areaLinePanelDepths}
@@ -324,6 +336,7 @@ export default function Step3ConstructionPlanning({
               trapRCMap={rowData.trapRCMap}
               beTrapezoidsData={beTrapezoidsData}
               beBasesData={beBasesData}
+              beRailsData={beRailsData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
               onBasesChange={(trapId, offsets, panelRowIdx) => {

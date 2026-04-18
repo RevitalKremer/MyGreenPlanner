@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
+import { isAreaTiles } from '../utils/roofSpecUtils'
 
 /**
  * Flatten rails/bases from dict[rowIndex → list] to a single list.
@@ -21,13 +22,20 @@ export default function useRowData({
   panels, areas, refinedArea, trapezoidConfigs, setTrapezoidConfigs,
   beRailsData, beTrapezoidsData, panelSpec, appDefaults,
   getSettings, getTrapBasesSettings, getLineOrientations,
-  areaSettings, globalSettings, PARAM_SCHEMA,
+  areaSettings, globalSettings, PARAM_SCHEMA, roofType = 'concrete',
 }) {
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
   const lineGapCm     = appDefaults?.lineGapCm
   const railSpacingV  = (PARAM_SCHEMA.find(p => p.key === 'railSpacingV') || {}).default
   const railSpacingH  = (PARAM_SCHEMA.find(p => p.key === 'railSpacingH') || {}).default
+
+  // Tiles areas have no construction frame → skip trap-detail / construction
+  // geometry computation. Uses the shared resolver from roofSpecUtils.
+  const _isAreaTiles = useCallback(
+    (areaObj) => isAreaTiles(roofType, areaObj),
+    [roofType],
+  )
 
   // ── Panel counts & row keys ─────────────────────────────────────────────
   const rowPanelCounts = useMemo(() => {
@@ -72,17 +80,22 @@ export default function useRowData({
   // lineRails convention: keys are numeric integers (0, 1, 2...) representing line indices.
   // BE responses may return string keys after JSON serialization. Consumers should handle
   // both via dual fallback: lineRails[si] ?? lineRails[String(si)].
-  const getLineRailsFromBE = useCallback((areaIdx, lineOrientations) => {
+  const getLineRailsFromBE = useCallback((areaIdx, lineOrientations, panelRowIdx = 0) => {
     if (!beRailsData) return null
     const areaKey = rowKeys[areaIdx]
     const area    = areaByGroupKey[areaKey]
     if (!area) return null
     const beArea  = beRailsData.find(a => (a.areaId != null ? a.areaId === area.id : a.areaLabel === area.label))
-    // Use only first row's rails (lineRails is per-trapezoid, shared across rows)
-    const firstRowRails = (beArea?.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === 0)
-    if (!firstRowRails.length) return null
+    // Pull rails for the specific panelRowIdx. Phase A made lineOrientations
+    // per-row, so rails can differ across rows in a multi-row area (e.g. a
+    // V-only row vs a V+H row). Fall back to row 0 if the requested row has
+    // no rails (legacy single-row areas, or a row whose trap is tile-only).
+    const rails = beArea?.rails ?? []
+    let rowRails = rails.filter(r => (r._panelRowIdx ?? 0) === panelRowIdx)
+    if (!rowRails.length) rowRails = rails.filter(r => (r._panelRowIdx ?? 0) === 0)
+    if (!rowRails.length) return null
     const map = {}
-    for (const r of firstRowRails) {
+    for (const r of rowRails) {
       if (!map[r.lineIdx]) map[r.lineIdx] = []
       map[r.lineIdx].push(r.offsetFromLineFrontCm)
     }
@@ -91,10 +104,10 @@ export default function useRowData({
     return map
   }, [beRailsData, areas, rowKeys])
 
-  const getLineRails = useCallback((areaIdx, lineOrientations) => {
+  const getLineRails = useCallback((areaIdx, lineOrientations, panelRowIdx = 0) => {
     const stored = areaSettings[areaIdx]?.lineRails
     if (stored && Object.keys(stored).length === lineOrientations.length) return stored
-    const fromBE = getLineRailsFromBE(areaIdx, lineOrientations)
+    const fromBE = getLineRailsFromBE(areaIdx, lineOrientations, panelRowIdx)
     if (fromBE) return fromBE
     const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
     return initDefaultLineRails(lineOrientations, depths, railSpacingV, railSpacingH)
@@ -178,7 +191,7 @@ export default function useRowData({
           topBeamLength: 0, baseBeamLength: 0,
           numTrapezoids: 0, spacing: 0,
           railOverhang,
-          panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+          panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr?.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
           numRails, numLines,
           numLargeGaps: beAreaData?.numLargeGaps ?? 0,
           numRailConnectors,
@@ -196,7 +209,7 @@ export default function useRowData({
         numTrapezoids: numSpans + 1,
         spacing: measuredRowLength / numSpans,
         railOverhang,
-        panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
+        panelsPerLine: (areaByGroupKey[areaKey]?.panelRows?.flatMap(pr => pr?.panelGrid?.rows ?? []) ?? []).map(row => row.filter(c => REAL_PANELS.includes(c)).length),
         numRails, numLines,
         numLargeGaps: beAreaData?.numLargeGaps ?? 0,
         numRailConnectors,
@@ -206,6 +219,8 @@ export default function useRowData({
   }, [rowKeys, rowPanelCounts, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, areaTrapezoidMap, getTrapBasesSettings])
 
   // ── Per-trapezoid maps ─────────────────────────────────────────────────
+  // Rails are needed for ALL areas including tiles (panels mount on rails).
+  // Only construction-frame maps (settings, RC, panelLines) skip tiles.
   const trapLineRailsMap = useMemo(() => {
     const map = {}
     rowKeys.forEach((areaKey, i) => {
@@ -222,6 +237,7 @@ export default function useRowData({
   const trapSettingsMap = useMemo(() => {
     const map = {}
     rowKeys.forEach((areaKey, i) => {
+      if (_isAreaTiles(areaByGroupKey[areaKey])) return
       const s = getSettings(i)
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => {
@@ -229,21 +245,23 @@ export default function useRowData({
       })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings, _isAreaTiles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const trapRCMap = useMemo(() => {
     const map = {}
     rowKeys.forEach((areaKey, i) => {
+      if (_isAreaTiles(areaByGroupKey[areaKey])) return
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => { map[trapId] = rowConstructions[i] })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, rowConstructions])
+  }, [rowKeys, areaTrapezoidMap, rowConstructions, _isAreaTiles])
 
   const trapPanelLinesMap = useMemo(() => {
     const map = {}
     const globalCfg = refinedArea?.panelConfig || {}
     rowKeys.forEach((areaKey) => {
+      if (_isAreaTiles(areaByGroupKey[areaKey])) return
       const trapIdsList = areaTrapezoidMap[areaKey] || []
       const areaGroup   = areaByGroupKey[areaKey] || {}
       trapIdsList.forEach(trapId => {
@@ -258,7 +276,7 @@ export default function useRowData({
       })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings, _isAreaTiles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     rowPanelCounts, rowKeys, areaByGroupKey,

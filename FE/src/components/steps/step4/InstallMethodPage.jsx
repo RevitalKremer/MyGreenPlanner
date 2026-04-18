@@ -4,6 +4,7 @@ import { CadPage } from '../Step4PdfReport'
 import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
 import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
 import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
+import { resolveAreaRoofType } from '../../../utils/roofSpecUtils'
 
 const ROOF_COLOR_MAP = {
   concrete: ROOF_CONCRETE,
@@ -20,6 +21,7 @@ const PAD = 12
 export default function InstallMethodPage({
   panels = [], uploadedImageData, imageSrc,
   roofType = 'concrete',
+  areas = [],
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
@@ -58,6 +60,7 @@ export default function InstallMethodPage({
         }}>
           <AreasTab
             panels={panels}
+            areas={areas}
             uploadedImageData={uploadedImageData}
             imageSrc={imageSrc}
             roofType={roofType}
@@ -68,7 +71,20 @@ export default function InstallMethodPage({
             printShowInstallMethod
           />
         </div>
-        <InstallMethodLegend roofType={roofType} roofColor={ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE} t={t} />
+        {(() => {
+          if (roofType === 'mixed') {
+            const seen = new Set()
+            const entries = []
+            for (const a of (areas || [])) {
+              const typ = resolveAreaRoofType(roofType, a)
+              if (seen.has(typ)) continue
+              seen.add(typ)
+              entries.push({ type: typ, color: ROOF_COLOR_MAP[typ] ?? ROOF_CONCRETE })
+            }
+            return <InstallMethodLegend entries={entries} t={t} />
+          }
+          return <InstallMethodLegend roofType={roofType} roofColor={ROOF_COLOR_MAP[roofType] ?? ROOF_CONCRETE} t={t} />
+        })()}
       </div>
     </CadPage>
   )

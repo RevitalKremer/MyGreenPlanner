@@ -653,6 +653,7 @@ export default function Step4PdfReport({
             <InstallMethodPage
               pageRef={page3Ref}
               panels={panels}
+              areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               roofType={roofType}
               project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
