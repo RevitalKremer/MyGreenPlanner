@@ -73,6 +73,7 @@ const he = {
   'welcome.searchPlaceholder':      'חפש פרויקטים לפי שם או מיקום…',
   'welcome.clearSearch':            'נקה',
   'welcome.showAll':                'הצג הכל',
+  'welcome.loadMore':              'טען עוד',
   'welcome.showingCount':           'מציג {shown} מתוך {total}',
   'welcome.open':                   'פתח',
   'welcome.editProject':          'ערוך פרויקט',

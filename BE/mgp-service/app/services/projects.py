@@ -25,32 +25,53 @@ from app.utils.panel_geometry import (
 from app.utils.settings_helpers import resolve_roof_spec
 
 
-async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
-    """List projects. If is_admin=True, return all projects; otherwise filter by owner_id.
+async def list_projects(
+    db: AsyncSession,
+    owner_id: uuid.UUID,
+    is_admin: bool = False,
+    limit: int | None = None,
+    offset: int = 0,
+    search: str | None = None,
+) -> tuple[list[Project], int]:
+    """List projects with optional pagination and search.
+    If is_admin=True, return all projects; otherwise filter by owner_id.
     Returns tuple of (projects_list, total_count).
     """
+    from sqlalchemy import func, or_
+
     # Build base query
     if is_admin:
-        # Admin sees all projects with owner info loaded
         query = select(Project).options(selectinload(Project.owner))
     else:
-        # Regular user sees only their own projects
         query = select(Project).where(Project.owner_id == owner_id)
-    
-    # Get total count
-    from sqlalchemy import func
+
+    # Apply search filter
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        conditions = [
+            Project.name.ilike(pattern),
+            Project.location.ilike(pattern),
+        ]
+        if is_admin:
+            query = query.outerjoin(User, Project.owner_id == User.id)
+            conditions.append(User.email.ilike(pattern))
+        query = query.where(or_(*conditions))
+
+    # Get total count (after search filter)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
-    
-    # Apply ordering and limit
+
+    # Apply ordering, offset, and limit
     query = query.order_by(Project.updated_at.desc())
+    if offset > 0:
+        query = query.offset(offset)
     if limit is not None and limit > 0:
         query = query.limit(limit)
-    
+
     result = await db.execute(query)
     projects = list(result.scalars().all())
-    
+
     return projects, total
 
 

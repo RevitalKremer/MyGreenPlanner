@@ -51,3 +51,6 @@ class ProjectSummary(BaseModel):
 class ProjectListResponse(BaseModel):
     projects: list[ProjectSummary]
     total: int
+    offset: int = 0
+    limit: int | None = None
+    has_more: bool = False

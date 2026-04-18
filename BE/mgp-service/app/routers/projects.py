@@ -53,11 +53,16 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     limit: int | None = Query(None, description="Maximum number of projects to return. If None, return all."),
+    offset: int = Query(0, ge=0, description="Number of projects to skip for pagination."),
+    search: str | None = Query(None, description="Search projects by name, location, or owner email."),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     is_admin = current_user.role.value == "admin"
-    projects, total = await project_service.list_projects(db, current_user.id, is_admin=is_admin, limit=limit)
+    clean_search = search.strip() if search else None
+    projects, total = await project_service.list_projects(
+        db, current_user.id, is_admin=is_admin, limit=limit, offset=offset, search=clean_search,
+    )
     # For admin, populate owner_email from loaded relationship
     project_summaries = []
     for proj in projects:
@@ -74,7 +79,13 @@ async def list_projects(
         if is_admin and proj.owner:
             proj_dict["owner_email"] = proj.owner.email
         project_summaries.append(proj_dict)
-    return {"projects": project_summaries, "total": total}
+    return {
+        "projects": project_summaries,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": (offset + len(project_summaries)) < total,
+    }
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

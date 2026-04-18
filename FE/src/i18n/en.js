@@ -73,6 +73,7 @@ const en = {
   'welcome.searchPlaceholder':    'Search projects by name or location…',
   'welcome.clearSearch':          'Clear',
   'welcome.showAll':              'Show All',
+  'welcome.loadMore':             'Load More',
   'welcome.showingCount':         'Showing {shown} of {total}',
   'welcome.open':                 'Open',
   'welcome.editProject':          'Edit project',

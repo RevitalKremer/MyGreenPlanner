@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
@@ -13,7 +13,7 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
@@ -26,7 +26,8 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editLocation, setEditLocation] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [localSearch, setLocalSearch] = useState(projectsSearch || '')
+  const searchTimerRef = useRef(null)
   const [backendVersion, setBackendVersion] = useState(null)
 
   const frontendVersion = getFrontendVersion()
@@ -37,18 +38,20 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
   const canCreate = projectName.trim().length > 0 && appDefaultsReady
 
-  // Filter projects by search query
-  const filteredProjects = cloudProjects.filter(p => {
-    if (!searchQuery.trim()) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      p.name.toLowerCase().includes(query) ||
-      (p.location && p.location.toLowerCase().includes(query)) ||
-      (p.owner_email && p.owner_email.toLowerCase().includes(query))
-    )
-  })
+  const handleSearchChange = (e) => {
+    const value = e.target.value
+    setLocalSearch(value)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      onProjectsSearch(value.trim())
+    }, 350)
+  }
 
-  const hasMore = cloudProjects.length < totalProjectsCount
+  const handleClearSearch = () => {
+    setLocalSearch('')
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    onProjectsSearch('')
+  }
 
   const handleCreate = () => {
     if (!canCreate) return
@@ -308,18 +311,18 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
             </div>
             {cloudProjects.length > 0 && (
               <div style={{ fontSize: '0.75rem', color: TEXT_MUTED }}>
-                {t('welcome.showingCount', { shown: filteredProjects.length, total: totalProjectsCount })}
+                {t('welcome.showingCount', { shown: cloudProjects.length, total: totalProjectsCount })}
               </div>
             )}
           </div>
 
           {/* Search bar */}
-          {cloudProjects.length > 0 && (
+          {(cloudProjects.length > 0 || localSearch) && (
             <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
                 type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                value={localSearch}
+                onChange={handleSearchChange}
                 placeholder={t('welcome.searchPlaceholder')}
                 style={{
                   flex: 1,
@@ -330,9 +333,9 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   outline: 'none'
                 }}
               />
-              {searchQuery && (
+              {localSearch && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={handleClearSearch}
                   style={{
                     padding: '0.5rem 0.75rem',
                     background: 'white',
@@ -346,45 +349,27 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   ✕ {t('welcome.clearSearch')}
                 </button>
               )}
-              {hasMore && (
-                <button
-                  onClick={onLoadMoreProjects}
-                  style={{
-                    padding: '0.5rem 0.9rem',
-                    background: PRIMARY,
-                    color: TEXT,
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    fontWeight: '700',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {t('welcome.showAll')}
-                </button>
-              )}
             </div>
           )}
 
-          {cloudProjectsLoading ? (
+          {cloudProjectsLoading && cloudProjects.length === 0 ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
+          ) : cloudProjects.length === 0 && localSearch ? (
+            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : cloudProjects.length === 0 ? (
             <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
-          ) : filteredProjects.length === 0 ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : (
-            <div 
+            <div
               className="projects-scrollable"
-              style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '0.5rem', 
-                maxHeight: '300px', 
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                maxHeight: '300px',
                 overflowY: 'auto',
                 paddingRight: '0.25rem'
               }}>
-              {filteredProjects.map(p => {
+              {cloudProjects.map(p => {
                 const isEditing = editingId === p.id
                 return (
                   <div key={p.id} style={{
@@ -509,6 +494,27 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   </div>
                 )
               })}
+              {hasMoreProjects && (
+                <button
+                  onClick={onLoadMoreProjects}
+                  disabled={cloudProjectsLoading}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    marginTop: '0.25rem',
+                    background: PRIMARY,
+                    color: TEXT,
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: cloudProjectsLoading ? 'default' : 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    alignSelf: 'center',
+                    opacity: cloudProjectsLoading ? 0.6 : 1,
+                  }}
+                >
+                  {cloudProjectsLoading ? t('welcome.loading') : t('welcome.loadMore')}
+                </button>
+              )}
             </div>
           )}
         </div>

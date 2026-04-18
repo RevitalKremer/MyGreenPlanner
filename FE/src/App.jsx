@@ -37,10 +37,12 @@ function App() {
   const [showAuthGate, setShowAuthGate] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
+  const PAGE_SIZE = 10
   const [cloudProjects, setCloudProjects] = useState([])
   const [cloudProjectsLoading, setCloudProjectsLoading] = useState(false)
   const [totalProjectsCount, setTotalProjectsCount] = useState(0)
-  const [projectsLimit, setProjectsLimit] = useState(10) // null = load all
+  const [hasMoreProjects, setHasMoreProjects] = useState(false)
+  const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
 
@@ -69,25 +71,27 @@ function App() {
     return false
   }
 
-  const fetchCloudProjects = useCallback(async () => {
+  const fetchCloudProjects = useCallback(async (searchTerm = '') => {
     if (!auth.user) return
     setCloudProjectsLoading(true)
     try {
-      const data = await listProjects(projectsLimit)
+      const data = await listProjects({ limit: PAGE_SIZE, offset: 0, search: searchTerm || null })
       setCloudProjects(data.projects || [])
       setTotalProjectsCount(data.total || 0)
+      setHasMoreProjects(data.has_more || false)
     } catch {
       setCloudProjects([])
       setTotalProjectsCount(0)
+      setHasMoreProjects(false)
     } finally {
       setCloudProjectsLoading(false)
     }
-  }, [auth.user, projectsLimit])
+  }, [auth.user])
 
   useEffect(() => {
-    if (auth.user) fetchCloudProjects()
-    else setCloudProjects([])
-  }, [auth.user, fetchCloudProjects])
+    if (auth.user) fetchCloudProjects(projectsSearch)
+    else { setCloudProjects([]); setHasMoreProjects(false) }
+  }, [auth.user, projectsSearch, fetchCloudProjects])
 
   const [beRailsData, setBeRailsData] = useState(null)
   const [beBasesData, setBeBasesData] = useState(null)
@@ -408,21 +412,37 @@ function App() {
   const handleStartOver = async () => {
     if (!confirm(t('app.startOverConfirm'))) return
     s.handleStartOver()
-    // Fetch the latest project to show on welcome screen
+    setProjectsSearch('')
     if (auth.user) {
       try {
-        const data = await listProjects(projectsLimit)
+        const data = await listProjects({ limit: PAGE_SIZE })
         setCloudProjects(data.projects || [])
         setTotalProjectsCount(data.total || 0)
+        setHasMoreProjects(data.has_more || false)
       } catch (err) {
         console.error('Failed to fetch latest project:', err)
       }
     }
   }
 
-  const handleLoadMoreProjects = () => {
-    setProjectsLimit(null) // Load all
-  }
+  const handleLoadMoreProjects = useCallback(async () => {
+    if (!auth.user || !hasMoreProjects) return
+    setCloudProjectsLoading(true)
+    try {
+      const data = await listProjects({ limit: PAGE_SIZE, offset: cloudProjects.length, search: projectsSearch || null })
+      setCloudProjects(prev => [...prev, ...(data.projects || [])])
+      setTotalProjectsCount(data.total || 0)
+      setHasMoreProjects(data.has_more || false)
+    } catch {
+      // keep existing projects on failure
+    } finally {
+      setCloudProjectsLoading(false)
+    }
+  }, [auth.user, hasMoreProjects, cloudProjects.length, projectsSearch])
+
+  const handleProjectsSearch = useCallback((query) => {
+    setProjectsSearch(query)
+  }, [])
 
   if (s.appScreen === 'welcome') {
     return (
@@ -437,10 +457,13 @@ function App() {
         cloudProjects={cloudProjects}
         cloudProjectsLoading={cloudProjectsLoading}
         totalProjectsCount={totalProjectsCount}
+        hasMoreProjects={hasMoreProjects}
         onLoadCloudProject={handleLoadCloudProject}
         onUpdateCloudProject={handleUpdateCloudProject}
         onDeleteCloudProject={handleDeleteCloudProject}
         onLoadMoreProjects={handleLoadMoreProjects}
+        onProjectsSearch={handleProjectsSearch}
+        projectsSearch={projectsSearch}
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
         appDefaultsReady={!!s.appDefaults}
