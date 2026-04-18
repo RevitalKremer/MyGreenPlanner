@@ -135,7 +135,6 @@ def _compute_diagonal_bracing(
     for i in range(num_spans):
         h_a = legs[i]['heightCm']
         h_b = legs[i + 1]['heightCm']
-        is_double = h_a >= double_above_cm or h_b >= double_above_cm
 
         ov_d = custom.get(str(i), {})
         skip = h_a < skip_below_cm and h_b < skip_below_cm
@@ -144,30 +143,33 @@ def _compute_diagonal_bracing(
         elif ov_d.get('disabled') is False:
             skip = False
 
+        # Pre-compute isDouble from leg heights for default attachment points.
+        # Final isDouble is re-evaluated after length is known (see below).
+        legs_double = h_a >= double_above_cm or h_b >= double_above_cm
+
         reversed_span = num_spans > 1 and i == 0
-        def_top = (0.90 if is_double else 1 - diag_top_frac) if reversed_span else (0.10 if is_double else diag_top_frac)
+        def_top = (0.90 if legs_double else 1 - diag_top_frac) if reversed_span else (0.10 if legs_double else diag_top_frac)
         def_bot = (1 - diag_base_frac) if reversed_span else diag_base_frac
 
         top_pct = ov_d.get('topPct', def_top)
         bot_pct = ov_d.get('botPct', def_bot)
 
-        # Calculate attachment positions along full beams (not just gap)
-        # Leg positions are along slope beam; use these for top attachment
         span_slope_start = legs[i]['positionCm']
         span_slope_end = legs[i + 1]['positionEndCm']
         span_slope_len = span_slope_end - span_slope_start
-        
+
         top_pos_slope = span_slope_start + top_pct * span_slope_len
         bot_pos_slope = span_slope_start + bot_pct * span_slope_len
-        
-        # Height rises as we move along slope: rise = run × sin(angle)
+
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
         height_at_top = h_a + top_pos_slope * sin_a
-        
-        # Horizontal distance uses cos_a projection
+
         horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
         length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
+
+        # isDouble: true when the diagonal LENGTH exceeds the threshold
+        is_double = length_cm >= double_above_cm
 
         raw_diagonals.append({
             'spanIdx': i,
@@ -402,7 +404,11 @@ def compute_trapezoid_details(
 
     cos_a = math.cos(angle_rad)
     top_beam_length = base_length_cm
-    base_beam_length = base_length_cm * cos_a
+    # Trig applies only between punch points (profile_half from each beam end).
+    # The beam ends extend straight past the connection punches.
+    punch_end_cm = beam_thick_cm / 2
+    base_beam_core = (base_length_cm - 2 * punch_end_cm) * cos_a + 2 * punch_end_cm
+    base_beam_length = base_beam_core
 
     # ── Iskurit / Insulated Panel: perpendicular beam extension ────────────
     front_ext = 0.0
@@ -426,7 +432,7 @@ def compute_trapezoid_details(
     effective_block_height = 0 if roof_type in ('iskurit', 'insulated_panel') else block_height_cm
     height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
-    base_length_horiz = base_length_cm * cos_a  # original (without extension) for leg placement
+    base_length_horiz = base_beam_core  # original (without extension) for leg placement
     height_front = height_rear + base_length_horiz * math.tan(angle_rad)
 
     geometry = {
@@ -638,13 +644,13 @@ def _compute_block_punches(
                 # Rear leg: 0 to profile_step_cm (4cm)
                 punch_pos = profile_step_cm + block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
-                    punch_pos = round(punch_pos + profile_step_cm)
+                    punch_pos = _r(punch_pos + profile_step_cm)
             else:
                 # Front outer block: distance from front leg START (left wall) - block_punch_cm
                 # Front leg: (base_beam_length - profile_step_cm) to base_beam_length
                 punch_pos = (base_beam_length - profile_step_cm) - block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
-                    punch_pos = round(punch_pos - profile_step_cm)
+                    punch_pos = _r(punch_pos - profile_step_cm)
             check_lo, check_hi = pos - 0.1, block_end + 0.1
         else:
             # Inner block: use actual leg position from inner_legs data
@@ -678,7 +684,7 @@ def _compute_block_punches(
                 
                 # FIRST TRY: 34% section (ahead of leg, toward higher leg)
                 # Start at leg right wall + block_punch_cm, travel RIGHT
-                start_right = round(leg_right_base + block_punch_cm)
+                start_right = _r(leg_right_base + block_punch_cm)
                 candidate = start_right
                 while candidate <= base_hi:
                     if not has_overlap(candidate, other_base_positions):
@@ -689,7 +695,7 @@ def _compute_block_punches(
                 # SECOND TRY: 66% section (behind leg, toward lower leg)
                 # Start at leg left wall - block_punch_cm, travel LEFT
                 if punch_pos is None:
-                    start_left = round(leg_left_base - block_punch_cm)
+                    start_left = _r(leg_left_base - block_punch_cm)
                     candidate = start_left
                     while candidate >= base_lo:
                         if not has_overlap(candidate, other_base_positions):
@@ -699,7 +705,7 @@ def _compute_block_punches(
                 
                 # Fallback if still no valid position (should be rare)
                 if punch_pos is None:
-                    punch_pos = round((base_lo + base_hi) / 2)
+                    punch_pos = _r((base_lo + base_hi) / 2)
                 
                 check_lo, check_hi = base_lo - 0.1, base_hi + 0.1
 
@@ -713,7 +719,7 @@ def _compute_block_punches(
       
         result.append({
             'beamType': 'base',
-            'positionCm': round(punch_pos),  # Ensure punch position is a whole centimeter
+            'positionCm': _r(punch_pos),
             'origin': 'block',
             'blockIdx': bi,
         })

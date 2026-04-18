@@ -23,34 +23,56 @@ from app.utils.panel_geometry import (
     PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
 from app.utils.settings_helpers import resolve_roof_spec
+from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
 
 
-async def list_projects(db: AsyncSession, owner_id: uuid.UUID, is_admin: bool = False, limit: int | None = None) -> tuple[list[Project], int]:
-    """List projects. If is_admin=True, return all projects; otherwise filter by owner_id.
+async def list_projects(
+    db: AsyncSession,
+    owner_id: uuid.UUID,
+    is_admin: bool = False,
+    limit: int | None = None,
+    offset: int = 0,
+    search: str | None = None,
+) -> tuple[list[Project], int]:
+    """List projects with optional pagination and search.
+    If is_admin=True, return all projects; otherwise filter by owner_id.
     Returns tuple of (projects_list, total_count).
     """
+    from sqlalchemy import func, or_
+
     # Build base query
     if is_admin:
-        # Admin sees all projects with owner info loaded
         query = select(Project).options(selectinload(Project.owner))
     else:
-        # Regular user sees only their own projects
         query = select(Project).where(Project.owner_id == owner_id)
-    
-    # Get total count
-    from sqlalchemy import func
+
+    # Apply search filter
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        conditions = [
+            Project.name.ilike(pattern),
+            Project.location.ilike(pattern),
+        ]
+        if is_admin:
+            query = query.outerjoin(User, Project.owner_id == User.id)
+            conditions.append(User.email.ilike(pattern))
+        query = query.where(or_(*conditions))
+
+    # Get total count (after search filter)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
-    
-    # Apply ordering and limit
+
+    # Apply ordering, offset, and limit
     query = query.order_by(Project.updated_at.desc())
+    if offset > 0:
+        query = query.offset(offset)
     if limit is not None and limit > 0:
         query = query.limit(limit)
-    
+
     result = await db.execute(query)
     projects = list(result.scalars().all())
-    
+
     return projects, total
 
 
@@ -137,6 +159,8 @@ async def update_project(db: AsyncSession, project: Project, payload: ProjectUpd
 
         # Assign permanent numeric IDs to areas that don't have one
         _assign_area_ids(merged)
+        # Validate through schema — strips unknown fields, enforces types
+        _validate_data(merged)
 
         fields['data'] = merged
 
@@ -167,6 +191,22 @@ def _assign_area_ids(data: dict) -> None:
         if not isinstance(area.get('id'), int):
             area['id'] = next_id
             next_id += 1
+
+
+_STEP_SCHEMAS = {
+    'step2': Step2Data,
+    'step3': Step3Data,
+    'step4': Step4Data,
+    'step5': Step5Data,
+}
+
+
+def _validate_data(data: dict) -> None:
+    """Validate data through Pydantic schema — strips unknown fields, enforces types."""
+    for step_key, model_cls in _STEP_SCHEMAS.items():
+        raw = data.get(step_key)
+        if raw and isinstance(raw, dict):
+            data[step_key] = model_cls.model_validate(raw).model_dump()
 
 
 _REAL_ORIENTATIONS = {'V', 'H', 'vertical', 'horizontal'}
