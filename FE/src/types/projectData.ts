@@ -208,6 +208,49 @@ export interface Step5Data {
   bomDeltas?: Record<string, unknown> | null
 }
 
+// ── FE-reshaped server data (from App.tsx applyBeResult) ────────────────────
+
+/** Rail with panelRowIdx tag — flattened from ComputedArea.rails dict */
+export interface FlatRail extends Rail {
+  _panelRowIdx: number
+}
+
+/** Per-area rail data as consumed by FE hooks and utilities */
+export interface BeRailsAreaData {
+  areaId: number
+  areaLabel: string
+  rails: FlatRail[]
+  numLargeGaps: number
+}
+
+/** Per-area base data as consumed by FE hooks and utilities */
+export interface BeBasesAreaData {
+  areaId: number
+  areaLabel: string
+  bases: (Base & { _panelRowIdx: number })[]
+  diagonals: ExternalDiagonal[]
+  rails?: FlatRail[]
+}
+
+// ── Rail config (FE utility input) ──────────────────────────────────────────
+
+export interface RailConfig {
+  lineRails?: Record<number | string, number[]> | null
+  overhangCm?: number
+  stockLengths?: number[]
+  railSpacingV?: number
+  railSpacingH?: number
+}
+
+// ── Panel line segments (used by FE geometry helpers) ───────────────────────
+
+export interface PanelLineSegment {
+  depthCm: number
+  gapBeforeCm: number
+  isEmpty: boolean
+  isHorizontal?: boolean
+}
+
 // ── Root ────────────────────────────────────────────────────────────────────
 
 export interface ProjectData {
@@ -277,6 +320,7 @@ export interface PanelLayout {
   coveredCols?: number[]
   area: number
   trapezoidId: string
+  xDir?: string | null
   yDir?: string | null
   isEmpty?: boolean
   panelRowIdx?: number

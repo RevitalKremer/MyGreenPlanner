@@ -1,10 +1,55 @@
 import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE } from './railLayoutService'
-import type { Step2Area } from '../types/projectData'
+import type { RowRailLayout } from './railLayoutService'
+import type { Step2Area, BeRailsAreaData, BeBasesAreaData, RailConfig, PanelLayout } from '../types/projectData'
 
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-// Compute base placement for one row
-// Returns { frame, bases, lines, frameLengthMm, baseCount, edgeOffsetMm, spacingMm, lastGapMm }
-export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record<string, any> = {}, baseConfig: Record<string, any> = {}) {
+interface Point { x: number; y: number }
+
+interface LineInfo {
+  lineIdx: number
+  minY: number
+  maxY: number
+  orientation: string | null
+}
+
+interface BasePlanBase {
+  localX: number
+  screenTop: Point
+  screenBottom: Point
+  offsetFromStartMm: number
+}
+
+interface BasePlanFrame {
+  center: Point
+  angleRad: number
+  localBounds: { minX: number; maxX: number; minY: number; maxY: number }
+  frameXMinPx: number
+  frameXMaxPx: number
+}
+
+export interface RowBasePlan {
+  frame: BasePlanFrame
+  lines: LineInfo[]
+  bases: BasePlanBase[]
+  frameLengthMm: number
+  baseCount: number
+  spacingMm: number
+  isRtl: boolean
+}
+
+interface BaseConfig {
+  customOffsets?: number[]
+  edgeOffsetMm?: number
+  spacingMm?: number
+}
+
+// ─── Core computation ────────────────────────────────────────────────────────
+
+/**
+ * Compute base placement for one row.
+ */
+export function computeRowBasePlan(rowPanels: PanelLayout[], pixelToCmRatio: number, railConfig: RailConfig = {}, baseConfig: BaseConfig = {}): RowBasePlan | null {
   if (!rowPanels || rowPanels.length === 0 || !pixelToCmRatio) return null
   if (!baseConfig.customOffsets || baseConfig.customOffsets.length === 0) return null
 
@@ -15,7 +60,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record
   const { center, angleRad, localBounds } = frame
 
   // Per-line bounds (local Y extents) and orientation
-  const lineMap = {}
+  const lineMap: Record<number, LineInfo> = {}
   for (const pr of panelLocalRects) {
     const li = pr.line ?? 0
     if (!lineMap[li]) lineMap[li] = { lineIdx: li, minY: Infinity, maxY: -Infinity, orientation: null }
@@ -27,9 +72,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record
     const panel = rowPanels.find(p => (p.line ?? 0) === lineIdx) || rowPanels[0]
     lineMap[li].orientation = getPanelOrientation(panel)
   }
-  // Sort by physical position (minY) so lines[0] is always the rearmost (topmost in image)
-  // regardless of lineIdx ordering, which differs between yDir='ttb' and yDir='btt' areas.
-  const lines = (Object.values(lineMap) as any[]).sort((a, b) => a.minY - b.minY)
+  const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
 
   // Frame spans panel edges (not rail ends)
   const frameXMinPx   = localBounds.minX
@@ -42,7 +85,7 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record
   const isRtl = xDir === 'rtl'
 
   // Convert BE-provided offsets (mm) to pixel coordinates for SVG rendering
-  const makeBase = (offsetFromStartMm) => {
+  const makeBase = (offsetFromStartMm: number): BasePlanBase => {
     const xPx = isRtl
       ? frameXMaxPx - (offsetFromStartMm / 10) / pixelToCmRatio
       : frameXMinPx + (offsetFromStartMm / 10) / pixelToCmRatio
@@ -69,24 +112,16 @@ export function computeRowBasePlan(rowPanels, pixelToCmRatio, railConfig: Record
 
 /**
  * Consolidate bases across sub-areas within the same area.
- * Within each area group, if a base from a shallower sub-area falls within a deeper
- * sub-area's x-extent, the shallower base is removed.
- *
- * @param {Object} areaTrapsMap  { areaKey: [trapId, ...] }
- * @param {Object} basePlansMap  { trapId: basePlan }
- * @returns {Object} { trapId: filteredBases[] }
  */
-export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
-  // Start with a copy of all bases
-  const result = {}
+export function consolidateAreaBases(areaTrapsMap: Record<string | number, string[]>, basePlansMap: Record<string, RowBasePlan | null>): Record<string, BasePlanBase[]> {
+  const result: Record<string, BasePlanBase[]> = {}
   for (const [trapId, bp] of Object.entries(basePlansMap)) {
     if (bp) result[trapId] = [...bp.bases]
   }
 
-  for (const trapIds of Object.values(areaTrapsMap) as string[][]) {
+  for (const trapIds of Object.values(areaTrapsMap)) {
     if (trapIds.length <= 1) continue
 
-    // Build per-trap metadata for comparison
     const trapInfos = trapIds.map(trapId => {
       const bp = basePlansMap[trapId]
       if (!bp) return null
@@ -100,14 +135,12 @@ export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
       return { trapId, depth, width, angleRad, xProjMin, xProjMax }
     }).filter(Boolean)
 
-    // For each trap, remove bases that fall strictly within a "winning" trap's x-extent
     for (const infoA of trapInfos) {
       result[infoA.trapId] = result[infoA.trapId].filter(base => {
         const xProjBase = base.screenTop.x * Math.cos(infoA.angleRad) + base.screenTop.y * Math.sin(infoA.angleRad)
         for (const infoB of trapInfos) {
           if (infoB.trapId === infoA.trapId) continue
           if (xProjBase > infoB.xProjMin && xProjBase < infoB.xProjMax) {
-            // B wins if deeper, or same depth but wider x-extent
             if (infoB.depth > infoA.depth || (infoB.depth === infoA.depth && infoB.width >= infoA.width)) {
               return false
             }
@@ -124,13 +157,10 @@ export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
 
 /**
  * Build bidirectional maps: trapId → areaKey, areaKey → [trapIds].
- *
- * @param {string[]} trapIds - sorted trap IDs from panels
- * @param {object[]} areas   - step2 areas (with id, trapezoidIds)
- * @returns {{ trapAreaMap, areaTrapsMap }}
  */
-export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]) {
-  const trapAreaMap = {}, areaTrapsMap = {}
+export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]): { trapAreaMap: Record<string, string | number>; areaTrapsMap: Record<string | number, string[]> } {
+  const trapAreaMap: Record<string, string | number> = {}
+  const areaTrapsMap: Record<string | number, string[]> = {}
   if (areas.length > 0) {
     for (const area of areas) {
       const aid = area.id
@@ -141,7 +171,6 @@ export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]) {
       }
     }
   } else {
-    // Fallback (print mode, no areas prop): derive from trapezoidId
     for (const trapId of trapIds) {
       const area = trapId.replace(/\d+$/, '')
       trapAreaMap[trapId] = area
@@ -155,15 +184,11 @@ export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]) {
 
 /**
  * Build BE rail lookup keyed by trapId:railId (for RailsOverlay in bases tab).
- *
- * @param {object[]} beBasesData
- * @param {object}   areaTrapsMap - { areaKey: [trapIds] }
- * @returns {object} { "trapId:railId": railObject }
  */
-export function buildBasePlanBeRailLookup(beBasesData, areaTrapsMap) {
-  const m = {}
+export function buildBasePlanBeRailLookup(beBasesData: BeBasesAreaData[] | null, areaTrapsMap: Record<string | number, string[]>): Record<string, any> {
+  const m: Record<string, any> = {}
   for (const areaData of (beBasesData ?? [])) {
-    const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? areaTrapsMap[areaData.label] ?? []
+    const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? []
     for (const r of (areaData.rails ?? [])) {
       for (const tid of areaTrapIds) {
         m[`${tid}:${r.railId}`] = r
@@ -176,24 +201,23 @@ export function buildBasePlanBeRailLookup(beBasesData, areaTrapsMap) {
 
 /**
  * Compute expanded base plans and rail layouts — one per (trapId, panelRowIdx).
- * Multi-row traps expand to multiple entries.
- *
- * @param {object} opts
- * @param {string[]} opts.trapIds
- * @param {object}   opts.trapGroups - { trapId: panel[] }
- * @param {number}   opts.pixelToCmRatio
- * @param {object}   opts.trapSettingsMap
- * @param {object}   opts.customBasesMap
- * @param {object[]} opts.beRailsData
- * @param {object[]} opts.areas
- * @returns {{ expandedBasePlans, expandedRailLayouts, expandedTrapIds }}
  */
 export function computeExpandedBasePlans({
   trapIds, trapGroups, pixelToCmRatio,
   trapSettingsMap, customBasesMap, beRailsData, areas,
-}) {
-  const bps = [], rls = [], eTrapIds = []
-  const trapLabel = (tid) => {
+}: {
+  trapIds: string[]
+  trapGroups: Record<string, PanelLayout[]>
+  pixelToCmRatio: number
+  trapSettingsMap: Record<string, any>
+  customBasesMap: Record<string, number[]>
+  beRailsData: BeRailsAreaData[] | null
+  areas: Step2Area[]
+}): { expandedBasePlans: (RowBasePlan | null)[]; expandedRailLayouts: (RowRailLayout | null)[]; expandedTrapIds: string[] } {
+  const bps: (RowBasePlan | null)[] = []
+  const rls: (RowRailLayout | null)[] = []
+  const eTrapIds: string[] = []
+  const trapLabel = (tid: string) => {
     const a = (areas || []).find(ar => (ar.trapezoidIds || []).includes(tid))
     return a?.label ?? tid.replace(/\d+$/, '')
   }
@@ -202,7 +226,7 @@ export function computeExpandedBasePlans({
     const allPanels = trapGroups[trapId] ?? []
     const s = trapSettingsMap[trapId] ?? {}
 
-    const byRow = {}
+    const byRow: Record<number, PanelLayout[]> = {}
     for (const p of allPanels) {
       const ri = p.panelRowIdx ?? 0
       if (!byRow[ri]) byRow[ri] = []
@@ -213,7 +237,7 @@ export function computeExpandedBasePlans({
     for (const ri of rowIdxKeys) {
       const rowPanels = byRow[ri]
       const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri) ?? null
-      const cfg: Record<string, any> = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
+      const cfg: BaseConfig = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
       bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg))
@@ -227,14 +251,9 @@ export function computeExpandedBasePlans({
 
 /**
  * Build per-row panel frames keyed by "areaKey:rowIdx" (and plain areaKey for row 0).
- *
- * @param {object[]} panels
- * @param {object}   trapAreaMap - { trapId: areaKey }
- * @param {object[]} areas
- * @returns {object} { [key]: { frame, lines, isRtl, isBtt } }
  */
-export function buildAreaFrames(panels, trapAreaMap, areas) {
-  const rowPanels: Record<string, { areaKey: string; ri: number; panels: any[] }> = {}
+export function buildAreaFrames(panels: PanelLayout[], trapAreaMap: Record<string, string | number>, areas: Step2Area[]): Record<string, any> {
+  const rowPanels: Record<string, { areaKey: string | number; ri: number; panels: PanelLayout[] }> = {}
   for (const p of panels) {
     const tid = p.trapezoidId ?? 'A1'
     const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
@@ -244,23 +263,23 @@ export function buildAreaFrames(panels, trapAreaMap, areas) {
     rowPanels[key].panels.push(p)
   }
 
-  const buildFrame = (areaPnls) => {
+  const buildFrame = (areaPnls: PanelLayout[]) => {
     const pf = computePanelFrame(areaPnls)
     if (!pf) return null
-    const lineMap = {}
+    const lineMap: Record<number, { lineIdx: number; minY: number; maxY: number }> = {}
     for (const pr of pf.panelLocalRects) {
       const li = pr.line ?? 0
       if (!lineMap[li]) lineMap[li] = { lineIdx: li, minY: Infinity, maxY: -Infinity }
       lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
       lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
     }
-    const lines = (Object.values(lineMap) as any[]).sort((a, b) => a.minY - b.minY)
+    const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
     const isRtl = areaPnls[0]?.xDir === 'rtl'
     const isBtt = areaPnls[0]?.yDir === 'btt'
     return { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
   }
 
-  const map = {}
+  const map: Record<string, any> = {}
   for (const [key, { areaKey, ri, panels: pnls }] of Object.entries(rowPanels)) {
     const f = buildFrame(pnls)
     if (!f) continue
@@ -280,13 +299,9 @@ export function buildAreaFrames(panels, trapAreaMap, areas) {
 
 /**
  * Merge expanded base plans into a per-trap lookup (first row per trap wins).
- *
- * @param {string[]} expandedTrapIds
- * @param {object[]} basePlans
- * @returns {object} { trapId: basePlan }
  */
-export function buildBasePlansMap(expandedTrapIds, basePlans) {
-  const m = {}
+export function buildBasePlansMap(expandedTrapIds: string[], basePlans: (RowBasePlan | null)[]): Record<string, RowBasePlan> {
+  const m: Record<string, RowBasePlan> = {}
   expandedTrapIds.forEach((trapId, i) => {
     if (!basePlans[i]) return
     if (!m[trapId]) m[trapId] = basePlans[i]

@@ -1,23 +1,19 @@
 import { isHorizontalOrientation, isEmptyOrientation, PANEL_V } from './panelCodes.js'
-import type { ComputedTrapezoid, Leg, Punch, Diagonal } from '../types/projectData'
+import type { ComputedTrapezoid, Leg, Punch, Diagonal, PanelLineSegment } from '../types/projectData'
 
 // Re-export for backward compatibility with existing imports
 export { isHorizontalOrientation, isEmptyOrientation }
 
 /** Slope depth (cm) for a single line orientation */
-export const lineSlopeDepth = (o, panelLengthCm, panelWidthCm) =>
+export const lineSlopeDepth = (o: string, panelLengthCm: number, panelWidthCm: number): number =>
   isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm
 
 // ─── Slope / back-height calculations ────────────────────────────────────────
 
 /**
  * Total slope depth (cm) across all lines including inter-line gaps.
- * @param {string[]} orientations - array of orientation strings (length = number of lines)
- * @param {number}   lineGapCm   - gap between lines (not within a line)
- * @param {number}   panelLengthCm
- * @param {number}   panelWidthCm
  */
-export const computeTotalSlopeDepth = (orientations, lineGapCm, panelLengthCm, panelWidthCm) => {
+export const computeTotalSlopeDepth = (orientations: string[], lineGapCm: number, panelLengthCm: number, panelWidthCm: number): number => {
   const orients = orientations || [PANEL_V]
   const slopeSum = orients.reduce((s, o) => s + lineSlopeDepth(o, panelLengthCm, panelWidthCm), 0)
   return slopeSum + Math.max(0, orients.length - 1) * lineGapCm
@@ -25,46 +21,24 @@ export const computeTotalSlopeDepth = (orientations, lineGapCm, panelLengthCm, p
 
 /**
  * Panel back-edge height from floor (cm).
- * @param {number}   panelFrontHeight - panel front edge height from floor (cm)
- * @param {number}   angle            - tilt angle in degrees
- * @param {string[]} orientations     - line orientations (length = number of lines)
- * @param {number}   lineGapCm        - gap between lines
- * @param {number}   panelLengthCm
- * @param {number}   panelWidthCm
  */
-export const computePanelBackHeight = (panelFrontHeight, angle, orientations, lineGapCm, panelLengthCm, panelWidthCm) => {
+export const computePanelBackHeight = (panelFrontHeight: number, angle: number, orientations: string[], lineGapCm: number, panelLengthCm: number, panelWidthCm: number): number => {
   const angleRad = (angle || 0) * Math.PI / 180
   return panelFrontHeight + computeTotalSlopeDepth(orientations, lineGapCm, panelLengthCm, panelWidthCm) * Math.sin(angleRad)
 }
 
-// ─── Diagonal rendering helpers ───────────────────────────────────────────────
-
-/**
- * Calculate diagonal pixel positions from leg data and percentages.
- * Diagonal spans FULL BEAM (start of left leg to end of right leg) to match backend.
- * @param {number}   spanIdx      - span index (between legs i and i+1)
- * @param {number}   topPct       - top attachment point as percentage of span (0-1)
- * @param {number}   botPct       - bottom attachment point as percentage of span (0-1)
- * @param {number[]} legXs        - left edge X positions of all legs (px)
- * @param {number[]} legEndXs     - right edge X positions of all legs (px)
- * @param {number[]} legHeights   - heights of all legs (px)
- * @param {number}   baseY        - base beam Y position (px)
- * @param {number}   beamThickPx  - beam thickness (px)
- * @returns {{ xA, xB, spanW, topX, botX, topY, botY }} - pixel coordinates for diagonal rendering
- */
 // ─── Detail View geometry helpers ─────────────────────────────────────────────
 
 /**
  * Build rail items from panel line segments and lineRails config.
  * Each item has { cx, segIdx, offsetCm, globalOffsetCm }.
- *
- * @param {object[]} segments  - panel line segments [{ depthCm, gapBeforeCm, isEmpty }]
- * @param {object}   lineRails - { lineIdx: [offsetCm, ...] }
- * @param {Function} atSlope   - (dCm) => { x, y } coordinate transform
- * @returns {object[]}
  */
-export function buildRailItems(segments, lineRails, atSlope) {
-  const items = []
+export function buildRailItems(
+  segments: PanelLineSegment[],
+  lineRails: Record<number | string, number[]> | null,
+  atSlope: (dCm: number) => { x: number; y: number },
+) {
+  const items: { cx: number; segIdx: number; offsetCm: number; globalOffsetCm: number }[] = []
   let dCm = 0
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si]
@@ -82,17 +56,16 @@ export function buildRailItems(segments, lineRails, atSlope) {
 /**
  * Compute diagonal rendering data from BE diagonals + user overrides.
  * Pure data transform — no SVG.
- *
- * @param {object}   beDetailData  - BE trap detail (legs, diagonals)
- * @param {object}   diagOverrides - user overrides { [spanIdx]: { topPct, botPct, disabled } }
- * @param {number[]} allLegXs      - left edge X positions of all legs (px)
- * @param {number[]} allLegEndXs   - right edge X positions of all legs (px)
- * @param {number[]} allLegHeights - heights of all legs (px)
- * @param {number}   baseY         - base beam Y position (px)
- * @param {number}   BEAM_THICK_PX - beam thickness (px)
- * @returns {object[]}
  */
-export function buildDetailDiagonals(beDetailData: ComputedTrapezoid | null, diagOverrides: Record<number, Partial<Diagonal> & { disabled?: boolean }>, allLegXs: number[], allLegEndXs: number[], allLegHeights: number[], baseY: number, BEAM_THICK_PX: number) {
+export function buildDetailDiagonals(
+  beDetailData: ComputedTrapezoid | null,
+  diagOverrides: Record<number, Partial<Diagonal> & { disabled?: boolean }>,
+  allLegXs: number[],
+  allLegEndXs: number[],
+  allLegHeights: number[],
+  baseY: number,
+  BEAM_THICK_PX: number,
+) {
   const beDiags = beDetailData?.diagonals ?? []
   const numSpans = allLegXs.length - 1
   const raw = beDiags.map(d => {
@@ -120,18 +93,17 @@ export function buildDetailDiagonals(beDetailData: ComputedTrapezoid | null, dia
 
 /**
  * Build sorted punch points array for DetailPunchSketch.
- *
- * @param {object[]} punches       - beDetailData.punches
- * @param {string}   beamType      - 'base' or 'slope'
- * @param {string}   excludeOrigin - origin to exclude (e.g. 'block' for slope)
- * @param {Function} atFn          - (positionCm) => x pixel position
- * @param {Function} labelFor      - (punch) => label string
- * @returns {object[]} sorted by x
  */
-export function buildPunchPoints(punches: Punch[], beamType: Punch['beamType'], excludeOrigin: string, atFn: (pos: number) => number, labelFor: (p: Punch) => string) {
-  const matches = (origin) => (p) =>
+export function buildPunchPoints(
+  punches: Punch[],
+  beamType: Punch['beamType'],
+  excludeOrigin: string,
+  atFn: (pos: number) => number,
+  labelFor: (p: Punch) => string,
+) {
+  const matches = (origin: (o: string) => boolean) => (p: Punch) =>
     p.beamType === beamType && p.origin !== excludeOrigin && origin(p.origin)
-  const toPoint = (origin) => (p) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
+  const toPoint = (origin: string) => (p: Punch) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
   const nonDiag = punches.filter(matches(o => o !== 'diagonal')).map(p => toPoint(p.origin)(p))
   const diag    = punches.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
   return [...nonDiag, ...diag].sort((a, b) => a.x - b.x)
@@ -139,11 +111,8 @@ export function buildPunchPoints(punches: Punch[], beamType: Punch['beamType'], 
 
 /**
  * Compute first/last active (non-empty) panel line depths.
- *
- * @param {object[]} segments - panel line segments
- * @returns {{ firstActiveDepth: number, lastActiveDepth: number, totalPanelDepthCm: number }}
  */
-export function computeActiveDepths(segments) {
+export function computeActiveDepths(segments: PanelLineSegment[]) {
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
   let d = 0, firstActive = 0, foundFirst = false
   let lastEnd = totalPanelDepthCm
@@ -158,15 +127,14 @@ export function computeActiveDepths(segments) {
 
 /**
  * Derive all leg pixel data from BE legs.
- *
- * @param {object[]} beLegs     - beDetailData.legs
- * @param {Function} atTrap     - (posCm) => { x, y } coord transform
- * @param {number}   beamThickCm
- * @param {number}   SC         - scale factor (cm → px)
- * @param {number}   baseY      - base beam Y (px)
- * @returns {{ allLegXs, allLegEndXs, allLegHeights, allLegTopYs, legX0, legX1, legBW, firstLegPos }}
  */
-export function buildLegData(beLegs: Leg[], atTrap: (posCm: number) => { x: number; y: number }, beamThickCm: number, SC: number, baseY: number) {
+export function buildLegData(
+  beLegs: Leg[],
+  atTrap: (posCm: number) => { x: number; y: number },
+  beamThickCm: number,
+  SC: number,
+  baseY: number,
+) {
   const firstLegPos = beLegs[0]?.positionCm ?? 0
   const allLegXs = beLegs.map(leg => atTrap(leg.positionCm - firstLegPos).x)
   const allLegEndXs = beLegs.map(leg => atTrap((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos).x)
@@ -180,16 +148,20 @@ export function buildLegData(beLegs: Leg[], atTrap: (posCm: number) => { x: numb
 
 // ─── Diagonal rendering helpers ───────────────────────────────────────────────
 
+interface DiagonalPositionParams {
+  spanIdx: number
+  topPct: number
+  botPct: number
+  legXs: number[]
+  legEndXs: number[]
+  legHeights: number[]
+  baseY: number
+  beamThickPx: number
+}
+
 export const calculateDiagonalPosition = ({
-  spanIdx,
-  topPct,
-  botPct,
-  legXs,
-  legEndXs,
-  legHeights,
-  baseY,
-  beamThickPx,
-}) => {
+  spanIdx, topPct, botPct, legXs, legEndXs, legHeights, baseY, beamThickPx,
+}: DiagonalPositionParams) => {
   const xA = legXs[spanIdx]
   const xB = legEndXs[spanIdx + 1]
   const spanW = xB - xA
