@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, BORDER_LIGHT } from '../../styles/colors'
 import UserProfileModal from './UserProfileModal'
 import AdminPanel from '../admin/AdminPanel'
@@ -31,18 +31,18 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
   const col = (lightVal, darkVal) => dark ? darkVal : lightVal
 
   // Icon-button style — same in both contexts
-  const iconBtn = (extraColor) => ({
+  const iconBtn = (extraColor?): React.CSSProperties => ({
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
     background: 'none', border: 'none', cursor: 'pointer',
     padding: '0.3rem 0.55rem',
     color: extraColor ?? col(TEXT_DARK, 'rgba(255,255,255,0.75)'),
   })
 
-  const labelStyle = {
+  const labelStyle: React.CSSProperties = {
     fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap',
   }
 
-  const signOutStyle = {
+  const signOutStyle: React.CSSProperties = {
     background: 'none', border: 'none', cursor: 'pointer',
     fontSize: '0.58rem', padding: 0, lineHeight: 1,
     textDecoration: 'underline',

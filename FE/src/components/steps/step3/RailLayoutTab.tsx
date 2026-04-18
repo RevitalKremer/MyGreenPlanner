@@ -17,13 +17,13 @@ import RulerTool from '../../shared/RulerTool'
 export default function RailLayoutTab({
   panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
   uploadedImageData, imageSrc,
-  settings = {},
-  lineRails,           // { [lineIdx]: [offsetCm, ...] }
-  panelDepthsCm,       // [depthCm, ...]
-  keepSymmetry,
-  onLineRailsChange,   // (newLineRails) => void
-  onApplyRailsToAll,
-  onResetRails,
+  settings = {} as Record<string, any>,
+  lineRails = null,           // { [lineIdx]: [offsetCm, ...] }
+  panelDepthsCm = null,       // [depthCm, ...]
+  keepSymmetry = false,
+  onLineRailsChange = null,   // (newLineRails) => void
+  onApplyRailsToAll = null,
+  onResetRails = null,
   highlightGroup = null,
   printMode = false,
   printShowRoofImage = true,

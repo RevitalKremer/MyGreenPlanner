@@ -237,8 +237,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   }
 
   const handleContainerMouseMove = (e) => handleMouseMove(e)
-  const handleContainerMouseUp   = (e) => { stopPan(e) }
-  const handleContainerMouseLeave = (e) => { stopPan(e) }
+  const handleContainerMouseUp   = () => { stopPan() }
+  const handleContainerMouseLeave = () => { stopPan() }
 
   // Marks a structural profile (leg or diagonal) as doubled: dashed red
   // outline of the profile rectangle plus three "×2" labels along its length.

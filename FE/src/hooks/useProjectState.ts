@@ -848,7 +848,7 @@ export function useProjectState() {
     if (computeTimerRef.current) clearTimeout(computeTimerRef.current)
     computeTimerRef.current = setTimeout(() => {
       computeTimerRef.current = null
-      computePanels()
+      computePanels(undefined, undefined, undefined)
     }, 5)
     return () => { if (computeTimerRef.current) clearTimeout(computeTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps

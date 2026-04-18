@@ -375,7 +375,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
 
-                  return Object.entries(basesByRow).map(([riStr, rowBases]) => {
+                  return (Object.entries(basesByRow) as [string, any[]][]).map(([riStr, rowBases]) => {
                     const ri = Number(riStr)
                     const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, ri)
                     if (!ctx) return null

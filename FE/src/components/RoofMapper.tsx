@@ -1,7 +1,11 @@
 import { useState, useRef } from 'react'
 import { PRIMARY, WARNING } from '../styles/colors'
 import { useLang } from '../i18n/LangContext'
-import { MapContainer, TileLayer, Marker, Polygon, useMapEvents, useMap } from 'react-leaflet'
+// react-leaflet types don't align well with runtime — cast to any to suppress JSX type errors
+import { MapContainer as _MapContainer, TileLayer as _TileLayer, Marker as _Marker, Polygon, useMapEvents, useMap } from 'react-leaflet'
+const MapContainer = _MapContainer as any
+const TileLayer = _TileLayer as any
+const Marker = _Marker as any
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './RoofMapper.css'
@@ -144,8 +148,8 @@ function RoofMapper({ onPointSelect, selectedPoint, roofPolygon }) {
         <LocationHandler triggerLocation={userLocation} />
         
         {selectedPoint && (
-          <Marker 
-            position={[selectedPoint.lat, selectedPoint.lng]} 
+          <Marker
+            position={[selectedPoint.lat, selectedPoint.lng]}
             icon={roofMarkerIcon}
           />
         )}

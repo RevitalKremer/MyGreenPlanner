@@ -87,7 +87,7 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function BOMView({ bomItems = [], bomDeltas = {}, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
+export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string, any>, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
   const { t } = useLang()
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)

@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_LIGHT,
   TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT, ERROR, ERROR_BG, SUCCESS, SUCCESS_BG,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 
-const inputStyle = (focused) => ({
+const inputStyle = (focused): React.CSSProperties => ({
   width: '100%', padding: '0.65rem 0.8rem', boxSizing: 'border-box',
   border: `1.5px solid ${focused ? TEXT_DARK : BORDER_LIGHT}`,
   borderRadius: '8px', fontSize: '0.92rem', outline: 'none',

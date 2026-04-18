@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT, RAIL_STROKE_HOVER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, RAIL_STROKE_HOVER, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT } from '../../../styles/colors'
 const BAR_W       = 18
 const HANDLE_SIZE = 12
 

@@ -6,6 +6,7 @@ import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 import { isAreaTiles } from '../../../utils/roofSpecUtils'
 
 export default function RowSidebar({
+  baseline = null, setBaseline = null,
   panels,
   selectedPanels, setSelectedPanels, setTrapIdOverride,
   rows, areaGroups, areaLabel, getAreaKey, onMergeRowIntoArea,
@@ -125,7 +126,7 @@ export default function RowSidebar({
     // currently has ≥ 2 rows (so splitting it off is meaningful).
     let canSplit = false
     if (areaIdxs.size === 1 && rowCount === 1) {
-      const onlyIdx = [...areaIdxs][0]
+      const onlyIdx = ([...areaIdxs] as any[])[0]
       const gid = rectAreas[onlyIdx]?.areaGroupId
       const siblings = rectAreas.filter(a => a?.areaGroupId === gid).length
       if (siblings >= 2) canSplit = true
@@ -147,8 +148,8 @@ export default function RowSidebar({
       const fhNum = parseFloat(fh)
       const angNum = parseFloat(ang)
       setRowMounting(prev => {
-        const next = {}
-        Object.entries(prev || {}).forEach(([label, rows]) => {
+        const next = {};
+        (Object.entries(prev || {}) as [string, any[]][]).forEach(([label, rows]) => {
           next[label] = (rows || []).map(r => ({
             angleDeg: isNaN(angNum) ? r?.angleDeg : angNum,
             frontHeightCm: isNaN(fhNum) ? r?.frontHeightCm : fhNum,
@@ -325,7 +326,7 @@ export default function RowSidebar({
                 const areaIsTilesTyped = isAreaTiles(roofType, rectAreas[firstAreaKey])
 
                 const totalPanels = allGroupPanels.length
-                const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))]
+                const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))] as string[]
                 return (
                   <div key={group.groupId}>
                     <div style={{

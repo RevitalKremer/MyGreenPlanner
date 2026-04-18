@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { BORDER_MID } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 
@@ -24,12 +24,12 @@ export default function CanvasNavigator({
   onZoomIn,
   onZoomOut,
   onZoomReset,
-  imageData,
+  imageData = null,
   mmWidth,
   mmHeight,
   onPanToPoint,
   viewportRect,
-  children,
+  children = null,
   left = 16,
 }) {
   const { t } = useLang()
@@ -38,7 +38,7 @@ export default function CanvasNavigator({
 
   const zoomPct = (viewZoom * 100).toFixed(0) + '%'
 
-  const panelStyle = {
+  const panelStyle: React.CSSProperties = {
     position: 'fixed', bottom: 88, left,  // 72px wizard toolbar + 16px gap
     zIndex: 1000,
     userSelect: 'none',

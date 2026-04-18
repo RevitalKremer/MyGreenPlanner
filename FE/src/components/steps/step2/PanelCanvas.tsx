@@ -18,7 +18,7 @@ import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from 
 export default function PanelCanvas({
   uploadedImageData, imageSrc, viewZoom, setViewZoom,
   imageRef, setImageRef,
-  roofPolygon, baseline,
+  roofPolygon, baseline, setBaseline = null,
   panels, setPanels,
   selectedPanels, setSelectedPanels,
   dragState, setDragState,
@@ -52,7 +52,7 @@ export default function PanelCanvas({
   const [yLockDragState, setYLockDragState] = useState(null)
   const [freeDragState, setFreeDragState]   = useState(null) // {areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist}
   const [moveDragState, setMoveDragState]   = useState(null) // {areaIdx, startX, startY, origVertices}
-  const [overYLockArea, setOverYLockArea]   = useState(false)
+  const [overYLockArea, setOverYLockArea]   = useState<string | false>(false)
   const [snapGuideState, setSnapGuideState] = useState(null) // {pivotY, minX, maxX, snapping}
 
   const willDeselectRef = useRef(false)
@@ -269,7 +269,7 @@ export default function PanelCanvas({
 
     if (!yLockDragState && !moveDragState && !freeDragState) {
       const hoveredYLock = rectAreas.find(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices))
-      setOverYLockArea(hoveredYLock ? (hoveredYLock.areaVertical ? 'vertical' : 'horizontal') : false)
+      setOverYLockArea(hoveredYLock ? (hoveredYLock.areaVertical ? 'vertical' : 'horizontal') as string | false : false)
     }
 
     if (activeTool === 'area' && drawRectStart) {
@@ -587,7 +587,7 @@ export default function PanelCanvas({
           // Restrict to the most-represented area
           const counts = {}
           hit.forEach(p => { counts[p.area] = (counts[p.area] || 0) + 1 })
-          const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+          const dominant = (Object.entries(counts) as [string, number][]).sort((a, b) => b[1] - a[1])[0][0]
           hit = hit.filter(p => String(p.area) === dominant)
         }
         setSelectedPanels(hit.map(p => p.id))

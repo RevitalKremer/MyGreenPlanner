@@ -8,7 +8,7 @@ import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, 
  * summary: optional JSX shown at the bottom when expanded
  * actions: optional [{ label, onClick, style }] buttons shown below summary
  */
-export default function LayersPanel({ layers, summary, actions }) {
+export default function LayersPanel({ layers, summary = null, actions }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
 

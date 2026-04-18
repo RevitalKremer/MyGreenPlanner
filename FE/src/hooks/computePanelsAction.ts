@@ -565,7 +565,7 @@ export function refreshAreaTrapezoidsAction({
     if (id !== areaLabel && !(id.startsWith(areaLabel) && /^\d/.test(rest))) mergedTrapConfigs[id] = cfg
   })
   Object.entries(newTrapConfigs).forEach(([id, cfg]) => {
-    mergedTrapConfigs[id] = { ...(trapezoidConfigs[id] || {}), ...cfg }
+    mergedTrapConfigs[id] = { ...(trapezoidConfigs[id] || {}), ...((cfg as Record<string, any>) || {}) }
   })
 
   return { updatedPanels, mergedTrapConfigs }

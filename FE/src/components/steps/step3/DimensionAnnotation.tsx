@@ -12,7 +12,7 @@ import { TEXT_SECONDARY, BLACK } from '../../../styles/colors'
  *   colors      [string, ...]  — optional per-segment colour override
  *   maxFontSize number         — cap font size (useful when panels are small)
  */
-export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, maxFontSize }) {
+export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, maxFontSize = 12 }) {
   const TICK = 4 / zoom
   const fontSize = maxFontSize != null ? Math.min(14 / zoom, maxFontSize) : 14 / zoom
 

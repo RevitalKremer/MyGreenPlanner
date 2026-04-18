@@ -88,6 +88,7 @@ export const PANEL_BAR_STROKE = '#293189'  // panel bar stroke
 // ── Cross-rails ───────────────────────────────────────────────────────────
 export const RAIL_FILL = '#7c3aed'  // cross-rail fill
 export const RAIL_STROKE       = '#642165'  // secondary brand RAIL_FILL
+export const RAIL_STROKE_HOVER = '#8a2d8b'  // rail stroke on hover (lighter purple)
 export const RAIL_CONNECTOR    = '#00bcd4'  // cyan connector between rail stock segments
 
 // ── Punch bar ─────────────────────────────────────────────────────────────

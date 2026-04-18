@@ -26,10 +26,10 @@ const cellBase: React.CSSProperties = { borderLeft: B, padding: '2px 3px', boxSi
 const LBL: React.CSSProperties = { fontSize: '5px', color: TEXT_MUTED, lineHeight: 1, whiteSpace: 'nowrap', textAlign: 'center' }
 const VAL: React.CSSProperties = { fontSize: '9px', fontWeight: '800', color: BLACK, lineHeight: 1.2, textAlign: 'center' }
 
-function Cell({ style, children }) {
+function Cell({ style = null, children = null }) {
   return <td style={{ ...cellBase, ...style }}>{children}</td>
 }
-function LV({ label, value, vStyle }) {
+function LV({ label, value, vStyle = null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
       <div style={LBL}>{label}</div>
@@ -360,8 +360,8 @@ export default function Step4PdfReport({
 
   // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas
   // doesn't need to parse SVG (which it handles poorly for complex/transformed content).
-  const rasterizeSvgs = async (pageEl) => {
-    const svgs = Array.from(pageEl.querySelectorAll('svg'))
+  const rasterizeSvgs = async (pageEl: HTMLElement) => {
+    const svgs = Array.from(pageEl.querySelectorAll('svg')) as SVGSVGElement[]
     const swaps = []
     for (const svg of svgs) {
       // Use the SVG's natural (pre-transform) dimensions from its attributes.
@@ -380,7 +380,7 @@ export default function Step4PdfReport({
         h = Math.round(rect.height)
       }
       if (!w || !h) continue
-      const clone = svg.cloneNode(true)
+      const clone = svg.cloneNode(true) as SVGSVGElement
       clone.setAttribute('width', w)
       clone.setAttribute('height', h)
 

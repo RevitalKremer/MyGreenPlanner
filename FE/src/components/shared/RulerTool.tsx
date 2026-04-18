@@ -11,7 +11,7 @@ import { useLang } from '../../i18n/LangContext'
  *  pxPerCm     – SVG/content pixels per cm (without zoom factor)
  *  containerRef – ref to the pan container div (screen coords base)
  */
-export default function RulerTool({ active, zoom, pxPerCm, containerRef }) {
+function RulerTool({ active, zoom, pxPerCm, containerRef }) {
   const { t } = useLang()
   const [pts, setPts] = useState([])
 
@@ -99,3 +99,7 @@ export default function RulerTool({ active, zoom, pxPerCm, containerRef }) {
     </div>
   )
 }
+
+RulerTool._clear = null as (() => void) | null
+
+export default RulerTool

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { getSettings, updateSetting } from '../../services/adminApi'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
@@ -10,7 +10,7 @@ const ROOF_TYPES = ['concrete', 'iskurit', 'insulated_panel', 'tiles']
 const ROOF_TYPE_SHORT = { concrete: 'C', iskurit: 'I', insulated_panel: 'IP', tiles: 'T' }
 
 export default function SettingsTab() {
-  const [settings, setSettings] = useState([])
+  const [settings, setSettings] = useState<any[]>([])
   const [edits, setEdits] = useState({})       // key → new value_json string
   const [minEdits, setMinEdits] = useState({})  // key → new min_val string
   const [maxEdits, setMaxEdits] = useState({})  // key → new max_val string
@@ -40,7 +40,7 @@ export default function SettingsTab() {
         val = String(val).split(',').map(v => Number(v.trim())).filter(v => !isNaN(v))
       }
 
-      const payload = { value_json: val }
+      const payload: Record<string, any> = { value_json: val }
       if (minEdits[s.key] !== undefined) payload.min_val = minEdits[s.key] === '' ? null : Number(minEdits[s.key])
       if (maxEdits[s.key] !== undefined) payload.max_val = maxEdits[s.key] === '' ? null : Number(maxEdits[s.key])
       if (stepEdits[s.key] !== undefined) payload.step_val = stepEdits[s.key] === '' ? null : Number(stepEdits[s.key])
@@ -64,18 +64,18 @@ export default function SettingsTab() {
     }
   }
 
-  const grouped = settings.reduce((acc, s) => {
+  const grouped = settings.reduce((acc: Record<string, any[]>, s) => {
     acc[s.section] = acc[s.section] || []
     acc[s.section].push(s)
     return acc
-  }, {})
+  }, {} as Record<string, any[]>)
 
   if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>Loading…</div>
 
   return (
     <div style={{ padding: '1rem 0' }}>
       {error && <div style={{ padding: '0.6rem 0.8rem', background: ERROR_BG, color: ERROR, borderRadius: '8px', marginBottom: '1rem', fontSize: '0.83rem' }}>{error}</div>}
-      {Object.entries(grouped).map(([section, items]) => (
+      {(Object.entries(grouped) as [string, any[]][]).map(([section, items]) => (
         <div key={section} style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
             {SECTION_LABELS[section] ?? section}
@@ -106,7 +106,7 @@ export default function SettingsTab() {
               const displayStep = stepEdits[s.key] !== undefined ? stepEdits[s.key] : (s.step_val != null ? String(s.step_val) : '')
               const currentVisible = visibleEdits[s.key] !== undefined ? visibleEdits[s.key] : (s.visible ?? true)
 
-              const inputStyle = (isDirtyField) => ({
+              const inputStyle = (isDirtyField): React.CSSProperties => ({
                 padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.85rem',
                 border: `1.5px solid ${isDirtyField ? TEXT_DARKEST : BORDER_LIGHT}`, outline: 'none',
                 width: '100%', boxSizing: 'border-box',

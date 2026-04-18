@@ -4,7 +4,7 @@ import { PANEL_LIGHT_BG, PANEL_LIGHT_BG_ALT, PANEL_DARK, PANEL_MID } from '../..
  * Renders all panels as hatched rectangles into an SVG.
  * clipIdPrefix must be unique per usage site to avoid SVG clipPath ID collisions.
  */
-export default function HatchedPanels({ panels, selectedTrapId, selectedArea, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp' }) {
+export default function HatchedPanels({ panels, selectedTrapId, selectedArea = null, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp' }) {
   return panels.map(panel => {
     const [sx, sy] = toSvg(panel.x, panel.y)
     const sw = panel.width * sc, sh = panel.height * sc

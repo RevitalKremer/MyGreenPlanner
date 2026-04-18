@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { PRIMARY, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
@@ -28,7 +28,7 @@ export default function ToolPanel({
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
 
-  const toolBtnStyle = (tool) => ({
+  const toolBtnStyle = (tool): React.CSSProperties => ({
     flex: 1,
     padding: '0.45rem 0.15rem',
     background: activeTool === tool ? PRIMARY : 'white',

@@ -56,10 +56,12 @@ export default function Step2PanelPlacement({
   recordPanelDeletion,
   clearDeletedPanelsForArea,
   appDefaults,
-  paramLimits = {},
+  paramLimits = {} as Record<string, any>,
   roofType,
   rowMounting,
   setRowMounting,
+  areas = null,
+  setAreas = null,
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
@@ -464,7 +466,7 @@ export default function Step2PanelPlacement({
       current.frontHeight === fH
     ) return
 
-    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, appDefaults?.lineGapCm).toFixed(1))
+    const bH = parseFloat(computePanelBackHeight(fH, a, autoOrients, appDefaults?.lineGapCm, panelSpec.lengthCm, panelSpec.widthCm).toFixed(1))
 
     setTrapezoidConfigs(prev => ({
       ...prev,
@@ -490,8 +492,8 @@ export default function Step2PanelPlacement({
       if (!map[aKey]) map[aKey] = new Set()
       map[aKey].add(p.trapezoidId)
     })
-    const result = {}
-    Object.entries(map).forEach(([k, s]) => { result[k] = [...s].sort() })
+    const result = {};
+    (Object.entries(map) as [string, Set<string>][]).forEach(([k, s]) => { result[k] = [...s].sort() })
     return result
   }, [panels, rectAreas])
 
@@ -500,16 +502,16 @@ export default function Step2PanelPlacement({
     // (areaGroupId). Multi-row areas have multiple rectArea indices sharing
     // one areaGroupId — traps spanning rows of the same area should NOT be
     // marked as shared.
-    const trapToGroups = {}
-    Object.entries(areaTrapezoidMap).forEach(([areaKey, trapIds]) => {
+    const trapToGroups = {};
+    (Object.entries(areaTrapezoidMap) as [string, string[]][]).forEach(([areaKey, trapIds]) => {
       const groupId = rectAreas[areaKey]?.areaGroupId ?? areaKey
       trapIds.forEach(trapId => {
         if (!trapToGroups[trapId]) trapToGroups[trapId] = new Set()
         trapToGroups[trapId].add(groupId)
       })
     })
-    const shared = new Set()
-    Object.entries(trapToGroups).forEach(([trapId, groups]) => {
+    const shared = new Set();
+    (Object.entries(trapToGroups) as [string, Set<any>][]).forEach(([trapId, groups]) => {
       if (groups.size > 1) shared.add(trapId)
     })
     return shared
@@ -626,7 +628,7 @@ export default function Step2PanelPlacement({
               // multi-row area and give it its own areaGroupId + label.
               const selectedAreaIdxs = [...new Set(
                 panels.filter(p => selectedPanels.includes(p.id)).map(p => p.area)
-              )]
+              )] as any[]
               if (selectedAreaIdxs.length !== 1) return
               const rowAreaIdx = selectedAreaIdxs[0]
               setRectAreas(prev => {
@@ -669,10 +671,10 @@ export default function Step2PanelPlacement({
               if (selectedAreaIdxs.size < 2) return
               setRectAreas(prev => {
                 const groupIds = [...new Set(
-                  [...selectedAreaIdxs]
+                  ([...selectedAreaIdxs] as any[])
                     .map(i => prev[i]?.areaGroupId)
                     .filter(g => g != null)
-                )]
+                )] as any[]
                 if (groupIds.length < 2) return prev  // already one group
                 const targetGroupId = groupIds[0]
                 const targetArea = prev.find(a => a.areaGroupId === targetGroupId)

@@ -154,7 +154,7 @@ function App() {
       if (!d) return []
       if (Array.isArray(d)) return d
       const result = []
-      for (const [rowIdx, items] of Object.entries(d)) {
+      for (const [rowIdx, items] of Object.entries(d) as [string, any[]][]) {
         for (const item of items) {
           result.push({ ...item, _panelRowIdx: Number(rowIdx) })
         }
@@ -176,7 +176,7 @@ function App() {
       if (!d) return []
       if (Array.isArray(d)) return d
       const result = []
-      for (const [rowIdx, items] of Object.entries(d)) {
+      for (const [rowIdx, items] of Object.entries(d) as [string, any[]][]) {
         for (const item of items) {
           result.push({ ...item, _panelRowIdx: Number(rowIdx) })
         }
@@ -235,7 +235,7 @@ function App() {
     })
 
     // Build overrides structure
-    const overrides = {}
+    const overrides: Record<string, any> = {}
     
     if (tabName === 'rails') {
       // Rails overrides: lineRails per area
@@ -270,7 +270,7 @@ function App() {
     if (tabName === 'areas') return
     
     try {
-      const payload = buildTabPayload(tabName)
+      const payload: Record<string, any> = buildTabPayload(tabName)
 
       // Add tab-specific overrides
       if (tabName === 'bases') {
@@ -305,7 +305,7 @@ function App() {
           const trapId = trapIds[0] || `${String.fromCharCode(65 + parseInt(areaIdx))}1`
 
           const diagObj = {}
-          for (const [spanIdx, diag] of Object.entries(areaDiagOverrides)) {
+          for (const [spanIdx, diag] of Object.entries(areaDiagOverrides) as [string, any][]) {
             const { topPct, botPct, disabled } = diag
             if (disabled === true) {
               diagObj[spanIdx] = { disabled: true }
@@ -839,7 +839,7 @@ function App() {
                   const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
                   const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
                   if (currentTab && currentTab !== 'areas') {
-                    try { await handleTabSave(currentTab) } catch (e) { console.error(e) }
+                    try { await handleTabSave(currentTab, {}) } catch (e) { console.error(e) }
                   }
                 }
                 // Tell the BE about the step transition — it resets dependent data

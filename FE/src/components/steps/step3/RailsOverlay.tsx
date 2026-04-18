@@ -11,13 +11,13 @@ export default function RailsOverlay({
   railLayouts,
   rowKeys,
   rowGroups,
-  beRailByKey = {},
+  beRailByKey = {} as Record<string, any>,
   groupKeyToLabel = {},
   toSvg,
   sc,
   pixelToCmRatio,
   zoom = 1,
-  layers = {},
+  layers = {} as Record<string, any>,
   crossRailEdgeDistMm = 50,
   railOverhangCm = 10,
   selectedRowIdx = null,
@@ -41,7 +41,7 @@ export default function RailsOverlay({
     const areaLabel = groupKeyToLabel[areaKey] ?? areaKey
     // Collect all BE rails matching this area + row, keyed by railId
     // Try both numeric areaKey and resolved label
-    const rowBeRails = {}
+    const rowBeRails: Record<string, any> = {}
     for (const [k, v] of Object.entries(beRailByKey)) {
       if (k === `${areaKey}:${pri}:${v.railId}` || k === `${areaLabel}:${pri}:${v.railId}`) rowBeRails[v.railId] = v
     }
@@ -53,7 +53,7 @@ export default function RailsOverlay({
     }
     // For multi-rail lines: all rails in the same lineIdx share stock segments,
     // so if exact railId match fails, use any rail from the same lineIdx
-    const anySegsForLine = {}
+    const anySegsForLine: Record<string, any> = {}
     for (const v of Object.values(rowBeRails)) {
       if (!anySegsForLine[v.lineIdx]) anySegsForLine[v.lineIdx] = v.stockSegmentsMm
     }
@@ -87,7 +87,7 @@ export default function RailsOverlay({
       if (!lineRects[pr.line]) lineRects[pr.line] = []
       lineRects[pr.line].push(pr)
     }
-    return Object.entries(lineRects).map(([li, rects]) => {
+    return (Object.entries(lineRects) as [string, any[]][]).map(([li, rects]) => {
       const lineRail = railByLine[li]
       if (!lineRail) return null
       const segs = beSegsFn(lineRail)

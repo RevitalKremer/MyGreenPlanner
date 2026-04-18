@@ -122,7 +122,7 @@ export default function Step3Sidebar({
   rowConstructions, rowKeys, areaTrapezoidMap, areaLabel,
   selectedRowIdx, setSelectedRowIdx,
   selectedPanelRowIdx, setSelectedPanelRowIdx,
-  setSelectedTrapezoidId, effectiveSelectedTrapId,
+  selectedTrapezoidId = null, setSelectedTrapezoidId, effectiveSelectedTrapId,
   trapezoidConfigs, panels,
   activeTab, setActiveTab,
   selectedRC, getSettings, updateSetting, applySection,
@@ -379,7 +379,7 @@ export default function Step3Sidebar({
                 const areaPanels = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey)
                 const rowIdxSet = new Set()
                 areaPanels.forEach(p => rowIdxSet.add(p.panelRowIdx ?? 0))
-                const panelRowIdxs = [...rowIdxSet].sort((a, b) => a - b)
+                const panelRowIdxs = ([...rowIdxSet] as number[]).sort((a, b) => a - b)
                 const hasMultiTraps = trapIds.length > 1
                 const hasMultiRows = panelRowIdxs.length > 1
                 if (!hasMultiTraps && !hasMultiRows) return null

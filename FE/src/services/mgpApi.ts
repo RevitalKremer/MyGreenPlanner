@@ -21,7 +21,7 @@ async function _refreshAccessToken() {
   }
 }
 
-export async function mgpRequest(path, options = {}) {
+export async function mgpRequest(path, options: Record<string, any> = {}) {
   const headers = { ...options.headers }
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'

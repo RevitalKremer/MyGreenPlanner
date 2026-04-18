@@ -10,7 +10,7 @@ import { useRef, useState } from 'react'
  * @param {function} onPanToPoint  - called with (mmX, mmY) on click/drag
  * @param {ReactNode} children     - SVG overlay content (rects, polygons, etc.)
  */
-export default function MinimapView({ imageData, width, height, onPanToPoint, children }) {
+export default function MinimapView({ imageData = null, width, height, onPanToPoint, children = null }) {
   const [collapsed, setCollapsed] = useState(false)
   const dragRef = useRef(false)
 

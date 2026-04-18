@@ -10,7 +10,7 @@ const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 const PAD = 12  // print mode — minimal padding
 
 export default function AreasLayoutPage({
-  panels = [], areas = {},
+  panels = [], areas = [] as any[],
   uploadedImageData, imageSrc,
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {

@@ -27,6 +27,7 @@ export default function Step3ConstructionPlanning({
   roofType = 'concrete',
   purlinDistCm = 0,
   installationOrientation = null,
+  basesComputing = false,
 }) {
   const { t } = useLang()
 
@@ -141,7 +142,7 @@ export default function Step3ConstructionPlanning({
         if (!byRow[ri]) byRow[ri] = []
         byRow[ri].push(base)
       }
-      for (const [riStr, rowBases] of Object.entries(byRow)) {
+      for (const [riStr, rowBases] of Object.entries(byRow) as [string, any[]][]) {
         for (const base of rowBases) {
           const tid = base.trapezoidId
           const key = `${tid}:${riStr}`
@@ -158,7 +159,7 @@ export default function Step3ConstructionPlanning({
 
   useEffect(() => {
     const userEdited = {}
-    for (const tid of userEditedBases) {
+    for (const tid of userEditedBases as Set<string>) {
       if (customBasesMap[tid]) userEdited[tid] = customBasesMap[tid]
     }
     onCustomBasesChange?.(userEdited)

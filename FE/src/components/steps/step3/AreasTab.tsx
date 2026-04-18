@@ -88,7 +88,7 @@ const ROOF_TYPE_I18N = {
 // Multi-entry legend (supports mixed projects). Pass `entries` =
 // [{type, color}, ...]; falls back to single entry when roofType/roofColor
 // are provided (backward-compat).
-export function InstallMethodLegend({ roofType, roofColor, entries, t }) {
+export function InstallMethodLegend({ roofType = 'concrete', roofColor = '', entries = null as any, t }) {
   const items = entries && entries.length > 0
     ? entries
     : [{ type: roofType, color: roofColor }]
@@ -117,8 +117,8 @@ export function InstallMethodLegend({ roofType, roofColor, entries, t }) {
 }
 
 export default function AreasTab({
-  panels, areas,
-  rowKeys = [], areaLabel = () => '',
+  panels, areas = [],
+  rowKeys = [], areaLabel = (_areaKey?: any, _i?: number) => '' as string,
   printMode = false,
   printShowAreas = true, printShowCounts = true, printShowRoofImage = true,
   printShowInstallMethod = false,
@@ -178,7 +178,7 @@ export default function AreasTab({
       if (!groups[key]) groups[key] = []
       groups[key].push(p)
     }
-    return Object.values(groups).map(group => {
+    return (Object.values(groups) as any[][]).map(group => {
       let leftmost = group[0]
       let minSvgX = Infinity
       for (const p of group) {
