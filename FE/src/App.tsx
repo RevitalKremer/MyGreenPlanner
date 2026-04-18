@@ -642,7 +642,7 @@ function App() {
                     areaGroupId: addToGroupId,
                     rowIndex: nextRowIndex,
                     areaVertical: parentArea?.areaVertical ?? false,
-                    rotation: parentArea?.rotation ?? 0,
+                    rotation: 0,
                     manualTrapezoids: false,
                     manualColTrapezoids: {},
                     roofSpec: isMixed ? (parentArea?.roofSpec ?? { type: 'concrete' }) : null,
