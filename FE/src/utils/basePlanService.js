@@ -1,4 +1,4 @@
-import { computeRowRailLayout, localToScreen, getPanelOrientation } from './railLayoutService'
+import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE } from './railLayoutService'
 
 
 // Compute base placement for one row
@@ -118,4 +118,177 @@ export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
   }
 
   return result
+}
+
+
+/**
+ * Build bidirectional maps: trapId → areaKey, areaKey → [trapIds].
+ *
+ * @param {string[]} trapIds - sorted trap IDs from panels
+ * @param {object[]} areas   - step2 areas (with id, trapezoidIds)
+ * @returns {{ trapAreaMap, areaTrapsMap }}
+ */
+export function buildTrapAreaMaps(trapIds, areas) {
+  const trapAreaMap = {}, areaTrapsMap = {}
+  if (areas.length > 0) {
+    for (const area of areas) {
+      const aid = area.id
+      if (!areaTrapsMap[aid]) areaTrapsMap[aid] = []
+      for (const tid of (area.trapezoidIds || [])) {
+        trapAreaMap[tid] = aid
+        areaTrapsMap[aid].push(tid)
+      }
+    }
+  } else {
+    // Fallback (print mode, no areas prop): derive from trapezoidId
+    for (const trapId of trapIds) {
+      const area = trapId.replace(/\d+$/, '')
+      trapAreaMap[trapId] = area
+      if (!areaTrapsMap[area]) areaTrapsMap[area] = []
+      areaTrapsMap[area].push(trapId)
+    }
+  }
+  return { trapAreaMap, areaTrapsMap }
+}
+
+
+/**
+ * Build BE rail lookup keyed by trapId:railId (for RailsOverlay in bases tab).
+ *
+ * @param {object[]} beBasesData
+ * @param {object}   areaTrapsMap - { areaKey: [trapIds] }
+ * @returns {object} { "trapId:railId": railObject }
+ */
+export function buildBasePlanBeRailLookup(beBasesData, areaTrapsMap) {
+  const m = {}
+  for (const areaData of (beBasesData ?? [])) {
+    const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? areaTrapsMap[areaData.label] ?? []
+    for (const r of (areaData.rails ?? [])) {
+      for (const tid of areaTrapIds) {
+        m[`${tid}:${r.railId}`] = r
+      }
+    }
+  }
+  return m
+}
+
+
+/**
+ * Compute expanded base plans and rail layouts — one per (trapId, panelRowIdx).
+ * Multi-row traps expand to multiple entries.
+ *
+ * @param {object} opts
+ * @param {string[]} opts.trapIds
+ * @param {object}   opts.trapGroups - { trapId: panel[] }
+ * @param {number}   opts.pixelToCmRatio
+ * @param {object}   opts.trapSettingsMap
+ * @param {object}   opts.customBasesMap
+ * @param {object[]} opts.beRailsData
+ * @param {object[]} opts.areas
+ * @returns {{ expandedBasePlans, expandedRailLayouts, expandedTrapIds }}
+ */
+export function computeExpandedBasePlans({
+  trapIds, trapGroups, pixelToCmRatio,
+  trapSettingsMap, customBasesMap, beRailsData, areas,
+}) {
+  const bps = [], rls = [], eTrapIds = []
+  const trapLabel = (tid) => {
+    const a = (areas || []).find(ar => (ar.trapezoidIds || []).includes(tid))
+    return a?.label ?? tid.replace(/\d+$/, '')
+  }
+
+  for (const trapId of trapIds) {
+    const allPanels = trapGroups[trapId] ?? []
+    const s = trapSettingsMap[trapId] ?? {}
+
+    const byRow = {}
+    for (const p of allPanels) {
+      const ri = p.panelRowIdx ?? 0
+      if (!byRow[ri]) byRow[ri] = []
+      byRow[ri].push(p)
+    }
+    const rowIdxKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b)
+
+    for (const ri of rowIdxKeys) {
+      const rowPanels = byRow[ri]
+      const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri) ?? null
+      const cfg = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
+      const customOffsets = customBasesMap[trapId]
+      if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
+      bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg))
+      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths }))
+      eTrapIds.push(trapId)
+    }
+  }
+  return { expandedBasePlans: bps, expandedRailLayouts: rls, expandedTrapIds: eTrapIds }
+}
+
+
+/**
+ * Build per-row panel frames keyed by "areaKey:rowIdx" (and plain areaKey for row 0).
+ *
+ * @param {object[]} panels
+ * @param {object}   trapAreaMap - { trapId: areaKey }
+ * @param {object[]} areas
+ * @returns {object} { [key]: { frame, lines, isRtl, isBtt } }
+ */
+export function buildAreaFrames(panels, trapAreaMap, areas) {
+  const rowPanels = {}
+  for (const p of panels) {
+    const tid = p.trapezoidId ?? 'A1'
+    const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
+    const ri = p.panelRowIdx ?? 0
+    const key = `${areaKey}:${ri}`
+    if (!rowPanels[key]) rowPanels[key] = { areaKey, ri, panels: [] }
+    rowPanels[key].panels.push(p)
+  }
+
+  const buildFrame = (areaPnls) => {
+    const pf = computePanelFrame(areaPnls)
+    if (!pf) return null
+    const lineMap = {}
+    for (const pr of pf.panelLocalRects) {
+      const li = pr.line ?? 0
+      if (!lineMap[li]) lineMap[li] = { lineIdx: li, minY: Infinity, maxY: -Infinity }
+      lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
+      lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
+    }
+    const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
+    const isRtl = areaPnls[0]?.xDir === 'rtl'
+    const isBtt = areaPnls[0]?.yDir === 'btt'
+    return { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
+  }
+
+  const map = {}
+  for (const [key, { areaKey, ri, panels: pnls }] of Object.entries(rowPanels)) {
+    const f = buildFrame(pnls)
+    if (!f) continue
+    map[key] = f
+    if (ri === 0 && !map[areaKey]) map[areaKey] = f
+  }
+  // Also key by area label so beBasesData lookups work
+  for (const area of areas) {
+    const idKey = area.id
+    if (idKey != null && map[idKey] && area.label && area.label !== String(idKey)) {
+      map[area.label] = map[idKey]
+    }
+  }
+  return map
+}
+
+
+/**
+ * Merge expanded base plans into a per-trap lookup (first row per trap wins).
+ *
+ * @param {string[]} expandedTrapIds
+ * @param {object[]} basePlans
+ * @returns {object} { trapId: basePlan }
+ */
+export function buildBasePlansMap(expandedTrapIds, basePlans) {
+  const m = {}
+  expandedTrapIds.forEach((trapId, i) => {
+    if (!basePlans[i]) return
+    if (!m[trapId]) m[trapId] = basePlans[i]
+  })
+  return m
 }

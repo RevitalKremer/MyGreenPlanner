@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE } from '../../../styles/colors'
-import { computeRowBasePlan, consolidateAreaBases } from '../../../utils/basePlanService'
+import { consolidateAreaBases, buildTrapAreaMaps, buildBasePlanBeRailLookup, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
 import AreaLabel from '../../shared/AreaLabel'
-import { computeRowRailLayout, computePanelFrame, localToScreen, buildLineRailsFromBE } from '../../../utils/railLayoutService'
+import { localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildTrapezoidGroups } from './tabUtils'
@@ -51,104 +51,28 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
   // Split each trapezoid group by panelRowIdx for multi-row areas
-  const { expandedBasePlans: basePlans, expandedRailLayouts: railLayouts, expandedTrapIds } = useMemo(() => {
-    const bps = []
-    const rls = []
-    const eTrapIds = []
-    // Derive area label from trapId (strip trailing digits: "B1" → "B")
-    const trapLabel = (tid) => {
-      const a = (areas || []).find(ar => (ar.trapezoidIds || []).includes(tid))
-      return a?.label ?? tid.replace(/\d+$/, '')
-    }
-
-    for (const trapId of trapIds) {
-      const allPanels = trapGroups[trapId] ?? []
-      const s = trapSettingsMap[trapId] ?? {}
-
-      // Split by panelRowIdx
-      const byRow = {}
-      for (const p of allPanels) {
-        const ri = p.panelRowIdx ?? 0
-        if (!byRow[ri]) byRow[ri] = []
-        byRow[ri].push(p)
-      }
-      const rowIdxKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b)
-
-      for (const ri of rowIdxKeys) {
-        const rowPanels = byRow[ri]
-        // BE-computed rails are authoritative (always available on step 3)
-        const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri)
-          ?? null
-
-        const cfg = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
-        const customOffsets = customBasesMap[trapId]
-        if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
-        bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails }, cfg))
-
-        rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths }))
-
-        eTrapIds.push(trapId)
-      }
-    }
-    return { expandedBasePlans: bps, expandedRailLayouts: rls, expandedTrapIds: eTrapIds }
-  },
-    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beRailsData, areas]
+  const { expandedBasePlans: basePlans, expandedRailLayouts: railLayouts, expandedTrapIds } = useMemo(
+    () => computeExpandedBasePlans({ trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, customBasesMap, beRailsData, areas }),
+    [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beRailsData, areas],
   )
 
   // Wait for BE data to be ready before rendering
   const dataReady = (beBasesData && beBasesData.length > 0) || printMode
 
-  // Map trapId → area key (strip trailing digits: "B1" → "B")
-  // Build area maps from areas prop (id-based) with fallback to trapId stripping
-  const { trapAreaMap, areaTrapsMap } = useMemo(() => {
-    const tam = {}, atm = {}
-    if (areas.length > 0) {
-      // Use areas prop: key by area.id, map trapezoidIds to area id
-      for (const area of areas) {
-        const aid = area.id
-        if (!atm[aid]) atm[aid] = []
-        for (const tid of (area.trapezoidIds || [])) {
-          tam[tid] = aid
-          atm[aid].push(tid)
-        }
-      }
-    } else {
-      // Fallback for print mode (no areas prop): derive from trapezoidId
-      for (const trapId of trapIds) {
-        const area = trapId.replace(/\d+$/, '')
-        tam[trapId] = area
-        if (!atm[area]) atm[area] = []
-        atm[area].push(trapId)
-      }
-    }
-    return { trapAreaMap: tam, areaTrapsMap: atm }
-  }, [trapIds, areas])
+  const { trapAreaMap, areaTrapsMap } = useMemo(
+    () => buildTrapAreaMaps(trapIds, areas),
+    [trapIds, areas],
+  )
 
-  // BE rail lookup keyed by trapId:railId (for RailsOverlay)
-  const beRailByKey = useMemo(() => {
-    const m = {}
-    for (const areaData of (beBasesData ?? [])) {
-      const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? areaTrapsMap[areaData.label] ?? []
-      for (const r of (areaData.rails ?? [])) {
-        for (const tid of areaTrapIds) {
-          m[`${tid}:${r.railId}`] = r
-        }
-      }
-    }
-    return m
-  }, [beBasesData, areaTrapsMap])
+  const beRailByKey = useMemo(
+    () => buildBasePlanBeRailLookup(beBasesData, areaTrapsMap),
+    [beBasesData, areaTrapsMap],
+  )
 
-  // Object form of basePlans for consolidation lookup
-  // expandedTrapIds parallels basePlans — merge all rows' plans per trapId
-  const basePlansMap = useMemo(() => {
-    const m = {}
-    expandedTrapIds.forEach((trapId, i) => {
-      if (!basePlans[i]) return
-      // Use first row's base plan as representative for consolidation
-      if (!m[trapId]) m[trapId] = basePlans[i]
-    })
-    return m
-  }, [expandedTrapIds, basePlans])
+  const basePlansMap = useMemo(
+    () => buildBasePlansMap(expandedTrapIds, basePlans),
+    [expandedTrapIds, basePlans],
+  )
 
   // Consolidated bases: bases from shallower sub-areas that fall within a deeper sub-area's
   // x-extent are removed. Result: { trapId: Base[] }
@@ -159,54 +83,10 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
   const totalBases = trapIds.reduce((s, trapId) => s + (consolidatedBasesMap[trapId]?.length ?? 0), 0)
 
-  // Per-row frame: computed from panels in each physical panel row.
-  // Keyed by "areaKey:panelRowIdx" for multi-row, and also by plain "areaKey" (first row).
-  const areaFrames = useMemo(() => {
-    // Group panels by areaKey + panelRowIdx
-    const rowPanels = {}
-    for (const p of panels) {
-      const tid = p.trapezoidId ?? 'A1'
-      const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
-      const ri = p.panelRowIdx ?? 0
-      const key = `${areaKey}:${ri}`
-      if (!rowPanels[key]) rowPanels[key] = { areaKey, ri, panels: [] }
-      rowPanels[key].panels.push(p)
-    }
-
-    const buildFrame = (areaPnls) => {
-      const pf = computePanelFrame(areaPnls)
-      if (!pf) return null
-      const lineMap = {}
-      for (const pr of pf.panelLocalRects) {
-        const li = pr.line ?? 0
-        if (!lineMap[li]) lineMap[li] = { lineIdx: li, minY: Infinity, maxY: -Infinity }
-        lineMap[li].minY = Math.min(lineMap[li].minY, pr.localY)
-        lineMap[li].maxY = Math.max(lineMap[li].maxY, pr.localY + pr.height)
-      }
-      const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
-      const isRtl = areaPnls[0]?.xDir === 'rtl'
-      const isBtt = areaPnls[0]?.yDir === 'btt'
-      return { frame: { center: pf.center, angleRad: pf.angleRad, localBounds: pf.localBounds }, lines, isRtl, isBtt }
-    }
-
-    const map = {}
-    for (const [key, { areaKey, ri, panels: pnls }] of Object.entries(rowPanels)) {
-      const f = buildFrame(pnls)
-      if (!f) continue
-      // Key by "areaKey:rowIdx"
-      map[key] = f
-      // Also key by plain areaKey for first row (backward compat + single-row areas)
-      if (ri === 0 && !map[areaKey]) map[areaKey] = f
-    }
-    // Also key by area label so beBasesData lookups work (label may differ from id)
-    for (const area of areas) {
-      const idKey = area.id
-      if (idKey != null && map[idKey] && area.label && area.label !== String(idKey)) {
-        map[area.label] = map[idKey]
-      }
-    }
-    return map
-  }, [panels, trapAreaMap, areas])
+  const areaFrames = useMemo(
+    () => buildAreaFrames(panels, trapAreaMap, areas),
+    [panels, trapAreaMap, areas],
+  )
 
 
   const bbox = useMemo(() => {
