@@ -2,31 +2,10 @@ import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { railOffsetFromSpacing } from '../utils/railLayoutService'
 import { PANEL_H, PANEL_V, REAL_PANELS } from '../utils/panelCodes.js'
-import type { ComputedTrapezoid, Step2Area, BeRailsAreaData, PanelLayout, PanelLineSegment } from '../types/projectData'
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type LineRailsMap = Record<number | string, number[]>
-
-interface ParamSchemaEntry {
-  key: string
-  default?: number
-  min?: number
-  section?: string
-  scope?: string
-  type?: string
-  [k: string]: any
-}
-
-interface RefinedArea {
-  panelConfig?: {
-    angle?: number
-    frontHeight?: number
-    lineOrientations?: string[]
-    [k: string]: any
-  }
-  [k: string]: any
-}
+import type {
+  ComputedTrapezoid, Step2Area, BeRailsAreaData, PanelLayout, PanelLineSegment,
+  LineRailsMap, ParamSchemaEntry, RefinedArea,
+} from '../types/projectData'
 
 interface UseSelectedGeometryParams {
   selectedRowIdx: number | null

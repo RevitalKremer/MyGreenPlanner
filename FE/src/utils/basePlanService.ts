@@ -1,48 +1,10 @@
 import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE } from './railLayoutService'
-import type { RowRailLayout } from './railLayoutService'
-import type { Step2Area, BeRailsAreaData, BeBasesAreaData, RailConfig, PanelLayout } from '../types/projectData'
+import type {
+  Point, LineInfo, BasePlanBase, BasePlanFrame, RowBasePlan, BaseConfig,
+  RowRailLayout, Step2Area, BeRailsAreaData, BeBasesAreaData, RailConfig, PanelLayout,
+} from '../types/projectData'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface Point { x: number; y: number }
-
-interface LineInfo {
-  lineIdx: number
-  minY: number
-  maxY: number
-  orientation: string | null
-}
-
-interface BasePlanBase {
-  localX: number
-  screenTop: Point
-  screenBottom: Point
-  offsetFromStartMm: number
-}
-
-interface BasePlanFrame {
-  center: Point
-  angleRad: number
-  localBounds: { minX: number; maxX: number; minY: number; maxY: number }
-  frameXMinPx: number
-  frameXMaxPx: number
-}
-
-export interface RowBasePlan {
-  frame: BasePlanFrame
-  lines: LineInfo[]
-  bases: BasePlanBase[]
-  frameLengthMm: number
-  baseCount: number
-  spacingMm: number
-  isRtl: boolean
-}
-
-interface BaseConfig {
-  customOffsets?: number[]
-  edgeOffsetMm?: number
-  spacingMm?: number
-}
+export type { RowBasePlan }
 
 // ─── Core computation ────────────────────────────────────────────────────────
 

@@ -3,32 +3,10 @@ import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../
 import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 import { isAreaTiles } from '../utils/roofSpecUtils'
-import type { ComputedTrapezoid, Step2Area, BeRailsAreaData, PanelLayout, PanelLineSegment } from '../types/projectData'
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type LineRailsMap = Record<number | string, number[]>
-
-interface PanelSpec {
-  lengthCm: number
-  widthCm: number
-}
-
-interface ParamSchemaEntry {
-  key: string
-  default?: number
-  [k: string]: any
-}
-
-interface RefinedArea {
-  panelConfig?: {
-    angle?: number
-    frontHeight?: number
-    lineOrientations?: string[]
-    [k: string]: any
-  }
-  [k: string]: any
-}
+import type {
+  ComputedTrapezoid, Step2Area, BeRailsAreaData, PanelLayout, PanelLineSegment,
+  LineRailsMap, PanelSpec, ParamSchemaEntry, RefinedArea,
+} from '../types/projectData'
 
 interface UseRowDataParams {
   panels: PanelLayout[]

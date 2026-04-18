@@ -232,14 +232,134 @@ export interface BeBasesAreaData {
   rails?: FlatRail[]
 }
 
+// ── Shared geometry types ────────────────────────────────────────────────────
+
+export interface LocalBounds {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}
+
+export type LineRailsMap = Record<number | string, number[]>
+
+export interface PanelSpec {
+  lengthCm: number
+  widthCm: number
+}
+
+// ── Parameter & configuration types ─────────────────────────────────────────
+
+export interface ParamSchemaEntry {
+  key: string
+  default?: number
+  min?: number
+  max?: number
+  section?: string    // 'rails' | 'bases' | 'detail'
+  scope?: string      // 'global' | 'area' | 'trapezoid'
+  type?: string       // 'rail-spacing' etc.
+  highlightGroup?: string
+  [k: string]: any
+}
+
+export interface RefinedArea {
+  pixelToCmRatio?: number
+  polygon?: any
+  panelType?: string
+  referenceLine?: any
+  referenceLineLengthCm?: number
+  panelConfig?: {
+    angle?: number
+    frontHeight?: number
+    backHeight?: number
+    lineOrientations?: string[]
+    [k: string]: any
+  }
+  [k: string]: any
+}
+
 // ── Rail config (FE utility input) ──────────────────────────────────────────
 
 export interface RailConfig {
-  lineRails?: Record<number | string, number[]> | null
+  lineRails?: LineRailsMap | null
   overhangCm?: number
   stockLengths?: number[]
   railSpacingV?: number
   railSpacingH?: number
+}
+
+// ── FE layout geometry (computed by railLayoutService / basePlanService) ─────
+
+export interface PanelLocalRect {
+  id: number
+  localX: number
+  localY: number
+  width: number
+  height: number
+  line: number
+}
+
+export interface PanelFrame {
+  center: Point
+  angleRad: number
+  localBounds: LocalBounds
+  panelLocalRects: PanelLocalRect[]
+}
+
+export interface FERail {
+  railId: string
+  lineIdx: number
+  orientation: string
+  localStart: Point
+  localEnd: Point
+  screenStart: Point
+  screenEnd: Point
+  lengthCm: number
+}
+
+export interface RowRailLayout {
+  frame: { center: Point; angleRad: number; localBounds: LocalBounds }
+  panelLocalRects: PanelLocalRect[]
+  rails: FERail[]
+  _panelRowIdx?: number
+}
+
+export interface LineInfo {
+  lineIdx: number
+  minY: number
+  maxY: number
+  orientation: string | null
+}
+
+export interface BasePlanBase {
+  localX: number
+  screenTop: Point
+  screenBottom: Point
+  offsetFromStartMm: number
+}
+
+export interface BasePlanFrame {
+  center: Point
+  angleRad: number
+  localBounds: LocalBounds
+  frameXMinPx: number
+  frameXMaxPx: number
+}
+
+export interface RowBasePlan {
+  frame: BasePlanFrame
+  lines: LineInfo[]
+  bases: BasePlanBase[]
+  frameLengthMm: number
+  baseCount: number
+  spacingMm: number
+  isRtl: boolean
+}
+
+export interface BaseConfig {
+  customOffsets?: number[]
+  edgeOffsetMm?: number
+  spacingMm?: number
 }
 
 // ── Panel line segments (used by FE geometry helpers) ───────────────────────

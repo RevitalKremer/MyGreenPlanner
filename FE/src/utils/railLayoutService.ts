@@ -1,38 +1,10 @@
 import { PANEL_H } from './panelCodes.js'
-import type { BeRailsAreaData, RailConfig, PanelLayout } from '../types/projectData'
+import type {
+  Point, PanelLocalRect, PanelFrame, FERail, RowRailLayout,
+  LineRailsMap, BeRailsAreaData, RailConfig, PanelLayout,
+} from '../types/projectData'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface Point { x: number; y: number }
-interface LocalBounds { minX: number; maxX: number; minY: number; maxY: number }
-interface PanelLocalRect { id: number; localX: number; localY: number; width: number; height: number; line: number }
-
-interface PanelFrame {
-  center: Point
-  angleRad: number
-  localBounds: LocalBounds
-  panelLocalRects: PanelLocalRect[]
-}
-
-interface FERail {
-  railId: string
-  lineIdx: number
-  orientation: string
-  localStart: Point
-  localEnd: Point
-  screenStart: Point
-  screenEnd: Point
-  lengthCm: number
-}
-
-export interface RowRailLayout {
-  frame: { center: Point; angleRad: number; localBounds: LocalBounds }
-  panelLocalRects: PanelLocalRect[]
-  rails: FERail[]
-  _panelRowIdx?: number
-}
-
-type LineRailsMap = Record<number | string, number[]>
+export type { RowRailLayout }
 
 // ─── BE data helpers ─────────────────────────────────────────────────────────
 
