@@ -3,6 +3,7 @@ import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../
 import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
 import { isAreaTiles } from '../utils/roofSpecUtils'
+import type { ComputedTrapezoid, ComputedArea, Step2Area } from '../types/projectData'
 
 /**
  * Flatten rails/bases from dict[rowIndex → list] to a single list.

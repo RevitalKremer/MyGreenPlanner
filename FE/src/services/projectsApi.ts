@@ -1,4 +1,5 @@
 import { mgpRequest } from './mgpApi'
+import type { ProjectData, ProjectLayout } from '../types/projectData'
 
 export async function listProjects({ limit = null, offset = 0, search = null } = {}) {
   const params = new URLSearchParams()
@@ -27,7 +28,7 @@ export async function createProject(name, location, layout, data, roofSpec = nul
   return res.json()
 }
 
-export async function updateProject(id, payload, step = null) {
+export async function updateProject(id: string, payload: { name?: string; location?: string | null; layout?: ProjectLayout; data?: ProjectData }, step: number | null = null) {
   const url = step != null ? `/projects/${id}?step=${step}` : `/projects/${id}`
   const res = await mgpRequest(url, {
     method: 'PUT',
@@ -48,7 +49,7 @@ export async function getProject(id) {
   return res.json()
 }
 
-export async function getConstructionData(id) {
+export async function getConstructionData(id: string): Promise<{ data: ProjectData }> {
   const res = await mgpRequest(`/projects/${id}/construction-data`)
   if (!res.ok) throw new Error('Failed to fetch construction data')
   return res.json()

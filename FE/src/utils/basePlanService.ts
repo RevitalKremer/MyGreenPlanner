@@ -1,4 +1,5 @@
 import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE } from './railLayoutService'
+import type { Step2Area } from '../types/projectData'
 
 
 // Compute base placement for one row
@@ -128,7 +129,7 @@ export function consolidateAreaBases(areaTrapsMap, basePlansMap) {
  * @param {object[]} areas   - step2 areas (with id, trapezoidIds)
  * @returns {{ trapAreaMap, areaTrapsMap }}
  */
-export function buildTrapAreaMaps(trapIds, areas) {
+export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]) {
   const trapAreaMap = {}, areaTrapsMap = {}
   if (areas.length > 0) {
     for (const area of areas) {

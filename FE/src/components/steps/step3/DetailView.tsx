@@ -10,6 +10,7 @@ import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
 import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
+import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
 export default function DetailView({ rc, trapId = null, panelLines = null, settings = {}, lineRails = null, highlightParam = null, beDetailData = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {}, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()

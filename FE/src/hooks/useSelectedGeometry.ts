@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { railOffsetFromSpacing } from '../utils/railLayoutService'
 import { PANEL_H, PANEL_V, REAL_PANELS } from '../utils/panelCodes.js'
+import type { ComputedTrapezoid, ComputedArea, Step2Area } from '../types/projectData'
 
 /** Flatten rails/bases from dict[rowIndex → list] to a single list. */
 function flattenRowDict(d) {

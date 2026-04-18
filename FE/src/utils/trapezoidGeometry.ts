@@ -1,4 +1,5 @@
 import { isHorizontalOrientation, isEmptyOrientation, PANEL_V } from './panelCodes.js'
+import type { ComputedTrapezoid, Leg, Punch, Diagonal } from '../types/projectData'
 
 // Re-export for backward compatibility with existing imports
 export { isHorizontalOrientation, isEmptyOrientation }
@@ -91,7 +92,7 @@ export function buildRailItems(segments, lineRails, atSlope) {
  * @param {number}   BEAM_THICK_PX - beam thickness (px)
  * @returns {object[]}
  */
-export function buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allLegEndXs, allLegHeights, baseY, BEAM_THICK_PX) {
+export function buildDetailDiagonals(beDetailData: ComputedTrapezoid | null, diagOverrides: Record<number, Partial<Diagonal> & { disabled?: boolean }>, allLegXs: number[], allLegEndXs: number[], allLegHeights: number[], baseY: number, BEAM_THICK_PX: number) {
   const beDiags = beDetailData?.diagonals ?? []
   const numSpans = allLegXs.length - 1
   const raw = beDiags.map(d => {
@@ -127,7 +128,7 @@ export function buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allL
  * @param {Function} labelFor      - (punch) => label string
  * @returns {object[]} sorted by x
  */
-export function buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor) {
+export function buildPunchPoints(punches: Punch[], beamType: Punch['beamType'], excludeOrigin: string, atFn: (pos: number) => number, labelFor: (p: Punch) => string) {
   const matches = (origin) => (p) =>
     p.beamType === beamType && p.origin !== excludeOrigin && origin(p.origin)
   const toPoint = (origin) => (p) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
@@ -165,7 +166,7 @@ export function computeActiveDepths(segments) {
  * @param {number}   baseY      - base beam Y (px)
  * @returns {{ allLegXs, allLegEndXs, allLegHeights, allLegTopYs, legX0, legX1, legBW, firstLegPos }}
  */
-export function buildLegData(beLegs, atTrap, beamThickCm, SC, baseY) {
+export function buildLegData(beLegs: Leg[], atTrap: (posCm: number) => { x: number; y: number }, beamThickCm: number, SC: number, baseY: number) {
   const firstLegPos = beLegs[0]?.positionCm ?? 0
   const allLegXs = beLegs.map(leg => atTrap(leg.positionCm - firstLegPos).x)
   const allLegEndXs = beLegs.map(leg => atTrap((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos).x)
