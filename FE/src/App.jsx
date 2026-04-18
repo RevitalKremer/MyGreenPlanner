@@ -597,20 +597,23 @@ function App() {
             setRectAreas={s.setRectAreas}
             onAddRectArea={(rawRect, addToGroupId) => {
               s.setRectAreas(prev => {
-                const idx = prev.length
                 // When the project is mixed, every new standalone area starts
                 // as concrete; added rows inherit their parent group's spec.
                 const isMixed = s.currentProject?.roofSpec?.type === 'mixed'
+                // Unique row ID: use min of existing IDs minus 1 (never collides,
+                // even after deletions). BE may reassign positive IDs on save.
+                const minId = prev.length > 0 ? Math.min(0, ...prev.map(a => a.id ?? 0)) : 0
+                const rowId = minId - 1
                 if (addToGroupId != null) {
-                  // Adding a new row to an existing area group (addToGroupId is numeric)
+                  // Adding a new row to an existing area group
                   const parentArea = prev.find(a => a.areaGroupId === addToGroupId)
                   const groupRows = prev.filter(a => a.areaGroupId === addToGroupId)
                   const nextRowIndex = groupRows.length
                   return [...prev, {
                     ...rawRect,
-                    id: `${parentArea?.label ?? ''}_r${nextRowIndex}`,
+                    id: rowId,
                     label: parentArea?.label ?? '',
-                    color: parentArea?.color ?? AREA_PALETTE[idx % AREA_PALETTE.length],
+                    color: parentArea?.color ?? AREA_PALETTE[prev.length % AREA_PALETTE.length],
                     frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
                     angle: parentArea?.angle ?? s.panelAngle ?? '',
                     areaGroupId: addToGroupId,
@@ -622,18 +625,16 @@ function App() {
                     roofSpec: isMixed ? (parentArea?.roofSpec ?? { type: 'concrete' }) : null,
                   }]
                 }
-                // New standalone area — assign temporary numeric areaGroupId
-                // Use -(idx+1) as temp ID; BE will assign permanent positive ID on first save
-                const newLabel = String.fromCharCode(65 + idx % 26)
-                const tempGroupId = -(idx + 1)
+                // New standalone area — row id and areaGroupId start identical
+                const newLabel = String.fromCharCode(65 + prev.length % 26)
                 return [...prev, {
                   ...rawRect,
-                  id: newLabel,
+                  id: rowId,
                   label: newLabel,
-                  color: AREA_PALETTE[idx % AREA_PALETTE.length],
+                  color: AREA_PALETTE[prev.length % AREA_PALETTE.length],
                   frontHeight: s.panelFrontHeight ?? '',
                   angle: s.panelAngle ?? '',
-                  areaGroupId: tempGroupId,
+                  areaGroupId: rowId,
                   rowIndex: 0,
                   manualTrapezoids: false,
                   manualColTrapezoids: {},

@@ -290,11 +290,10 @@ export function useProjectState() {
       }
 
       enrichedRectAreas = layout.rectAreas.map((ra, idx) => {
-        // Match by: rectArea label/id → s2 area label (strip _rN suffix for multi-row),
-        // or areaGroupId → s2 area id (positive = BE-assigned, negative = temp).
-        const raLabel = ((ra.label ?? ra.id) || '').split('_')[0]
-        const s2a = s2ByLabel[raLabel]
-          ?? (typeof ra.areaGroupId === 'number' && ra.areaGroupId > 0 ? s2ById[ra.areaGroupId] : null)
+        // Match by: areaGroupId → s2 area id (primary), label fallback (legacy).
+        // areaGroupId is numeric: positive = BE-assigned, negative = temp.
+        const s2a = (typeof ra.areaGroupId === 'number' ? s2ById[ra.areaGroupId] : null)
+          ?? s2ByLabel[ra.label]
           ?? {}
         const derivedRowIndex = ra.rowIndex ?? 0
         // areaGroupId = BE-assigned numeric area ID (stable across saves)
@@ -302,7 +301,8 @@ export function useProjectState() {
         const rowIndex = ra.rowIndex ?? derivedRowIndex
         return {
           ...ra,
-          label: s2a.label ?? ra.id,
+          // id stays immutable (row identity) — don't overwrite with group id
+          label: s2a.label ?? ra.label,
           frontHeight: String(s2a.frontHeightCm ?? ''),
           angle: String(s2a.angleDeg ?? ''),
           areaGroupId: numericGroupId,
@@ -412,7 +412,7 @@ export function useProjectState() {
     const raLabels = {}     // rectAreaIdx → label
     rectAreas.forEach((ra, idx) => {
       const gid = ra.areaGroupId
-      raLabels[idx] = ra.label || ra.id
+      raLabels[idx] = ra.label || String(ra.id ?? idx)
       // Find the first rectArea with this groupId
       const firstIdx = rectAreas.findIndex(r => r.areaGroupId === gid)
       raGroupKeys[idx] = firstIdx >= 0 ? firstIdx : idx
