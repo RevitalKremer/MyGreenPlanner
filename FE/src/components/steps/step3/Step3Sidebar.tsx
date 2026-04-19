@@ -357,9 +357,12 @@ export default function Step3Sidebar({
               <div
                 onClick={() => {
                   setSelectedRowIdx(i)
-                  // Bases tab: no trap pre-selection (show all traps in area)
-                  // Rails/trapezoids tabs: select first trap
-                  setSelectedTrapezoidId(activeTab === 'bases' ? null : (areaTrapezoidMap[areaKey]?.[0] ?? null))
+                  // Area click: detail tab → first trap; rails/bases → all rows (null); areas → no effect
+                  if (activeTab === 'detail') {
+                    setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null)
+                  } else {
+                    setSelectedTrapezoidId(null)
+                  }
                 }}
                 style={{ padding: '0.6rem 1rem', cursor: 'pointer', borderBottom: trapIds.length > 1 ? 'none' : `1px solid ${BG_MID}`, background: isAreaSelected ? PRIMARY_BG_LIGHT : 'transparent', borderLeft: `3px solid ${isAreaSelected ? PRIMARY : 'transparent'}`, transition: 'all 0.12s' }}
               >
@@ -374,19 +377,18 @@ export default function Step3Sidebar({
                 </div>
               </div>
 
-              {/* Sub-items: separate lists for trapezoids and rows when area is selected */}
-              {isAreaSelected && (() => {
+              {/* Sub-items by tab: areas=none, bases/rails=rows, detail=traps */}
+              {isAreaSelected && activeTab !== 'areas' && (() => {
                 const areaPanels = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey)
+                const showTraps = activeTab === 'detail' && trapIds.length > 1
                 const rowIdxSet = new Set()
                 areaPanels.forEach(p => rowIdxSet.add(p.panelRowIdx ?? 0))
                 const panelRowIdxs = ([...rowIdxSet] as number[]).sort((a, b) => a - b)
-                const hasMultiTraps = trapIds.length > 1
-                const hasMultiRows = panelRowIdxs.length > 1
-                if (!hasMultiTraps && !hasMultiRows) return null
+                const showRows = (activeTab === 'bases' || activeTab === 'rails') && panelRowIdxs.length > 1
+                if (!showTraps && !showRows) return null
                 return (
                   <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
-                    {/* Trapezoid sub-items (shown on all tabs except areas when multi-trap) */}
-                    {hasMultiTraps && activeTab !== 'areas' && trapIds.map(trapId => {
+                    {showTraps && trapIds.map(trapId => {
                       const isTrapSelected = effectiveSelectedTrapId === trapId
                       const count = areaPanels.filter(p => p.trapezoidId === trapId).length
                       return (
@@ -405,16 +407,8 @@ export default function Step3Sidebar({
                         </div>
                       )
                     })}
-                    {/* Separator between traps and rows */}
-                    {hasMultiTraps && hasMultiRows && activeTab !== 'areas' && (
-                      <div style={{ borderTop: `1px dashed ${BORDER_FAINT}`, margin: '0.15rem 1rem 0.15rem 1.5rem' }} />
-                    )}
-                    {/* Row sub-items (shown on bases & rails tabs when multi-row).
-                        Phase A: rails differ per row when row line counts differ
-                        (e.g. one row V-only, another V+H), so the user needs
-                        per-row picking on the rails tab too. */}
-                    {hasMultiRows && (activeTab === 'bases' || activeTab === 'rails') && panelRowIdxs.map((ri, idx) => {
-                      const isRowSelected = selectedPanelRowIdx === ri
+                    {showRows && panelRowIdxs.map((ri, idx) => {
+                      const isRowSelected = selectedPanelRowIdx === null || selectedPanelRowIdx === ri
                       const count = areaPanels.filter(p => (p.panelRowIdx ?? 0) === ri).length
                       return (
                         <div

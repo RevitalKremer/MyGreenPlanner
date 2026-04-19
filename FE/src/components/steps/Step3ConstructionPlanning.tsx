@@ -32,9 +32,9 @@ export default function Step3ConstructionPlanning({
   const { t } = useLang()
 
   // ── UI state ───────────────────────────────────────────────────────────
-  const [selectedRowIdx, setSelectedRowIdx] = useState(null)
+  const [selectedRowIdx, setSelectedRowIdx] = useState(0)
   const [selectedTrapezoidId, setSelectedTrapezoidId] = useState(null)
-  const [selectedPanelRowIdx, setSelectedPanelRowIdx] = useState(0)
+  const [selectedPanelRowIdx, setSelectedPanelRowIdx] = useState(null)
   // Treat null, "null" string, and undefined as no saved tab - default to 'areas'
   const [activeTab, setActiveTab] = useState((initialTab && initialTab !== 'null') ? initialTab : 'areas')
   const [highlightParam, setHighlightParam] = useState(null)
@@ -213,7 +213,7 @@ export default function Step3ConstructionPlanning({
       <Step3Sidebar
         rowConstructions={rowConstructions} rowKeys={rowKeys}
         areaTrapezoidMap={areaTrapezoidMap} areaLabel={settings.areaLabel}
-        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={(idx) => { setSelectedRowIdx(idx); setSelectedPanelRowIdx(0) }}
+        selectedRowIdx={selectedRowIdx} setSelectedRowIdx={(idx) => { setSelectedRowIdx(idx); setSelectedPanelRowIdx(null) }}
         selectedPanelRowIdx={selectedPanelRowIdx} setSelectedPanelRowIdx={setSelectedPanelRowIdx}
         selectedTrapezoidId={selectedTrapezoidId} setSelectedTrapezoidId={setSelectedTrapezoidId}
         effectiveSelectedTrapId={effectiveSelectedTrapId}
@@ -331,6 +331,7 @@ export default function Step3ConstructionPlanning({
               panels={panels} refinedArea={refinedArea} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
+              selectedRowIdx={selectedRowIdx} rowKeys={rowKeys}
               selectedPanelRowIdx={selectedPanelRowIdx}
               trapSettingsMap={rowData.trapSettingsMap}
               trapLineRailsMap={rowData.trapLineRailsMap}

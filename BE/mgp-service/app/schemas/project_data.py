@@ -33,7 +33,7 @@ Coordinate conventions
 
 from __future__ import annotations
 from typing import Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _StrictBase(BaseModel):
@@ -82,6 +82,14 @@ class Step2Area(_StrictBase):
     trapezoidIds: list[str] = Field(default_factory=list)
     panelRows: list[PanelRowData] = Field(default_factory=list)
     # Each entry = one drawn panel row; single-row area = list of length 1
+
+    @field_validator("panelRows", mode="before")
+    @classmethod
+    def _strip_null_rows(cls, v):
+        """JS sparse arrays serialize holes as null — drop them."""
+        if isinstance(v, list):
+            return [x for x in v if x is not None]
+        return v
     # Per-area roof spec — only used when project.roof_spec.type == 'mixed'.
     # Shape matches RoofSpec (type / distanceBetweenPurlinsCm / installationOrientation).
     # When absent on a mixed project, the resolver defaults to concrete.

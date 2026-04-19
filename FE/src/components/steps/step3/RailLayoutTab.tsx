@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 
 
 export default function RailLayoutTab({
-  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
+  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = null,
   uploadedImageData, imageSrc,
   settings = {} as Record<string, any>,
   lineRails = null,           // { [lineIdx]: [offsetCm, ...] }
@@ -76,7 +76,7 @@ export default function RailLayoutTab({
     if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
     return computeAllRowRailLayouts({
       rowKeys, rowGroups, pixelToCmRatio,
-      selectedRowIdx, selectedPanelRowIdx, printMode,
+      selectedRowIdx, selectedPanelRowIdx: selectedPanelRowIdx ?? 0, printMode,
       lineRails, trapSettingsMap, railOverhangCm, stockLengths,
       beRailsData, groupKeyToLabel,
     })
@@ -162,6 +162,7 @@ export default function RailLayoutTab({
         panels={panels}
         selectedTrapId={null}
         selectedArea={!printMode && rowKeys.length > 1 && selectedRowIdx != null ? rowKeys[selectedRowIdx] : null}
+        selectedPanelRowIdx={selectedPanelRowIdx}
         toSvg={toSvgFn}
         sc={sc}
         pixelToCmRatio={pixelToCmRatio}

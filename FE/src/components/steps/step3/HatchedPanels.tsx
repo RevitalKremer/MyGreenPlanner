@@ -4,14 +4,18 @@ import { PANEL_LIGHT_BG, PANEL_LIGHT_BG_ALT, PANEL_DARK, PANEL_MID } from '../..
  * Renders all panels as hatched rectangles into an SVG.
  * clipIdPrefix must be unique per usage site to avoid SVG clipPath ID collisions.
  */
-export default function HatchedPanels({ panels, selectedTrapId, selectedArea = null, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp' }) {
+export default function HatchedPanels({ panels, selectedTrapId, selectedArea = null, selectedPanelRowIdx = null, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp' }) {
   return panels.map(panel => {
     const [sx, sy] = toSvg(panel.x, panel.y)
     const sw = panel.width * sc, sh = panel.height * sc
     const scx = sx + sw / 2, scy = sy + sh / 2
-    const isSelected = selectedArea != null
-      ? (panel.areaGroupKey ?? panel.area) === selectedArea
-      : selectedTrapId === null || panel.trapezoidId === selectedTrapId
+    let isSelected
+    if (selectedArea != null) {
+      const inArea = (panel.areaGroupKey ?? panel.area) === selectedArea
+      isSelected = inArea && (selectedPanelRowIdx == null || (panel.panelRowIdx ?? 0) === selectedPanelRowIdx)
+    } else {
+      isSelected = selectedTrapId === null || panel.trapezoidId === selectedTrapId
+    }
     const opacity = isSelected ? 1 : 0.25
     const fill = isSelected ? PANEL_LIGHT_BG_ALT : PANEL_LIGHT_BG
     const borderColor = isSelected ? PANEL_DARK : PANEL_MID
