@@ -335,12 +335,12 @@ export default function PanelCanvas({
         const newAngle  = Math.atan2(newCornerY - pivotY, newCornerX - pivotX)
         deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
 
-        // Snap to 0° if within 3°, clamp to ±80°
+        // Clamp to ±80°; snap to 0° only when Cmd/Ctrl held and within 5°
         const rawRotation = startRotation + deltaAngleDeg
         const clamped = Math.max(-80, Math.min(80, rawRotation))
         deltaAngleDeg = clamped - startRotation
         const absRot = Math.abs(clamped)
-        const snapping = absRot < 3
+        const snapping = absRot < 5 && (e.metaKey || e.ctrlKey)
         if (snapping) deltaAngleDeg = -startRotation
 
         // 2. Rebuild polygon
@@ -404,7 +404,7 @@ export default function PanelCanvas({
         const clamped = Math.max(-80, Math.min(80, rawRotation))
         deltaAngleDeg = clamped - startRotation
         const absRot = Math.abs(clamped)
-        const snapping = absRot < 3
+        const snapping = absRot < 5 && (e.metaKey || e.ctrlKey)
         if (snapping) deltaAngleDeg = -startRotation
         const actualRotation = startRotation + deltaAngleDeg
         const rad = deltaAngleDeg * Math.PI / 180
@@ -510,7 +510,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
@@ -526,7 +526,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
@@ -543,7 +543,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
@@ -911,7 +911,7 @@ export default function PanelCanvas({
                     fill={guideColor}
                     fontSize={labelSize}
                     fontWeight="700"
-                  >0°</text>
+                  >{snapping ? '0°' : '0°  ⌘ to snap'}</text>
                 </g>
               )
             })()}

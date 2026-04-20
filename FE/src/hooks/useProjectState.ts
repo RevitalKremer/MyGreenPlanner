@@ -476,12 +476,14 @@ export function useProjectState() {
         // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
         // Serialize whatever is on the (first) rectArea of the group.
         roofSpec: ra?.roofSpec ?? null,
-        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => ({
-          rowIndex: ri,
-          panelGrid: pg ?? null,
-          angleDeg: areaRowMounting[ri]?.angleDeg ?? null,
-          frontHeightCm: areaRowMounting[ri]?.frontHeightCm ?? null,
-        })),
+        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => (
+          pg == null ? null : {
+            rowIndex: ri,
+            panelGrid: pg,
+            angleDeg: areaRowMounting[ri]?.angleDeg ?? null,
+            frontHeightCm: areaRowMounting[ri]?.frontHeightCm ?? null,
+          }
+        )).filter(Boolean),
       }
     })
     const { trapezoidConfigs: _tc, panelGrid: _pg, rowMounting: _rm, ...step2Rest } = d.step2

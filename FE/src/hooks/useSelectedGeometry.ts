@@ -9,7 +9,7 @@ import type {
 
 interface UseSelectedGeometryParams {
   selectedRowIdx: number | null
-  selectedPanelRowIdx?: number
+  selectedPanelRowIdx?: number | null
   effectiveSelectedTrapId: string | null
   rowKeys: number[]
   areas: Step2Area[]
@@ -46,7 +46,7 @@ function flattenRowDict(d: any): any[] {
  * line depths, orientations, rail positions, and spacing controls.
  */
 export default function useSelectedGeometry({
-  selectedRowIdx, selectedPanelRowIdx = 0, effectiveSelectedTrapId,
+  selectedRowIdx, selectedPanelRowIdx = null, effectiveSelectedTrapId,
   rowKeys, areas, refinedArea, trapezoidConfigs, areaTrapezoidMap,
   beRailsData, beTrapezoidsData,
   getSettings, getTrapBasesSettings, getLineOrientations, getLineRails,
@@ -94,7 +94,7 @@ export default function useSelectedGeometry({
 
   // ── Selected line rails (remapped to active lines only) ────────────────
   const selectedLineRails = useMemo((): LineRailsMap => {
-    const allRails = getLineRails(selectedRowIdx!, selectedLineOrientations, selectedPanelRowIdx)
+    const allRails = getLineRails(selectedRowIdx!, selectedLineOrientations, selectedPanelRowIdx ?? 0)
     const remapped: LineRailsMap = {}
     let activeIdx = 0
     for (let li = 0; li < selectedLineOrientations.length; li++) {
@@ -117,7 +117,7 @@ export default function useSelectedGeometry({
     const rowTrapId = (panels || []).find(p =>
       !p.isEmpty
       && (p.areaGroupKey ?? p.area) === areaKey
-      && (p.panelRowIdx ?? 0) === selectedPanelRowIdx
+      && (p.panelRowIdx ?? 0) === (selectedPanelRowIdx ?? 0)
     )?.trapezoidId
     const trapId = rowTrapId
       ?? areaTrapezoidMap[areaKey]?.[0]
@@ -126,7 +126,7 @@ export default function useSelectedGeometry({
   }, [selectedRowIdx, selectedPanelRowIdx, rowKeys, areaTrapezoidMap, getLineOrientations, panels])
 
   const areaLineRails = useMemo((): LineRailsMap =>
-    getLineRails(selectedRowIdx!, areaLineOrientations, selectedPanelRowIdx),
+    getLineRails(selectedRowIdx!, areaLineOrientations, selectedPanelRowIdx ?? 0),
     [selectedRowIdx, selectedPanelRowIdx, areaLineOrientations, getLineRails]
   )
 

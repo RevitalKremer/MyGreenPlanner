@@ -15,7 +15,7 @@ import RulerTool from '../../shared/RulerTool'
 
 
 export default function RailLayoutTab({
-  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = 0,
+  panels = [], refinedArea, selectedRowIdx = null, selectedPanelRowIdx = null,
   uploadedImageData, imageSrc,
   settings = {} as Record<string, any>,
   lineRails = null,           // { [lineIdx]: [offsetCm, ...] }
@@ -76,7 +76,7 @@ export default function RailLayoutTab({
     if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
     return computeAllRowRailLayouts({
       rowKeys, rowGroups, pixelToCmRatio,
-      selectedRowIdx, selectedPanelRowIdx, printMode,
+      selectedRowIdx, selectedPanelRowIdx: selectedPanelRowIdx ?? 0, printMode,
       lineRails, trapSettingsMap, railOverhangCm, stockLengths,
       beRailsData, groupKeyToLabel,
     })
@@ -128,13 +128,20 @@ export default function RailLayoutTab({
   }, [onLineRailsChange])
 
   // Pick the active row layout for cross-section overlay
-  // Cross-section overlay uses the FIRST row of the selected area (rails are per-trapezoid, shared across rows)
   const activeLayoutIdx = useMemo(() => {
     if (selectedRowIdx == null) return 0
     const selectedKey = rowKeys[selectedRowIdx]
+    // When a specific row is selected, match by area key AND _panelRowIdx
+    if (selectedPanelRowIdx != null) {
+      const idx = railLayouts.findIndex((rl, i) =>
+        railLayoutKeys[i] === selectedKey && rl?._panelRowIdx === selectedPanelRowIdx
+      )
+      if (idx >= 0) return idx
+    }
+    // Fallback: first layout matching the selected area
     const firstIdx = railLayoutKeys.findIndex(k => k === selectedKey)
     return firstIdx >= 0 ? firstIdx : 0
-  }, [selectedRowIdx, rowKeys, railLayoutKeys])
+  }, [selectedRowIdx, selectedPanelRowIdx, rowKeys, railLayoutKeys, railLayouts])
   const activeCrossSectionRl = railLayouts[activeLayoutIdx] ?? railLayouts[0] ?? null
 
   const overlayProps = {
@@ -162,6 +169,7 @@ export default function RailLayoutTab({
         panels={panels}
         selectedTrapId={null}
         selectedArea={!printMode && rowKeys.length > 1 && selectedRowIdx != null ? rowKeys[selectedRowIdx] : null}
+        selectedPanelRowIdx={selectedPanelRowIdx}
         toSvg={toSvgFn}
         sc={sc}
         pixelToCmRatio={pixelToCmRatio}
