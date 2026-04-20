@@ -133,7 +133,7 @@ function pointInPolygon(px, py, polygon) {
  * @param {number} cmPerPixel
  * @returns {Array} panel objects with image-pixel coords
  */
-export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
+export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, preferredOrientations = null) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
   const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr', areaVertical = false } = area
   const pLen = panelSpec.lengthCm
@@ -176,15 +176,30 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm) {
   const portraitPitch = portraitW + gapPx
 
   while (localY < bboxH) {
+    // When preferredOrientations is given, stop after all specified lines are placed
+    if (preferredOrientations && rowIndex >= preferredOrientations.length) break
+
     const remaining = bboxH - localY
     let rowH, panelW, widthCm, heightCm
 
-    if (remaining >= portraitH - 0.001) {
-      rowH = portraitH; panelW = portraitW
-      widthCm = pWid; heightCm = pLen
-    } else if (remaining >= landscapeH - 0.001) {
-      rowH = landscapeH; panelW = landscapeW
-      widthCm = pLen; heightCm = pWid
+    // When preferredOrientations is given, try the preferred orientation first
+    const pref = preferredOrientations?.[rowIndex]
+    const preferH = pref === 'H'
+    const firstH  = preferH ? landscapeH : portraitH
+    const firstW  = preferH ? landscapeW : portraitW
+    const firstWCm = preferH ? pLen : pWid
+    const firstHCm = preferH ? pWid : pLen
+    const fallH   = preferH ? portraitH : landscapeH
+    const fallW   = preferH ? portraitW : landscapeW
+    const fallWCm = preferH ? pWid : pLen
+    const fallHCm = preferH ? pLen : pWid
+
+    if (remaining >= firstH - 0.001) {
+      rowH = firstH; panelW = firstW
+      widthCm = firstWCm; heightCm = firstHCm
+    } else if (remaining >= fallH - 0.001) {
+      rowH = fallH; panelW = fallW
+      widthCm = fallWCm; heightCm = fallHCm
     } else {
       break
     }

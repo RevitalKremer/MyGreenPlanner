@@ -510,7 +510,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
@@ -526,7 +526,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
@@ -543,7 +543,7 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm)
+        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
         if (!panels.length) return prev
         const pivot = area.vertices[area.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)

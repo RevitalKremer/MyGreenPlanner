@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER } from '../../../styles/colors'
-// BLUE_BG, BLUE_BORDER kept for trapezoid badge (shared config indicator)
+import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_BG, WARNING_DARK, WARNING_LIGHT } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 import { isAreaTiles } from '../../../utils/roofSpecUtils'
+import { PANEL_V, PANEL_H, isHorizontalOrientation } from '../../../utils/panelCodes'
 
 export default function RowSidebar({
   baseline = null, setBaseline = null,
@@ -30,6 +30,7 @@ export default function RowSidebar({
   resetTrapezoidConfig,
   panelGapCm,
   lineGapCm,
+  onLineOrientationToggle,
   showMounting = true,
   angleMin,
   angleMax,
@@ -604,6 +605,44 @@ export default function RowSidebar({
                     />
                   </div>
                 </div>
+                {/* Line orientation toggles */}
+                {selectedRow && (() => {
+                  const rowMap = new Map()
+                  selectedRow.forEach(p => {
+                    const r = p.row ?? 0
+                    if (!rowMap.has(r)) rowMap.set(r, p)
+                  })
+                  const sortedLines = [...rowMap.entries()].sort(([a], [b]) => a - b)
+                  if (sortedLines.length === 0) return null
+                  const orients = sortedLines.map(([, p]) =>
+                    p.heightCm > p.widthCm ? PANEL_V : PANEL_H
+                  )
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.5rem', padding: '0.3rem 0.4rem', background: 'white', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}` }}>
+                      <div style={{ display: 'flex', gap: '0.2rem', flex: 1 }}>
+                        {orients.map((o, idx) => {
+                          const isH = isHorizontalOrientation(o)
+                          return (
+                            <span
+                              key={idx}
+                              onClick={() => onLineOrientationToggle?.(sortedLines[idx][0])}
+                              style={{
+                                fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
+                                cursor: 'pointer', userSelect: 'none',
+                                background: isH ? WARNING_BG : BLUE_BG,
+                                color: isH ? WARNING_DARK : BLUE,
+                                border: `1px solid ${isH ? WARNING_LIGHT : BLUE_BORDER}`,
+                              }}
+                            >
+                              {isH ? '▬' : '|'}
+                            </span>
+                          )
+                        })}
+                      </div>
+                      <span style={{ fontSize: '0.62rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>{orients.length}×</span>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 

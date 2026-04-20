@@ -3,6 +3,7 @@ import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
 import { panelInsideRoof } from '../../utils/panelUtils'
+import { computePolygonPanels } from '../../utils/rectPanelService'
 import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
 import { allAreasTiles } from '../../utils/roofSpecUtils'
 // panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
@@ -355,6 +356,51 @@ export default function Step2PanelPlacement({
       }
       return { ...panel, width: newW, height: newH, heightCm: newHeightCm, x: cx - newW / 2, y: cy - newH / 2 }
     })
+    setPanels(newPanels)
+    rebuildPanelGrid?.(newPanels)
+  }
+
+  // Toggle one line's orientation and regenerate the area with the new layout
+  const toggleLineOrientation = (lineIdx) => {
+    if (!selectedRow?.length || !cmPerPixel) return
+    const areaKey = getAreaKey(selectedRow[0])
+    const area = rectAreas[areaKey]
+    if (!area?.vertices?.length) return
+
+    // Derive current orientations from panels
+    const rowMap = new Map()
+    selectedRow.forEach(p => { if (!rowMap.has(p.row ?? 0)) rowMap.set(p.row ?? 0, p) })
+    const sortedLines = [...rowMap.keys()].sort((a, b) => a - b)
+    const currentOrients = sortedLines.map(r => {
+      const p = rowMap.get(r)
+      return p.heightCm > p.widthCm ? PANEL_V : PANEL_H
+    })
+
+    // Toggle the target line
+    const targetPos = sortedLines.indexOf(lineIdx)
+    if (targetPos < 0) return
+    currentOrients[targetPos] = currentOrients[targetPos] === PANEL_V ? PANEL_H : PANEL_V
+
+    // Store preferred orientations on the area so all recompute paths use them
+    setRectAreas(prev => prev.map((a, i) => i === areaKey ? { ...a, preferredOrientations: currentOrients } : a))
+    const updatedArea = { ...area, preferredOrientations: currentOrients }
+
+    // Regenerate panels for this area with new orientations
+    const newComputed = computePolygonPanels(updatedArea, cmPerPixel, panelSpec, appDefaults?.panelGapCm, currentOrients)
+    if (!newComputed.length) return
+
+    // Full reset: remove ALL existing panels for this area and clear deleted-panel history
+    clearDeletedPanelsForArea?.(areaKey)
+    const otherPanels = panels.filter(p => p.area !== areaKey)
+    const maxId = Math.max(0, ...panels.map(p => p.id))
+    const regenerated = newComputed.map((p, i) => ({
+      ...p,
+      id: maxId + 1 + i,
+      area: areaKey,
+      areaGroupKey: areaKey,
+      panelRowIdx: area.rowIndex ?? 0,
+    }))
+    const newPanels = [...otherPanels, ...regenerated]
     setPanels(newPanels)
     rebuildPanelGrid?.(newPanels)
   }
@@ -716,6 +762,7 @@ export default function Step2PanelPlacement({
             resetTrapezoidConfig={resetTrapezoidConfig}
             panelGapCm={appDefaults?.panelGapCm}
             lineGapCm={appDefaults?.lineGapCm}
+            onLineOrientationToggle={toggleLineOrientation}
             showMounting={showMounting}
             angleMin={angLim.min}
             angleMax={angLim.max}

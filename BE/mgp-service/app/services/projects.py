@@ -1698,7 +1698,7 @@ def _trim_non_full_trapezoids(
         active_rail_positions = set()
         d_cm = 0.0
         for li, orient in enumerate(local_orients):
-            is_h = orient == PANEL_H
+            is_h = orient in (PANEL_H, PANEL_EH)
             depth = step2['panelWidthCm'] if is_h else step2['panelLengthCm']
             gap = app_defaults['lineGapCm'] if li > 0 else 0
             d_cm += gap

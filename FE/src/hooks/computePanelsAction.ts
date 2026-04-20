@@ -151,7 +151,7 @@ export function computePanelsAction({
     const rFront = inMtg?.frontHeightCm ?? aFront
     if (!newRowMounting[areaLabel]) newRowMounting[areaLabel] = []
     newRowMounting[areaLabel][ri] = { angleDeg: rAngle, frontHeightCm: rFront }
-    const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
+    const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
     // Remove panels manually deleted by the user
     const deletedKeys = deletedPanelKeys[areaIdx]
@@ -589,7 +589,7 @@ export function reSyncLoadedPanelColsAction({
 
   const next = [...panels]
   rectAreas.forEach((area, areaIdx) => {
-    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm)
+    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     if (!computed.length) return
     const halfW = computed[0].width / 2
     const threshold = halfW * 3
@@ -612,7 +612,7 @@ export function reSyncLoadedPanelColsAction({
   rectAreas.forEach((area, areaIdx) => {
     const areaLabel = area.label || area.id || `area-${areaIdx}`
     const rowIdx = area.rowIndex ?? 0
-    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm)
+    const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     const areaFiltered = next.filter(p => p.area === areaIdx)
     if (!newGrid[areaLabel]) newGrid[areaLabel] = []
     newGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, areaFiltered, ratio)
@@ -640,7 +640,7 @@ export function rebuildPanelGridAction({
   rectAreas.forEach((area, areaIdx) => {
     const areaLabel = area.label || area.id || `area-${areaIdx}`
     const rowIdx = area.rowIndex ?? 0
-    const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm)
+    const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     const areaFiltered = panels.filter(p => p.area === areaIdx)
     if (!newGrid[areaLabel]) newGrid[areaLabel] = []
     newGrid[areaLabel][rowIdx] = buildPanelGrid(area, computed, areaFiltered, pixelToCmRatio)
