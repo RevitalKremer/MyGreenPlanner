@@ -924,20 +924,18 @@ def trim_trapezoid(
     else:
         detail['blocks'] = []
 
-    # Punches: filter from full trap, rebase, regenerate outer+inner+block
+    # Punches: rebase rail punches from full trap, regenerate all structural punches fresh
     base_shift = _slope_to_base(rear_pos, profile_half, cos_a) - profile_half
     new_punches = []
     for p in full_trap_detail.get('punches', []):
-        # Skip outerLeg, block, and innerLeg punches — they'll be regenerated
-        if p.get('origin') in ('outerLeg', 'block', 'innerLeg'):
+        # Only keep rail punches from the full trap (rebased) — all others are regenerated
+        if p.get('origin') != 'rail':
             continue
         pp = {**p}
         shift = rear_pos if p['beamType'] == 'slope' else base_shift
         pp['positionCm'] = _r(p['positionCm'] - shift)
         beam_len = slope_len if p['beamType'] == 'slope' else base_len
         if -0.5 <= pp['positionCm'] <= beam_len + 0.5:
-            if p['beamType'] == 'slope' and p.get('origin') != 'rail':
-                pp['reversedPositionCm'] = _r(slope_len - pp['positionCm'])
             new_punches.append(pp)
     # Fresh outerLeg punches — base at leg center, slope at beam ends
     rear_leg_center = filtered_legs[0]['positionCm'] + profile_half
@@ -982,5 +980,22 @@ def trim_trapezoid(
             if ia is not None and ib is not None and ib == ia + 1:
                 new_diags.append({**d, 'spanIdx': ia})
     detail['diagonals'] = new_diags
-    
+
+    # Fresh diagonal punches — recompute from trimmed legs + diag percentages (same
+    # round() logic as _compute_structural_punches so trimmed traps match full traps)
+    for diag in new_diags:
+        si = diag['spanIdx']
+        if si >= len(filtered_legs) - 1:
+            continue
+        punch_start = filtered_legs[si]['positionCm'] + profile_half
+        punch_end = filtered_legs[si + 1]['positionEndCm'] - profile_half
+        punch_span = punch_end - punch_start
+        top_pos_slope = punch_start + diag['topPct'] * punch_span
+        bot_pos_slope = punch_start + diag['botPct'] * punch_span
+        top_pos = round(top_pos_slope)
+        bot_pos = round(_slope_to_base(bot_pos_slope, profile_half, cos_a))
+        detail['punches'].append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal',
+                                  'reversedPositionCm': _r(slope_len - top_pos)})
+        detail['punches'].append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
+
     return detail
