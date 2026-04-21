@@ -981,12 +981,15 @@ def trim_trapezoid(
                 new_diags.append({**d, 'spanIdx': ia})
     detail['diagonals'] = new_diags
 
-    # Fresh diagonal punches — recompute from trimmed legs + diag percentages (same
-    # round() logic as _compute_structural_punches so trimmed traps match full traps)
+    # Fresh diagonal punches + length — recompute from trimmed legs + diag percentages
+    # (same round() logic as _compute_diagonal_bracing / _compute_structural_punches
+    # so trimmed traps match full traps and length matches the punch positions)
+    sin_a = math.sin(angle * math.pi / 180)
     for diag in new_diags:
         si = diag['spanIdx']
         if si >= len(filtered_legs) - 1:
             continue
+        h_a = filtered_legs[si]['heightCm']
         punch_start = filtered_legs[si]['positionCm'] + profile_half
         punch_end = filtered_legs[si + 1]['positionEndCm'] - profile_half
         punch_span = punch_end - punch_start
@@ -994,6 +997,10 @@ def trim_trapezoid(
         bot_pos_slope = punch_start + diag['botPct'] * punch_span
         top_pos = round(top_pos_slope)
         bot_pos = round(_slope_to_base(bot_pos_slope, profile_half, cos_a))
+        # Length from rounded punch positions (matches physical distance between drill holes)
+        height_at_top = h_a + (top_pos - punch_start) * sin_a
+        horiz_dist = abs(bot_pos - _slope_to_base(top_pos, profile_half, cos_a))
+        diag['lengthCm'] = _r(math.sqrt(height_at_top ** 2 + horiz_dist ** 2)) if horiz_dist > 0 else 0
         detail['punches'].append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal',
                                   'reversedPositionCm': _r(slope_len - top_pos)})
         detail['punches'].append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
