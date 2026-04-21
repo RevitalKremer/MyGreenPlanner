@@ -114,9 +114,11 @@ def _compute_leg_positions(
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
         rail_pos = r['globalOffsetCm'] - origin + leg_offset
         if side == 'right':
-            leg_pos = rail_pos + base_overhang_cm - beam_thick_cm
+            # Round up (away from rail) to maintain overhang distance
+            leg_pos = math.ceil(rail_pos + base_overhang_cm - beam_thick_cm)
         else:
-            leg_pos = rail_pos - base_overhang_cm
+            # Round down (away from rail) to maintain overhang distance
+            leg_pos = math.floor(rail_pos - base_overhang_cm)
         # Height interpolated using punch-to-punch span (rear punch = 0, front punch = 1)
         rear_punch = rear_outer_pos + beam_thick_cm / 2
         front_punch = front_outer_pos + beam_thick_cm / 2
@@ -125,8 +127,8 @@ def _compute_leg_positions(
         frac = max(0.0, min(1.0, (leg_center - rear_punch) / structural_span)) if structural_span > 0 else 0
         leg_height = height_rear + frac * (height_front - height_rear)
         inner_legs.append({
-            'positionCm': _r(leg_pos),
-            'positionEndCm': _r(leg_pos + beam_thick_cm),
+            'positionCm': leg_pos,
+            'positionEndCm': leg_pos + beam_thick_cm,
             'heightCm': _r(leg_height),
             'railPositionCm': _r(rail_pos),
         })
@@ -195,17 +197,21 @@ def _compute_diagonal_bracing(
         punch_end = legs[i + 1]['positionEndCm'] - profile_half
         punch_span = punch_end - punch_start
 
-        # Apply percentages to the punch-to-punch span
-        top_pos_slope = punch_start + top_pct * punch_span
-        bot_pos_slope = punch_start + bot_pct * punch_span
-
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
+
+        # Apply percentages to the punch-to-punch span, then round to integer
+        # (matching the physical punch marks on the beams)
+        top_pos_slope = round(punch_start + top_pct * punch_span)
+        bot_pos_base = round(_slope_to_base(
+            punch_start + bot_pct * punch_span, profile_half, cos_a,
+        ))
+
         # Height from base beam to slope beam at the top attachment point.
         # Rise starts at the punch point (leg center), not the beam end.
         height_at_top = h_a + (top_pos_slope - punch_start) * sin_a
 
-        horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
+        horiz_dist = abs(bot_pos_base - _slope_to_base(top_pos_slope, profile_half, cos_a))
         length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
 
         # isDouble: true when the diagonal LENGTH exceeds the threshold
@@ -373,10 +379,10 @@ def _compute_structural_punches(
         top_pos_slope = punch_start + diag['topPct'] * punch_span
         bot_pos_slope = punch_start + diag['botPct'] * punch_span
         
-        # Convert to beam coordinates
-        top_pos = _r(top_pos_slope - leg_offset)  # slope beam coords
-        bot_pos = _r(_slope_to_base(bot_pos_slope, profile_half, cos_a, leg_offset))  # base beam coords
-        
+        # Round final positions to integer on each beam
+        top_pos = round(top_pos_slope - leg_offset)
+        bot_pos = round(_slope_to_base(bot_pos_slope, profile_half, cos_a, leg_offset))
+
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
