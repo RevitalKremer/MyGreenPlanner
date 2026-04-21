@@ -192,7 +192,9 @@ def _compute_diagonal_bracing(
 
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
-        height_at_top = h_a + top_pos_slope * sin_a
+        # Height from base beam to slope beam at the top attachment point.
+        # Rise starts at the punch point (leg center), not the beam end.
+        height_at_top = h_a + (top_pos_slope - punch_start) * sin_a
 
         horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
         length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
