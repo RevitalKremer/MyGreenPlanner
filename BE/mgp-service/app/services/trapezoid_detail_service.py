@@ -39,6 +39,15 @@ def _base_to_slope(base_pos: float, profile_half: float, cos_a: float, leg_offse
     return leg_offset + profile_half + (base_pos - leg_offset - profile_half) / cos_a
 
 
+def _block_punch_reversed(beam_length: float, raw_pos: float) -> tuple[int, float]:
+    """Compute block punch positions: reversed rounded to integer, forward derived.
+
+    Returns (reversedPositionCm, positionCm).
+    """
+    rev = round(beam_length - raw_pos)
+    return rev, _r(beam_length - rev)
+
+
 # ── Sub-computations ─────────────────────────────────────────────────────────
 
 def _build_rail_items(panel_lines: list[dict], line_rails: dict[str, list[float]]) -> tuple[list[dict], float]:
@@ -542,7 +551,7 @@ def compute_trapezoid_details(
     # Add reversedPositionCm (distance from beam end) to qualifying punches
     for p in punches:
         if p['beamType'] == 'base' and p['origin'] == 'block':
-            p['reversedPositionCm'] = _r(base_beam_length - p['positionCm'])
+            p['reversedPositionCm'], p['positionCm'] = _block_punch_reversed(base_beam_length, p['positionCm'])
         elif p['beamType'] == 'slope' and p['origin'] != 'rail':
             p['reversedPositionCm'] = _r(top_beam_length - p['positionCm'])
 
@@ -636,9 +645,8 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
             blocks, inner_legs, other_base_positions, block_length, base_beam_len,
             block_punch, profile_step, cos_a, overlap_margin, inner_offset,
         )
-        # Add reversedPositionCm (distance from beam end) to block punches
         for p in new_block_punches:
-            p['reversedPositionCm'] = _r(base_beam_len - p['positionCm'])
+            p['reversedPositionCm'], p['positionCm'] = _block_punch_reversed(base_beam_len, p['positionCm'])
         detail['punches'] = non_block_punches + new_block_punches
 
 
@@ -951,7 +959,7 @@ def trim_trapezoid(
             geom['punchOverlapMarginCm'], geom['punchInnerOffsetCm'],
         )
         for bp in block_punches:
-            bp['reversedPositionCm'] = _r(base_len - bp['positionCm'])
+            bp['reversedPositionCm'], bp['positionCm'] = _block_punch_reversed(base_len, bp['positionCm'])
         new_punches += block_punches
     detail['punches'] = new_punches
 
