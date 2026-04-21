@@ -465,7 +465,8 @@ def compute_trapezoid_details(
     height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
     base_length_horiz = base_beam_core  # original (without extension) for leg placement
-    height_front = height_rear + base_length_horiz * math.tan(angle_rad)
+    # Height rise only across punch-to-punch horizontal distance (beam ends are straight)
+    height_front = height_rear + (base_length_horiz - beam_thick_cm) * math.tan(angle_rad)
 
     geometry = {
         'heightRear': _r(height_rear),
