@@ -13,7 +13,7 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appDefaultsReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
@@ -36,7 +36,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     getBackendVersion().then(version => setBackendVersion(version)).catch(() => {})
   }, [])
 
-  const canCreate = projectName.trim().length > 0 && appDefaultsReady
+  const canCreate = projectName.trim().length > 0 && appConfigReady
 
   const handleSearchChange = (e) => {
     const value = e.target.value
@@ -287,7 +287,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
               >
                 {t('welcome.startPlanning')}
               </button>
-              {!appDefaultsReady && (
+              {!appConfigReady && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: TEXT_LIGHT }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
                     <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="31.4 31.4" strokeLinecap="round" />
@@ -452,10 +452,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                         </div>
                         <button
                           onClick={() => onLoadCloudProject(p.id)}
-                          disabled={!appDefaultsReady}
+                          disabled={!appConfigReady}
                           style={{
-                            padding: '0.4rem 0.9rem', background: appDefaultsReady ? TEXT_DARK : BORDER_LIGHT, color: appDefaultsReady ? 'white' : TEXT_VERY_LIGHT,
-                            border: 'none', borderRadius: '7px', cursor: appDefaultsReady ? 'pointer' : 'default',
+                            padding: '0.4rem 0.9rem', background: appConfigReady ? TEXT_DARK : BORDER_LIGHT, color: appConfigReady ? 'white' : TEXT_VERY_LIGHT,
+                            border: 'none', borderRadius: '7px', cursor: appConfigReady ? 'pointer' : 'default',
                             fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
                           }}
                         >

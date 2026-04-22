@@ -466,8 +466,24 @@ function App() {
         projectsSearch={projectsSearch}
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
-        appDefaultsReady={!!s.appDefaults}
+        appConfigReady={s.appConfigReady}
       />
+    )
+  }
+
+  // App settings must be loaded before any step renders — Step3 is kept mounted
+  // and dereferences panelSpec.lengthCm unconditionally, so there is no safe
+  // fallback path. Show a minimal splash until /settings/defaults and
+  // /products/panel-types return.
+  if (!s.appConfigReady) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '0.75rem' }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite', color: PRIMARY }}>
+          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="31.4 31.4" strokeLinecap="round" />
+        </svg>
+        <div style={{ fontSize: '0.85rem', color: 'rgba(0,0,0,0.55)' }}>{t('welcome.loadingSettings')}</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
     )
   }
 
@@ -503,7 +519,7 @@ function App() {
           </div>
 
           {/* Server status */}
-          {!s.appDefaults && (
+          {!s.appConfigReady && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'rgba(235,87,87,0.15)', marginRight: '0.5rem' }}>
               <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#eb5757', flexShrink: 0 }} />
               <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#eb5757', whiteSpace: 'nowrap' }}>Server offline</span>
