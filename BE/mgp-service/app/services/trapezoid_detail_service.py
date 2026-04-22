@@ -48,6 +48,32 @@ def _block_punch_reversed(beam_length: float, raw_pos: float) -> tuple[int, floa
     return rev, _r(beam_length - rev)
 
 
+def _diagonal_cut_length(pp_length: float, vert: float, horiz: float, beam_thick_cm: float) -> float:
+    """Compute diagonal cut length from punch-to-punch distance.
+
+    For most angles the extension is beam_thick (the diagonal profile's
+    overhang at each end). Between 40°–50° the diagonal corner reaches
+    the beam edge, so we use beam_thick × sin(diagonal_angle) instead.
+
+    Args:
+        pp_length: punch-to-punch straight-line distance
+        vert: vertical component of the PP distance
+        horiz: horizontal component of the PP distance
+        beam_thick_cm: angle profile size (4cm for 40mm)
+
+    Returns:
+        Total cut length including material extension at both ends.
+    """
+    if pp_length <= 0:
+        return 0
+    diag_angle_deg = math.atan2(vert, horiz) * 180 / math.pi
+    if 40 <= diag_angle_deg <= 50:
+        extension = beam_thick_cm * vert / pp_length
+    else:
+        extension = beam_thick_cm
+    return pp_length + extension
+
+
 # ── Sub-computations ─────────────────────────────────────────────────────────
 
 def _build_rail_items(panel_lines: list[dict], line_rails: dict[str, list[float]]) -> tuple[list[dict], float]:
@@ -200,19 +226,15 @@ def _compute_diagonal_bracing(
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
 
-        # Apply percentages to the punch-to-punch span, then round to integer
-        # (matching the physical punch marks on the beams)
-        top_pos_slope = round(punch_start + top_pct * punch_span)
-        bot_pos_base = round(_slope_to_base(
-            punch_start + bot_pct * punch_span, profile_half, cos_a,
-        ))
-
-        # Height from base beam to slope beam at the top attachment point.
-        # Rise starts at the punch point (leg center), not the beam end.
-        height_at_top = h_a + (top_pos_slope - punch_start) * sin_a
-
-        horiz_dist = abs(bot_pos_base - _slope_to_base(top_pos_slope, profile_half, cos_a))
-        length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
+        # Diagonal length from clean geometry (no intermediate rounding):
+        # - vert: leg height minus 2×bolt_inset (bolt offsets) plus slope rise
+        # - horiz: span × (botPct − topPct) × cos (direct, no projection)
+        # - cut length: PP + extension at each end (angle-dependent)
+        bolt_inset = 2.75  # distance from leg end to bolt hole center
+        vert = (h_a - 2 * bolt_inset) + top_pct * punch_span * sin_a
+        horiz = (bot_pct - top_pct) * punch_span * cos_a
+        pp_length = math.sqrt(vert ** 2 + horiz ** 2) if horiz > 0 else 0
+        length_cm = _diagonal_cut_length(pp_length, vert, horiz, beam_thick_cm)
 
         # isDouble: true when the diagonal LENGTH exceeds the threshold
         is_double = length_cm >= double_above_cm
