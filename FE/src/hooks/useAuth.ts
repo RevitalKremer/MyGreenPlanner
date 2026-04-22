@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { mgpRequest, setAccessToken, clearAccessToken } from '../services/mgpApi'
 
-const MGP_API = import.meta.env.VITE_MGP_API_URL || 'http://localhost/api/mgp'
+const MGP_API = import.meta.env.VITE_MGP_API_URL || '/api/mgp'
 
 export function useAuth() {
   const [user, setUser] = useState(null)

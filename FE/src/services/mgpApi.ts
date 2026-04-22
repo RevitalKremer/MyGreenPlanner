@@ -1,4 +1,4 @@
-const MGP_API = import.meta.env.VITE_MGP_API_URL || 'http://localhost/api/mgp'
+const MGP_API = import.meta.env.VITE_MGP_API_URL || '/api/mgp'
 
 let accessToken = null
 
