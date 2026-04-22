@@ -1,0 +1,29 @@
+{
+    email revitalk@supplant.me
+}
+
+mygreenplanner.sadot-energy.co.il {
+    encode zstd gzip
+
+    # Reasonable limits for a small app: tweak later if you have large uploads.
+    request_body {
+        max_size 25MB
+    }
+
+    reverse_proxy mgp-webapp:80 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Real-IP {remote_host}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

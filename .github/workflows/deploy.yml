@@ -75,10 +75,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Upload prod compose file to S3
+      - name: Upload prod compose file + Caddyfile to S3
         run: |
           aws s3 cp DevOps/docker-compose.prod.yml \
             "s3://${{ secrets.AWS_DEPLOY_BUCKET }}/deploy/docker-compose.yml" \
+            --sse AES256
+          aws s3 cp DevOps/Caddyfile \
+            "s3://${{ secrets.AWS_DEPLOY_BUCKET }}/deploy/Caddyfile" \
             --sse AES256
 
       - name: Trigger deployment on EC2 (SSM Run Command)
@@ -95,7 +98,8 @@ jobs:
               "set -eux",
               "cd /opt/mgp",
               "/snap/bin/aws s3 cp s3://${BUCKET}/deploy/docker-compose.yml docker-compose.yml --region ${REGION}",
-              "chown ubuntu:ubuntu docker-compose.yml",
+              "/snap/bin/aws s3 cp s3://${BUCKET}/deploy/Caddyfile Caddyfile --region ${REGION}",
+              "chown ubuntu:ubuntu docker-compose.yml Caddyfile",
               "sudo -u ubuntu docker compose --env-file .env pull",
               "sudo -u ubuntu docker compose --env-file .env up -d --remove-orphans",
               "sudo -u ubuntu docker system prune -f",
