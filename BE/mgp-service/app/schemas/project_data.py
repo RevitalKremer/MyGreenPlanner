@@ -174,6 +174,7 @@ class ComputedArea(_StrictBase):
 class ComputedTrapezoid(_StrictBase):
     """Server-computed structural details for one trapezoid."""
     trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
+    isFullTrap: bool = True         # False for trimmed sub-trapezoids (have empty EV/EH lines)
     geometry: dict = Field(default_factory=dict)
     # geometry keys:
     #   heightRear, heightFront          — structural leg heights (cm)

@@ -20,6 +20,60 @@ from app.utils.panel_geometry import is_empty_orientation, PANEL_EH
 logger = logging.getLogger(__name__)
 
 
+# ── Coordinate helpers ────────────────────────────────────────────────────────
+
+def _slope_to_base(slope_pos: float, profile_half: float, cos_a: float, leg_offset: float = 0.0) -> float:
+    """Convert slope beam position to base beam position.
+
+    Beam ends (profile_half from each end) extend straight past the punch
+    connection points.  cos(a) projection only applies to the structural span
+    between punches — the same rule used for base_beam_core calculation.
+    """
+    return leg_offset + profile_half + (slope_pos - leg_offset - profile_half) * cos_a
+
+
+def _base_to_slope(base_pos: float, profile_half: float, cos_a: float, leg_offset: float = 0.0) -> float:
+    """Convert base beam position to slope beam position (inverse of _slope_to_base)."""
+    if cos_a <= 0:
+        return base_pos
+    return leg_offset + profile_half + (base_pos - leg_offset - profile_half) / cos_a
+
+
+def _block_punch_reversed(beam_length: float, raw_pos: float) -> tuple[int, float]:
+    """Compute block punch positions: reversed rounded to integer, forward derived.
+
+    Returns (reversedPositionCm, positionCm).
+    """
+    rev = round(beam_length - raw_pos)
+    return rev, _r(beam_length - rev)
+
+
+def _diagonal_cut_length(pp_length: float, vert: float, horiz: float, beam_thick_cm: float) -> float:
+    """Compute diagonal cut length from punch-to-punch distance.
+
+    For most angles the extension is beam_thick (the diagonal profile's
+    overhang at each end). Between 40°–50° the diagonal corner reaches
+    the beam edge, so we use beam_thick × sin(diagonal_angle) instead.
+
+    Args:
+        pp_length: punch-to-punch straight-line distance
+        vert: vertical component of the PP distance
+        horiz: horizontal component of the PP distance
+        beam_thick_cm: angle profile size (4cm for 40mm)
+
+    Returns:
+        Total cut length including material extension at both ends.
+    """
+    if pp_length <= 0:
+        return 0
+    diag_angle_deg = math.atan2(vert, horiz) * 180 / math.pi
+    if 40 <= diag_angle_deg <= 50:
+        extension = beam_thick_cm * vert / pp_length
+    else:
+        extension = beam_thick_cm
+    return pp_length + extension
+
+
 # ── Sub-computations ─────────────────────────────────────────────────────────
 
 def _build_rail_items(panel_lines: list[dict], line_rails: dict[str, list[float]]) -> tuple[list[dict], float]:
@@ -86,17 +140,21 @@ def _compute_leg_positions(
         side = 'right' if info['N'] > 1 and info['pos'] > (info['N'] - 1) // 2 else 'left'
         rail_pos = r['globalOffsetCm'] - origin + leg_offset
         if side == 'right':
-            leg_pos = rail_pos + base_overhang_cm - beam_thick_cm
+            # Round up (away from rail) to maintain overhang distance
+            leg_pos = math.ceil(rail_pos + base_overhang_cm - beam_thick_cm)
         else:
-            leg_pos = rail_pos - base_overhang_cm
-        # Height interpolated using leg center relative to structural span (rear to front leg)
-        leg_center = leg_pos + beam_thick_cm / 2 - rear_outer_pos
-        front_center = front_outer_pos + beam_thick_cm / 2 - rear_outer_pos
-        frac = max(0.0, min(1.0, leg_center / front_center)) if front_center > 0 else 0
+            # Round down (away from rail) to maintain overhang distance
+            leg_pos = math.floor(rail_pos - base_overhang_cm)
+        # Height interpolated using punch-to-punch span (rear punch = 0, front punch = 1)
+        rear_punch = rear_outer_pos + beam_thick_cm / 2
+        front_punch = front_outer_pos + beam_thick_cm / 2
+        structural_span = front_punch - rear_punch
+        leg_center = leg_pos + beam_thick_cm / 2
+        frac = max(0.0, min(1.0, (leg_center - rear_punch) / structural_span)) if structural_span > 0 else 0
         leg_height = height_rear + frac * (height_front - height_rear)
         inner_legs.append({
-            'positionCm': _r(leg_pos),
-            'positionEndCm': _r(leg_pos + beam_thick_cm),
+            'positionCm': leg_pos,
+            'positionEndCm': leg_pos + beam_thick_cm,
             'heightCm': _r(leg_height),
             'railPositionCm': _r(rail_pos),
         })
@@ -120,9 +178,14 @@ def _compute_diagonal_bracing(
     skip_below_cm: float,
     double_above_cm: float,
     angle_rad: float,
+    beam_thick_cm: float,
 ) -> list[dict]:
     """
     Compute diagonal bracing between legs.
+
+    Percentages (topPct/botPct) are applied to the punch-to-punch span
+    (leg centers), not the full leg-to-leg span. This mirrors the base beam
+    calculation where trig is applied between punch points.
 
     Returns list of active (non-disabled) diagonals.
     """
@@ -130,6 +193,7 @@ def _compute_diagonal_bracing(
     num_spans = len(legs) - 1
     diag_top_frac = diag_top_pct / 100
     diag_base_frac = diag_base_pct / 100
+    profile_half = beam_thick_cm / 2
 
     raw_diagonals = []
     for i in range(num_spans):
@@ -154,27 +218,31 @@ def _compute_diagonal_bracing(
         top_pct = ov_d.get('topPct', def_top)
         bot_pct = ov_d.get('botPct', def_bot)
 
-        span_slope_start = legs[i]['positionCm']
-        span_slope_end = legs[i + 1]['positionEndCm']
-        span_slope_len = span_slope_end - span_slope_start
-
-        top_pos_slope = span_slope_start + top_pct * span_slope_len
-        bot_pos_slope = span_slope_start + bot_pct * span_slope_len
+        # Punch-to-punch span: from center of left leg to center of right leg
+        punch_start = legs[i]['positionCm'] + profile_half
+        punch_end = legs[i + 1]['positionEndCm'] - profile_half
+        punch_span = punch_end - punch_start
 
         sin_a = math.sin(angle_rad)
         cos_a = math.cos(angle_rad)
-        height_at_top = h_a + top_pos_slope * sin_a
 
-        horiz_dist = abs(bot_pos_slope - top_pos_slope) * cos_a
-        length_cm = math.sqrt(height_at_top ** 2 + horiz_dist ** 2) if horiz_dist > 0 else 0
+        # Diagonal length from clean geometry (no intermediate rounding):
+        # - vert: leg height minus 2×bolt_inset (bolt offsets) plus slope rise
+        # - horiz: span × (botPct − topPct) × cos (direct, no projection)
+        # - cut length: PP + extension at each end (angle-dependent)
+        bolt_inset = 2.75  # distance from leg end to bolt hole center
+        vert = (h_a - 2 * bolt_inset) + top_pct * punch_span * sin_a
+        horiz = (bot_pct - top_pct) * punch_span * cos_a
+        pp_length = math.sqrt(vert ** 2 + horiz ** 2) if horiz > 0 else 0
+        length_cm = _diagonal_cut_length(pp_length, vert, horiz, beam_thick_cm)
 
         # isDouble: true when the diagonal LENGTH exceeds the threshold
         is_double = length_cm >= double_above_cm
 
         raw_diagonals.append({
             'spanIdx': i,
-            'topPct': _r(top_pct),
-            'botPct': _r(bot_pct),
+            'topPct': top_pct,
+            'botPct': bot_pct,
             'lengthCm': _r(length_cm),
             'isDouble': is_double,
             'disabled': skip,
@@ -195,14 +263,16 @@ def _compute_block_positions(
     block_length_cm: float,
     base_beam_length: float,
     cos_a: float,
+    beam_thick_cm: float,
 ) -> list[dict]:
     """
     Compute block positions on base beam — one per leg.
 
     Returns list of blocks with positionCm, isEnd, slopePositionCm, slopeLengthCm.
     """
+    profile_half = beam_thick_cm / 2
     slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
-    
+
     # Special case: only 2 blocks AND they would overlap - place consecutively
     # Blocks overlap when base_beam_length < 2 * block_length_cm
     if not inner_legs and base_beam_length < 2 * block_length_cm:
@@ -216,13 +286,13 @@ def _compute_block_positions(
             {
                 'positionCm': _r(block_length_cm),
                 'isEnd': True,
-                'slopePositionCm': _r(block_length_cm / cos_a) if cos_a > 0 else _r(block_length_cm),
+                'slopePositionCm': _r(_base_to_slope(block_length_cm, profile_half, cos_a)),
                 'slopeLengthCm': _r(slope_block_length),
             },
         ]
         logger.info(f'Block positioning: 2 consecutive outer blocks (overlapping case), base_beam_length={base_beam_length}, block_length={block_length_cm}')
         return blocks
-    
+
     # General case: position blocks at leg centers
     raw_blocks = []
     raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
@@ -231,10 +301,10 @@ def _compute_block_positions(
         leg_left_slope = il['positionCm']
         leg_right_slope = il['positionEndCm']
         leg_center_slope = (leg_left_slope + leg_right_slope) / 2
-        
-        # Convert leg center to BASE coordinates (horizontal projection)
-        leg_center_base = leg_center_slope * cos_a
-        
+
+        # Convert leg center to BASE coordinates (punch-aware projection)
+        leg_center_base = _slope_to_base(leg_center_slope, profile_half, cos_a)
+
         # Position block with 66% behind leg center, 34% ahead to reduce front overlap
         # Block length is in base coords, so this is consistent
         left_edge = leg_center_base - block_length_cm * 0.66
@@ -265,7 +335,7 @@ def _compute_block_positions(
         blocks.append({
             'positionCm': _r(pos),
             'isEnd': blk['isEnd'],
-            'slopePositionCm': _r(pos / cos_a) if cos_a > 0 else _r(pos),
+            'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
             'slopeLengthCm': _r(slope_block_length),
         })
     
@@ -297,12 +367,11 @@ def _compute_structural_punches(
     punches = []
 
     # outerLeg: at leg center on base beam.
-    # Leg positions include leg_offset (extension). Separate extension from structural
-    # position: extension is flat (not projected), structural part is cos_a-projected.
+    # Use _slope_to_base: beam ends extend straight, cos_a only between punches.
     rear_leg_center = legs[0]['positionCm'] + profile_half if legs else leg_offset + profile_half
     front_leg_center = (legs[-1]['positionEndCm'] - profile_half) if legs else leg_offset + base_beam_length - profile_half
-    rear_base = leg_offset + (rear_leg_center - leg_offset) * cos_a
-    front_base = leg_offset + (front_leg_center - leg_offset) * cos_a
+    rear_base = _slope_to_base(rear_leg_center, profile_half, cos_a, leg_offset)
+    front_base = _slope_to_base(front_leg_center, profile_half, cos_a, leg_offset)
     punches.append({'beamType': 'base',  'positionCm': _r(rear_base), 'origin': 'outerLeg'})
     punches.append({'beamType': 'base',  'positionCm': _r(front_base), 'origin': 'outerLeg'})
     punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg'})
@@ -311,7 +380,7 @@ def _compute_structural_punches(
     # innerLeg: punch at center of profile on both beams
     for il in inner_legs:
         center = (il['positionCm'] + il['positionEndCm']) / 2
-        base_pos = leg_offset + (center - leg_offset) * cos_a
+        base_pos = _slope_to_base(center, profile_half, cos_a, leg_offset)
         punches.append({'beamType': 'base',  'positionCm': _r(base_pos), 'origin': 'innerLeg'})
         # Slope beam: convert from base beam coords to slope coords
         punches.append({'beamType': 'slope', 'positionCm': _r(center - leg_offset), 'origin': 'innerLeg'})
@@ -322,20 +391,20 @@ def _compute_structural_punches(
         punches.append({'beamType': 'slope', 'positionCm': _r(rail_pos), 'origin': 'rail'})
 
     # diagonal: top on slope beam (slope coords), bottom on base beam (base beam coords)
-    # Use SAME span definition as diagonal bracing calculation (full span, not gap)
+    # Use punch-to-punch span (leg centers), matching _compute_diagonal_bracing
     for diag in diagonals:
         si = diag['spanIdx']
-        span_slope_start = legs[si]['positionCm']
-        span_slope_end = legs[si + 1]['positionEndCm']
-        span_slope_len = span_slope_end - span_slope_start
+        punch_start = legs[si]['positionCm'] + profile_half
+        punch_end = legs[si + 1]['positionEndCm'] - profile_half
+        punch_span = punch_end - punch_start
+
+        top_pos_slope = punch_start + diag['topPct'] * punch_span
+        bot_pos_slope = punch_start + diag['botPct'] * punch_span
         
-        top_pos_slope = span_slope_start + diag['topPct'] * span_slope_len
-        bot_pos_slope = span_slope_start + diag['botPct'] * span_slope_len
-        
-        # Convert to beam coordinates
-        top_pos = _r(top_pos_slope - leg_offset)  # slope beam coords
-        bot_pos = _r(leg_offset + (bot_pos_slope - leg_offset) * cos_a)  # base beam coords (projected)
-        
+        # Round final positions to integer on each beam
+        top_pos = round(top_pos_slope - leg_offset)
+        bot_pos = round(_slope_to_base(bot_pos_slope, profile_half, cos_a, leg_offset))
+
         punches.append({'beamType': 'slope', 'positionCm': top_pos, 'origin': 'diagonal'})
         punches.append({'beamType': 'base',  'positionCm': bot_pos, 'origin': 'diagonal'})
 
@@ -433,7 +502,8 @@ def compute_trapezoid_details(
     height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
     base_length_horiz = base_beam_core  # original (without extension) for leg placement
-    height_front = height_rear + base_length_horiz * math.tan(angle_rad)
+    # Height rise only across punch-to-punch horizontal distance (beam ends are straight)
+    height_front = height_rear + (base_length_horiz - beam_thick_cm) * math.tan(angle_rad)
 
     geometry = {
         'heightRear': _r(height_rear),
@@ -480,7 +550,7 @@ def compute_trapezoid_details(
     # ── Diagonals ──────────────────────────────────────────────────────────
     diagonals = _compute_diagonal_bracing(
         legs, custom_diagonals, diag_top_pct, diag_base_pct,
-        skip_below_cm, double_above_cm, angle_rad,
+        skip_below_cm, double_above_cm, angle_rad, beam_thick_cm,
     )
 
     # ── Blocks ─────────────────────────────────────────────────────────────
@@ -488,7 +558,7 @@ def compute_trapezoid_details(
     if roof_type in ('iskurit', 'insulated_panel'):
         blocks = []
     else:
-        blocks = _compute_block_positions(inner_legs, block_length_cm, base_beam_length, cos_a)
+        blocks = _compute_block_positions(inner_legs, block_length_cm, base_beam_length, cos_a, beam_thick_cm)
 
     # ── Punches ────────────────────────────────────────────────────────────
     punches = _compute_structural_punches(
@@ -509,7 +579,7 @@ def compute_trapezoid_details(
     # Add reversedPositionCm (distance from beam end) to qualifying punches
     for p in punches:
         if p['beamType'] == 'base' and p['origin'] == 'block':
-            p['reversedPositionCm'] = _r(base_beam_length - p['positionCm'])
+            p['reversedPositionCm'], p['positionCm'] = _block_punch_reversed(base_beam_length, p['positionCm'])
         elif p['beamType'] == 'slope' and p['origin'] != 'rail':
             p['reversedPositionCm'] = _r(top_beam_length - p['positionCm'])
 
@@ -543,7 +613,8 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         origin = geom.get('originCm', 0)
         angle_deg = geom.get('angle', 0)
         cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
-        origin_base = origin * cos_a
+        ph = geom.get('beamThickCm', 4) / 2
+        origin_base = _slope_to_base(origin, ph, cos_a)
         for blk in detail.get('blocks', []):
             global_positions.add(_r(blk['positionCm'] + origin_base))
 
@@ -556,7 +627,8 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
         block_length = geom.get('blockLengthCm', 50)
         angle_deg = geom.get('angle', 0)
         cos_a = math.cos(angle_deg * math.pi / 180) if angle_deg else 1
-        origin_base = origin * cos_a
+        ph = geom.get('beamThickCm', 4) / 2
+        origin_base = _slope_to_base(origin, ph, cos_a)
         base_beam_len = geom.get('baseBeamLength', 0)
 
         # Convert global base-beam positions to local, keep within [0, baseBeamLen]
@@ -575,7 +647,7 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
             blocks.append({
                 'positionCm': lp,
                 'isEnd': False,
-                'slopePositionCm': _r(lp / cos_a) if cos_a > 0 else lp,
+                'slopePositionCm': _r(_base_to_slope(lp, ph, cos_a)),
                 'slopeLengthCm': _r(slope_block_length),
             })
         # First and last blocks are outer — reposition to align with beam ends
@@ -585,7 +657,7 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
             blocks[0]['slopePositionCm'] = 0.0
             blocks[-1]['isEnd'] = True
             blocks[-1]['positionCm'] = _r(base_beam_len - block_length)
-            blocks[-1]['slopePositionCm'] = _r((base_beam_len - block_length) / cos_a) if cos_a > 0 else _r(base_beam_len - block_length)
+            blocks[-1]['slopePositionCm'] = _r(_base_to_slope(base_beam_len - block_length, ph, cos_a))
 
         detail['blocks'] = blocks
 
@@ -601,9 +673,8 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
             blocks, inner_legs, other_base_positions, block_length, base_beam_len,
             block_punch, profile_step, cos_a, overlap_margin, inner_offset,
         )
-        # Add reversedPositionCm (distance from beam end) to block punches
         for p in new_block_punches:
-            p['reversedPositionCm'] = _r(base_beam_len - p['positionCm'])
+            p['reversedPositionCm'], p['positionCm'] = _block_punch_reversed(base_beam_len, p['positionCm'])
         detail['punches'] = non_block_punches + new_block_punches
 
 
@@ -633,9 +704,10 @@ def _compute_block_punches(
         return any(abs(candidate - p) < overlap_margin_cm for p in existing)
 
     result = []
+    profile_half = profile_step_cm / 2
     for bi, block in enumerate(blocks):
-        pos = block['positionCm']          # slope coords
-        block_end = pos + block_length_cm  # slope coords
+        pos = block['positionCm']          # base beam coords
+        block_end = pos + block_length_cm  # base beam coords
 
         if block['isEnd']:
             is_rear = pos < base_beam_length / 2
@@ -658,30 +730,28 @@ def _compute_block_punches(
             leg_idx = bi - 1
             if leg_idx < 0 or leg_idx >= len(inner_legs):
                 # Safeguard: use center if leg data missing (shouldn't happen)
-                base_lo = _r(pos * cos_a)
-                base_hi = _r(block_end * cos_a)
-                punch_pos = (base_lo + base_hi) / 2
-                check_lo, check_hi = base_lo - 0.1, base_hi + 0.1
+                punch_pos = (pos + block_end) / 2
+                check_lo, check_hi = pos - 0.1, block_end + 0.1
             else:
                 # Get leg position from inner_legs (in SLOPE coords)
                 leg = inner_legs[leg_idx]
                 leg_left_slope = leg['positionCm']
                 leg_right_slope = leg['positionEndCm']
-                
-                # Convert to BASE coords (horizontal projection)
-                leg_left_base = _r(leg_left_slope * cos_a)
-                leg_right_base = _r(leg_right_slope * cos_a)
-                
-                # Block range in base coords
-                base_lo = _r(pos * cos_a)
-                base_hi = _r(block_end * cos_a)
-                
+
+                # Convert leg positions to BASE coords (punch-aware projection)
+                leg_left_base = _r(_slope_to_base(leg_left_slope, profile_half, cos_a))
+                leg_right_base = _r(_slope_to_base(leg_right_slope, profile_half, cos_a))
+
+                # Block range already in base coords
+                base_lo = pos
+                base_hi = block_end
+
                 # Block is positioned 66% behind leg, 34% ahead of leg
                 # 34% section = ahead of leg (right side, toward higher/front leg)
                 # 66% section = behind leg (left side, toward lower/rear leg)
-                
+
                 punch_pos = None
-                
+
                 # FIRST TRY: 34% section (ahead of leg, toward higher leg)
                 # Start at leg right wall + block_punch_cm, travel RIGHT
                 start_right = _r(leg_right_base + block_punch_cm)
@@ -691,7 +761,7 @@ def _compute_block_punches(
                         punch_pos = candidate
                         break
                     candidate += 1
-                
+
                 # SECOND TRY: 66% section (behind leg, toward lower leg)
                 # Start at leg left wall - block_punch_cm, travel LEFT
                 if punch_pos is None:
@@ -702,11 +772,11 @@ def _compute_block_punches(
                             punch_pos = candidate
                             break
                         candidate -= 1
-                
+
                 # Fallback if still no valid position (should be rare)
                 if punch_pos is None:
                     punch_pos = _r((base_lo + base_hi) / 2)
-                
+
                 check_lo, check_hi = base_lo - 0.1, base_hi + 0.1
 
         # Validate within block range
@@ -791,7 +861,9 @@ def trim_trapezoid(
     slope_len = front_end - rear_pos
     angle = detail.get('geometry', {}).get('angle', 0)
     cos_a = math.cos(angle * math.pi / 180)
-    base_len = slope_len * cos_a
+    beam_thick = detail.get('geometry', {}).get('beamThickCm', 4)
+    # Same formula as base_beam_core: trig only between punch points, beam ends straight
+    base_len = beam_thick + (slope_len - beam_thick) * cos_a
     geom = detail['geometry']
 
     # Update geometry
@@ -847,6 +919,7 @@ def trim_trapezoid(
     has_blocks = 'blockLengthCm' in geom
     if not has_blocks and detail.get('blocks'):
         logger.error('Trim trapezoid: blocks present but blockLengthCm missing from geometry — data inconsistency')
+    profile_half = geom['beamThickCm'] / 2
     if has_blocks:
         # Blocks: regenerate in base-beam coords (same rules as service)
         block_length_cm = geom['blockLengthCm']
@@ -855,7 +928,7 @@ def trim_trapezoid(
         raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
         for leg in filtered_legs[1:-1]:
             rail_pos = leg.get('railPositionCm', leg['positionCm'])
-            rail_base = rail_pos * cos_a
+            rail_base = _slope_to_base(rail_pos, profile_half, cos_a)
             raw_blocks.append({'positionCm': _r(rail_base - block_length_cm / 2), 'isEnd': False})
         raw_blocks.append({'positionCm': _r(base_len - block_length_cm), 'isEnd': True})
         new_blocks = []
@@ -866,7 +939,7 @@ def trim_trapezoid(
             new_blocks.append({
                 'positionCm': _r(pos),
                 'isEnd': blk['isEnd'],
-                'slopePositionCm': _r(pos / cos_a) if cos_a > 0 else _r(pos),
+                'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
                 'slopeLengthCm': _r(slope_block_length),
             })
         detail['blocks'] = new_blocks
@@ -874,8 +947,7 @@ def trim_trapezoid(
         detail['blocks'] = []
 
     # Punches: filter from full trap, rebase, regenerate outer+inner+block
-    base_shift = rear_pos * cos_a
-    profile_half = geom['beamThickCm'] / 2
+    base_shift = _slope_to_base(rear_pos, profile_half, cos_a) - profile_half
     new_punches = []
     for p in full_trap_detail.get('punches', []):
         # Skip outerLeg, block, and innerLeg punches — they'll be regenerated
@@ -892,8 +964,8 @@ def trim_trapezoid(
     # Fresh outerLeg punches — base at leg center, slope at beam ends
     rear_leg_center = filtered_legs[0]['positionCm'] + profile_half
     front_leg_center = filtered_legs[-1]['positionEndCm'] - profile_half
-    new_punches.append({'beamType': 'base',  'positionCm': _r(rear_leg_center * cos_a), 'origin': 'outerLeg'})
-    new_punches.append({'beamType': 'base',  'positionCm': _r(front_leg_center * cos_a), 'origin': 'outerLeg'})
+    new_punches.append({'beamType': 'base',  'positionCm': _r(_slope_to_base(rear_leg_center, profile_half, cos_a)), 'origin': 'outerLeg'})
+    new_punches.append({'beamType': 'base',  'positionCm': _r(_slope_to_base(front_leg_center, profile_half, cos_a)), 'origin': 'outerLeg'})
     new_punches.append({'beamType': 'slope', 'positionCm': _r(profile_half), 'origin': 'outerLeg',
                         'reversedPositionCm': _r(slope_len - profile_half)})
     new_punches.append({'beamType': 'slope', 'positionCm': _r(slope_len - profile_half), 'origin': 'outerLeg',
@@ -901,7 +973,7 @@ def trim_trapezoid(
     # Fresh innerLeg punches from actual trimmed inner legs
     for il in filtered_legs[1:-1]:
         center = (il['positionCm'] + il['positionEndCm']) / 2
-        new_punches.append({'beamType': 'base',  'positionCm': _r(center * cos_a), 'origin': 'innerLeg'})
+        new_punches.append({'beamType': 'base',  'positionCm': _r(_slope_to_base(center, profile_half, cos_a)), 'origin': 'innerLeg'})
         new_punches.append({'beamType': 'slope', 'positionCm': _r(center), 'origin': 'innerLeg',
                             'reversedPositionCm': _r(slope_len - center)})
     # Block punches only if blocks exist
@@ -915,7 +987,7 @@ def trim_trapezoid(
             geom['punchOverlapMarginCm'], geom['punchInnerOffsetCm'],
         )
         for bp in block_punches:
-            bp['reversedPositionCm'] = _r(base_len - bp['positionCm'])
+            bp['reversedPositionCm'], bp['positionCm'] = _block_punch_reversed(base_len, bp['positionCm'])
         new_punches += block_punches
     detail['punches'] = new_punches
 
