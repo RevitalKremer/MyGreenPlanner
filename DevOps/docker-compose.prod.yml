@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: mgp
+      POSTGRES_USER: mgp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mgp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      # Bound to loopback only — NOT reachable from the internet.
+      # Used for SSM port-forward from a dev laptop (TablePlus, psql, etc.).
+      - "127.0.0.1:5432:5432"
+
+  mgp-service:
+    image: ghcr.io/revitalkremer/mygreenplanner-mgp-service:latest
+    pull_policy: always
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mgp:${POSTGRES_PASSWORD}@db:5432/mgp
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      FRONTEND_URL: ${FRONTEND_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_TLS: ${SMTP_TLS}
+      SYSADMIN_EMAIL: ${SYSADMIN_EMAIL}
+      SYSADMIN_PASSWORD: ${SYSADMIN_PASSWORD}
+      SYSADMIN_NAME: ${SYSADMIN_NAME}
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    # No `ports:` — only reachable from mgp-webapp via Docker network.
+
+  mgp-webapp:
+    image: ghcr.io/revitalkremer/mygreenplanner-mgp-webapp:latest
+    pull_policy: always
+    restart: always
+    depends_on:
+      - mgp-service
+    # No `ports:` — only Caddy faces the internet; it proxies here internally.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    depends_on:
+      - mgp-webapp
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
