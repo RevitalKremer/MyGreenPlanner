@@ -13,7 +13,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # No `ports:` — DB is only reachable via Docker's internal network.
+    ports:
+      # Bound to loopback only — NOT reachable from the internet.
+      # Used for SSM port-forward from a dev laptop (TablePlus, psql, etc.).
+      - "127.0.0.1:5432:5432"
 
   mgp-service:
     image: ghcr.io/revitalkremer/mygreenplanner-mgp-service:latest
