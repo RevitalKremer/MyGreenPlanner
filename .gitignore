@@ -63,3 +63,4 @@ DevOps/aws/.sg-id
 DevOps/aws/.eip-alloc
 DevOps/aws/.bucket
 DevOps/aws/.env.prod.local
+DevOps/aws/.deploy-role-arn
