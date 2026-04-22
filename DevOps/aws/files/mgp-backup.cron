@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+MAILTO=""
+
+# Daily Postgres backup at 03:00 UTC (06:00 Israel summer / 05:00 winter).
+0 3 * * * ubuntu /usr/local/bin/mgp-backup-db.sh >> /var/log/mgp-backup.log 2>&1
