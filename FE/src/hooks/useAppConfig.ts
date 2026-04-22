@@ -98,6 +98,12 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
   // ── Resolved panel spec ──
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? null
 
+  // ── App config readiness ──
+  // True once the critical config (app settings + panel types) has loaded.
+  // The FE has no hardcoded defaults for these — consumers like useRowData
+  // dereference panelSpec.lengthCm unconditionally, so callers MUST wait.
+  const appConfigReady = !!appDefaults && !!panelSpec
+
   // ── Backend health ──
   const [backendStatus, setBackendStatus] = useState({ status: 'checking', model_loaded: false })
 
@@ -112,17 +118,17 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
   useEffect(() => {
     fetchPanelTypes()
       .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
-      .catch(() => { /* keep hardcoded fallback */ })
+      .catch(() => {})
     fetchAppDefaults()
       .then(setAppSettingsRaw)
-      .catch(() => { /* keep null — callers must handle */ })
+      .catch(() => {})
     fetchProducts()
       .then(items => setProducts(items.map(p => ({
         type: p.type_key, pn: p.part_number ?? '', name: p.name,
         extraPct: p.extra ? parseInt(p.extra) || 0 : 0,
         altGroup: p.alt_group, isDefault: p.is_default,
       }))))
-      .catch(() => { /* products stay empty */ })
+      .catch(() => {})
   }, [])
 
   const refreshAppSettings = () => {
@@ -134,6 +140,7 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
     appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup, paramLimits,
     products, productByType, altsByType,
     backendStatus,
+    appConfigReady,
     refreshAppSettings,
   }
 }

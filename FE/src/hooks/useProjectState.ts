@@ -134,6 +134,7 @@ export function useProjectState() {
     appDefaults, paramSchema, paramSchemaForRoof, settingsDefaults, paramGroup, paramLimits,
     products, productByType, altsByType,
     backendStatus,
+    appConfigReady,
     refreshAppSettings,
   } = useAppConfig({
     panelType, currentProject,
@@ -1048,6 +1049,8 @@ export function useProjectState() {
     paramLimits,
     // Products (materials for BOM)
     products, productByType, altsByType,
+    // App config readiness (appDefaults + panelSpec loaded)
+    appConfigReady,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,
