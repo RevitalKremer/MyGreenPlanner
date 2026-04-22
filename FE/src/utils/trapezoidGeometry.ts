@@ -162,14 +162,19 @@ interface DiagonalPositionParams {
 export const calculateDiagonalPosition = ({
   spanIdx, topPct, botPct, legXs, legEndXs, legHeights, baseY, beamThickPx,
 }: DiagonalPositionParams) => {
+  // Punch-to-punch span: percentages apply between leg centers (punch points),
+  // matching the BE _compute_diagonal_bracing calculation.
+  const halfThick = beamThickPx / 2
+  const punchA = legXs[spanIdx] + halfThick
+  const punchB = legEndXs[spanIdx + 1] - halfThick
   const xA = legXs[spanIdx]
   const xB = legEndXs[spanIdx + 1]
-  const spanW = xB - xA
-  const topX = xA + topPct * spanW
-  const botX = xA + botPct * spanW
+  const spanW = punchB - punchA
+  const topX = punchA + topPct * spanW
+  const botX = punchA + botPct * spanW
   const hA = legHeights[spanIdx] ?? 0
   const hB = legHeights[spanIdx + 1] ?? 0
   const topY = baseY - (hA + topPct * (hB - hA))
-  const botY = baseY + beamThickPx / 2
+  const botY = baseY + halfThick
   return { xA, xB, spanW, topX, botX, topY, botY }
 }
