@@ -168,7 +168,7 @@ const he = {
   'step2.sidebar.defaultMounting':   'הרכבה ברירת מחדל',
   'step2.sidebar.frontH':            'גובה קדמי (ס"מ)',
   'step2.sidebar.frontHPlaceholder': 'לדוגמה: 35',
-  'step2.sidebar.angle':             'זווית (°)',
+  'step2.sidebar.angle':             'שיפוע (°)',
   'step2.sidebar.angleRange':        '0–30',
   'step2.sidebar.applyToAll':        'החל על כל השורות',
   'step2.sidebar.drawHint':          'בחר את כלי השרטוט וגרור על הקנבס ליצירת אזור פנלים.',
@@ -247,8 +247,8 @@ const he = {
   'step3.sidebar.applyChanges':            'החל שינויים',
 
   // ── Step 3 – Parameter names (translated labels) ──────────────────────────
-  'step3.param.railSpacingV':        'ריווח אנכי (ס"מ)',
-  'step3.param.railSpacingH':        'ריווח אופקי (ס"מ)',
+  'step3.param.railSpacingV':        'ריווח פאנל אנכי (ס"מ)',
+  'step3.param.railSpacingH':        'ריווח פאנל אופקי (ס"מ)',
   'step3.param.keepSymmetry':        'שמור סימטריה',
   'step3.param.railOverhangCm':      'הבלטת קושרת (ס"מ)',
   'step3.param.crossRailEdgeDistMm': 'גודל פרופיל קושרת (מ"מ)',

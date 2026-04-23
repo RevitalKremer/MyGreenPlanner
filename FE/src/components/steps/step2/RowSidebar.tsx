@@ -1,9 +1,38 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_BG, WARNING_DARK, WARNING_LIGHT } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
 import { isAreaTiles } from '../../../utils/roofSpecUtils'
 import { PANEL_V, PANEL_H, isHorizontalOrientation } from '../../../utils/panelCodes'
+
+// Seed project defaults (a, h) from the first row value the user types, so
+// they don't have to enter the same number twice. Each of a/h is evaluated
+// independently and stays sticky once non-empty. Debounced so mid-typing
+// ("4" → "45") doesn't race the sticky check.
+function useSeedDefaultsFromRow({ panelAngle, setPanelAngle, panelFrontHeight, setPanelFrontHeight }) {
+  const panelAngleRef = useRef(panelAngle)
+  const panelFrontHeightRef = useRef(panelFrontHeight)
+  useEffect(() => { panelAngleRef.current = panelAngle }, [panelAngle])
+  useEffect(() => { panelFrontHeightRef.current = panelFrontHeight }, [panelFrontHeight])
+  const timerRef = useRef(null)
+  const pendingRef = useRef({ angleDeg: null, frontHeightCm: null })
+
+  return ({ angleDeg, frontHeightCm }) => {
+    if (angleDeg != null) pendingRef.current.angleDeg = angleDeg
+    if (frontHeightCm != null) pendingRef.current.frontHeightCm = frontHeightCm
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      const pending = pendingRef.current
+      if (pending.angleDeg != null && (panelAngleRef.current ?? '') === '' && setPanelAngle) {
+        setPanelAngle(String(pending.angleDeg))
+      }
+      if (pending.frontHeightCm != null && (panelFrontHeightRef.current ?? '') === '' && setPanelFrontHeight) {
+        setPanelFrontHeight(String(pending.frontHeightCm))
+      }
+      pendingRef.current = { angleDeg: null, frontHeightCm: null }
+    }, 1000)
+  }
+}
 
 export default function RowSidebar({
   baseline = null, setBaseline = null,
@@ -161,6 +190,10 @@ export default function RowSidebar({
     }
   }
 
+  const seedDefaultsFromRow = useSeedDefaultsFromRow({
+    panelAngle, setPanelAngle, panelFrontHeight, setPanelFrontHeight,
+  })
+
   // Update a specific row's a/h. Used by the inline row-level editor.
   const updateRowMounting = (label, rowIdx, patch) => {
     if (!setRowMounting) return
@@ -171,6 +204,7 @@ export default function RowSidebar({
       next[label] = rows
       return next
     })
+    seedDefaultsFromRow(patch)
   }
 
   return (
