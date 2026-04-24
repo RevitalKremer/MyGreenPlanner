@@ -34,3 +34,18 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
+
+
+def require_role(*roles: UserRole):
+    """Dependency factory — gates an endpoint to the given role(s).
+
+    Use `Depends(require_admin)` when you just need admin. Use this when the
+    endpoint should allow multiple roles, e.g. `Depends(require_role(UserRole.admin, UserRole.manager))`.
+    For row-level access (admin sees everything, user sees their own), use a
+    resource-specific `get_accessible_<resource>` dependency instead.
+    """
+    def dep(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        return current_user
+    return dep

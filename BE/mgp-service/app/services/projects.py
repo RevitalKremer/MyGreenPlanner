@@ -83,6 +83,23 @@ async def get_project(db: AsyncSession, project_id: uuid.UUID, owner_id: uuid.UU
     return result.scalar_one_or_none()
 
 
+async def get_project_for_user(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    user: User,
+) -> Project | None:
+    """Fetch a project if `user` is allowed to access it.
+
+    Admins see any project; regular users only their own. Returns None if the
+    project doesn't exist OR the user isn't allowed to see it (caller decides
+    whether to 404 or 403; we conflate them here to avoid leaking existence).
+    """
+    query = select(Project).where(Project.id == project_id)
+    if user.role.value != "admin":
+        query = query.where(Project.owner_id == user.id)
+    return (await db.execute(query)).scalar_one_or_none()
+
+
 async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: ProjectCreate) -> Project:
     project = Project(owner_id=owner_id, **payload.model_dump())
     db.add(project)
