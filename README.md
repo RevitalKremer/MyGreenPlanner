@@ -65,49 +65,26 @@ MyGreenPlanner/
 
 ## Getting Started
 
-### Frontend
-
-```bash
-cd FE
-npm install
-cp .env.example .env      # add VITE_GOOGLE_MAPS_API_KEY if needed
-npm run dev               # http://localhost:5173
-```
-
-### SAM Service
-
-```bash
-cd BE/sam-service
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-# Download SAM2 checkpoint → BE/sam-service/checkpoints/sam2_hiera_large.pt
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Checkpoint download: <https://github.com/facebookresearch/segment-anything-2>
-
-### MGP Service
-
-```bash
-cd BE/mgp-service
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env      # fill in DATABASE_URL and SECRET_KEY
-alembic upgrade head      # run DB migrations
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-### Full Stack (Docker)
+Quickest path — full stack in Docker:
 
 ```bash
 cd DevOps
-cp .env.example .env      # fill in POSTGRES_PASSWORD, SECRET_KEY, FRONTEND_URL
-docker-compose up --build
+cp .env.example .env       # fill POSTGRES_PASSWORD, SECRET_KEY
+docker compose up --build  # frontend on http://localhost
 ```
 
-Frontend will be served at port 80. MGP service at `/api/mgp/`.
+Full per-service setup (Vite dev server, local uvicorn, env vars, common issues) is in **[docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md)**.
+
+---
+
+## Deployment & Ops
+
+The production stack runs on a single AWS EC2 and deploys automatically on every push to `master`.
+
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — GitHub Actions CI/CD: what the workflow does, how to trigger / roll back / troubleshoot
+- **[docs/OPS_ACCESS.md](docs/OPS_ACCESS.md)** — SSM shell access, port-forwarding Postgres to TablePlus, updating secrets, running on-demand backups
+
+Production URL: https://mygreenplanner.sadot-energy.co.il
 
 ---
 
@@ -159,6 +136,9 @@ See [ISRAELI_GIS_GUIDE.md](ISRAELI_GIS_GUIDE.md) for details.
 
 | Doc | Description |
 | --- | --- |
+| [docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md) | Run the stack locally — Docker Compose or per-service with npm / uvicorn |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | CI/CD pipeline, manual triggers, rollback, troubleshooting |
+| [docs/OPS_ACCESS.md](docs/OPS_ACCESS.md) | SSM shell sessions, DB port-forward for TablePlus, on-demand backups |
 | [CLAUDE.md](CLAUDE.md) | Coding rules — colors, parameters, imports, help text |
 | [docs/step3-scratch-gestures.md](docs/step3-scratch-gestures.md) | Step 3 scratch mode — full gestures reference & verification table |
 

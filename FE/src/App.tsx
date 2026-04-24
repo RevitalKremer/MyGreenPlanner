@@ -45,6 +45,10 @@ function App() {
   const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+  // One-shot signal: logout sets this to true so the welcome screen opens the
+  // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
+  // don't auto-open on normal app load — only after explicit logout.
+  const [openLoginOnWelcome, setOpenLoginOnWelcome] = useState(false)
 
   // Handle ?verifyToken= and ?resetToken= URL params on mount
   useEffect(() => {
@@ -354,8 +358,11 @@ function App() {
     if (tab === 'login') await auth.login(email, password)
     else await auth.register(email, password, fullName, phone)
     setShowAuthGate(false)
+    // Save the in-memory project immediately at its current step so
+    // anonymous-up-to-step-N work is persisted the moment the account exists.
+    // Any subsequent step transition writes again on top of this baseline.
+    try { await handleCloudSave(s.currentStep) } catch (e) { console.error(e) }
     if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
-    else if (pendingAction === 'save') handleCloudSave()
     setPendingAction(null)
   }
 
@@ -409,6 +416,16 @@ function App() {
     }
   }
 
+  // Sign out wipes the in-memory project state and returns to the welcome
+  // screen — keeping a cloud project open after logout would leak it into a
+  // subsequent anonymous session.
+  const handleLogout = async () => {
+    await auth.logout()
+    s.handleStartOver()
+    setProjectsSearch('')
+    setOpenLoginOnWelcome(true)
+  }
+
   const handleStartOver = async () => {
     if (!confirm(t('app.startOverConfirm'))) return
     s.handleStartOver()
@@ -451,7 +468,7 @@ function App() {
         user={auth.user}
         onLogin={auth.login}
         onRegister={auth.register}
-        onLogout={auth.logout}
+        onLogout={handleLogout}
         onUpdateProfile={auth.updateProfile}
         authLoading={auth.authLoading}
         cloudProjects={cloudProjects}
@@ -467,6 +484,10 @@ function App() {
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
         appConfigReady={s.appConfigReady}
+        resetToken={urlResetToken}
+        onClearResetToken={() => setUrlResetToken(null)}
+        openLoginOnMount={openLoginOnWelcome}
+        onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
       />
     )
   }
@@ -542,7 +563,7 @@ function App() {
             <UserChip
               user={auth.user}
               onSignIn={() => { setPendingAction(null); setShowAuthGate(true) }}
-              onSignOut={auth.logout}
+              onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
               dark
             />

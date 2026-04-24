@@ -13,10 +13,23 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken, openLoginOnMount = false, onClearOpenLogin }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
-  const [showAuth, setShowAuth] = useState(false)
+  const [showAuth, setShowAuth] = useState(!!resetToken || !!openLoginOnMount)
+
+  // When a reset token arrives via URL (after initial mount), open the auth
+  // modal in reset mode.
+  useEffect(() => { if (resetToken) setShowAuth(true) }, [resetToken])
+
+  // One-shot signal from App after logout — open login modal, then clear the
+  // flag so a user who dismisses it isn't re-prompted on re-render.
+  useEffect(() => {
+    if (openLoginOnMount) {
+      setShowAuth(true)
+      onClearOpenLogin?.()
+    }
+  }, [openLoginOnMount, onClearOpenLogin])
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -541,10 +554,11 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       {showAuth && (
         <AuthModal
-          onClose={() => setShowAuth(false)}
+          onClose={() => { setShowAuth(false); onClearResetToken?.() }}
           onSuccess={handleAuthSuccess}
           onForgotPassword={onForgotPassword}
           onResetPassword={onResetPassword}
+          resetToken={resetToken}
         />
       )}
     </div>

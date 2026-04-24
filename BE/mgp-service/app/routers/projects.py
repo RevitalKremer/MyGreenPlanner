@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.setting import AppSetting
 from app.models.user import User
+from app.models.project import Project
 from app.models.project_image import ProjectImage
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary, ProjectListResponse
 from app.schemas.bom import BOMRead, BOMItemRead, BOMDeltasUpdate, BOMEffectiveRead
@@ -48,6 +49,23 @@ class SaveTabRequest(BaseModel):
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+async def get_accessible_project(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Project:
+    """Fetch a project the current user is allowed to access, or raise 404.
+
+    Admins can access any project; regular users only their own. 404 on
+    missing-or-forbidden (we conflate to avoid leaking existence of other
+    users' projects).
+    """
+    project = await project_service.get_project_for_user(db, project_id, current_user)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -102,10 +120,8 @@ async def get_project(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
 
 
@@ -116,10 +132,8 @@ async def update_project(
     step: int | None = Query(None, description="If provided, only data.step{n} is merged; other steps are preserved"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return await project_service.update_project(db, project, payload, step)
 
 
@@ -128,10 +142,8 @@ async def delete_project(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     await project_service.delete_project(db, project)
 
 
@@ -142,11 +154,9 @@ async def update_step(
     new_step: int = Query(..., description="Target step number (1-5)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Transition project to a new step with server-side data cleanup."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if new_step < 1 or new_step > 5:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Step must be 1-5")
 
@@ -166,11 +176,9 @@ async def save_tab_rails(
     payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Save rails tab data, recompute rails + bases, return all step 3 data."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
@@ -189,11 +197,9 @@ async def save_tab_bases(
     payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Save bases tab data, recompute bases, return all step 3 data."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
@@ -211,11 +217,9 @@ async def save_tab_trapezoids(
     payload: Optional[SaveTabRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Save trapezoid details tab data, recompute details, return all step 3 data."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if (project.navigation or {}).get('step', 1) < 3:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
@@ -268,11 +272,9 @@ async def reset_tab(
     tab_name: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Reset tab to server defaults: clear FE overrides, recompute with defaults."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if tab_name not in ('rails', 'bases', 'trapezoids'):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tab name")
     return await project_service.reset_tab(
@@ -285,11 +287,9 @@ async def get_construction_data(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return full project data."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     return {'data': project.data or {}}
 
@@ -299,11 +299,9 @@ async def get_rails(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return saved rails for all areas."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
@@ -317,11 +315,9 @@ async def get_bases(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return saved bases for all areas."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     return [
@@ -335,11 +331,9 @@ async def get_trapezoids(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return saved computed trapezoid details."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_traps = (project.data or {}).get('step3', {}).get('computedTrapezoids', [])
     return {ct['trapezoidId']: ct for ct in computed_traps if 'trapezoidId' in ct}
@@ -350,11 +344,9 @@ async def get_rail_dimensions(
     project_id: uuid.UUID,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return physical rail dimensions per area (admin only)."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     computed_areas = (project.data or {}).get('step3', {}).get('computedAreas', [])
     result = []
@@ -386,11 +378,9 @@ async def get_rail_materials(
     project_id: uuid.UUID,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return aggregated rail materials summary (admin only)."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     data     = project.data or {}
     step3    = data.get('step3', {})
@@ -418,10 +408,8 @@ async def approve_plan(
     strictConsent: bool = Query(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if (project.navigation or {}).get('step', 1) < 4:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 4+ to approve plan")
     updated = await project_service.approve_plan(db, project, current_user, strictConsent)
@@ -456,11 +444,9 @@ async def get_bom(
     lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return the current BOM with product enrichment and staleness flag."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     bom = await bom_service.get_bom(db, project.id)
     if not bom:
@@ -483,11 +469,9 @@ async def compute_bom(
     lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Compute (or recompute) BOM from current step3 data and save."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     bom = await bom_service.compute_and_save_bom(db, project)
     resolved_lang = _resolve_lang(lang, current_user)
@@ -506,11 +490,9 @@ async def get_bom_deltas(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return current bomDeltas from project data."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     step5 = (project.data or {}).get('step5', {})
     return step5.get('bomDeltas') or {'overrides': {}, 'additions': [], 'alternatives': {}}
@@ -522,11 +504,9 @@ async def save_bom_deltas(
     payload: BOMDeltasUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Save bomDeltas to project.data.step5.bomDeltas."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     data = copy.deepcopy(project.data or {})
     if 'step5' not in data:
@@ -544,11 +524,9 @@ async def get_effective_bom(
     lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Return BOM items with bomDeltas applied (merged view for PQ/export)."""
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     bom = await bom_service.get_bom(db, project.id)
     if not bom:
@@ -576,15 +554,13 @@ async def upload_project_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Upload an image for a project and store it in the project_images table.
     
     Returns: { imageId, width, height, contentType, fileSize }
     """
     # Verify project ownership
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     
     # Validate file type
     if not file.content_type or not file.content_type.startswith('image/'):
@@ -643,15 +619,13 @@ async def get_project_image(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
 ):
     """Fetch the image for a project.
     
     Returns the binary image data with appropriate Content-Type header.
     """
     # Verify project ownership
-    project = await project_service.get_project(db, project_id, current_user.id)
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     
     # Fetch image
     result = await db.execute(
