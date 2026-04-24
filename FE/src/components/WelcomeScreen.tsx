@@ -13,10 +13,14 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
-  const [showAuth, setShowAuth] = useState(false)
+  const [showAuth, setShowAuth] = useState(!!resetToken)
+
+  // When a reset token arrives via URL (after initial mount), open the auth
+  // modal in reset mode.
+  useEffect(() => { if (resetToken) setShowAuth(true) }, [resetToken])
   const [projectName, setProjectName] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -541,10 +545,11 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       {showAuth && (
         <AuthModal
-          onClose={() => setShowAuth(false)}
+          onClose={() => { setShowAuth(false); onClearResetToken?.() }}
           onSuccess={handleAuthSuccess}
           onForgotPassword={onForgotPassword}
           onResetPassword={onResetPassword}
+          resetToken={resetToken}
         />
       )}
     </div>

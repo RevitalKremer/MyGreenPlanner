@@ -467,6 +467,8 @@ function App() {
         onForgotPassword={auth.forgotPassword}
         onResetPassword={auth.resetPassword}
         appConfigReady={s.appConfigReady}
+        resetToken={urlResetToken}
+        onClearResetToken={() => setUrlResetToken(null)}
       />
     )
   }
