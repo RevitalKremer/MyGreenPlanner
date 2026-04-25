@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, WHITE, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
 const NUDGE_CM = 2.5
@@ -32,7 +32,7 @@ export default function ToolPanel({
   const toolBtnStyle = (tool): React.CSSProperties => ({
     flex: 1,
     padding: '0.45rem 0.15rem',
-    background: activeTool === tool ? PRIMARY : 'white',
+    background: activeTool === tool ? PRIMARY : WHITE,
     color: activeTool === tool ? TEXT : TEXT_PLACEHOLDER,
     border: `2px solid ${activeTool === tool ? PRIMARY : BORDER_FAINT}`,
     borderRadius: '8px',
@@ -52,7 +52,7 @@ export default function ToolPanel({
   )
 
   const nudgeBtnStyle: React.CSSProperties = {
-    padding: '0.3rem', background: 'white', color: TEXT_SECONDARY,
+    padding: '0.3rem', background: WHITE, color: TEXT_SECONDARY,
     border: `1px solid ${BORDER}`, borderRadius: '5px', cursor: 'pointer',
     fontWeight: '700', fontSize: '0.85rem', textAlign: 'center', lineHeight: 1,
   }
@@ -63,7 +63,7 @@ export default function ToolPanel({
       width: collapsed ? '32px' : '225px', minHeight: '36px', overflow: 'hidden',
       maxHeight: collapsed ? 'none' : 'calc(100vh - 120px)', overflowY: collapsed ? 'hidden' : 'auto',
       padding: '1rem',
-      background: 'white', borderRadius: '12px',
+      background: WHITE, borderRadius: '12px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
       border: `2px solid ${PRIMARY}`,
     }}>
@@ -89,7 +89,7 @@ export default function ToolPanel({
         const areaHasSelection = selectedAreaIdx !== null
         const areaActionStyle = (disabled) => ({
           flex: 1, padding: '0.4rem 0.2rem',
-          background: 'white', color: disabled ? TEXT_VERY_LIGHT : TEXT_SECONDARY,
+          background: WHITE, color: disabled ? TEXT_VERY_LIGHT : TEXT_SECONDARY,
           border: `1px solid ${disabled ? BORDER_FAINT : BORDER}`,
           borderRadius: '6px', cursor: disabled ? 'default' : 'pointer',
           fontWeight: '600', fontSize: '0.72rem', opacity: disabled ? 0.5 : 1,
@@ -110,12 +110,12 @@ export default function ToolPanel({
                   onClick={onToggleYLock}
                   disabled={!hasAreas}
                   title={yLocked ? 'Y-locked: drag inside area to rotate. Click to switch to free mode.' : 'Free mode: drag corners to resize. Click to enable Y-lock.'}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem', background: yLocked ? BG_MID : 'white', color: yLocked ? TEXT_DARK : TEXT_VERY_LIGHT, border: `1px solid ${yLocked ? BORDER_MID : BORDER}`, borderRadius: '6px', cursor: hasAreas ? 'pointer' : 'default', fontWeight: '600', fontSize: '0.72rem', opacity: hasAreas ? 1 : 0.4 }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem', background: yLocked ? BLUE_BG : WHITE, color: yLocked ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${yLocked ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: hasAreas ? 'pointer' : 'default', fontWeight: '600', fontSize: '0.72rem', opacity: hasAreas ? 1 : 0.4 }}
                 >
                   {yLocked ? (
                     <svg width="11" height="13" viewBox="0 0 11 13" fill="none" style={{ flexShrink: 0 }}>
-                      <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={TEXT_DARK} />
-                      <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0v2" stroke={TEXT_DARK} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                      <rect x="0.5" y="5.5" width="10" height="7" rx="1.5" fill={BLUE} />
+                      <path d="M2.5 5.5V3.5a3 3 0 0 1 6 0v2" stroke={BLUE} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
                     </svg>
                   ) : (
                     <svg width="11" height="13" viewBox="0 0 11 13" fill="none" style={{ flexShrink: 0 }}>
@@ -129,7 +129,7 @@ export default function ToolPanel({
                 <button
                   onClick={onToggleDrawVertical}
                   title={drawVertical ? t('step2.tool.drawVerticalOnTitle') : t('step2.tool.drawVerticalOffTitle')}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem', background: drawVertical ? BG_MID : 'white', color: drawVertical ? TEXT_DARK : TEXT_VERY_LIGHT, border: `1px solid ${drawVertical ? BORDER_MID : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem', background: drawVertical ? BLUE_BG : WHITE, color: drawVertical ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${drawVertical ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
                 >
                   ⊞ {drawVertical ? t('step2.tool.drawVerticalOn') : t('step2.tool.drawVerticalOff')}
                 </button>
@@ -153,7 +153,7 @@ export default function ToolPanel({
                       </div>
                       {/* Add Row button */}
                       <button
-                        style={{ ...areaActionStyle(false), marginTop: '0.3rem', width: '100%', background: addRowToGroup ? BLUE_BG : 'white', color: addRowToGroup ? BLUE : TEXT_SECONDARY, border: `1px solid ${addRowToGroup ? BLUE_BORDER : BORDER}` }}
+                        style={{ ...areaActionStyle(false), marginTop: '0.3rem', width: '100%', background: addRowToGroup ? BLUE_BG : WHITE, color: addRowToGroup ? BLUE : TEXT_SECONDARY, border: `1px solid ${addRowToGroup ? BLUE_BORDER : BORDER}` }}
                         onClick={() => addRowToGroup ? onCancelAddRow?.() : onAddRowToArea?.()}
                       >
                         {addRowToGroup ? `✕ ${t('step2.tool.cancelAddRow')}` : `＋ ${t('step2.tool.addRow')}`}
@@ -236,7 +236,7 @@ export default function ToolPanel({
                         <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
                           {t('step2.tool.panelsSelected', { n: selectedPanels.length, s: selectedPanels.length !== 1 ? 's' : '' })}
                         </div>
-                        <button onClick={togglePanelOrientation} style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
+                        <button onClick={togglePanelOrientation} style={{ width: '100%', padding: '0.5rem', background: WHITE, color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
                           {t('step2.tool.rotate90')}
                         </button>
                         <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.35rem' }}>
@@ -259,7 +259,7 @@ export default function ToolPanel({
                     <div>
                       <button
                         onClick={() => { setAddError(null); setPendingAddNextTo(p => !p) }}
-                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.4rem', background: pendingAddNextTo ? PRIMARY : 'white', color: pendingAddNextTo ? TEXT : TEXT_SECONDARY, border: `2px solid ${pendingAddNextTo ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
+                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.4rem', background: pendingAddNextTo ? PRIMARY : WHITE, color: pendingAddNextTo ? TEXT : TEXT_SECONDARY, border: `2px solid ${pendingAddNextTo ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem' }}
                       >{t('step2.tool.addNext')}</button>
                       {pendingAddNextTo && (
                         <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center', marginBottom: '0.4rem' }}>{t('step2.tool.addNextHint')}</div>
@@ -267,7 +267,7 @@ export default function ToolPanel({
                       {addError && (
                         <div style={{ fontSize: '0.72rem', color: ERROR_DARK, background: ERROR_BG, border: `1px solid ${ERROR}`, borderRadius: '5px', padding: '0.3rem 0.5rem', marginBottom: '0.4rem', textAlign: 'center' }}>{addError}</div>
                       )}
-                      <button onClick={() => { setAddError(null); addManualPanel() }} style={{ width: '100%', padding: '0.5rem', background: 'white', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}>
+                      <button onClick={() => { setAddError(null); addManualPanel() }} style={{ width: '100%', padding: '0.5rem', background: WHITE, color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}>
                         {t('step2.tool.addStandalone')}
                       </button>
                     </div>
@@ -287,9 +287,9 @@ export default function ToolPanel({
       {/* View controls — always visible */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
-          <button onClick={() => setShowHGridlines(!showHGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showHGridlines ? '#F3F9E6' : 'white', color: showHGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showHGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.hGrid')}</button>
-          <button onClick={() => setShowVGridlines(!showVGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? '#F3F9E6' : 'white', color: showVGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showVGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.vGrid')}</button>
-          <button onClick={() => setSnapToGridlines(!snapToGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? '#e8f0ff' : 'white', color: snapToGridlines ? '#1a4fd6' : '#aaa', border: `1px solid ${snapToGridlines ? '#7baaf7' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.snap')}</button>
+          <button onClick={() => setShowHGridlines(!showHGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showHGridlines ? BLUE_BG : WHITE, color: showHGridlines ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${showHGridlines ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.hGrid')}</button>
+          <button onClick={() => setShowVGridlines(!showVGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? BLUE_BG : WHITE, color: showVGridlines ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${showVGridlines ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.vGrid')}</button>
+          <button onClick={() => setSnapToGridlines(!snapToGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? BLUE_BG : WHITE, color: snapToGridlines ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${snapToGridlines ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.snap')}</button>
         </div>
         {/* Calibration tools — ruler + roof axis on their own row */}
         <div style={{ display: 'flex', gap: '0.3rem' }}>
@@ -303,7 +303,7 @@ export default function ToolPanel({
               }
             }}
             title={t('step2.tool.measureTitle')}
-            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'measure' ? BLUE_BG : 'white', color: activeTool === 'measure' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'measure' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'measure' ? BLUE_BG : WHITE, color: activeTool === 'measure' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'measure' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
           >📏</button>
           <button
             onClick={() => {
@@ -314,7 +314,7 @@ export default function ToolPanel({
               }
             }}
             title={t('step2.tool.roofAxisTitle')}
-            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'roofAxis' ? BLUE_BG : 'white', color: activeTool === 'roofAxis' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'roofAxis' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'roofAxis' ? BLUE_BG : WHITE, color: activeTool === 'roofAxis' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'roofAxis' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
           >🧭</button>
         </div>
         {activeTool === 'measure' && (
