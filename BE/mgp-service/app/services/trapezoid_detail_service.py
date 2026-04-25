@@ -729,18 +729,26 @@ def _compute_block_punches(
                     punch_pos = _r(punch_pos - profile_step_cm)
             check_lo, check_hi = pos - 0.1, block_end + 0.1
         else:
-            # Inner block: use actual leg position from inner_legs data
-            # Inner blocks (bi=1 to len(blocks)-2) map to inner_legs (0 to len(inner_legs)-1)
-            leg_idx = bi - 1
-            if leg_idx < 0 or leg_idx >= len(inner_legs):
-                # Safeguard: use center if leg data missing (shouldn't happen)
+            # Inner block: find the inner leg whose center falls within this
+            # block's base-coord span. We can't use leg_idx = bi - 1 because
+            # overlap removal may have dropped some inner blocks, breaking the
+            # 1:1 mapping (e.g. 2 inner legs but only 1 inner block fits).
+            target_leg = None
+            for leg in inner_legs:
+                leg_center_slope = (leg['positionCm'] + leg['positionEndCm']) / 2
+                leg_center_base = _slope_to_base(leg_center_slope, profile_half, cos_a)
+                if pos <= leg_center_base <= block_end:
+                    target_leg = leg
+                    break
+
+            if target_leg is None:
+                # Block doesn't cover any inner leg — fall back to center.
                 punch_pos = (pos + block_end) / 2
                 check_lo, check_hi = pos - 0.1, block_end + 0.1
             else:
                 # Get leg position from inner_legs (in SLOPE coords)
-                leg = inner_legs[leg_idx]
-                leg_left_slope = leg['positionCm']
-                leg_right_slope = leg['positionEndCm']
+                leg_left_slope = target_leg['positionCm']
+                leg_right_slope = target_leg['positionEndCm']
 
                 # Convert leg positions to BASE coords (punch-aware projection)
                 leg_left_base = _r(_slope_to_base(leg_left_slope, profile_half, cos_a))
