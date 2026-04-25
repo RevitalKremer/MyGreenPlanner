@@ -370,10 +370,13 @@ export function useProjectState() {
     const isCanvas = layout.uploadedImageData?.isWhiteboard
     setRoofSource(isCanvas ? 'canvas' : 'image')
 
-    // Canvas-mode reference line is always auto (full bottom edge). Override any
-    // legacy/saved value left over from older Step 1 versions, and reset length
-    // to the 1:1 default (cm == px) so the ratio doesn't reuse a stale value.
-    if (isCanvas && layout.uploadedImageData) {
+    // Preserve the saved referenceLine / referenceLineLengthCm — even for
+    // canvas projects. Overriding them on load corrupts old projects whose
+    // panels were placed at a different cm/px ratio. Only fresh canvas
+    // creation (handleCreateProject / handleWhiteboardStart / source-toggle)
+    // applies the new bottom-line + 6000 cm default.
+    if (isCanvas && layout.uploadedImageData && !layout.referenceLine) {
+      // No saved line at all — apply defaults so the user has something to work with.
       applyWhiteboardDefaults(layout.uploadedImageData)
     }
 
