@@ -442,12 +442,15 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
+        // Resize "regenerates" the layout — drop any locked preferredOrientations
+        // so the new bbox can grow new rows / fall back to greedy fill.
+        const resized = { ...area, preferredOrientations: undefined }
+        const panels = computePolygonPanels(resized, cmPerPixel, panelSpec, panelGapCm, null)
         if (!panels.length) return prev
-        const pivot = area.vertices[area.pivotIdx ?? 0]
+        const pivot = resized.vertices[resized.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
         if (!fitted) return prev
-        return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
+        return prev.map((a, i) => i === areaIdx ? { ...resized, vertices: fitted } : a)
       })
       return
     }

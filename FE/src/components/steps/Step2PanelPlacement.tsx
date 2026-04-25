@@ -166,20 +166,67 @@ export default function Step2PanelPlacement({
 
   const handleRotateArea90 = useCallback((areaIdx) => {
     if (areaIdx == null || areaIdx >= rectAreas.length) return
-    setRectAreas(prev => prev.map((area, i) => {
-      if (i !== areaIdx) return area
-      const isVertical = !(area.areaVertical ?? false)
-      // Rotate all 4 vertices 90° around centroid
-      const cx = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
-      const cy = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
-      const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
-      const newVertices = area.vertices.map(v => ({
-        x: cx + (v.x - cx) * cosR - (v.y - cy) * sinR,
-        y: cy + (v.x - cx) * sinR + (v.y - cy) * cosR,
-      }))
-      return { ...area, vertices: newVertices, areaVertical: isVertical, rotation: 0 }
+    const area = rectAreas[areaIdx]
+    if (!area?.vertices?.length) return
+
+    // Rotate the polygon 90° around V0 (the pivot/start corner) so V0 stays
+    // put. Keep `rotation` as-is so the effective rotation
+    // `(areaVertical?90:0)+rotation` follows the vertex change in lockstep —
+    // toggling areaVertical contributes the +90°.
+    const pivot = area.vertices[area.pivotIdx ?? 0]
+    const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
+    const newVertices = area.vertices.map(v => ({
+      x: pivot.x + (v.x - pivot.x) * cosR - (v.y - pivot.y) * sinR,
+      y: pivot.y + (v.x - pivot.x) * sinR + (v.y - pivot.y) * cosR,
     }))
-  }, [rectAreas.length, setRectAreas])
+    const updatedArea = { ...area, vertices: newVertices, areaVertical: !(area.areaVertical ?? false) }
+
+    setRectAreas(prev => prev.map((a, i) => i === areaIdx ? updatedArea : a))
+
+    // Re-lay out panels inside the rotated polygon so they follow the area's
+    // new orientation. CRITICAL: capture existing panel orientations first
+    // and pass them as preferredOrientations — rotation must NOT silently
+    // flip lines V↔H. Greedy fill in the new bbox can pick differently from
+    // before, so we anchor the choice to what the user already had.
+    if (cmPerPixel && panelSpec) {
+      // Collect existing line orientations in row-index order. Row 0 is
+      // already the V0 side (computePolygonPanels derives yDir/xDir from V0),
+      // so the resulting list maps directly onto preferredOrientations
+      // indexes used after the rotation.
+      const existingPanels = panels.filter(p => (p.area ?? p.row) === areaIdx && !p.isEmpty)
+      const lineMap = new Map()
+      existingPanels.forEach(p => {
+        const r = p.row ?? 0
+        if (!lineMap.has(r)) lineMap.set(r, p.heightCm > p.widthCm ? PANEL_V : PANEL_H)
+      })
+      const inferredOrients = [...lineMap.entries()].sort(([a], [b]) => a - b).map(([, o]) => o)
+      const orientationsToUse = area.preferredOrientations ?? (inferredOrients.length ? inferredOrients : null)
+
+      // Persist inferred orientations on the area so subsequent rotations
+      // also see them (otherwise inference re-runs against potentially
+      // already-changed panels).
+      if (!area.preferredOrientations && inferredOrients.length) {
+        setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, preferredOrientations: inferredOrients } : a))
+      }
+
+      const newPanelLayout = computePolygonPanels(updatedArea, cmPerPixel, panelSpec, appDefaults?.panelGapCm, orientationsToUse)
+      if (newPanelLayout.length) {
+        clearDeletedPanelsForArea?.(areaIdx)
+        const otherPanels = panels.filter(p => (p.area ?? p.row) !== areaIdx)
+        const maxId = Math.max(0, ...panels.map(p => p.id))
+        const regenerated = newPanelLayout.map((p, i) => ({
+          ...p,
+          id: maxId + 1 + i,
+          area: areaIdx,
+          areaGroupKey: areaIdx,
+          panelRowIdx: area.rowIndex ?? 0,
+        }))
+        const newPanels = [...otherPanels, ...regenerated]
+        setPanels(newPanels)
+        rebuildPanelGrid?.(newPanels)
+      }
+    }
+  }, [rectAreas, setRectAreas, cmPerPixel, panelSpec, appDefaults, panels, setPanels, rebuildPanelGrid, clearDeletedPanelsForArea])
 
   // Keep selectedAreaIdxRef in sync whenever selectedPanels changes (panels are still fresh here)
   useEffect(() => {
@@ -385,7 +432,11 @@ export default function Step2PanelPlacement({
     setRectAreas(prev => prev.map((a, i) => i === areaKey ? { ...a, preferredOrientations: currentOrients } : a))
     const updatedArea = { ...area, preferredOrientations: currentOrients }
 
-    // Regenerate panels for this area with new orientations
+    // Regenerate panels for this area with new orientations. preferredOrientations
+    // is a hard cap on the row count — toggling orientation never adds rows.
+    // Each row gets at least one panel (forced via computePolygonPanels), so
+    // the line count always matches currentOrients even when an H panel
+    // overflows the bbox.
     const newComputed = computePolygonPanels(updatedArea, cmPerPixel, panelSpec, appDefaults?.panelGapCm, currentOrients)
     if (!newComputed.length) return
 
