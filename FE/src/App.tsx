@@ -722,6 +722,8 @@ function App() {
             roofType={s.currentProject?.roofSpec?.type}
             rowMounting={s.rowMounting}
             setRowMounting={s.setRowMounting}
+            roofAxis={s.roofAxis}
+            setRoofAxis={s.setRoofAxis}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.

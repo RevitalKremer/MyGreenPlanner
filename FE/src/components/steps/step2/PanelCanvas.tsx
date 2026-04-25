@@ -37,6 +37,8 @@ export default function PanelCanvas({
   recordPanelDeletion,
   panelGapCm,
   drawVertical = false,
+  roofAxis = null,
+  setRoofAxis,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -53,6 +55,9 @@ export default function PanelCanvas({
   const [freeDragState, setFreeDragState]   = useState(null) // {areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist}
   const [moveDragState, setMoveDragState]   = useState(null) // {areaIdx, startX, startY, origVertices}
   const [snapGuideState, setSnapGuideState] = useState(null) // {pivotY, minX, maxX, snapping}
+  // While the user is drawing/editing the roof axis, the WIP line lives here.
+  // null = inactive. {start, end, dragging: 'new'|'p1'|'p2'} = active.
+  const [roofAxisDraft, setRoofAxisDraft] = useState(null)
 
   const willDeselectRef = useRef(false)
   const wheelContainerRef = useRef(null)
@@ -133,6 +138,7 @@ export default function PanelCanvas({
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
+      case 'roofAxis': return 'crosshair'
       case 'area': return 'crosshair'
       default: return 'grab'
     }
@@ -177,6 +183,28 @@ export default function PanelCanvas({
       } else if (distanceMeasurement.p2 === null) {
         setDistanceMeasurement({ ...distanceMeasurement, p2: [x, y] })
       }
+      return
+    }
+
+    // Roof axis tool: drag to create / re-create. If an axis exists and the
+    // user clicks near one of its endpoints, drag that endpoint instead.
+    if (activeTool === 'roofAxis') {
+      e.preventDefault()
+      const HANDLE_HIT_PX = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+      if (roofAxis?.start && roofAxis?.end) {
+        const d1 = Math.hypot(x - roofAxis.start.x, y - roofAxis.start.y)
+        const d2 = Math.hypot(x - roofAxis.end.x,   y - roofAxis.end.y)
+        if (d1 < HANDLE_HIT_PX && d1 <= d2) {
+          setRoofAxisDraft({ start: { x, y }, end: { ...roofAxis.end }, dragging: 'p1' })
+          return
+        }
+        if (d2 < HANDLE_HIT_PX) {
+          setRoofAxisDraft({ start: { ...roofAxis.start }, end: { x, y }, dragging: 'p2' })
+          return
+        }
+      }
+      // Fresh draw: from the click point.
+      setRoofAxisDraft({ start: { x, y }, end: { x, y }, dragging: 'new' })
       return
     }
 
@@ -266,6 +294,15 @@ export default function PanelCanvas({
       return
     }
 
+    if (roofAxisDraft) {
+      if (roofAxisDraft.dragging === 'p1') {
+        setRoofAxisDraft({ ...roofAxisDraft, start: { x, y } })
+      } else {
+        setRoofAxisDraft({ ...roofAxisDraft, end: { x, y } })
+      }
+      return
+    }
+
     if (moveDragState) {
       const { areaIdx, startX, startY, origVertices } = moveDragState
       const dx = x - startX, dy = y - startY
@@ -314,13 +351,30 @@ export default function PanelCanvas({
       if (deltaAngleDeg > 180) deltaAngleDeg -= 360
       else if (deltaAngleDeg < -180) deltaAngleDeg += 360
 
-      // Clamp to ±80°; snap to 0° only when Cmd/Ctrl held and within 5°
+      // Clamp to ±80°; snap to roof axis (or screen-0° if no axis is set)
+      // when Cmd/Ctrl is held and the rotation is within 5° of the target.
       const rawRotation = startRotation + deltaAngleDeg
       const clamped = Math.max(-80, Math.min(80, rawRotation))
       deltaAngleDeg = clamped - startRotation
-      const absRot = Math.abs(clamped)
-      const snapping = absRot < 5 && (e.metaKey || e.ctrlKey)
-      if (snapping) deltaAngleDeg = -startRotation
+      // Roof axis target is the angle where the area's "0° reference line"
+      // aligns with the user-defined roof. The 0° line is parallel to the
+      // panels' width for horizontal areas, and along the panels' height
+      // (perpendicular to lines) for vertical areas. Since panels' height
+      // direction in screen ≡ panels' width rotated 90° via areaVertical,
+      // both flavours snap when rotation === roofAngleDeg (lines bidirectional,
+      // so we normalise into ±90).
+      let snapTarget = 0
+      if (roofAxis?.start && roofAxis?.end) {
+        const roofAngleDeg = Math.atan2(
+          roofAxis.end.y - roofAxis.start.y,
+          roofAxis.end.x - roofAxis.start.x,
+        ) * 180 / Math.PI
+        snapTarget = roofAngleDeg
+        while (snapTarget > 90) snapTarget -= 180
+        while (snapTarget < -90) snapTarget += 180
+      }
+      const snapping = Math.abs(clamped - snapTarget) < 5 && (e.metaKey || e.ctrlKey)
+      if (snapping) deltaAngleDeg = snapTarget - startRotation
 
       // Rotate every vertex around the pivot
       const rad = deltaAngleDeg * Math.PI / 180
@@ -332,9 +386,23 @@ export default function PanelCanvas({
       const actualRotation = startRotation + deltaAngleDeg
       setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
 
-      if (absRot < 10) {
+      if (Math.abs(clamped - snapTarget) < 10) {
         const xs = newVertices.map(v => v.x)
-        setSnapGuideState({ pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), snapping })
+        const reach = Math.max(...newVertices.map(v => Math.hypot(v.x - pivotX, v.y - pivotY))) * 1.05
+        // Pre-compute the inward-pointing axis sign so the snap guide
+        // always emerges from V0 toward the polygon's body, regardless of
+        // which way the roof axis happens to point in screen.
+        const cxAvg = newVertices.reduce((s, v) => s + v.x, 0) / newVertices.length
+        const cyAvg = newVertices.reduce((s, v) => s + v.y, 0) / newVertices.length
+        let inwardSign = 1
+        if (roofAxis?.start && roofAxis?.end) {
+          const rdx = roofAxis.end.x - roofAxis.start.x
+          const rdy = roofAxis.end.y - roofAxis.start.y
+          const rlen = Math.hypot(rdx, rdy) || 1
+          const rax = rdx / rlen, ray = rdy / rlen
+          inwardSign = (rax * (cxAvg - pivotX) + ray * (cyAvg - pivotY)) >= 0 ? 1 : -1
+        }
+        setSnapGuideState({ pivotX, pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), reach, snapping, inwardSign })
       } else {
         setSnapGuideState(null)
       }
@@ -419,6 +487,18 @@ export default function PanelCanvas({
   }
 
   const handleSVGMouseUp = () => {
+    if (roofAxisDraft) {
+      const len = Math.hypot(
+        roofAxisDraft.end.x - roofAxisDraft.start.x,
+        roofAxisDraft.end.y - roofAxisDraft.start.y,
+      )
+      // Discard tiny drags (a click without movement).
+      if (len > 8) {
+        setRoofAxis?.({ start: roofAxisDraft.start, end: roofAxisDraft.end })
+      }
+      setRoofAxisDraft(null)
+      return
+    }
     if (moveDragState) {
       const { areaIdx } = moveDragState
       setMoveDragState(null)
@@ -551,7 +631,7 @@ export default function PanelCanvas({
   }
 
   const handleMouseLeave = () => {
-    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null); setDrawRectStart(null); setDrawRectEnd(null); setYLockDragState(null); setFreeDragState(null); setMoveDragState(null); setSnapGuideState(null); setGroupRowsRect(null)
+    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null); setDrawRectStart(null); setDrawRectEnd(null); setYLockDragState(null); setFreeDragState(null); setMoveDragState(null); setSnapGuideState(null); setGroupRowsRect(null); setRoofAxisDraft(null)
   }
 
   // Window-level mouseup safety net: if the user releases outside the SVG
@@ -817,24 +897,42 @@ export default function PanelCanvas({
               )
               })
             })()}
-            {/* 0° snap guide (y-lock drag) */}
+            {/* 0° snap guide (y-lock drag). Anchored at V0 (the rotation
+                pivot), drawn one-sided along the roof axis when set;
+                otherwise screen-horizontal across the polygon. Direction +
+                start match the per-area preview line in the roof-axis tool. */}
             {snapGuideState && (() => {
-              const { pivotY, minX, maxX, snapping } = snapGuideState
+              const { pivotX, pivotY, minX, maxX, reach, snapping, inwardSign = 1 } = snapGuideState
               const guideColor = snapping ? SUCCESS : WARNING
               const guideW = lineW * 1.5
               const gd = `${lineW * 8} ${lineW * 4}`
               const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+              let p1x, p1y, p2x, p2y, dirX = 1, dirY = 0
+              if (roofAxis?.start && roofAxis?.end) {
+                const dx = roofAxis.end.x - roofAxis.start.x
+                const dy = roofAxis.end.y - roofAxis.start.y
+                const len = Math.hypot(dx, dy) || 1
+                dirX = (dx / len) * inwardSign
+                dirY = (dy / len) * inwardSign
+                const r = reach ?? Math.max(maxX - minX, 1) / 2
+                p1x = pivotX; p1y = pivotY
+                p2x = pivotX + dirX * r; p2y = pivotY + dirY * r
+              } else {
+                p1x = minX; p1y = pivotY
+                p2x = maxX; p2y = pivotY
+              }
               return (
                 <g style={{ pointerEvents: 'none' }}>
                   <line
-                    x1={minX} y1={pivotY} x2={maxX} y2={pivotY}
+                    x1={p1x} y1={p1y} x2={p2x} y2={p2y}
                     stroke={guideColor} strokeWidth={guideW}
                     strokeDasharray={snapping ? undefined : gd}
                     opacity={snapping ? 1 : 0.75}
                   />
                   <text
-                    x={maxX + lineW * 4} y={pivotY}
+                    x={p2x + dirX * lineW * 4} y={p2y + dirY * lineW * 4}
                     dominantBaseline="middle"
+                    textAnchor={dirX >= 0 ? 'start' : 'end'}
                     fill={guideColor}
                     fontSize={labelSize}
                     fontWeight="700"
@@ -1041,6 +1139,84 @@ let fill, borderColor, ibw
                 <rect x={rx} y={ry} width={rw} height={rh}
                   fill={CANVAS_SEL_FILL} stroke={CANVAS_SEL_STROKE} strokeWidth="1.5" strokeDasharray="6,3"
                   style={{ pointerEvents: 'none' }} />
+              )
+            })()}
+
+            {/* Roof axis (Set-roof-axis tool). Visible only while the tool
+                is active — either showing the committed axis with draggable
+                handles, or the WIP draft. While drafting, also project an
+                orange line through every area's centroid at the new angle so
+                the user previews how the 0° reference will affect them. */}
+            {activeTool === 'roofAxis' && (() => {
+              const axis = roofAxisDraft ?? roofAxis
+              if (!axis?.start || !axis?.end) return null
+              const dx = axis.end.x - axis.start.x
+              const dy = axis.end.y - axis.start.y
+              const len = Math.hypot(dx, dy) || 1
+              const ax = dx / len, ay = dy / len
+              const guideW = lineW * 1.5
+              const gd = `${lineW * 8} ${lineW * 4}`
+              const handleR = Math.max(6, (imageRef?.naturalWidth ?? 1000) * 0.008)
+              const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+              // Roof axis angle in screen coords, normalised to (−90°, 90°].
+              let axisDeg = Math.atan2(dy, dx) * 180 / Math.PI
+              while (axisDeg > 90) axisDeg -= 180
+              while (axisDeg <= -90) axisDeg += 180
+              const axisLabel = `${axisDeg.toFixed(1)}°`
+              return (
+                <g style={{ pointerEvents: 'none' }}>
+                  {/* Per-area preview lines anchored at V0 (start corner),
+                      drawn along the roof axis pointing INTO the area body.
+                      Same direction + start as the Y-lock 0° snap guide. */}
+                  {rectAreas.map((area, i) => {
+                    if (!area.vertices?.length) return null
+                    const v0 = area.vertices[area.pivotIdx ?? 0]
+                    const cxAvg = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+                    const cyAvg = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+                    // Flip the roof axis sign so the drawn line points
+                    // toward the polygon centroid (inward from V0).
+                    const sign = (ax * (cxAvg - v0.x) + ay * (cyAvg - v0.y)) >= 0 ? 1 : -1
+                    const dirX = ax * sign, dirY = ay * sign
+                    const reach = Math.max(...area.vertices.map(v => Math.hypot(v.x - v0.x, v.y - v0.y))) * 1.05
+                    const x2 = v0.x + dirX * reach, y2 = v0.y + dirY * reach
+                    return (
+                      <g key={`roofaxis-area-${i}`}>
+                        <line
+                          x1={v0.x} y1={v0.y} x2={x2} y2={y2}
+                          stroke={WARNING} strokeWidth={guideW}
+                          strokeDasharray={gd}
+                          opacity={0.75}
+                        />
+                        <text
+                          x={x2 + dirX * lineW * 4} y={y2 + dirY * lineW * 4}
+                          fill={WARNING} fontSize={labelSize} fontWeight="700"
+                          dominantBaseline="middle"
+                          textAnchor={dirX >= 0 ? 'start' : 'end'}
+                        >0°</text>
+                      </g>
+                    )
+                  })}
+                  {/* The user-drawn roof axis: same look as the area lines,
+                      label = absolute angle of the drawn line. */}
+                  <line
+                    x1={axis.start.x} y1={axis.start.y}
+                    x2={axis.end.x}   y2={axis.end.y}
+                    stroke={WARNING} strokeWidth={guideW}
+                    strokeDasharray={gd}
+                    opacity={0.85}
+                  />
+                  <circle cx={axis.start.x} cy={axis.start.y} r={handleR}
+                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
+                  <circle cx={axis.end.x} cy={axis.end.y} r={handleR}
+                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
+                  <text
+                    x={axis.end.x + ax * lineW * 4}
+                    y={axis.end.y + ay * lineW * 4}
+                    fill={WARNING} fontSize={labelSize} fontWeight="700"
+                    dominantBaseline="middle"
+                    textAnchor={ax >= 0 ? 'start' : 'end'}
+                  >{axisLabel}</text>
+                </g>
               )
             })()}
 

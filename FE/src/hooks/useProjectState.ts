@@ -33,6 +33,8 @@ export function useProjectState() {
   const setRoofPolygon = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofPolygon: v } })
   const referenceLine = pState.layout.referenceLine
   const setReferenceLine = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLine: v } })
+  const roofAxis = pState.layout.roofAxis ?? null
+  const setRoofAxis = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofAxis: v } })
   const referenceLineLengthCm = pState.layout.referenceLineLengthCm ?? ''
   const setReferenceLineLengthCm = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLineLengthCm: v } })
   const baseline = pState.layout.baseline
@@ -326,6 +328,7 @@ export function useProjectState() {
         referenceLineLengthCm: layout.referenceLineLengthCm != null ? String(layout.referenceLineLengthCm) : null,
         pixelToCmRatio: layout.pixelToCmRatio ?? null,
         baseline: layout.baseline ?? null,
+        roofAxis: layout.roofAxis ?? null,
         panels: layout.panels ? layout.panels.map(p => {
           const areaIdx = p.area ?? p.row ?? 0
           const ra = enrichedRectAreas[areaIdx]
@@ -1009,6 +1012,7 @@ export function useProjectState() {
     panelType, setPanelType,
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,
+    roofAxis, setRoofAxis,
     panelFrontHeight, setPanelFrontHeight,
     panelAngle, setPanelAngle,
     isDrawingLine, setIsDrawingLine,

@@ -131,6 +131,10 @@ class ProjectLayout(BaseModel):
     referenceLine: Optional[LineSegment] = None
     referenceLineLengthCm: Optional[float] = None
     pixelToCmRatio: Optional[float] = None
+    # Roof axis: a user-drawn line on the photo defining the roof's
+    # "horizontal" reference. Y-lock 0° snap aligns to this. Null = use
+    # screen-horizontal as 0°.
+    roofAxis: Optional[LineSegment] = None
 
     # Canvas areas and panels (synced from data — rendering only)
     rectAreas: list[RectAreaLayout] = Field(default_factory=list)

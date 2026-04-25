@@ -290,6 +290,9 @@ export default function ToolPanel({
           <button onClick={() => setShowHGridlines(!showHGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showHGridlines ? '#F3F9E6' : 'white', color: showHGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showHGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.hGrid')}</button>
           <button onClick={() => setShowVGridlines(!showVGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? '#F3F9E6' : 'white', color: showVGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showVGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.vGrid')}</button>
           <button onClick={() => setSnapToGridlines(!snapToGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? '#e8f0ff' : 'white', color: snapToGridlines ? '#1a4fd6' : '#aaa', border: `1px solid ${snapToGridlines ? '#7baaf7' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.snap')}</button>
+        </div>
+        {/* Calibration tools — ruler + roof axis on their own row */}
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
           <button
             onClick={() => {
               if (activeTool === 'measure') {
@@ -299,12 +302,29 @@ export default function ToolPanel({
                 handleToolChange('measure')
               }
             }}
+            title={t('step2.tool.measureTitle')}
             style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'measure' ? BLUE_BG : 'white', color: activeTool === 'measure' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'measure' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
           >📏</button>
+          <button
+            onClick={() => {
+              if (activeTool === 'roofAxis') {
+                handleToolChange((editModeProp ?? 'area') === 'area' ? 'area' : 'move')
+              } else {
+                handleToolChange('roofAxis')
+              }
+            }}
+            title={t('step2.tool.roofAxisTitle')}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'roofAxis' ? BLUE_BG : 'white', color: activeTool === 'roofAxis' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'roofAxis' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+          >🧭</button>
         </div>
         {activeTool === 'measure' && (
           <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center' }}>
             {t('step2.tool.measureHint')}
+          </div>
+        )}
+        {activeTool === 'roofAxis' && (
+          <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center' }}>
+            {t('step2.tool.roofAxisHint')}
           </div>
         )}
         {distanceMeasurement?.p2 && (

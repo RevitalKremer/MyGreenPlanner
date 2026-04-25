@@ -61,6 +61,8 @@ export default function Step2PanelPlacement({
   roofType,
   rowMounting,
   setRowMounting,
+  roofAxis = null,
+  setRoofAxis,
   areas = null,
   setAreas = null,
 }) {
@@ -348,10 +350,11 @@ export default function Step2PanelPlacement({
     const keepSelection = (tool === 'move' || tool === 'rotate') &&
                           (activeTool === 'move' || activeTool === 'rotate')
     setActiveTool(tool)
-    // Update editMode only for tools that own a tab. The ruler ('measure')
-    // is an overlay — it must not flip the Area/Panels tab.
+    // Update editMode only for tools that own a tab. Overlay tools like the
+    // ruler ('measure') and the roof-axis tool ('roofAxis') must not flip
+    // the Area/Panels tab.
     if (tool === 'area') setEditMode('area')
-    else if (tool !== 'measure') setEditMode('panel')
+    else if (tool !== 'measure' && tool !== 'roofAxis') setEditMode('panel')
     if (!keepSelection) setSelectedPanels([])
     setPendingAddNextTo(false)
     setAddError(null)
@@ -686,6 +689,8 @@ export default function Step2PanelPlacement({
             recordPanelDeletion={recordPanelDeletion}
             panelGapCm={appDefaults?.panelGapCm}
             drawVertical={drawVertical}
+            roofAxis={roofAxis}
+            setRoofAxis={setRoofAxis}
           />
         ) : (
           <div className="step-content">
