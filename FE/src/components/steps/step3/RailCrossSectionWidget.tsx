@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, RAIL_STROKE_HOVER, DANGER, CHART_BG, CHART_GRID, CHART_BG_ALT } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, BORDER, BORDER_MID, RAIL_STROKE, RAIL_STROKE_HOVER, CHART_BG, CHART_GRID, CHART_BG_ALT } from '../../../styles/colors'
 const BAR_W       = 18
 const HANDLE_SIZE = 12
 
@@ -19,7 +19,6 @@ export default function RailCrossSectionWidget({
   const svgRef   = useRef(null)
   const dragging = useRef(null)
   const [hoverHandle, setHoverHandle] = useState(null)   // { lineIdx, railIdx }
-  const [hoverY,      setHoverY]      = useState(null)   // { svgY, lineIdx }
 
    // Total depth of all lines + gaps
   const totalDepthCm = lines.reduce((s, l, i) => s + l.depthCm + (i > 0 ? lineGapCm : 0), 0)
@@ -38,18 +37,6 @@ export default function RailCrossSectionWidget({
   const toY  = (cm) => PAD_V + (1 - cm / totalDepthCm) * barHeightPx
   // svg y → cm within entire bar
   const toCm = (y)  => snap(clamp((1 - (y - PAD_V) / barHeightPx) * totalDepthCm, 0, totalDepthCm))
-
-  // Given a global bar cm, return { lineIdx, localCm } or null if in a gap
-  const globalToLocal = (globalCm) => {
-    for (let i = 0; i < lines.length; i++) {
-      const start = lineStartsCm[i]
-      const end   = start + lines[i].depthCm
-      if (globalCm >= start && globalCm <= end) {
-        return { lineIdx: i, localCm: globalCm - start }
-      }
-    }
-    return null   // in a gap
-  }
 
   // ─── Drag ────────────────────────────────────────────────────────────────
 
@@ -84,44 +71,6 @@ export default function RailCrossSectionWidget({
     window.addEventListener('mouseup', onUp)
   }, [lines, keepSymmetry, totalDepthCm, barHeightPx, svgH, onLineChange])
 
-  // ─── Add / Remove ────────────────────────────────────────────────────────
-
-  const onBarClick = useCallback((e) => {
-    if (dragging.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const svgY = ((e.clientY - rect.top) / rect.height) * svgH
-    const globalCm = toCm(svgY)
-    const hit = globalToLocal(globalCm)
-    if (!hit) return   // clicked in a gap
-    const { lineIdx, localCm } = hit
-    const existing = lines[lineIdx].rails
-    if (existing.some(r => Math.abs(r - localCm) < 5)) return
-    const newRails = [...existing, localCm].sort((a, b) => a - b)
-    onLineChange(lineIdx, newRails)
-    setHoverY(null)
-  }, [lines, totalDepthCm, barHeightPx, svgH, onLineChange])
-
-  const onBarMouseMove = useCallback((e) => {
-    if (dragging.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const svgY = ((e.clientY - rect.top) / rect.height) * svgH
-    const globalCm = toCm(svgY)
-    const hit = globalToLocal(globalCm)
-    if (!hit) { setHoverY(null); return }
-    const { lineIdx, localCm } = hit
-    const tooClose = lines[lineIdx].rails.some(r => Math.abs(r - localCm) < 5)
-    setHoverY(tooClose ? null : { svgY, lineIdx })
-  }, [lines, totalDepthCm, barHeightPx, svgH])
-
-  const removeRail = useCallback((lineIdx, railIdx, e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (lines[lineIdx].rails.length <= 2) return
-    const newRails = lines[lineIdx].rails.filter((_, i) => i !== railIdx)
-    onLineChange(lineIdx, newRails)
-    setHoverHandle(null)
-  }, [lines, onLineChange])
-
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (!lines.length || totalDepthCm === 0) return null
@@ -131,10 +80,7 @@ export default function RailCrossSectionWidget({
       <svg
         ref={svgRef}
         width={svgW} height={svgH}
-        style={{ display: 'block', cursor: 'crosshair' }}
-        onClick={onBarClick}
-        onMouseMove={onBarMouseMove}
-        onMouseLeave={() => setHoverY(null)}
+        style={{ display: 'block' }}
       >
         {/* Panel sections */}
         {lines.map((line, li) => {
@@ -166,22 +112,12 @@ export default function RailCrossSectionWidget({
         <text x={barX - 4} y={PAD_V + 4}              textAnchor="end" fontSize={8} fill={TEXT_VERY_LIGHT}>{totalDepthCm}</text>
         <text x={barX - 4} y={PAD_V + barHeightPx + 1} textAnchor="end" fontSize={8} fill={TEXT_VERY_LIGHT}>0</text>
 
-        {/* Add ghost */}
-        {hoverY != null && (
-          <g style={{ pointerEvents: 'none', opacity: 0.4 }}>
-            <line x1={barX - 2} y1={hoverY.svgY} x2={barX + BAR_W + 2} y2={hoverY.svgY}
-              stroke={RAIL_STROKE} strokeWidth={1.5} strokeDasharray="3 2" />
-            <text x={barX + BAR_W + 5} y={hoverY.svgY + 4} fontSize={10} fill={RAIL_STROKE} fontWeight="700">+</text>
-          </g>
-        )}
-
         {/* Rails per line */}
         {lines.map((line, li) =>
           line.rails.map((localOffsetCm, ri) => {
             const globalCm  = lineStartsCm[li] + localOffsetCm
             const y         = toY(globalCm)
             const isHover   = hoverHandle?.lineIdx === li && hoverHandle?.railIdx === ri
-            const canRemove = line.rails.length > 2
 
             return (
               <g key={`${li}-${ri}`}>
@@ -193,32 +129,18 @@ export default function RailCrossSectionWidget({
                 <text x={barX - 4} y={y + 4} textAnchor="end" fontSize={8} fill={TEXT_SECONDARY}>
                   {localOffsetCm.toFixed(1)}
                 </text>
-                <g
+                <rect
+                  x={barX + BAR_W / 2 - HANDLE_SIZE / 2}
+                  y={y - HANDLE_SIZE / 2}
+                  width={HANDLE_SIZE} height={HANDLE_SIZE}
+                  rx={2}
+                  fill={isHover ? RAIL_STROKE_HOVER : RAIL_STROKE}
+                  stroke="white" strokeWidth={1.5}
+                  style={{ cursor: 'ns-resize' }}
                   onMouseEnter={() => setHoverHandle({ lineIdx: li, railIdx: ri })}
                   onMouseLeave={() => setHoverHandle(null)}
-                >
-                  <rect
-                    x={barX + BAR_W / 2 - HANDLE_SIZE / 2}
-                    y={y - HANDLE_SIZE / 2}
-                    width={HANDLE_SIZE} height={HANDLE_SIZE}
-                    rx={2}
-                    fill={isHover ? RAIL_STROKE_HOVER : RAIL_STROKE}
-                    stroke="white" strokeWidth={1.5}
-                    style={{ cursor: 'ns-resize' }}
-                    onMouseDown={(e) => onMouseDownHandle(e, li, ri)}
-                  />
-                  {isHover && canRemove && (
-                    <g
-                      transform={`translate(${barX + BAR_W / 2 - HANDLE_SIZE / 2}, ${y - HANDLE_SIZE / 2})`}
-                      style={{ cursor: 'pointer' }}
-                      onClick={(e) => removeRail(li, ri, e)}
-                    >
-                      <rect x={0} y={0} width={HANDLE_SIZE} height={HANDLE_SIZE} rx={2}
-                        fill={DANGER} stroke="white" strokeWidth={1.5} />
-                      <text x={HANDLE_SIZE / 2} y={HANDLE_SIZE - 3} textAnchor="middle" fontSize={9} fill="white" fontWeight="700">✕</text>
-                    </g>
-                  )}
-                </g>
+                  onMouseDown={(e) => onMouseDownHandle(e, li, ri)}
+                />
               </g>
             )
           })
