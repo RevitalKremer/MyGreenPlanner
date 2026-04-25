@@ -3,7 +3,8 @@ import {
   PRIMARY, ERROR, BLACK, WARNING, SUCCESS,
   DRAW_COLOR,
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
-  PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE,
+  PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE, PANEL_FILL_HOVER_ROTATE,
+  BLUE,
   PANEL_BADGE_DEFAULT, PANEL_BADGE_SELECTED, PANEL_BADGE_SEL_FILL, PANEL_BADGE_SEL_CHV,
   PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
   TEXT_VERY_LIGHT,
@@ -39,6 +40,7 @@ export default function PanelCanvas({
   drawVertical = false,
   roofAxis = null,
   setRoofAxis,
+  togglePanelOrientation,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -249,24 +251,33 @@ export default function PanelCanvas({
       return
     }
 
-    if (activeTool === 'move' || activeTool === 'rotate') {
+    if (activeTool === 'rotate') {
+      // Click-to-act, mirroring delete: rotate the clicked panel 90° on
+      // mousedown. No selection state, no commit button.
+      if (clickedPanel) {
+        togglePanelOrientation?.([clickedPanel.id])
+        setSelectedPanels([])
+      } else startPan(e)
+      return
+    }
+
+    if (activeTool === 'move') {
       if (clickedPanel) {
         if (e.shiftKey) {
           setSelectedPanels(prev => prev.includes(clickedPanel.id) ? prev.filter(id => id !== clickedPanel.id) : [...prev, clickedPanel.id])
           return
         }
+        // Preserve multi-selection on click into the group so the upcoming
+        // drag moves all of them together.
         if (!selectedPanels.includes(clickedPanel.id)) {
           setSelectedPanels([clickedPanel.id])
         }
-        if (activeTool === 'move') {
-          const panelIds = selectedPanels.includes(clickedPanel.id) ? selectedPanels : [clickedPanel.id]
-          const originalPositions = {}
-          panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
-          setDragState({ panelIds, startX: x, startY: y, originalPositions })
-        }
+        const panelIds = selectedPanels.includes(clickedPanel.id) ? selectedPanels : [clickedPanel.id]
+        const originalPositions = {}
+        panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
+        setDragState({ panelIds, startX: x, startY: y, originalPositions })
       } else {
-        if (activeTool === 'move') setRectSelect({ startX: x, startY: y, endX: x, endY: y })
-        else startPan(e)
+        setRectSelect({ startX: x, startY: y, endX: x, endY: y })
       }
       return
     }
@@ -1013,11 +1024,12 @@ export default function PanelCanvas({
             {panels.filter(p => !p.isEmpty).map(panel => {
               const isSelected = selectedPanels.includes(panel.id)
               const hasSelection = selectedPanels.length > 0
-              const isHovered = activeTool === 'delete' && hoveredPanelId === panel.id
+              const isActionHover = (activeTool === 'delete' || activeTool === 'rotate') && hoveredPanelId === panel.id
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
               const trapId = panel.trapezoidId || 'A1'
-let fill, borderColor, ibw
-              if (isHovered)       { fill = PANEL_FILL_HOVER_DELETE; borderColor = ERROR;      ibw = panel.width * 0.012 }
+              let fill, borderColor, ibw
+              if (isActionHover && activeTool === 'delete') { fill = PANEL_FILL_HOVER_DELETE; borderColor = ERROR; ibw = panel.width * 0.012 }
+              else if (isActionHover && activeTool === 'rotate') { fill = PANEL_FILL_HOVER_ROTATE; borderColor = BLUE; ibw = panel.width * 0.012 }
               else if (isSelected) { fill = PANEL_FILL_SELECTED;     borderColor = PANEL_DARK; ibw = panel.width * 0.025 }
               else                 { fill = PANEL_FILL;               borderColor = PANEL_MID;  ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
@@ -1030,8 +1042,8 @@ let fill, borderColor, ibw
                     <rect
                       x={panel.x} y={panel.y} width={panel.width} height={panel.height}
                       fill={fill} stroke="none"
-                      style={{ cursor: activeTool === 'delete' ? 'pointer' : activeTool === 'move' ? 'grab' : 'default' }}
-                      onMouseEnter={() => activeTool === 'delete' && setHoveredPanelId(panel.id)}
+                      style={{ cursor: (activeTool === 'delete' || activeTool === 'rotate') ? 'pointer' : activeTool === 'move' ? 'grab' : 'default' }}
+                      onMouseEnter={() => (activeTool === 'delete' || activeTool === 'rotate') && setHoveredPanelId(panel.id)}
                       onMouseLeave={() => setHoveredPanelId(null)}
                     />
                     <rect
@@ -1041,7 +1053,7 @@ let fill, borderColor, ibw
                       style={{ pointerEvents: 'none' }}
                     />
                   </g>
-                  {!isHovered && (() => {
+                  {!isActionHover && (() => {
                     const r = (panel.rotation || 0) * Math.PI / 180
                     const rDeg = panel.rotation || 0
                     const down = (panel.yDir ?? 'ttb') === 'ttb'
@@ -1083,7 +1095,7 @@ let fill, borderColor, ibw
                       </>
                     )
                   })()}
-                  {isHovered && (
+                  {isActionHover && activeTool === 'delete' && (
                     <>
                       <rect x={cx - bh / 2} y={cy - bh / 2} width={bh} height={bh} rx={bh / 2}
                         fill={CANVAS_DELETE_MARK} style={{ pointerEvents: 'none' }} />

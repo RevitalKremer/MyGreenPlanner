@@ -7,7 +7,7 @@ const NUDGE_CM = 2.5
 export default function ToolPanel({
   activeTool, handleToolChange,
   selectedPanels,
-  nudgeRow, togglePanelOrientation, addManualPanel,
+  nudgeRow, addManualPanel,
   distanceMeasurement, setDistanceMeasurement,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
   showHGridlines, setShowHGridlines,
@@ -231,23 +231,10 @@ export default function ToolPanel({
                     )
                   )}
                   {activeTool === 'rotate' && (
-                    selectedPanels.length > 0 ? (
-                      <div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: '700', color: TEXT, marginBottom: '0.6rem' }}>
-                          {t('step2.tool.panelsSelected', { n: selectedPanels.length, s: selectedPanels.length !== 1 ? 's' : '' })}
-                        </div>
-                        <button onClick={togglePanelOrientation} style={{ width: '100%', padding: '0.5rem', background: WHITE, color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}>
-                          {t('step2.tool.rotate90')}
-                        </button>
-                        <div style={{ fontSize: '0.68rem', color: TEXT_FAINTEST, textAlign: 'center', marginTop: '0.35rem' }}>
-                          {t('step2.tool.rotate90Hint')}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.82rem', color: TEXT_FAINTEST, textAlign: 'center', paddingTop: '0.6rem' }}>
-                        {t('step2.tool.clickToSelectIt')}
-                      </div>
-                    )
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: '700', color: BLUE, marginBottom: '0.35rem' }}>{t('step2.tool.rotate90')}</div>
+                      <div style={{ fontSize: '0.78rem', color: TEXT_PLACEHOLDER, lineHeight: '1.5' }}>{t('step2.tool.rotateHint')}</div>
+                    </div>
                   )}
                   {activeTool === 'delete' && (
                     <div>
