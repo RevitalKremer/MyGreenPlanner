@@ -21,65 +21,6 @@ export class SAM2Service {
   }
 
   /**
-   * Segment a roof from map tiles using geographic coordinates
-   */
-  static async segmentRoofGeo(imageBlob, lat, lng, bounds) {
-    const formData = new FormData()
-    formData.append('image', imageBlob, 'map_tile.png')
-    formData.append('lat', lat.toString())
-    formData.append('lng', lng.toString())
-    formData.append('bounds', JSON.stringify(bounds))
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/segment-roof-coordinates`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Segmentation failed')
-      }
-
-      const geojson = await response.json()
-      return geojson
-    } catch (error) {
-      console.error('Roof segmentation failed:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Segment a roof from map without providing image (backend fetches tiles)
-   * This avoids CORS issues with map tiles
-   */
-  static async segmentRoofFromMap(lat, lng, zoom, bounds) {
-    const formData = new FormData()
-    formData.append('lat', lat.toString())
-    formData.append('lng', lng.toString())
-    formData.append('zoom', zoom.toString())
-    formData.append('bounds', JSON.stringify(bounds))
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/segment-roof-from-map`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Segmentation failed')
-      }
-
-      const geojson = await response.json()
-      return geojson
-    } catch (error) {
-      console.error('Roof segmentation from map failed:', error)
-      throw error
-    }
-  }
-
-  /**
    * Detect all panels in a plan image.
    * sampleX/sampleY are optional — a clicked panel helps SAM2 identify panel appearance.
    * Returns: { panels: [{ x, y, width, height, rotation, confidence }] } in image pixels.
@@ -102,34 +43,6 @@ export class SAM2Service {
       return await response.json()
     } catch (error) {
       console.error('Panel detection failed:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Segment a roof using pixel coordinates
-   */
-  static async segmentRoofPixel(imageBlob, pointX, pointY) {
-    const formData = new FormData()
-    formData.append('image', imageBlob, 'map_tile.png')
-    formData.append('point_x', pointX.toString())
-    formData.append('point_y', pointY.toString())
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/segment-roof`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Segmentation failed')
-      }
-
-      const geojson = await response.json()
-      return geojson
-    } catch (error) {
-      console.error('Roof segmentation failed:', error)
       throw error
     }
   }
@@ -166,7 +79,7 @@ export class SAM2Service {
 /**
  * Capture map tiles as an image for SAM2 processing
  */
-export async function captureMapView(map, bounds) {
+export async function captureMapView(map, bounds): Promise<Blob> {
   return new Promise((resolve, reject) => {
     try {
       // Use leaflet-image or html2canvas to capture the map

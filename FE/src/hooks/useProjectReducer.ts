@@ -109,9 +109,7 @@ export const initialProjectState = {
     distanceMeasurement: null,
     isDrawingLine: false,
     lineStart: null,
-    isProcessing: false,
-    selectedPoint: null,
-    uploadedImageMode: true,
+    roofSource: 'canvas',  // 'canvas' | 'image' | 'map'
   },
 }
 
