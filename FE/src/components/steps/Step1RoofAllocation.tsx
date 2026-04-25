@@ -87,16 +87,21 @@ export default function Step1RoofAllocation({
 
   const handleSourceChange = (next) => {
     if (next === roofSource) return
-    setReferenceLine(null)
-    setReferenceLineLengthCm('')
     if (next === 'canvas') {
       const data = buildWhiteCanvas()
       setUploadedImageData(data)
       setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
+      // Auto reference line: full width along the bottom edge. Default 6000 cm = 60 m.
+      const yLine = data.height - Math.max(4, Math.round(data.width * 0.005))
+      setReferenceLine({ start: { x: 0, y: yLine }, end: { x: data.width, y: yLine } })
+      setReferenceLineLengthCm('6000')
     } else {
-      // 'image' or 'map' — clear current data; ImageUploader / RoofMapper takes over
+      // 'image' or 'map' — clear current data; ImageUploader / RoofMapper takes over.
+      // User must draw their own reference line for these modes.
       setUploadedImageData(null)
       setRoofPolygon(null)
+      setReferenceLine(null)
+      setReferenceLineLengthCm('')
     }
     setRoofSource(next)
   }
@@ -303,13 +308,21 @@ export default function Step1RoofAllocation({
             <>
               <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '0.85rem 0' }} />
               <div style={{ padding: '0.85rem', background: '#fcfdf7', borderRadius: '8px', border: `1px solid ${PRIMARY}` }}>
-                <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>{t('step1.referenceLine')}</label>
-                <button
-                  onClick={() => { if (isDrawingLine) { setIsDrawingLine(false); setLineStart(null) } else { setIsDrawingLine(true); setReferenceLine(null) } }}
-                  style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? ERROR : PRIMARY, color: isDrawingLine ? 'white' : TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
-                >
-                  {isDrawingLine ? t('step1.cancelDrawing') : (referenceLine ? t('step1.redrawLine') : t('step1.drawLine'))}
-                </button>
+                <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.88rem' }}>
+                  {roofSource === 'canvas' ? t('step1.canvasWidthLabel') : t('step1.referenceLine')}
+                </label>
+                {roofSource === 'canvas' ? (
+                  <p style={{ margin: '0 0 0.6rem', fontSize: '0.78rem', color: TEXT_MUTED }}>
+                    {t('step1.canvasWidthNote')}
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => { if (isDrawingLine) { setIsDrawingLine(false); setLineStart(null) } else { setIsDrawingLine(true); setReferenceLine(null) } }}
+                    style={{ width: '100%', padding: '0.6rem', background: isDrawingLine ? ERROR : PRIMARY, color: isDrawingLine ? 'white' : TEXT, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.88rem', marginBottom: '0.6rem' }}
+                  >
+                    {isDrawingLine ? t('step1.cancelDrawing') : (referenceLine ? t('step1.redrawLine') : t('step1.drawLine'))}
+                  </button>
+                )}
                 {referenceLine && (
                   <>
                     <label style={{ display: 'block', fontWeight: '500', marginBottom: '0.4rem', fontSize: '0.82rem', color: TEXT_SECONDARY }}>{t('step1.lineLength')}</label>

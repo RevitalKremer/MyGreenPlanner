@@ -130,6 +130,8 @@ const he = {
   'step1.map':                    'מפה',
   'step1.useThisView':            'השתמש בתצוגה זו',
   'step1.referenceLine':          'קו ייחוס (קנה מידה)',
+  'step1.canvasWidthLabel':       'רוחב הקנבס (קנה מידה)',
+  'step1.canvasWidthNote':        'הזן את הרוחב הרצוי של הקנבס בס"מ.',
   'step1.cancelDrawing':          'בטל שרטוט',
   'step1.redrawLine':             'שרטט קו מחדש',
   'step1.drawLine':               'שרטט קו על התמונה',

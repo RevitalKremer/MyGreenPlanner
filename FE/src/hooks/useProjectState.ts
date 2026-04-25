@@ -178,11 +178,17 @@ export function useProjectState() {
     return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isWhiteboard: true }
   }
 
-  // Default calibration for whiteboard: 0.7 cm/px (100px line = 70cm)
-  const WHITEBOARD_DEFAULT_RATIO_CM_PER_PX = 0.7
-  const applyWhiteboardDefaults = () => {
-    setReferenceLine({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 } })
-    setReferenceLineLengthCm(String(100 * WHITEBOARD_DEFAULT_RATIO_CM_PER_PX))
+  // Plain-canvas reference line: spans the full canvas width along the bottom edge.
+  // Length-in-px equals canvas width, so the user only enters cm.
+  const canvasReferenceLine = (data) => {
+    const y = data.height - Math.max(4, Math.round(data.width * 0.005))
+    return { start: { x: 0, y }, end: { x: data.width, y } }
+  }
+
+  const applyWhiteboardDefaults = (data) => {
+    setReferenceLine(canvasReferenceLine(data))
+    // Default canvas width: 6000 cm (60 m) → 2 cm/px on a 3000 px canvas.
+    setReferenceLineLengthCm('6000')
   }
 
   const handleCreateProject = (projectInfo) => {
@@ -192,7 +198,7 @@ export function useProjectState() {
     setUploadedImageData(data)
     setRoofSource('canvas')
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-    applyWhiteboardDefaults()
+    applyWhiteboardDefaults(data)
     setAppScreen('wizard')
   }
 
@@ -201,7 +207,7 @@ export function useProjectState() {
     setUploadedImageData(data)
     setRoofSource('canvas')
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-    applyWhiteboardDefaults()
+    applyWhiteboardDefaults(data)
   }
 
   const handleImportProject = (data, existingCloudId = null) => {
@@ -361,7 +367,15 @@ export function useProjectState() {
     })
 
     // Restore Step 1 source toggle from loaded image (whiteboard → canvas; real image → image)
-    setRoofSource(layout.uploadedImageData?.isWhiteboard ? 'canvas' : 'image')
+    const isCanvas = layout.uploadedImageData?.isWhiteboard
+    setRoofSource(isCanvas ? 'canvas' : 'image')
+
+    // Canvas-mode reference line is always auto (full bottom edge). Override any
+    // legacy/saved value left over from older Step 1 versions, and reset length
+    // to the 1:1 default (cm == px) so the ratio doesn't reuse a stale value.
+    if (isCanvas && layout.uploadedImageData) {
+      applyWhiteboardDefaults(layout.uploadedImageData)
+    }
 
     // refinedArea is now a useMemo — auto-derived from layout + step2 data
   }

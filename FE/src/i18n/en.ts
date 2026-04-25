@@ -130,6 +130,8 @@ const en = {
   'step1.map':                    'Map',
   'step1.useThisView':            'Use this view',
   'step1.referenceLine':          'Reference Line (scale)',
+  'step1.canvasWidthLabel':       'Canvas width (scale)',
+  'step1.canvasWidthNote':        'Enter the desired canvas width in cm.',
   'step1.cancelDrawing':          'Cancel Drawing',
   'step1.redrawLine':             'Redraw Line',
   'step1.drawLine':               'Draw Line on Image',
