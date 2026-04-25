@@ -49,6 +49,10 @@ export const initialProjectState = {
     rectAreas: [],
     panels: [],
     deletedPanelKeys: {},
+    // Roof axis: { start: {x,y}, end: {x,y} } drawn by user on the photo to
+    // define the roof's "horizontal" reference. Y-lock 0° snap rotates to
+    // align with this. Null = use screen-horizontal as 0°.
+    roofAxis: null,
   },
 
   // ── Mirrors DB `data` JSONB column ──
@@ -105,9 +109,7 @@ export const initialProjectState = {
     distanceMeasurement: null,
     isDrawingLine: false,
     lineStart: null,
-    isProcessing: false,
-    selectedPoint: null,
-    uploadedImageMode: true,
+    roofSource: 'canvas',  // 'canvas' | 'image' | 'map'
   },
 }
 

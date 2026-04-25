@@ -592,20 +592,15 @@ function App() {
       <main className="app-main">
         {s.currentStep === 1 && (
           <Step1RoofAllocation
-            uploadedImageMode={s.uploadedImageMode}
-            setUploadedImageMode={s.setUploadedImageMode}
-            backendStatus={s.backendStatus}
+            roofSource={s.roofSource}
+            setRoofSource={s.setRoofSource}
             uploadedImageData={s.uploadedImageData}
             imageSrc={s.imageSrc}
             handleImageUploaded={s.handleImageUploaded}
             imageRef={s.imageRef}
             setImageRef={s.setImageRef}
-            handleImageClick={s.handleImageClick}
             roofPolygon={s.roofPolygon}
-            selectedPoint={s.selectedPoint}
-            setSelectedPoint={s.setSelectedPoint}
             setRoofPolygon={s.setRoofPolygon}
-            handlePointSelect={s.handlePointSelect}
             setUploadedImageData={s.setUploadedImageData}
             isDrawingLine={s.isDrawingLine}
             setIsDrawingLine={s.setIsDrawingLine}
@@ -722,6 +717,8 @@ function App() {
             roofType={s.currentProject?.roofSpec?.type}
             rowMounting={s.rowMounting}
             setRowMounting={s.setRowMounting}
+            roofAxis={s.roofAxis}
+            setRoofAxis={s.setRoofAxis}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.
@@ -796,13 +793,6 @@ function App() {
             productByType={s.productByType}
             altsByType={s.altsByType}
           />
-        )}
-
-        {s.isProcessing && (
-          <div className="processing-overlay">
-            <div className="spinner"></div>
-            <p>{t('app.analyzingRoof')}</p>
-          </div>
         )}
 
         {showAuthGate && (

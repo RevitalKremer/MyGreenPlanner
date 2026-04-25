@@ -135,7 +135,7 @@ function pointInPolygon(px, py, polygon) {
  */
 export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, preferredOrientations = null) {
   if (!cmPerPixel || cmPerPixel <= 0) return []
-  const { vertices, rotation = 0, yDir = 'ttb', xDir = 'ltr', areaVertical = false } = area
+  const { vertices, rotation = 0, areaVertical = false, pivotIdx = 0 } = area
   const pLen = panelSpec.lengthCm
   const pWid = panelSpec.widthCm
   if (!vertices || vertices.length < 3) return []
@@ -160,6 +160,14 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, pr
   const minLY = Math.min(...localVerts.map(v => v.y))
   const maxLY = Math.max(...localVerts.map(v => v.y))
 
+  // Derive xDir/yDir from V0's position in the local bbox so panels always
+  // pack against V0 ("the start corner"), regardless of how the area was
+  // drawn or rotated. The stored xDir/yDir on the area object are frozen at
+  // creation and become stale after edits — ignore them here.
+  const v0Local = localVerts[pivotIdx] ?? localVerts[0]
+  const xDir = v0Local.x <= (minLX + maxLX) / 2 ? 'ltr' : 'rtl'
+  const yDir = v0Local.y <= (minLY + maxLY) / 2 ? 'ttb' : 'btt'
+
   const gapPx      = panelGapCm / cmPerPixel
   const portraitW  = pWid / cmPerPixel
   const portraitH  = pLen / cmPerPixel
@@ -175,10 +183,11 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, pr
   let rowIndex = 0
   const portraitPitch = portraitW + gapPx
 
-  while (localY < bboxH) {
-    // When preferredOrientations is given, stop after all specified lines are placed
-    if (preferredOrientations && rowIndex >= preferredOrientations.length) break
-
+  // preferredOrientations caps the row count and is the single source of
+  // truth when set: every entry produces a row, regardless of whether the
+  // bbox is tall enough — overflowing rows place at least one panel via the
+  // inner force-place. Greedy mode (no preferences) stops at the bbox edge.
+  while (preferredOrientations ? rowIndex < preferredOrientations.length : localY < bboxH) {
     const remaining = bboxH - localY
     let rowH, panelW, widthCm, heightCm
 
@@ -194,7 +203,13 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, pr
     const fallWCm = preferH ? pWid : pLen
     const fallHCm = preferH ? pLen : pWid
 
-    if (remaining >= firstH - 0.001) {
+    if (pref !== undefined) {
+      // User-specified orientation: honor it exactly. The row may overflow
+      // the bbox vertically; the inner column loop still force-places one
+      // panel per row, and the polygon clip preserves it.
+      rowH = firstH; panelW = firstW
+      widthCm = firstWCm; heightCm = firstHCm
+    } else if (remaining >= firstH - 0.001) {
       rowH = firstH; panelW = firstW
       widthCm = firstWCm; heightCm = firstHCm
     } else if (remaining >= fallH - 0.001) {
@@ -203,6 +218,11 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, pr
     } else {
       break
     }
+
+    // Rows from preferredOrientations are user-specified: their panels must
+    // not be culled by the polygon clip (they may legitimately overflow when
+    // the area was sized for a different orientation).
+    const isPreferredRow = pref !== undefined
 
     let localX = 0
     let colIndex = 0
@@ -221,16 +241,30 @@ export function computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, pr
         localCy: yDir === 'btt' ? maxLY - localY - rowH / 2 : minLY + localY + rowH / 2,
         panelW, rowH, widthCm, heightCm, rowIndex, colIndex,
         coveredCols,
+        forced: isPreferredRow,
       })
       localX += panelW + gapPx
       colIndex++
+    }
+    // Force-place at least one panel per row, even if it overflows the bbox.
+    // Otherwise toggling a row to H in a too-narrow polygon would silently drop
+    // the row — preferredOrientations is a user signal, not a discardable hint.
+    if (colIndex === 0) {
+      localPanels.push({
+        localCx: xDir === 'rtl' ? maxLX - panelW / 2 : minLX + panelW / 2,
+        localCy: yDir === 'btt' ? maxLY - localY - rowH / 2 : minLY + localY + rowH / 2,
+        panelW, rowH, widthCm, heightCm, rowIndex, colIndex: 0,
+        coveredCols: [0],
+        forced: true,
+      })
     }
     localY += rowH + gapPx
     rowIndex++
   }
 
-  // Clip: only keep panels whose centre is inside the polygon (local frame)
-  const inside = localPanels.filter(p => pointInPolygon(p.localCx, p.localCy, localVerts))
+  // Clip: keep panels whose centre is inside the polygon. Forced panels (rows
+  // that wouldn't fit even one panel) bypass the clip so the row survives.
+  const inside = localPanels.filter(p => p.forced || pointInPolygon(p.localCx, p.localCy, localVerts))
 
   // Transform centres back to screen coords
   return inside.map((p, i) => {

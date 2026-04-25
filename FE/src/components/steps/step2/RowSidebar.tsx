@@ -639,15 +639,17 @@ export default function RowSidebar({
                     />
                   </div>
                 </div>
-                {/* Line orientation toggles */}
+                {/* Line orientation toggles — row index 0 is always the V0
+                    side after computePolygonPanels (which derives yDir/xDir
+                    from V0). So ascending row index = "from V0 outward". */}
                 {selectedRow && (() => {
                   const rowMap = new Map()
                   selectedRow.forEach(p => {
                     const r = p.row ?? 0
                     if (!rowMap.has(r)) rowMap.set(r, p)
                   })
+                  if (rowMap.size === 0) return null
                   const sortedLines = [...rowMap.entries()].sort(([a], [b]) => a - b)
-                  if (sortedLines.length === 0) return null
                   const orients = sortedLines.map(([, p]) =>
                     p.heightCm > p.widthCm ? PANEL_V : PANEL_H
                   )

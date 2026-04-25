@@ -120,6 +120,7 @@ export const GRIDLINE_AREA       = '#a0a0a04d'          // area gridline color (
 export const PANEL_FILL              = 'rgba(135,206,235,0.35)'  // normal panel fill
 export const PANEL_FILL_SELECTED     = 'rgba(0,62,126,0.18)'     // selected panel fill
 export const PANEL_FILL_HOVER_DELETE = 'rgba(244,67,54,0.65)'    // delete-hover panel fill
+export const PANEL_FILL_HOVER_ROTATE = 'rgba(33,150,243,0.45)'   // rotate-hover panel fill
 // Panel canvas badge states
 export const PANEL_BADGE_DEFAULT  = 'rgba(15,15,15,0.55)'  // trapezoid badge bg (normal)
 export const PANEL_BADGE_SELECTED = 'rgba(15,15,15,0.62)'  // slope chevron bg (normal)

@@ -3,7 +3,8 @@ import {
   PRIMARY, ERROR, BLACK, WARNING, SUCCESS,
   DRAW_COLOR,
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
-  PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE,
+  PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE, PANEL_FILL_HOVER_ROTATE,
+  BLUE,
   PANEL_BADGE_DEFAULT, PANEL_BADGE_SELECTED, PANEL_BADGE_SEL_FILL, PANEL_BADGE_SEL_CHV,
   PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
   TEXT_VERY_LIGHT,
@@ -37,6 +38,9 @@ export default function PanelCanvas({
   recordPanelDeletion,
   panelGapCm,
   drawVertical = false,
+  roofAxis = null,
+  setRoofAxis,
+  togglePanelOrientation,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
@@ -52,8 +56,10 @@ export default function PanelCanvas({
   const [yLockDragState, setYLockDragState] = useState(null)
   const [freeDragState, setFreeDragState]   = useState(null) // {areaIdx, cornerIdx, pivotX, pivotY, wdx, wdy, hdx, hdy, origWidthDist, origHeightDist}
   const [moveDragState, setMoveDragState]   = useState(null) // {areaIdx, startX, startY, origVertices}
-  const [overYLockArea, setOverYLockArea]   = useState<string | false>(false)
   const [snapGuideState, setSnapGuideState] = useState(null) // {pivotY, minX, maxX, snapping}
+  // While the user is drawing/editing the roof axis, the WIP line lives here.
+  // null = inactive. {start, end, dragging: 'new'|'p1'|'p2'} = active.
+  const [roofAxisDraft, setRoofAxisDraft] = useState(null)
 
   const willDeselectRef = useRef(false)
   const wheelContainerRef = useRef(null)
@@ -124,17 +130,17 @@ export default function PanelCanvas({
   const getSVGCursor = () => {
     if (isSpaceDown) return panActive ? 'grabbing' : 'grab'
     if (moveDragState) return 'grabbing'
-    if (yLockDragState) return 'ns-resize'
+    if (yLockDragState) return 'grabbing'
     if (panActive || dragState) return 'grabbing'
     if (rectSelect) return 'crosshair'
     if (rotationState) return 'crosshair'
-    if (overYLockArea) return overYLockArea === 'vertical' ? 'ew-resize' : 'ns-resize'
     switch (activeTool) {
       case 'move': return 'default'
       case 'rotate': return 'crosshair'
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
+      case 'roofAxis': return 'crosshair'
       case 'area': return 'crosshair'
       default: return 'grab'
     }
@@ -159,22 +165,15 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
-    // Y-lock rotation: click inside a y-locked polygon starts rotation drag (area mode only).
-    // Skip when Ctrl/Cmd held — that gesture is reserved for the group-rows marquee.
+    // Y-lock body click: select the area (its panels). Rotation is corner-only
+    // — body drag intentionally does nothing to avoid an over-eager gesture.
     if (activeTool === 'area' && !e.ctrlKey && !e.metaKey) {
-      const selAreaIdx = selectedPanels.length > 0
-        ? (panels.find(p => selectedPanels.includes(p.id))?.area ?? null)
-        : null
       for (let areaIdx = 0; areaIdx < rectAreas.length; areaIdx++) {
         const area = rectAreas[areaIdx]
         if (area.mode !== 'ylocked' || !area.vertices?.length) continue
-        if (areaIdx !== selAreaIdx) continue
         if (!ptInPoly(x, y, area.vertices)) continue
-        const pIdx = area.pivotIdx ?? 0
-        const pivot = area.vertices[pIdx]
-        const adj = area.vertices[(pIdx + 1) % area.vertices.length]
-        const refLength = Math.max(Math.hypot(adj.x - pivot.x, adj.y - pivot.y), 1)
-        setYLockDragState({ areaIdx, startX: x, startY: y, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, areaVertical: area.areaVertical ?? false })
+        const areaPanelIds = panels.filter(p => (p.area ?? p.row) === areaIdx).map(p => p.id)
+        setSelectedPanels(areaPanelIds)
         return
       }
     }
@@ -189,6 +188,28 @@ export default function PanelCanvas({
       return
     }
 
+    // Roof axis tool: drag to create / re-create. If an axis exists and the
+    // user clicks near one of its endpoints, drag that endpoint instead.
+    if (activeTool === 'roofAxis') {
+      e.preventDefault()
+      const HANDLE_HIT_PX = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+      if (roofAxis?.start && roofAxis?.end) {
+        const d1 = Math.hypot(x - roofAxis.start.x, y - roofAxis.start.y)
+        const d2 = Math.hypot(x - roofAxis.end.x,   y - roofAxis.end.y)
+        if (d1 < HANDLE_HIT_PX && d1 <= d2) {
+          setRoofAxisDraft({ start: { x, y }, end: { ...roofAxis.end }, dragging: 'p1' })
+          return
+        }
+        if (d2 < HANDLE_HIT_PX) {
+          setRoofAxisDraft({ start: { ...roofAxis.start }, end: { x, y }, dragging: 'p2' })
+          return
+        }
+      }
+      // Fresh draw: from the click point.
+      setRoofAxisDraft({ start: { x, y }, end: { x, y }, dragging: 'new' })
+      return
+    }
+
     const hitTestPanel = (p, px, py) => {
       const cx = p.x + p.width / 2, cy = p.y + p.height / 2
       const rad = -(p.rotation || 0) * Math.PI / 180
@@ -200,8 +221,11 @@ export default function PanelCanvas({
     const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
 
     if (activeTool === 'area') {
-      // Ctrl/Cmd + drag → group-rows marquee (works from any position, even on panels)
+      // Ctrl/Cmd + drag → group-areas marquee (works from any position).
+      // preventDefault stops the browser from kicking in its native drag
+      // (which on macOS Cmd+drag can swallow the mouseup event).
       if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
         setGroupRowsRect({ startX: x, startY: y, endX: x, endY: y })
         return
       }
@@ -227,24 +251,33 @@ export default function PanelCanvas({
       return
     }
 
-    if (activeTool === 'move' || activeTool === 'rotate') {
+    if (activeTool === 'rotate') {
+      // Click-to-act, mirroring delete: rotate the clicked panel 90° on
+      // mousedown. No selection state, no commit button.
+      if (clickedPanel) {
+        togglePanelOrientation?.([clickedPanel.id])
+        setSelectedPanels([])
+      } else startPan(e)
+      return
+    }
+
+    if (activeTool === 'move') {
       if (clickedPanel) {
         if (e.shiftKey) {
           setSelectedPanels(prev => prev.includes(clickedPanel.id) ? prev.filter(id => id !== clickedPanel.id) : [...prev, clickedPanel.id])
           return
         }
+        // Preserve multi-selection on click into the group so the upcoming
+        // drag moves all of them together.
         if (!selectedPanels.includes(clickedPanel.id)) {
           setSelectedPanels([clickedPanel.id])
         }
-        if (activeTool === 'move') {
-          const panelIds = selectedPanels.includes(clickedPanel.id) ? selectedPanels : [clickedPanel.id]
-          const originalPositions = {}
-          panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
-          setDragState({ panelIds, startX: x, startY: y, originalPositions })
-        }
+        const panelIds = selectedPanels.includes(clickedPanel.id) ? selectedPanels : [clickedPanel.id]
+        const originalPositions = {}
+        panelIds.forEach(id => { const p = panels.find(p => p.id === id); if (p) originalPositions[id] = { x: p.x, y: p.y } })
+        setDragState({ panelIds, startX: x, startY: y, originalPositions })
       } else {
-        if (activeTool === 'move') setRectSelect({ startX: x, startY: y, endX: x, endY: y })
-        else startPan(e)
+        setRectSelect({ startX: x, startY: y, endX: x, endY: y })
       }
       return
     }
@@ -267,13 +300,17 @@ export default function PanelCanvas({
       setMousePos({ x, y })
     }
 
-    if (!yLockDragState && !moveDragState && !freeDragState) {
-      const hoveredYLock = rectAreas.find(a => a.mode === 'ylocked' && a.vertices?.length && ptInPoly(x, y, a.vertices))
-      setOverYLockArea(hoveredYLock ? (hoveredYLock.areaVertical ? 'vertical' : 'horizontal') as string | false : false)
-    }
-
     if (activeTool === 'area' && drawRectStart) {
       setDrawRectEnd({ x, y })
+      return
+    }
+
+    if (roofAxisDraft) {
+      if (roofAxisDraft.dragging === 'p1') {
+        setRoofAxisDraft({ ...roofAxisDraft, start: { x, y } })
+      } else {
+        setRoofAxisDraft({ ...roofAxisDraft, end: { x, y } })
+      }
       return
     }
 
@@ -308,119 +345,77 @@ export default function PanelCanvas({
     }
 
     if (yLockDragState) {
-      const { areaIdx, cornerIdx: dragCornerIdx, startX, startY, startRotation, pivotX, pivotY, refLength, origVertices, origCornerX, origCornerY, areaVertical } = yLockDragState
-      let deltaAngleDeg
-      if (origCornerX !== undefined) {
-        const pivotIdx = 0
-        const isOppositeCorner = dragCornerIdx === ((pivotIdx + 2) % 4)
+      const { areaIdx, startRotation, pivotX, pivotY, origVertices, origCornerX, origCornerY } = yLockDragState
 
-        // 1. Rotation from mouse position relative to pivot
-        // Horizontal: Y displacement constrains, solve for X
-        // Vertical:   X displacement constrains, solve for Y
-        let newCornerX, newCornerY
-        if (areaVertical) {
-          const dxFromPivot = x - pivotX
-          const dySq = refLength * refLength - dxFromPivot * dxFromPivot
-          if (dySq < 0) return
-          newCornerX = x
-          newCornerY = pivotY + Math.sign(origCornerY - pivotY) * Math.sqrt(dySq)
-        } else {
-          const dyFromPivot = y - pivotY
-          const dxSq = refLength * refLength - dyFromPivot * dyFromPivot
-          if (dxSq < 0) return
-          newCornerX = pivotX + Math.sign(origCornerX - pivotX) * Math.sqrt(dxSq)
-          newCornerY = y
+      // Y-lock corner drag = pure rotation around the pivot. The dragged
+      // corner follows the cursor's direction from the pivot; both X and Y
+      // of the cursor contribute. Distance from pivot is preserved
+      // automatically by rotating every original vertex around the pivot.
+      const dxFromPivot = x - pivotX
+      const dyFromPivot = y - pivotY
+      const distFromPivot = Math.hypot(dxFromPivot, dyFromPivot)
+      if (distFromPivot < 1) return  // too close to pivot, direction undefined
+      const newAngle  = Math.atan2(dyFromPivot, dxFromPivot)
+      const origAngle = Math.atan2(origCornerY - pivotY, origCornerX - pivotX)
+      // Normalise delta into (-180, 180] so wrap-around at ±π doesn't jump.
+      let deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
+      if (deltaAngleDeg > 180) deltaAngleDeg -= 360
+      else if (deltaAngleDeg < -180) deltaAngleDeg += 360
+
+      // Clamp to ±80°; snap to roof axis (or screen-0° if no axis is set)
+      // when Cmd/Ctrl is held and the rotation is within 5° of the target.
+      const rawRotation = startRotation + deltaAngleDeg
+      const clamped = Math.max(-80, Math.min(80, rawRotation))
+      deltaAngleDeg = clamped - startRotation
+      // Roof axis target is the angle where the area's "0° reference line"
+      // aligns with the user-defined roof. The 0° line is parallel to the
+      // panels' width for horizontal areas, and along the panels' height
+      // (perpendicular to lines) for vertical areas. Since panels' height
+      // direction in screen ≡ panels' width rotated 90° via areaVertical,
+      // both flavours snap when rotation === roofAngleDeg (lines bidirectional,
+      // so we normalise into ±90).
+      let snapTarget = 0
+      if (roofAxis?.start && roofAxis?.end) {
+        const roofAngleDeg = Math.atan2(
+          roofAxis.end.y - roofAxis.start.y,
+          roofAxis.end.x - roofAxis.start.x,
+        ) * 180 / Math.PI
+        snapTarget = roofAngleDeg
+        while (snapTarget > 90) snapTarget -= 180
+        while (snapTarget < -90) snapTarget += 180
+      }
+      const snapping = Math.abs(clamped - snapTarget) < 5 && (e.metaKey || e.ctrlKey)
+      if (snapping) deltaAngleDeg = snapTarget - startRotation
+
+      // Rotate every vertex around the pivot
+      const rad = deltaAngleDeg * Math.PI / 180
+      const cosA = Math.cos(rad), sinA = Math.sin(rad)
+      const newVertices = origVertices.map(v => ({
+        x: pivotX + (v.x - pivotX) * cosA - (v.y - pivotY) * sinA,
+        y: pivotY + (v.x - pivotX) * sinA + (v.y - pivotY) * cosA,
+      }))
+      const actualRotation = startRotation + deltaAngleDeg
+      setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
+
+      if (Math.abs(clamped - snapTarget) < 10) {
+        const xs = newVertices.map(v => v.x)
+        const reach = Math.max(...newVertices.map(v => Math.hypot(v.x - pivotX, v.y - pivotY))) * 1.05
+        // Pre-compute the inward-pointing axis sign so the snap guide
+        // always emerges from V0 toward the polygon's body, regardless of
+        // which way the roof axis happens to point in screen.
+        const cxAvg = newVertices.reduce((s, v) => s + v.x, 0) / newVertices.length
+        const cyAvg = newVertices.reduce((s, v) => s + v.y, 0) / newVertices.length
+        let inwardSign = 1
+        if (roofAxis?.start && roofAxis?.end) {
+          const rdx = roofAxis.end.x - roofAxis.start.x
+          const rdy = roofAxis.end.y - roofAxis.start.y
+          const rlen = Math.hypot(rdx, rdy) || 1
+          const rax = rdx / rlen, ray = rdy / rlen
+          inwardSign = (rax * (cxAvg - pivotX) + ray * (cyAvg - pivotY)) >= 0 ? 1 : -1
         }
-        const origAngle = Math.atan2(origCornerY - pivotY, origCornerX - pivotX)
-        const newAngle  = Math.atan2(newCornerY - pivotY, newCornerX - pivotX)
-        deltaAngleDeg = (newAngle - origAngle) * 180 / Math.PI
-
-        // Clamp to ±80°; snap to 0° only when Cmd/Ctrl held and within 5°
-        const rawRotation = startRotation + deltaAngleDeg
-        const clamped = Math.max(-80, Math.min(80, rawRotation))
-        deltaAngleDeg = clamped - startRotation
-        const absRot = Math.abs(clamped)
-        const snapping = absRot < 5 && (e.metaKey || e.ctrlKey)
-        if (snapping) deltaAngleDeg = -startRotation
-
-        // 2. Rebuild polygon
-        const rad = deltaAngleDeg * Math.PI / 180
-        const cosA = Math.cos(rad), sinA = Math.sin(rad)
-
-        const v1x = origVertices[1].x - pivotX, v1y = origVertices[1].y - pivotY
-        const v3x = origVertices[3].x - pivotX, v3y = origVertices[3].y - pivotY
-
-        // Detect which vector is height (locked) vs width
-        const v1AbsY = Math.abs(v1y), v1AbsX = Math.abs(v1x)
-        const v3AbsY = Math.abs(v3y), v3AbsX = Math.abs(v3x)
-        const v1IsHeight = areaVertical ? (v1AbsX > v3AbsX) : (v1AbsY > v3AbsY)
-        const owx = v1IsHeight ? v3x : v1x, owy = v1IsHeight ? v3y : v1y
-        const ohx = v1IsHeight ? v1x : v3x, ohy = v1IsHeight ? v1y : v3y
-        const hIsV1 = v1IsHeight
-        const origWidthDist = Math.hypot(owx, owy)
-
-        // Rotate both vectors
-        const nhx = ohx * cosA - ohy * sinA
-        const nhy = ohx * sinA + ohy * cosA
-        const nwdx = (owx * cosA - owy * sinA) / origWidthDist
-        const nwdy = (owx * sinA + owy * cosA) / origWidthDist
-
-        let newWidth
-        if (isOppositeCorner) {
-          // v[2] drag: pure rotation — both height and width locked
-          newWidth = origWidthDist
-        } else {
-          // v[1] or v[3] drag: rotation + width extension
-          const minW = cmPerPixel > 0 && panelSpec ? panelSpec.lengthCm / cmPerPixel : 1
-          newWidth = Math.max(minW, (x - pivotX) * nwdx + (y - pivotY) * nwdy)
-        }
-
-        // Reconstruct vertices
-        const wVec = { x: newWidth * nwdx, y: newWidth * nwdy }
-        const hVec = { x: nhx, y: nhy }
-        const v1Vec = hIsV1 ? hVec : wVec
-        const v3Vec = hIsV1 ? wVec : hVec
-        const newVertices = [
-          { x: pivotX,                          y: pivotY },
-          { x: pivotX + v1Vec.x,                y: pivotY + v1Vec.y },
-          { x: pivotX + v1Vec.x + v3Vec.x,     y: pivotY + v1Vec.y + v3Vec.y },
-          { x: pivotX + v3Vec.x,                y: pivotY + v3Vec.y },
-        ]
-        const actualRotation = startRotation + deltaAngleDeg
-        setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
-
-        if (absRot < 10) {
-          const xs = newVertices.map(v => v.x)
-          setSnapGuideState({ pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), snapping })
-        } else {
-          setSnapGuideState(null)
-        }
+        setSnapGuideState({ pivotX, pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), reach, snapping, inwardSign })
       } else {
-        // Body drag fallback: tilt axis only, fixed width
-        // Horizontal: Y drives tilt. Vertical: X drives tilt.
-        const bodyDisp = areaVertical ? (x - startX) : (y - startY)
-        deltaAngleDeg = Math.atan2(bodyDisp, refLength) * (180 / Math.PI)
-        const rawRotation = startRotation + deltaAngleDeg
-        const clamped = Math.max(-80, Math.min(80, rawRotation))
-        deltaAngleDeg = clamped - startRotation
-        const absRot = Math.abs(clamped)
-        const snapping = absRot < 5 && (e.metaKey || e.ctrlKey)
-        if (snapping) deltaAngleDeg = -startRotation
-        const actualRotation = startRotation + deltaAngleDeg
-        const rad = deltaAngleDeg * Math.PI / 180
-        const cosA = Math.cos(rad), sinA = Math.sin(rad)
-        const newVertices = origVertices.map(v => ({
-          x: pivotX + (v.x - pivotX) * cosA - (v.y - pivotY) * sinA,
-          y: pivotY + (v.x - pivotX) * sinA + (v.y - pivotY) * cosA,
-        }))
-        setRectAreas(prev => prev.map((a, i) => i === areaIdx ? { ...a, rotation: actualRotation, vertices: newVertices } : a))
-
-        if (absRot < 10) {
-          const xs = newVertices.map(v => v.x)
-          setSnapGuideState({ pivotY, minX: Math.min(...xs), maxX: Math.max(...xs), snapping })
-        } else {
-          setSnapGuideState(null)
-        }
+        setSnapGuideState(null)
       }
       return
     }
@@ -503,6 +498,18 @@ export default function PanelCanvas({
   }
 
   const handleSVGMouseUp = () => {
+    if (roofAxisDraft) {
+      const len = Math.hypot(
+        roofAxisDraft.end.x - roofAxisDraft.start.x,
+        roofAxisDraft.end.y - roofAxisDraft.start.y,
+      )
+      // Discard tiny drags (a click without movement).
+      if (len > 8) {
+        setRoofAxis?.({ start: roofAxisDraft.start, end: roofAxisDraft.end })
+      }
+      setRoofAxisDraft(null)
+      return
+    }
     if (moveDragState) {
       const { areaIdx } = moveDragState
       setMoveDragState(null)
@@ -526,12 +533,15 @@ export default function PanelCanvas({
         const area = prev[areaIdx]
         if (!area?.vertices?.length || !cmPerPixel || panelGapCm == null) return prev
         const effRot = (area.areaVertical ? 90 : 0) + (area.rotation ?? 0)
-        const panels = computePolygonPanels(area, cmPerPixel, panelSpec, panelGapCm, area.preferredOrientations ?? null)
+        // Resize "regenerates" the layout — drop any locked preferredOrientations
+        // so the new bbox can grow new rows / fall back to greedy fill.
+        const resized = { ...area, preferredOrientations: undefined }
+        const panels = computePolygonPanels(resized, cmPerPixel, panelSpec, panelGapCm, null)
         if (!panels.length) return prev
-        const pivot = area.vertices[area.pivotIdx ?? 0]
+        const pivot = resized.vertices[resized.pivotIdx ?? 0]
         const fitted = fitPolygonToRectPanels(panels, effRot, pivot.x, pivot.y)
         if (!fitted) return prev
-        return prev.map((a, i) => i === areaIdx ? { ...a, vertices: fitted } : a)
+        return prev.map((a, i) => i === areaIdx ? { ...resized, vertices: fitted } : a)
       })
       return
     }
@@ -604,26 +614,19 @@ export default function PanelCanvas({
       const minY = Math.min(groupRowsRect.startY, groupRowsRect.endY)
       const maxY = Math.max(groupRowsRect.startY, groupRowsRect.endY)
       if (Math.max(maxX - minX, maxY - minY) > 8) {
-        // Any panel whose center is inside the marquee contributes its row.
-        // We then select ALL panels of every such (area, panelRowIdx) row —
-        // so the sidebar sees the full rows highlighted, not partial selection.
-        const rowsHit = new Set()  // "area|panelRowIdx"
+        // Any panel whose center is inside the marquee contributes its area.
+        // We then select EVERY panel of every such area — the sidebar shows
+        // each whole area highlighted, not partial.
+        const areasHit = new Set()
         panels.forEach(p => {
           if (p.isEmpty) return
           const cx = p.x + p.width / 2, cy = p.y + p.height / 2
           if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
-            const a = p.area ?? p.row ?? 0
-            const r = p.panelRowIdx ?? 0
-            rowsHit.add(`${a}|${r}`)
+            areasHit.add(p.area ?? p.row ?? 0)
           }
         })
-        if (rowsHit.size > 0) {
-          const selected = panels.filter(p => {
-            if (p.isEmpty) return false
-            const a = p.area ?? p.row ?? 0
-            const r = p.panelRowIdx ?? 0
-            return rowsHit.has(`${a}|${r}`)
-          })
+        if (areasHit.size > 0) {
+          const selected = panels.filter(p => !p.isEmpty && areasHit.has(p.area ?? p.row ?? 0))
           setSelectedPanels(selected.map(p => p.id))
         }
       }
@@ -639,8 +642,20 @@ export default function PanelCanvas({
   }
 
   const handleMouseLeave = () => {
-    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null); setDrawRectStart(null); setDrawRectEnd(null); setYLockDragState(null); setFreeDragState(null); setMoveDragState(null); setSnapGuideState(null)
+    setRectSelect(null); panRef.current = null; setPanActive(false); willDeselectRef.current = false; setDragState(null); setRotationState(null); setMousePos(null); setDrawRectStart(null); setDrawRectEnd(null); setYLockDragState(null); setFreeDragState(null); setMoveDragState(null); setSnapGuideState(null); setGroupRowsRect(null); setRoofAxisDraft(null)
   }
+
+  // Window-level mouseup safety net: if the user releases outside the SVG
+  // (or the browser swallows the mouseup, as Cmd+drag sometimes does on
+  // macOS), still finalise the marquee. Without this the gesture state
+  // stays open and the rect "follows" the cursor on subsequent moves.
+  useEffect(() => {
+    if (!groupRowsRect) return
+    const onWindowUp = () => handleSVGMouseUp()
+    window.addEventListener('mouseup', onWindowUp)
+    return () => window.removeEventListener('mouseup', onWindowUp)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupRowsRect])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -857,14 +872,18 @@ export default function PanelCanvas({
                   {area.vertices.map((v, cornerIdx) => {
                     const isPivot = cornerIdx === pivotIdx
                     const isDraggable = !isPivot || isYLocked
-                    const isVert = area.areaVertical ?? false
-                    const cursor = isPivot && isYLocked ? 'move' : (isYLocked ? (isVert ? 'ew-resize' : 'ns-resize') : (isDraggable ? 'crosshair' : 'default'))
+                    const cursor = isPivot && isYLocked ? 'move' : (isYLocked ? 'grab' : (isDraggable ? 'crosshair' : 'default'))
+                    // Free mode: V0 is the anchor — not draggable. Render it
+                    // as a small dimmed dot so the user sees it but reads it
+                    // as non-interactive (other 3 corners are full handles).
+                    const isFreePivot = isPivot && !isYLocked
                     return (
                       <circle
                         key={cornerIdx}
-                        cx={v.x} cy={v.y} r={handleR}
-                        fill={isYLocked ? (isPivot ? 'white' : area.color) : 'white'}
-                        stroke={area.color} strokeWidth={lineW * 1.5}
+                        cx={v.x} cy={v.y} r={isFreePivot ? handleR * 0.45 : handleR}
+                        fill={isFreePivot ? area.color : (isYLocked ? (isPivot ? 'white' : area.color) : 'white')}
+                        stroke={area.color} strokeWidth={isFreePivot ? lineW * 0.75 : lineW * 1.5}
+                        opacity={isFreePivot ? 0.5 : 1}
                         style={{ cursor, pointerEvents: isDraggable && areaIdx === selectedAreaIdx ? 'auto' : 'none' }}
                         onMouseDown={isDraggable ? (e) => {
                           e.stopPropagation()
@@ -873,8 +892,7 @@ export default function PanelCanvas({
                             // Use the vertex position as drag start (already in SVG coords)
                             setMoveDragState({ areaIdx, startX: v.x, startY: v.y, origVertices: area.vertices })
                           } else if (isYLocked) {
-                            const refLength = Math.max(Math.hypot(v.x - pivot.x, v.y - pivot.y), 1)
-                            setYLockDragState({ areaIdx, cornerIdx, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, refLength, origVertices: area.vertices, origCornerX: v.x, origCornerY: v.y, areaVertical: area.areaVertical ?? false })
+                            setYLockDragState({ areaIdx, cornerIdx, startRotation: area.rotation ?? 0, pivotX: pivot.x, pivotY: pivot.y, origVertices: area.vertices, origCornerX: v.x, origCornerY: v.y, areaVertical: area.areaVertical ?? false })
                           } else {
                             const owx = area.vertices[1].x - pivot.x, owy = area.vertices[1].y - pivot.y
                             const ohx = area.vertices[3].x - pivot.x, ohy = area.vertices[3].y - pivot.y
@@ -890,24 +908,42 @@ export default function PanelCanvas({
               )
               })
             })()}
-            {/* 0° snap guide (y-lock drag) */}
+            {/* 0° snap guide (y-lock drag). Anchored at V0 (the rotation
+                pivot), drawn one-sided along the roof axis when set;
+                otherwise screen-horizontal across the polygon. Direction +
+                start match the per-area preview line in the roof-axis tool. */}
             {snapGuideState && (() => {
-              const { pivotY, minX, maxX, snapping } = snapGuideState
+              const { pivotX, pivotY, minX, maxX, reach, snapping, inwardSign = 1 } = snapGuideState
               const guideColor = snapping ? SUCCESS : WARNING
               const guideW = lineW * 1.5
               const gd = `${lineW * 8} ${lineW * 4}`
               const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+              let p1x, p1y, p2x, p2y, dirX = 1, dirY = 0
+              if (roofAxis?.start && roofAxis?.end) {
+                const dx = roofAxis.end.x - roofAxis.start.x
+                const dy = roofAxis.end.y - roofAxis.start.y
+                const len = Math.hypot(dx, dy) || 1
+                dirX = (dx / len) * inwardSign
+                dirY = (dy / len) * inwardSign
+                const r = reach ?? Math.max(maxX - minX, 1) / 2
+                p1x = pivotX; p1y = pivotY
+                p2x = pivotX + dirX * r; p2y = pivotY + dirY * r
+              } else {
+                p1x = minX; p1y = pivotY
+                p2x = maxX; p2y = pivotY
+              }
               return (
                 <g style={{ pointerEvents: 'none' }}>
                   <line
-                    x1={minX} y1={pivotY} x2={maxX} y2={pivotY}
+                    x1={p1x} y1={p1y} x2={p2x} y2={p2y}
                     stroke={guideColor} strokeWidth={guideW}
                     strokeDasharray={snapping ? undefined : gd}
                     opacity={snapping ? 1 : 0.75}
                   />
                   <text
-                    x={maxX + lineW * 4} y={pivotY}
+                    x={p2x + dirX * lineW * 4} y={p2y + dirY * lineW * 4}
                     dominantBaseline="middle"
+                    textAnchor={dirX >= 0 ? 'start' : 'end'}
                     fill={guideColor}
                     fontSize={labelSize}
                     fontWeight="700"
@@ -988,11 +1024,12 @@ export default function PanelCanvas({
             {panels.filter(p => !p.isEmpty).map(panel => {
               const isSelected = selectedPanels.includes(panel.id)
               const hasSelection = selectedPanels.length > 0
-              const isHovered = activeTool === 'delete' && hoveredPanelId === panel.id
+              const isActionHover = (activeTool === 'delete' || activeTool === 'rotate') && hoveredPanelId === panel.id
               const cx = panel.x + panel.width / 2, cy = panel.y + panel.height / 2
               const trapId = panel.trapezoidId || 'A1'
-let fill, borderColor, ibw
-              if (isHovered)       { fill = PANEL_FILL_HOVER_DELETE; borderColor = ERROR;      ibw = panel.width * 0.012 }
+              let fill, borderColor, ibw
+              if (isActionHover && activeTool === 'delete') { fill = PANEL_FILL_HOVER_DELETE; borderColor = ERROR; ibw = panel.width * 0.012 }
+              else if (isActionHover && activeTool === 'rotate') { fill = PANEL_FILL_HOVER_ROTATE; borderColor = BLUE; ibw = panel.width * 0.012 }
               else if (isSelected) { fill = PANEL_FILL_SELECTED;     borderColor = PANEL_DARK; ibw = panel.width * 0.025 }
               else                 { fill = PANEL_FILL;               borderColor = PANEL_MID;  ibw = panel.width * 0.012 }
               const opacity = hasSelection && !isSelected ? 0.45 : 1
@@ -1005,8 +1042,8 @@ let fill, borderColor, ibw
                     <rect
                       x={panel.x} y={panel.y} width={panel.width} height={panel.height}
                       fill={fill} stroke="none"
-                      style={{ cursor: activeTool === 'delete' ? 'pointer' : activeTool === 'move' ? 'grab' : 'default' }}
-                      onMouseEnter={() => activeTool === 'delete' && setHoveredPanelId(panel.id)}
+                      style={{ cursor: (activeTool === 'delete' || activeTool === 'rotate') ? 'pointer' : activeTool === 'move' ? 'grab' : 'default' }}
+                      onMouseEnter={() => (activeTool === 'delete' || activeTool === 'rotate') && setHoveredPanelId(panel.id)}
                       onMouseLeave={() => setHoveredPanelId(null)}
                     />
                     <rect
@@ -1016,7 +1053,7 @@ let fill, borderColor, ibw
                       style={{ pointerEvents: 'none' }}
                     />
                   </g>
-                  {!isHovered && (() => {
+                  {!isActionHover && (() => {
                     const r = (panel.rotation || 0) * Math.PI / 180
                     const rDeg = panel.rotation || 0
                     const down = (panel.yDir ?? 'ttb') === 'ttb'
@@ -1058,7 +1095,7 @@ let fill, borderColor, ibw
                       </>
                     )
                   })()}
-                  {isHovered && (
+                  {isActionHover && activeTool === 'delete' && (
                     <>
                       <rect x={cx - bh / 2} y={cy - bh / 2} width={bh} height={bh} rx={bh / 2}
                         fill={CANVAS_DELETE_MARK} style={{ pointerEvents: 'none' }} />
@@ -1114,6 +1151,84 @@ let fill, borderColor, ibw
                 <rect x={rx} y={ry} width={rw} height={rh}
                   fill={CANVAS_SEL_FILL} stroke={CANVAS_SEL_STROKE} strokeWidth="1.5" strokeDasharray="6,3"
                   style={{ pointerEvents: 'none' }} />
+              )
+            })()}
+
+            {/* Roof axis (Set-roof-axis tool). Visible only while the tool
+                is active — either showing the committed axis with draggable
+                handles, or the WIP draft. While drafting, also project an
+                orange line through every area's centroid at the new angle so
+                the user previews how the 0° reference will affect them. */}
+            {activeTool === 'roofAxis' && (() => {
+              const axis = roofAxisDraft ?? roofAxis
+              if (!axis?.start || !axis?.end) return null
+              const dx = axis.end.x - axis.start.x
+              const dy = axis.end.y - axis.start.y
+              const len = Math.hypot(dx, dy) || 1
+              const ax = dx / len, ay = dy / len
+              const guideW = lineW * 1.5
+              const gd = `${lineW * 8} ${lineW * 4}`
+              const handleR = Math.max(6, (imageRef?.naturalWidth ?? 1000) * 0.008)
+              const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+              // Roof axis angle in screen coords, normalised to (−90°, 90°].
+              let axisDeg = Math.atan2(dy, dx) * 180 / Math.PI
+              while (axisDeg > 90) axisDeg -= 180
+              while (axisDeg <= -90) axisDeg += 180
+              const axisLabel = `${axisDeg.toFixed(1)}°`
+              return (
+                <g style={{ pointerEvents: 'none' }}>
+                  {/* Per-area preview lines anchored at V0 (start corner),
+                      drawn along the roof axis pointing INTO the area body.
+                      Same direction + start as the Y-lock 0° snap guide. */}
+                  {rectAreas.map((area, i) => {
+                    if (!area.vertices?.length) return null
+                    const v0 = area.vertices[area.pivotIdx ?? 0]
+                    const cxAvg = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
+                    const cyAvg = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
+                    // Flip the roof axis sign so the drawn line points
+                    // toward the polygon centroid (inward from V0).
+                    const sign = (ax * (cxAvg - v0.x) + ay * (cyAvg - v0.y)) >= 0 ? 1 : -1
+                    const dirX = ax * sign, dirY = ay * sign
+                    const reach = Math.max(...area.vertices.map(v => Math.hypot(v.x - v0.x, v.y - v0.y))) * 1.05
+                    const x2 = v0.x + dirX * reach, y2 = v0.y + dirY * reach
+                    return (
+                      <g key={`roofaxis-area-${i}`}>
+                        <line
+                          x1={v0.x} y1={v0.y} x2={x2} y2={y2}
+                          stroke={WARNING} strokeWidth={guideW}
+                          strokeDasharray={gd}
+                          opacity={0.75}
+                        />
+                        <text
+                          x={x2 + dirX * lineW * 4} y={y2 + dirY * lineW * 4}
+                          fill={WARNING} fontSize={labelSize} fontWeight="700"
+                          dominantBaseline="middle"
+                          textAnchor={dirX >= 0 ? 'start' : 'end'}
+                        >0°</text>
+                      </g>
+                    )
+                  })}
+                  {/* The user-drawn roof axis: same look as the area lines,
+                      label = absolute angle of the drawn line. */}
+                  <line
+                    x1={axis.start.x} y1={axis.start.y}
+                    x2={axis.end.x}   y2={axis.end.y}
+                    stroke={WARNING} strokeWidth={guideW}
+                    strokeDasharray={gd}
+                    opacity={0.85}
+                  />
+                  <circle cx={axis.start.x} cy={axis.start.y} r={handleR}
+                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
+                  <circle cx={axis.end.x} cy={axis.end.y} r={handleR}
+                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
+                  <text
+                    x={axis.end.x + ax * lineW * 4}
+                    y={axis.end.y + ay * lineW * 4}
+                    fill={WARNING} fontSize={labelSize} fontWeight="700"
+                    dominantBaseline="middle"
+                    textAnchor={ax >= 0 ? 'start' : 'end'}
+                  >{axisLabel}</text>
+                </g>
               )
             })()}
 

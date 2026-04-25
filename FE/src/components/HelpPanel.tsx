@@ -5,24 +5,20 @@ import { useLang } from '../i18n/LangContext'
 const HELP = {
   1: {
     title: 'Roof Allocation',
-    purpose: 'Define the roof area where solar panels will be placed. You can use an interactive map (for geocoded locations) or upload your own aerial/plan image. The system will detect the roof boundary using AI (SAM2) or you can trace it manually.',
+    purpose: 'Pick the working surface for the project. The roof area is set automatically to the full extent of the chosen image — you only need to provide one and set the scale.',
     qa: [
       {
-        q: 'When should I use Map mode vs Image mode?',
-        a: 'Use Map mode when you know the site address and want to locate it on a satellite map. Use Image mode when you already have a high-resolution aerial photo or architectural plan — this gives more precise control over the roof boundary.'
+        q: 'What are my options for the working surface?',
+        a: 'Three: (1) upload an aerial photo or floor plan; (2) switch to Map mode and capture the visible satellite view; (3) start with a blank white canvas. In all cases the roof area is the full image — the next step is where you draw panel zones inside it.'
       },
       {
-        q: 'What is SAM2 Auto detection?',
-        a: 'SAM2 is an AI model that can detect object boundaries from a single click. Click anywhere on the roof surface and it will automatically trace the roof outline. It works best on clear aerial images with visible roof edges.'
+        q: 'How does Map mode work?',
+        a: 'Pan and zoom the satellite map to frame the roof, then click "Use this view" — the visible tiles are captured as the project image. From there it behaves the same as an uploaded image.'
       },
       {
-        q: 'When should I use Draw Polygon instead?',
-        a: 'Use Draw Polygon when the roof boundary is complex, SAM2 misidentifies the edge, or when working with plan drawings where the outline is already clearly marked. Click to add vertices, double-click or click the first point to close the shape.'
+        q: 'How do I set the real-world scale?',
+        a: 'After the image is loaded, draw a Reference Line over a known distance (a wall edge, a known feature) and enter its real length in cm. This calibrates the pixel-to-cm ratio used by every later step.'
       },
-      {
-        q: 'What if the detected boundary is not accurate?',
-        a: 'Click "Clear & Try Again" in the info panel to reset. In Auto mode, try clicking a different point on the roof. If results are still poor, switch to Draw Polygon mode for manual tracing.'
-      }
     ]
   },
   2: {

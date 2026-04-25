@@ -23,19 +23,32 @@
   justify-content: center;
 }
 
-.upload-label {
+.upload-options {
+  display: flex;
+  gap: 1.5rem;
   width: 100%;
-  max-width: 500px;
-  padding: 3rem;
+  max-width: 700px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.upload-option {
+  flex: 1 1 280px;
+  min-width: 240px;
+  padding: 2.25rem 1.5rem;
   border: 3px dashed #C4D600;
   border-radius: 12px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s;
   background: #fcfdf7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: inherit;
 }
 
-.upload-label:hover {
+.upload-option:hover {
   border-color: #B8C700;
   background: #f7fae8;
   transform: translateY(-2px);
@@ -49,14 +62,14 @@
   color: #C4D600;
 }
 
-.upload-label p {
-  font-size: 1.1rem;
+.upload-option p {
+  font-size: 1.05rem;
   color: #333;
-  margin: 0.5rem 0;
+  margin: 0.4rem 0;
 }
 
 .upload-hint {
-  font-size: 0.9rem !important;
+  font-size: 0.85rem !important;
   color: #666 !important;
 }
 

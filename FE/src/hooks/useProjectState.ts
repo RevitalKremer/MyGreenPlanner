@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
-import { SAM2Service } from '../services/sam2Service'
 import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
 import { createProject, updateProject, uploadProjectImage, getProjectImageUrl } from '../services/projectsApi'
 import { mgpRequest } from '../services/mgpApi'
@@ -33,6 +32,8 @@ export function useProjectState() {
   const setRoofPolygon = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofPolygon: v } })
   const referenceLine = pState.layout.referenceLine
   const setReferenceLine = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLine: v } })
+  const roofAxis = pState.layout.roofAxis ?? null
+  const setRoofAxis = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofAxis: v } })
   const referenceLineLengthCm = pState.layout.referenceLineLengthCm ?? ''
   const setReferenceLineLengthCm = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLineLengthCm: v } })
   const baseline = pState.layout.baseline
@@ -45,12 +46,8 @@ export function useProjectState() {
   const setDeletedPanelKeys = (v) => pDispatch({ type: A.SET_DELETED_PANEL_KEYS, value: v })
 
   // UI — reads from reducer
-  const selectedPoint = pState.ui.selectedPoint
-  const setSelectedPoint = (v) => pDispatch({ type: A.SET_UI, payload: { selectedPoint: v } })
-  const isProcessing = pState.ui.isProcessing
-  const setIsProcessing = (v) => pDispatch({ type: A.SET_UI, payload: { isProcessing: v } })
-  const uploadedImageMode = pState.ui.uploadedImageMode
-  const setUploadedImageMode = (v) => pDispatch({ type: A.SET_UI, payload: { uploadedImageMode: v } })
+  const roofSource = pState.ui.roofSource  // 'canvas' | 'image' | 'map'
+  const setRoofSource = (v) => pDispatch({ type: A.SET_UI, payload: { roofSource: v } })
   const isDrawingLine = pState.ui.isDrawingLine
   const setIsDrawingLine = (v) => pDispatch({ type: A.SET_UI, payload: { isDrawingLine: v } })
   const lineStart = pState.ui.lineStart
@@ -181,11 +178,17 @@ export function useProjectState() {
     return { imageData: canvas.toDataURL('image/png'), width: W, height: H, rotation: 0, scale: 1, isWhiteboard: true }
   }
 
-  // Default calibration for whiteboard: 0.7 cm/px (100px line = 70cm)
-  const WHITEBOARD_DEFAULT_RATIO_CM_PER_PX = 0.7
-  const applyWhiteboardDefaults = () => {
-    setReferenceLine({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 } })
-    setReferenceLineLengthCm(String(100 * WHITEBOARD_DEFAULT_RATIO_CM_PER_PX))
+  // Plain-canvas reference line: spans the full canvas width along the bottom edge.
+  // Length-in-px equals canvas width, so the user only enters cm.
+  const canvasReferenceLine = (data) => {
+    const y = data.height - Math.max(4, Math.round(data.width * 0.005))
+    return { start: { x: 0, y }, end: { x: data.width, y } }
+  }
+
+  const applyWhiteboardDefaults = (data) => {
+    setReferenceLine(canvasReferenceLine(data))
+    // Default canvas width: 6000 cm (60 m) → 2 cm/px on a 3000 px canvas.
+    setReferenceLineLengthCm('6000')
   }
 
   const handleCreateProject = (projectInfo) => {
@@ -193,18 +196,18 @@ export function useProjectState() {
     setCurrentProject(projectInfo)
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
-    setUploadedImageMode(true)
+    setRoofSource('canvas')
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-    applyWhiteboardDefaults()
+    applyWhiteboardDefaults(data)
     setAppScreen('wizard')
   }
 
   const handleWhiteboardStart = () => {
     const data = generateWhiteCanvas()
     setUploadedImageData(data)
-    setUploadedImageMode(true)
+    setRoofSource('canvas')
     setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-    applyWhiteboardDefaults()
+    applyWhiteboardDefaults(data)
   }
 
   const handleImportProject = (data, existingCloudId = null) => {
@@ -326,6 +329,7 @@ export function useProjectState() {
         referenceLineLengthCm: layout.referenceLineLengthCm != null ? String(layout.referenceLineLengthCm) : null,
         pixelToCmRatio: layout.pixelToCmRatio ?? null,
         baseline: layout.baseline ?? null,
+        roofAxis: layout.roofAxis ?? null,
         panels: layout.panels ? layout.panels.map(p => {
           const areaIdx = p.area ?? p.row ?? 0
           const ra = enrichedRectAreas[areaIdx]
@@ -361,6 +365,20 @@ export function useProjectState() {
       navigation: { step: data.currentStep || 1, tab: null },
       project: { cloudProjectId: existingCloudId ?? null, appScreen: 'wizard', currentProject: data.project },
     })
+
+    // Restore Step 1 source toggle from loaded image (whiteboard → canvas; real image → image)
+    const isCanvas = layout.uploadedImageData?.isWhiteboard
+    setRoofSource(isCanvas ? 'canvas' : 'image')
+
+    // Preserve the saved referenceLine / referenceLineLengthCm — even for
+    // canvas projects. Overriding them on load corrupts old projects whose
+    // panels were placed at a different cm/px ratio. Only fresh canvas
+    // creation (handleCreateProject / handleWhiteboardStart / source-toggle)
+    // applies the new bottom-line + 6000 cm default.
+    if (isCanvas && layout.uploadedImageData && !layout.referenceLine) {
+      // No saved line at all — apply defaults so the user has something to work with.
+      applyWhiteboardDefaults(layout.uploadedImageData)
+    }
 
     // refinedArea is now a useMemo — auto-derived from layout + step2 data
   }
@@ -628,61 +646,7 @@ export function useProjectState() {
     return true
   }
 
-  // ── Map / image click handlers ────────────────────────────────────────────
-
-  const handlePointSelect = async (point, mapInstance, bounds) => {
-    console.log('Point selected:', point, 'bounds:', bounds)
-    setSelectedPoint(point)
-    setIsProcessing(true)
-    try {
-      if (backendStatus.status !== 'running' || !backendStatus.model_loaded) {
-        alert('Backend is not ready. Please make sure the Python backend is running.')
-        setIsProcessing(false)
-        return
-      }
-      const zoom = mapInstance.getZoom()
-      const mapContainer = mapInstance.getContainer()
-      const mapSize = mapInstance.getSize()
-      console.log('Map viewport dimensions:', { width: mapSize.x, height: mapSize.y, containerWidth: mapContainer.offsetWidth, containerHeight: mapContainer.offsetHeight })
-      console.log('Sending to backend:', { lat: point.lat, lng: point.lng, zoom, bounds })
-      const result = await SAM2Service.segmentRoofFromMap(point.lat, point.lng, zoom, bounds)
-      console.log('SAM2 result:', result)
-      if (result && result.geometry) {
-        if (result.properties.actual_bounds) {
-          console.log('\n🗺️ BOUNDS COMPARISON:')
-          console.log('  Requested bounds (map viewport):', bounds)
-          console.log('  Actual bounds (backend tiles):', result.properties.actual_bounds)
-          console.log('  ⚠️ If these differ significantly, polygon will be misaligned!')
-        }
-        const coordinates = result.geometry.coordinates[0].map(coord => [coord[1], coord[0]])
-        setRoofPolygon({ coordinates, area: result.properties.area_pixels, confidence: result.properties.confidence, actualBounds: result.properties.actual_bounds })
-        if (result.properties.actual_bounds && mapInstance) {
-          const ab = result.properties.actual_bounds
-          mapInstance.fitBounds([[ab.south, ab.west], [ab.north, ab.east]], { padding: [50, 50] })
-          console.log('✅ Map fitted to actual_bounds from backend')
-        }
-      }
-      setIsProcessing(false)
-    } catch (error) {
-      console.error('Error processing roof:', error)
-      alert(`Error: ${error.message}`)
-      setIsProcessing(false)
-    }
-  }
-
-  const handleImageUploaded = async (imageData) => {
-    // Store image data immediately
-    // Actual upload to backend happens in handleSaveProject after project exists
-    setUploadedImageData(imageData)
-    setUploadedImageMode(true)
-    setRoofPolygon({ 
-      coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]], 
-      area: imageData.width * imageData.height, 
-      confidence: 1 
-    })
-    setReferenceLine(null)
-    setReferenceLineLengthCm('')
-  }
+  // ── Image upload handler ──────────────────────────────────────────────────
 
   const dataURLtoBlob = (dataURL) => {
     const arr = dataURL.split(',')
@@ -694,42 +658,18 @@ export function useProjectState() {
     return new Blob([u8arr], { type: mime })
   }
 
-  const handleImageClick = async (event) => {
-    if (!uploadedImageData) return
-    const img = event.target
-    const rect = img.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
-    const scaleX = img.naturalWidth / rect.width
-    const scaleY = img.naturalHeight / rect.height
-    const pixelX = Math.round(x * scaleX)
-    const pixelY = Math.round(y * scaleY)
-    console.log('📷 UPLOADED IMAGE:')
-    console.log('  Display dimensions:', { width: rect.width, height: rect.height })
-    console.log('  Natural dimensions:', { width: img.naturalWidth, height: img.naturalHeight })
-    console.log('  Click position (display):', { x, y })
-    console.log('  Click position (natural):', { x: pixelX, y: pixelY })
-    console.log('  Scale factors:', { scaleX, scaleY })
-    setSelectedPoint({ x: pixelX, y: pixelY })
-    setIsProcessing(true)
-    try {
-      if (backendStatus.status !== 'running' || !backendStatus.model_loaded) {
-        alert('Backend is not ready. Please make sure the Python backend is running.')
-        setIsProcessing(false)
-        return
-      }
-      const imageBlob = dataURLtoBlob(uploadedImageData.imageData)
-      const result = await SAM2Service.segmentRoofPixel(imageBlob, pixelX, pixelY)
-      console.log('SAM2 result:', result)
-      if (result && result.geometry) {
-        setRoofPolygon({ coordinates: result.geometry.coordinates[0], area: result.properties.area_pixels, confidence: result.properties.confidence })
-      }
-    } catch (error) {
-      console.error('Error processing roof:', error)
-      alert('Failed to process roof. Check console for details.')
-    } finally {
-      setIsProcessing(false)
-    }
+  const handleImageUploaded = async (imageData) => {
+    // Store image data immediately
+    // Actual upload to backend happens in handleSaveProject after project exists
+    setUploadedImageData(imageData)
+    setRoofSource('image')
+    setRoofPolygon({
+      coordinates: [[0, 0], [imageData.width, 0], [imageData.width, imageData.height], [0, imageData.height]],
+      area: imageData.width * imageData.height,
+      confidence: 1
+    })
+    setReferenceLine(null)
+    setReferenceLineLengthCm('')
   }
 
   // ── Wizard navigation ─────────────────────────────────────────────────────
@@ -767,7 +707,11 @@ export function useProjectState() {
       })
     })
     setTrapezoidConfigs(result.trapezoidConfigs)
-    if (result.rowMounting) setRowMounting(result.rowMounting)
+    // Skip setRowMounting when content is unchanged — it would only churn a new
+    // object reference and re-trigger the auto-recompute useEffect (infinite loop).
+    if (result.rowMounting && JSON.stringify(result.rowMounting) !== JSON.stringify(rowMounting || {})) {
+      setRowMounting(result.rowMounting)
+    }
   }
 
   const recordPanelDeletion = (panel) => {
@@ -995,11 +939,9 @@ export function useProjectState() {
     currentProject, setCurrentProject,
     currentStep, setCurrentStep,
     // Step 1
-    selectedPoint, setSelectedPoint,
     roofPolygon, setRoofPolygon,
     backendStatus,
-    isProcessing,
-    uploadedImageMode, setUploadedImageMode,
+    roofSource, setRoofSource,
     uploadedImageData, setUploadedImageData,
     imageSrc, // Computed: imageRef URL or base64 imageData
     imageRef, setImageRef,
@@ -1009,6 +951,7 @@ export function useProjectState() {
     panelType, setPanelType,
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,
+    roofAxis, setRoofAxis,
     panelFrontHeight, setPanelFrontHeight,
     panelAngle, setPanelAngle,
     isDrawingLine, setIsDrawingLine,
@@ -1061,10 +1004,8 @@ export function useProjectState() {
     regenerateSingleRowHandler,
     refreshAreaTrapezoids,
     addManualPanel,
-    handlePointSelect,
     handleImageUploaded,
     handleWhiteboardStart,
-    handleImageClick,
     computePanels,
     handleNext,
     handleBack,

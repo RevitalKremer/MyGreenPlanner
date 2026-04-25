@@ -1,5 +1,5 @@
-import { useRef, useCallback, useState } from 'react'
-import { TEXT_SECONDARY, BORDER, BORDER_MID, RAIL_STROKE, DANGER, CHART_BG, CHART_GRID } from '../../../styles/colors'
+import { useRef, useCallback } from 'react'
+import { TEXT_SECONDARY, BORDER, BORDER_MID, RAIL_STROKE, CHART_BG, CHART_GRID } from '../../../styles/colors'
 import { localToScreen } from '../../../utils/railLayoutService'
 
 const BAR_W   = 14  // SVG pixels wide
@@ -29,7 +29,8 @@ export default function RailCrossSectionOverlay({
   pixelToCmRatio,
   sc,
   zoom,
-  svgRef,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for API stability
+  svgRef: _svgRef,
   onLineChange,
 }) {
   const dragging = useRef(null)
@@ -143,40 +144,6 @@ export default function RailCrossSectionOverlay({
     window.addEventListener('mouseup', onUp)
   }, [rl, lineRails, panelDepthsCm, keepSymmetry, zoom, pixelToCmRatio, sc, onLineChange])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Add rail (click on bar) ──────────────────────────────────────────────
-  const onBarClick = useCallback((e, lineIdx) => {
-    if (dragging.current) return
-    e.stopPropagation()
-    const svgRect = svgRef.current.getBoundingClientRect()
-    const ext     = lineLocalExtents[lineIdx]
-    const depthCm = panelDepthsCm[lineIdx]
-    const rails   = lineRails?.[lineIdx] ?? []
-
-    // Click in SVG coordinates (account for CSS zoom scale on container)
-    const svgX = (e.clientX - svgRect.left) / zoom
-    const svgY = (e.clientY - svgRect.top)  / zoom
-
-    // Project SVG click onto local Y axis.
-    // Reference: top of bar at (barRight_sc, ext.minY) in local frame.
-    const barRight_sc = ext.minX - barGap_sc
-    const [refX, refY] = toSvgLocal(barRight_sc, ext.minY)
-    const deltaAlongY_svgPx = (svgX - refX) * (-sinA) + (svgY - refY) * cosA
-    // Convert SVG px delta to local screen-pixel delta, then to cm offset
-    const localY_sc = ext.minY + deltaAlongY_svgPx / sc
-    const localOffsetCm = snap(clamp((ext.maxY - localY_sc) * pixelToCmRatio, 0, depthCm))
-
-    if (rails.some(r => Math.abs(r - localOffsetCm) < 5)) return
-    onLineChange(lineIdx, [...rails, localOffsetCm].sort((a, b) => a - b))
-  }, [rl, lineRails, panelDepthsCm, zoom, svgRef, onLineChange])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── Remove rail ──────────────────────────────────────────────────────────
-  const removeRail = useCallback((lineIdx, railIdx, e) => {
-    e.stopPropagation()
-    const rails = lineRails?.[lineIdx] ?? []
-    if (rails.length <= 2) return
-    onLineChange(lineIdx, rails.filter((_, i) => i !== railIdx))
-  }, [lineRails, onLineChange])
-
   // ─── Render ───────────────────────────────────────────────────────────────
   if (!valid) return null
   return (
@@ -218,13 +185,10 @@ export default function RailCrossSectionOverlay({
             <polygon
               points={`${tlx},${tly} ${trx},${try_} ${brx},${bry} ${blx},${bly}`}
               fill={CHART_BG} stroke={CHART_GRID} strokeWidth={0.8}
-              style={{ cursor: 'crosshair' }}
-              onClick={(e) => onBarClick(e, li)}
             />
 
             {/* Rail lines and handles */}
             {railPositions.map((rp, ri) => {
-              const canRemove = stored.length > 2
               // Calculate rail line angle for text rotation
               const railAngleDeg = Math.atan2(rp.right[1] - rp.left[1], rp.right[0] - rp.left[0]) * 180 / Math.PI
               return (
@@ -242,13 +206,11 @@ export default function RailCrossSectionOverlay({
                   >
                     {rp.offsetCm?.toFixed(1)}
                   </text>
-                  <DeleteHandle
+                  <DragHandle
                     x={rp.mid[0] - HANDLE_W / 2}
                     y={rp.mid[1] - HANDLE_H / 2}
                     w={HANDLE_W} h={HANDLE_H}
-                    canRemove={canRemove}
                     onMouseDown={(e) => onMouseDownHandle(e, li, ri)}
-                    onDelete={(e) => removeRail(li, ri, e)}
                   />
                 </g>
               )
@@ -292,46 +254,15 @@ export default function RailCrossSectionOverlay({
   )
 }
 
-// ─── Handle: drag to move, click (without drag) to delete ────────────────────
-function DeleteHandle({ x, y, w, h, canRemove, onMouseDown, onDelete }) {
-  const [hover, setHover] = useState(false)
-  const didDrag = useRef(false)
-
-  const handleMouseDown = (e) => {
-    didDrag.current = false
-    const startY = e.clientY
-    const onMove = (me) => { if (Math.abs(me.clientY - startY) > 3) didDrag.current = true }
-    const onUp   = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    onMouseDown(e)
-  }
-
-  const handleClick = (e) => {
-    if (!canRemove || didDrag.current) return
-    onDelete(e)
-  }
-
+// ─── Handle: drag to move ────────────────────────────────────────────────────
+function DragHandle({ x, y, w, h, onMouseDown }) {
   return (
-    <g
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onMouseDown={handleMouseDown}
-      onClick={handleClick}
-      style={{ cursor: canRemove && hover ? 'pointer' : 'ns-resize' }}
-    >
+    <g onMouseDown={onMouseDown} style={{ cursor: 'ns-resize' }}>
       <rect
         x={x} y={y} width={w} height={h} rx={2}
-        fill={hover && canRemove ? DANGER : RAIL_STROKE}
+        fill={RAIL_STROKE}
         stroke="white" strokeWidth={1}
       />
-      {hover && canRemove && (
-        <text x={x + w / 2} y={y + h - 2} textAnchor="middle" fontSize={8} fill="white" fontWeight="700"
-          style={{ pointerEvents: 'none' }}>✕</text>
-      )}
     </g>
   )
 }
