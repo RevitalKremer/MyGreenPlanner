@@ -73,6 +73,9 @@ export default function Step2PanelPlacement({
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
+  // Edit mode (Area / Panels tab) is tracked separately from activeTool so
+  // that activating overlay tools like the ruler doesn't flip the tab.
+  const [editMode, setEditMode] = useState<'area' | 'panel'>('area')
   const [trapIdOverride, setTrapIdOverride] = useState(null)
   const [drawVertical, setDrawVertical] = useState(false)
   const [showHGridlines, setShowHGridlines] = useState(false)
@@ -345,6 +348,10 @@ export default function Step2PanelPlacement({
     const keepSelection = (tool === 'move' || tool === 'rotate') &&
                           (activeTool === 'move' || activeTool === 'rotate')
     setActiveTool(tool)
+    // Update editMode only for tools that own a tab. The ruler ('measure')
+    // is an overlay — it must not flip the Area/Panels tab.
+    if (tool === 'area') setEditMode('area')
+    else if (tool !== 'measure') setEditMode('panel')
     if (!keepSelection) setSelectedPanels([])
     setPendingAddNextTo(false)
     setAddError(null)
@@ -841,6 +848,7 @@ export default function Step2PanelPlacement({
             yLocked={allYLocked} onToggleYLock={handleToggleYLock} hasAreas={rectAreas.length > 0}
             drawVertical={drawVertical} onToggleDrawVertical={() => setDrawVertical(v => !v)}
             onSetEditMode={handleSetEditMode}
+            editMode={editMode}
             selectedAreaIdx={selectedAreaIdx}
             selectedAreaLabel={typeof selectedAreaIdx === 'number' ? (rectAreas[selectedAreaIdx]?.label || String(selectedAreaIdx)) : null}
             onDeleteArea={handleDeleteArea}

@@ -16,6 +16,7 @@ export default function ToolPanel({
   yLocked, onToggleYLock, hasAreas,
   drawVertical, onToggleDrawVertical,
   onSetEditMode,
+  editMode: editModeProp,
   selectedAreaIdx,
   selectedAreaLabel,
   onDeleteArea,
@@ -73,7 +74,10 @@ export default function ToolPanel({
 
       {/* Mode toggle: Areas / Panels */}
       {(() => {
-        const editMode = activeTool === 'area' ? 'area' : 'panel'
+        // Owner controls editMode separately so overlay tools (e.g. ruler)
+        // don't flip the tab. Fall back to deriving from activeTool only if
+        // the prop wasn't supplied.
+        const editMode = editModeProp ?? (activeTool === 'area' ? 'area' : 'panel')
         const modeTabStyle = (mode) => ({
           flex: 1, padding: '0.4rem 0.3rem',
           background: editMode === mode ? PRIMARY : BG_FAINT,
@@ -287,7 +291,14 @@ export default function ToolPanel({
           <button onClick={() => setShowVGridlines(!showVGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: showVGridlines ? '#F3F9E6' : 'white', color: showVGridlines ? '#5a7a00' : TEXT_VERY_LIGHT, border: `1px solid ${showVGridlines ? PRIMARY : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.vGrid')}</button>
           <button onClick={() => setSnapToGridlines(!snapToGridlines)} style={{ flex: 1, padding: '0.4rem 0.2rem', background: snapToGridlines ? '#e8f0ff' : 'white', color: snapToGridlines ? '#1a4fd6' : '#aaa', border: `1px solid ${snapToGridlines ? '#7baaf7' : '#ddd'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}>{t('step2.tool.snap')}</button>
           <button
-            onClick={() => handleToolChange(activeTool === 'measure' ? 'area' : 'measure')}
+            onClick={() => {
+              if (activeTool === 'measure') {
+                // Exit ruler back to the tab the user was on, not always 'area'.
+                handleToolChange((editModeProp ?? 'area') === 'area' ? 'area' : 'move')
+              } else {
+                handleToolChange('measure')
+              }
+            }}
             style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'measure' ? BLUE_BG : 'white', color: activeTool === 'measure' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'measure' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
           >📏</button>
         </div>
