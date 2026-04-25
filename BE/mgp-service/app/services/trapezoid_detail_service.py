@@ -66,7 +66,9 @@ def _diagonal_cut_length(pp_length: float, vert: float, horiz: float, beam_thick
     """
     if pp_length <= 0:
         return 0
-    diag_angle_deg = math.atan2(vert, horiz) * 180 / math.pi
+    # Use abs(horiz) — diagonals tilted backward (higher point on the right)
+    # have the same physical angle as forward ones, just mirrored.
+    diag_angle_deg = math.atan2(vert, abs(horiz)) * 180 / math.pi
     if 40 <= diag_angle_deg <= 50:
         extension = beam_thick_cm * vert / pp_length
     else:
@@ -233,7 +235,9 @@ def _compute_diagonal_bracing(
         bolt_inset = 2.75  # distance from leg end to bolt hole center
         vert = (h_a - 2 * bolt_inset) + top_pct * punch_span * sin_a
         horiz = (bot_pct - top_pct) * punch_span * cos_a
-        pp_length = math.sqrt(vert ** 2 + horiz ** 2) if horiz > 0 else 0
+        # Length is symmetric on horiz sign — backward-tilted diagonals (bot_pct
+        # < top_pct, higher end on the right) have the same physical length.
+        pp_length = math.sqrt(vert ** 2 + horiz ** 2)
         length_cm = _diagonal_cut_length(pp_length, vert, horiz, beam_thick_cm)
 
         # isDouble: true when the diagonal LENGTH exceeds the threshold
