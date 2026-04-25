@@ -142,6 +142,7 @@ function RoofMapper({ onCapture }) {
           url={tileConfig.url}
           maxZoom={tileConfig.maxZoom}
           maxNativeZoom={tileConfig.maxNativeZoom}
+          crossOrigin="anonymous"
           {...((tileConfig as any).subdomains && { subdomains: (tileConfig as any).subdomains })}
         />
 
