@@ -770,7 +770,11 @@ export function useProjectState() {
       })
     })
     setTrapezoidConfigs(result.trapezoidConfigs)
-    if (result.rowMounting) setRowMounting(result.rowMounting)
+    // Skip setRowMounting when content is unchanged — it would only churn a new
+    // object reference and re-trigger the auto-recompute useEffect (infinite loop).
+    if (result.rowMounting && JSON.stringify(result.rowMounting) !== JSON.stringify(rowMounting || {})) {
+      setRowMounting(result.rowMounting)
+    }
   }
 
   const recordPanelDeletion = (panel) => {
