@@ -574,7 +574,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
-            { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
+            // Edit Bar — hidden until bases edit-bar alignment + per-trap fan-out is finished. See backlog.
+            // { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
           ]}
           summary={null}
           actions={[
