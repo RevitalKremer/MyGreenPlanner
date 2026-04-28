@@ -272,10 +272,11 @@ def _compute_block_positions(
     """
     Compute block positions on base beam — one per leg.
 
-    Returns list of blocks with positionCm, isEnd, slopePositionCm, slopeLengthCm.
+    Returns list of blocks with positionCm, isEnd, slopePositionCm. Slope length
+    is the same for every block in a trapezoid and derivable from
+    geometry.blockLengthCm and geometry.angle, so it is not emitted per-block.
     """
     profile_half = beam_thick_cm / 2
-    slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
 
     # Special case: only 2 blocks AND they would overlap - place consecutively
     # Blocks overlap when base_beam_length < 2 * block_length_cm
@@ -285,13 +286,11 @@ def _compute_block_positions(
                 'positionCm': 0.0,
                 'isEnd': True,
                 'slopePositionCm': 0.0,
-                'slopeLengthCm': _r(slope_block_length),
             },
             {
                 'positionCm': _r(block_length_cm),
                 'isEnd': True,
                 'slopePositionCm': _r(_base_to_slope(block_length_cm, profile_half, cos_a)),
-                'slopeLengthCm': _r(slope_block_length),
             },
         ]
         logger.info(f'Block positioning: 2 consecutive outer blocks (overlapping case), base_beam_length={base_beam_length}, block_length={block_length_cm}')
@@ -340,9 +339,8 @@ def _compute_block_positions(
             'positionCm': _r(pos),
             'isEnd': blk['isEnd'],
             'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
-            'slopeLengthCm': _r(slope_block_length),
         })
-    
+
     logger.info(f'Final: {len(blocks)} blocks after overlap removal')
     return blocks
 
@@ -643,7 +641,6 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
                 local_positions.append(lp)
 
         # Remove overlaps + add slope projection
-        slope_block_length = block_length / cos_a if cos_a > 0 else block_length
         blocks = []
         for lp in local_positions:
             if blocks and lp < blocks[-1]['positionCm'] + block_length - 0.1:
@@ -652,7 +649,6 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
                 'positionCm': lp,
                 'isEnd': False,
                 'slopePositionCm': _r(_base_to_slope(lp, ph, cos_a)),
-                'slopeLengthCm': _r(slope_block_length),
             })
         # First and last blocks are outer — reposition to align with beam ends
         if blocks:
@@ -935,7 +931,6 @@ def trim_trapezoid(
     if has_blocks:
         # Blocks: regenerate in base-beam coords (same rules as service)
         block_length_cm = geom['blockLengthCm']
-        slope_block_length = block_length_cm / cos_a if cos_a > 0 else block_length_cm
         raw_blocks = []
         raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
         for leg in filtered_legs[1:-1]:
@@ -952,7 +947,6 @@ def trim_trapezoid(
                 'positionCm': _r(pos),
                 'isEnd': blk['isEnd'],
                 'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
-                'slopeLengthCm': _r(slope_block_length),
             })
         detail['blocks'] = new_blocks
     else:

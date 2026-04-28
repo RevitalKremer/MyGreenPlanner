@@ -257,6 +257,16 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 {/* 2. Blocks */}
                 {sBlocks && (beBasesData ?? []).map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
+                    const trapDetail = beTrapezoidsData?.[sb.trapezoidId]
+                    const allBlocks = trapDetail?.blocks ?? []
+                    if (allBlocks.length === 0) return null
+                    // Slope length is identical for every block in a trapezoid:
+                    // blockLengthCm / cos(angle). BE only emits blocks for
+                    // concrete roofs, where both fields are guaranteed.
+                    const geom = trapDetail!.geometry
+                    if (geom.blockLengthCm == null) return null
+                    const slopeBlockLengthCm = geom.blockLengthCm / Math.cos(geom.angle * Math.PI / 180)
+
                     const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
                     if (!ctx) return null
                     const { af } = ctx
@@ -268,12 +278,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const ty = tIsBtt ? (line?.maxY ?? af.frame.localBounds.maxY) - depthPx - lenPx : (line?.minY ?? af.frame.localBounds.minY) + depthPx
                     const by = ty + lenPx
                     // Only render blocks that fit within this base's actual length
-                    const trapBlocks = (beTrapezoidsData?.[sb.trapezoidId]?.blocks ?? [])
-                      .filter(blk => (blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) <= sb.lengthCm + 1)
-                    const blockWSvg = ((trapSettingsMap[sb.trapezoidId]?.blockWidthCm ?? 24) / pixelToCmRatio) * sc
+                    const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= sb.lengthCm + 1)
+                    const blockWSvg = (trapSettingsMap[sb.trapezoidId].blockWidthCm / pixelToCmRatio) * sc
+                    const slSvg = (slopeBlockLengthCm / pixelToCmRatio) * sc
                     return trapBlocks.map((blk, bki) => {
-                      const slSvg = ((blk.slopeLengthCm ?? 51) / pixelToCmRatio) * sc
-                      const blkOffsetPx = ((blk.slopePositionCm ?? 0) + (blk.slopeLengthCm ?? 51) / 2) / pixelToCmRatio
+                      const blkOffsetPx = (blk.slopePositionCm + slopeBlockLengthCm / 2) / pixelToCmRatio
                       const bcy = tIsBtt ? by - blkOffsetPx : ty + blkOffsetPx
                       const sp = localToScreen({ x: lx, y: bcy }, af.frame.center, af.frame.angleRad)
                       const [bkx, bky] = toSvg(sp.x, sp.y)

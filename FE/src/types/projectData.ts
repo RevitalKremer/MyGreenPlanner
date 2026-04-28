@@ -137,7 +137,6 @@ export interface Block {
   positionCm: number
   isEnd: boolean
   slopePositionCm: number
-  slopeLengthCm: number
 }
 
 export interface Punch {
