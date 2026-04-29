@@ -189,7 +189,9 @@ class ComputedTrapezoid(_StrictBase):
     legs: list[dict] = Field(default_factory=list)
     # legs[]: positionCm, heightCm, railPositionCm (inner only); sorted by positionCm, first/last are outer
     blocks: list[dict] = Field(default_factory=list)
-    # blocks[]: positionCm (left edge on base beam), isEnd, slopePositionCm, slopeLengthCm
+    # blocks[]: positionCm (left edge on base beam), isEnd, slopePositionCm
+    # (slope length is identical for every block — derive on consumers as
+    # geometry.blockLengthCm / cos(geometry.angle))
     punches: list[dict] = Field(default_factory=list)
     # punches[]: beamType ('base'|'slope'), positionCm, origin ('outerLeg'|'innerLeg'|'rail'|'diagonal'|'block')
     diagonals: list[dict] = Field(default_factory=list)

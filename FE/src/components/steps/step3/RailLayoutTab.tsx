@@ -248,7 +248,8 @@ export default function RailLayoutTab({
               { label: t('step3.layer.connectors'),      checked: showConnectors,      setter: setShowConnectors },
               { label: t('step3.layer.materialSummary'), checked: showMaterialSummary, setter: setShowMaterialSummary },
               { label: t('step3.layer.dimensions'),      checked: showDimensions,      setter: setShowDimensions },
-              { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
+              // Edit Bar — hidden until rail-edit-fans-out-to-traps feature is built. See backlog.
+              // { label: t('step3.layer.editBar'),         checked: showEditBar,         setter: setShowEditBar },
             ]}
             summary={null}
             actions={[
