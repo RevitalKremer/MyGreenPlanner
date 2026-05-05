@@ -101,9 +101,10 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
   const baseRows = bomItems
-  // Some BOM rows aggregate across areas (e.g. rails: areaLabel = "A, J").
-  // Split on commas so the filter dropdown lists individual areas and the
-  // filter predicate can match an aggregated row against any contributing area.
+  // Some BOM rows aggregate across areas (e.g. rails: areaLabel = "A, J";
+  // Other items: "A, B, C, J"). Split on commas so the filter dropdown lists
+  // individual areas and the filter predicate matches aggregated rows against
+  // any contributing area.
   const splitAreas = (label) => String(label ?? '').split(',').map(s => s.trim()).filter(Boolean)
   const areaLabels = useMemo(() => {
     const set = new Set<string>()

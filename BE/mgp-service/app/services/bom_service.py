@@ -472,6 +472,50 @@ def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
     return other_rows + aggregated
 
 
+def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
+    """Merge non-length-bearing rows across areas by element.
+
+    Items in the "Other" section (clamps, bolts, blocks, end caps, screws,
+    hooks, etc.) are stocked by the box without regard to area, so the BOM
+    lists each element once with the contributing areas comma-joined in the
+    area column.
+    """
+    length_rows = [r for r in rows if r.get('pieceLengthM') is not None]
+    other_rows = [r for r in rows if r.get('pieceLengthM') is None]
+    if not other_rows:
+        return rows
+
+    grouped: dict[str, dict] = {}
+    for r in other_rows:
+        element = r.get('element')
+        if not element:
+            continue
+        bucket = grouped.setdefault(element, {
+            'element': element,
+            'qty': 0,
+            'areas': set(),
+        })
+        bucket['qty'] += r.get('qty', 0)
+        label = r.get('areaLabel')
+        if label:
+            bucket['areas'].add(label)
+
+    aggregated: list[dict] = []
+    for element in sorted(grouped.keys()):
+        g = grouped[element]
+        if g['qty'] <= 0:
+            continue
+        labels = sorted(g['areas'])
+        aggregated.append({
+            'areaLabel': ', '.join(labels),
+            'element': element,
+            'totalLengthM': None,
+            'qty': g['qty'],
+        })
+
+    return length_rows + aggregated
+
+
 def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: float = 0) -> list[dict]:
     """
     Build per-area bill of materials.
@@ -507,7 +551,7 @@ def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: 
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
 
-    return _aggregate_rails_globally(rows)
+    return _aggregate_other_globally(_aggregate_rails_globally(rows))
 
 
 def enrich_bom_with_products(
@@ -530,7 +574,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 7  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 8  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
