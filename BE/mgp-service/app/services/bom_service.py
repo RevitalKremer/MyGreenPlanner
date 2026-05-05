@@ -188,6 +188,41 @@ def _derive_row_construction(
     # External diagonals (between adjacent bases) live on the area itself.
     external_diagonals = computed_area.get('diagonals') or []
 
+    # Per-trap material summary: one entry per trapezoidId in this area, with
+    # the total angle-profile material a single instance of that trap consumes
+    # (beams + every leg's actual height + internal diagonals, doubled where
+    # `isDouble`). Multiplied by `count` (instances in this area) at render
+    # time. Used to render a `── Trapezoids ──` BOM section grouped by trap ID.
+    trap_instance_counts: dict[str, int] = {}
+    for b in all_bases:
+        tid = b.get('trapezoidId')
+        if tid:
+            trap_instance_counts[tid] = trap_instance_counts.get(tid, 0) + 1
+    ct_by_id = {ct.get('trapezoidId'): ct for ct in computed_trapezoids}
+    trap_types: list[dict] = []
+    for tid, count in trap_instance_counts.items():
+        ct = ct_by_id.get(tid)
+        if not ct or count <= 0:
+            continue
+        t_geom = ct.get('geometry') or {}
+        t_legs = ct.get('legs') or []
+        t_diags = ct.get('diagonals') or []
+        cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
+        cm += t_geom.get('topBeamLength') or 0
+        for leg in t_legs:
+            cm += leg.get('heightCm', 0) or 0
+        for d in t_diags:
+            if d.get('disabled'):
+                continue
+            mult = 2 if d.get('isDouble') else 1
+            cm += (d.get('lengthCm', 0) or 0) * mult
+        if cm > 0:
+            trap_types.append({
+                'trapId': tid,
+                'count': count,
+                'materialM': round(cm / 100, 2),
+            })
+
     return {
         'rowLength': row_length,
         'angle': geom.get('angle', 0),
@@ -206,58 +241,8 @@ def _derive_row_construction(
         'railPieces': rail_pieces,
         'internalDiagonals': internal_diagonals,
         'externalDiagonals': external_diagonals,
+        'trapTypes': trap_types,
     }
-
-
-def _frame_pieces(rc: dict) -> list[dict]:
-    """Per-piece angle-profile cuts for a single area's frame (beams + legs).
-
-    Returns a list of {qty, lenCm} entries. Caller groups them with diagonal
-    pieces so all 40×40 angle-profile lengths roll up into one element.
-    """
-    T = rc['numTrapezoids']
-    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
-    angle_rad = rc['angle'] * math.pi / 180
-    beam_thick_cm = rc['angleProfileSizeMm'] / 10
-    avg_inner_leg_cm = (
-        beam_thick_cm * (1 + math.cos(angle_rad) / 2)
-        + (rc['heightRear'] + rc['heightFront']) / 2
-    )
-
-    raw = [
-        {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
-        {'qty': T, 'lenCm': rc['topBeamLength']},
-        {'qty': T, 'lenCm': rc['heightRear']},
-        {'qty': T, 'lenCm': rc['heightFront']},
-        {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
-    ]
-    return [p for p in raw if p['qty'] > 0 and p['lenCm'] > 0]
-
-
-def _diagonal_pieces(rc: dict) -> list[dict]:
-    """Per-piece angle-profile cuts for diagonals (internal + external).
-
-    Internal trap diagonals contribute one piece each, doubled when `isDouble`.
-    External base-to-base diagonals contribute one piece each (length in mm).
-    Disabled internal diagonals are skipped.
-    """
-    pieces: list[dict] = []
-    for diag in rc.get('internalDiagonals') or []:
-        if diag.get('disabled'):
-            continue
-        length_cm = diag.get('lengthCm', 0)
-        if length_cm <= 0:
-            continue
-        qty = 2 if diag.get('isDouble') else 1
-        pieces.append({'qty': qty, 'lenCm': length_cm})
-
-    for diag in rc.get('externalDiagonals') or []:
-        length_mm = diag.get('diagLengthMm', 0)
-        if length_mm <= 0:
-            continue
-        pieces.append({'qty': 1, 'lenCm': length_mm / 10})
-
-    return pieces
 
 
 def _group_pieces_by_length(pieces: list[dict], area_label: str, element: str) -> list[dict]:
@@ -291,13 +276,48 @@ def _group_pieces_by_length(pieces: list[dict], area_label: str, element: str) -
     return rows
 
 
-def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
-    """One BOM row per distinct cut length of 40×40 angle profile in this area.
+def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
+    """One BOM row per distinct trapezoid type (e.g. B1, B2, B3, J).
 
-    Pools every piece (frame beams, legs, internal & external diagonals).
+    Each row describes the angle-profile material a single trapezoid frame
+    consumes (beams + every leg + internal diagonals, doubled where
+    `isDouble`); `qty` is how many instances of that trap type exist in the
+    area. Trap ID goes into the area column so the user can see which trap
+    is which at a glance. Section `trapezoids` keeps these grouped under one
+    header in the BOM table.
     """
-    pieces = _frame_pieces(rc) + _diagonal_pieces(rc)
-    return _group_pieces_by_length(pieces, area_label, 'angle_profile_40x40')
+    rows: list[dict] = []
+    for tt in rc.get('trapTypes') or []:
+        material_m = tt.get('materialM', 0)
+        count = tt.get('count', 0)
+        if material_m <= 0 or count <= 0:
+            continue
+        rows.append({
+            'areaLabel': tt.get('trapId', '?'),
+            'element': 'angle_profile_40x40',
+            'section': 'trapezoids',
+            'pieceLengthM': material_m,
+            'totalLengthM': round(material_m * count, 2),
+            'qty': count,
+        })
+    return rows
+
+
+def _compute_external_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
+    """One BOM row per distinct cut length of external (base-to-base) diagonal
+    in this area. Section `diagonals_external` separates these from the
+    trapezoid-frame material.
+    """
+    pieces: list[dict] = []
+    for diag in rc.get('externalDiagonals') or []:
+        length_mm = diag.get('diagLengthMm', 0)
+        if length_mm <= 0:
+            continue
+        pieces.append({'qty': 1, 'lenCm': length_mm / 10})
+    rows = _group_pieces_by_length(pieces, area_label, 'angle_profile_40x40')
+    for r in rows:
+        r['section'] = 'diagonals_external'
+    return rows
 
 
 def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
@@ -472,14 +492,16 @@ def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: 
             rows += _compute_hook_bom(rc, area_label, spacing_mm)
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
-            rows += _compute_angle_profile_bom(rc, area_label)
+            rows += _compute_trapezoid_bom(rc, area_label)
+            rows += _compute_external_diagonal_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
             rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
         else:
             # Concrete (default): full BOM
-            rows += _compute_angle_profile_bom(rc, area_label)
+            rows += _compute_trapezoid_bom(rc, area_label)
+            rows += _compute_external_diagonal_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_block_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
@@ -508,7 +530,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 6  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 7  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:

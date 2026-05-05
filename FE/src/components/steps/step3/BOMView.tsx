@@ -201,16 +201,26 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       })
     }
 
-    // Section grouping is fixed: length-bearing items (one section per element,
-    // alphabetical) first, then a single "Other" section for the rest. Within a
-    // section the user's chosen sort applies as a secondary order.
+    // Section grouping is fixed:
+    //   1. Length-bearing rows tagged with an explicit `section` come first,
+    //      ordered by SECTION_ORDER below (trapezoids → external diagonals → …)
+    //   2. Length-bearing rows without a section, alphabetically by element
+    //   3. Non-length rows (single "Other" section)
+    // Within a section the user's chosen sort applies as a secondary order.
+    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1 }
+    const sectionRank = (r) => {
+      if (r.pieceLengthM == null) return 1000  // "Other"
+      if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
+      return 100  // unsectioned length rows (rails fall here)
+    }
     const dir = sortDir === 'asc' ? 1 : -1
     const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
     rows = [...rows].sort((a, b) => {
-      const aLen = a.pieceLengthM != null
-      const bLen = b.pieceLengthM != null
-      if (aLen !== bLen) return aLen ? -1 : 1
-      if (aLen) {
+      const ra = sectionRank(a)
+      const rb = sectionRank(b)
+      if (ra !== rb) return ra - rb
+      // Within unsectioned length rows, group by element name.
+      if (a.pieceLengthM != null && !a.section && !b.section) {
         const elementDiff = elementName(a).localeCompare(elementName(b))
         if (elementDiff !== 0) return elementDiff
       }
@@ -353,7 +363,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             {(() => {
               let lineNum = 0
               const out = []
-              let prevElement = null
+              let prevSectionKey = null
               let otherHeaderShown = false
               const sectionHeader = (key, label) => (
                 <tr key={key} style={{ background: SECTION_HEADER_BG }}>
@@ -363,19 +373,31 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                   </td>
                 </tr>
               )
+              const sectionLabelFor = (row) => {
+                // Explicit section field has its own translated label.
+                if (row.section) {
+                  const key = `bom.section.${row.section.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`
+                  const translated = t(key)
+                  if (translated && translated !== key) return translated
+                }
+                const product = productByType[row.element]
+                return row.name ?? product?.name ?? row.element
+              }
               visibleRows.forEach((row, ri) => {
                 if (row.pieceLengthM != null) {
-                  // One section header per length-bearing element.
-                  if (row.element !== prevElement) {
-                    const product = productByType[row.element]
-                    out.push(sectionHeader(`hdr-${row.element}-${ri}`, row.name ?? product?.name ?? row.element))
+                  // Header transitions on section key (explicit `section` field
+                  // OR fall back to element when no section is set).
+                  const sectionKey = row.section ?? row.element
+                  if (sectionKey !== prevSectionKey) {
+                    out.push(sectionHeader(`hdr-${sectionKey}-${ri}`, sectionLabelFor(row)))
                   }
+                  prevSectionKey = sectionKey
                 } else if (!otherHeaderShown) {
                   // Single catchall header for all non-length rows.
                   out.push(sectionHeader(`hdr-other-${ri}`, t('bom.sectionOther')))
                   otherHeaderShown = true
+                  prevSectionKey = '__other__'
                 }
-                prevElement = row.element
 
                 if (!row.removed) lineNum++
                 const displayNum = row.removed ? null : lineNum

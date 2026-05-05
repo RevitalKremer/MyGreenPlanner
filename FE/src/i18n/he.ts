@@ -302,7 +302,9 @@ const he = {
   'bom.defaultSuffix':  '(ברירת מחדל)',
   'bom.badgeNew':       'חדש',
   'bom.badgeAlt':       'חלופה',
-  'bom.sectionOther':   'שונות',
+  'bom.sectionOther':              'אביזרים אחרים',
+  'bom.section.trapezoids':        'טרפזים',
+  'bom.section.diagonalsExternal': 'דיאגונלים',
   // ייצוא אקסל
   'bom.xlsx.appTitle':      'MyGreenPlanner — מערכת תכנון מערכות סולאריות',
   'bom.xlsx.appSubtitle':   'מבית שדות אנרגיה',

@@ -520,34 +520,50 @@ export default function Step4PdfReport({
        t('bom.colLength'), t('bom.colQty'), t('bom.colExtras'), t('bom.colTotal')],
     ]
 
-    // Section grouping mirrors the on-screen table: length-bearing rows first
-    // (one section per element, alphabetical), then a single "Other" section
-    // for the rest. Within a section, sort by area.
+    // Section grouping mirrors the on-screen table: explicitly-tagged sections
+    // (trapezoids, external diagonals) first in fixed order, then unsectioned
+    // length-bearing rows by element name, then a single "Other" catchall.
+    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1 }
+    const sectionRank = (r) => {
+      if (r.pieceLengthM == null) return 1000
+      if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
+      return 100
+    }
     const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
+    const sectionLabelFor = (row) => {
+      if (row.section) {
+        const key = `bom.section.${row.section.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`
+        const translated = t(key)
+        if (translated && translated !== key) return translated
+      }
+      return elementName(row)
+    }
     const sortedRows = [...finalRows].sort((a, b) => {
-      const aLen = a.pieceLengthM != null
-      const bLen = b.pieceLengthM != null
-      if (aLen !== bLen) return aLen ? -1 : 1
-      if (aLen) {
+      const ra = sectionRank(a)
+      const rb = sectionRank(b)
+      if (ra !== rb) return ra - rb
+      if (a.pieceLengthM != null && !a.section && !b.section) {
         const elementDiff = elementName(a).localeCompare(elementName(b))
         if (elementDiff !== 0) return elementDiff
       }
       return (a.areaLabel ?? '').localeCompare(b.areaLabel ?? '')
     })
 
-    let prevElement: string | null = null
+    let prevSectionKey: string | null = null
     let otherHeaderShown = false
     let lineNum = 0
     sortedRows.forEach((row) => {
       if (row.pieceLengthM != null) {
-        if (row.element !== prevElement) {
-          sheetData.push(['---', '', `── ${elementName(row)} ──`, '', '', '', '', ''])
+        const sectionKey = row.section ?? row.element
+        if (sectionKey !== prevSectionKey) {
+          sheetData.push(['---', '', `── ${sectionLabelFor(row)} ──`, '', '', '', '', ''])
         }
+        prevSectionKey = sectionKey
       } else if (!otherHeaderShown) {
         sheetData.push(['---', '', `── ${t('bom.sectionOther')} ──`, '', '', '', '', ''])
         otherHeaderShown = true
+        prevSectionKey = '__other__'
       }
-      prevElement = row.element
 
       lineNum += 1
       const isLengthRow = row.pieceLengthM != null

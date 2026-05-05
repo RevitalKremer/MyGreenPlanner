@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class BOMItemRead(BaseModel):
     areaLabel: str
     element: str
+    section: str | None = None           # logical section for grouping (e.g. 'trapezoids', 'diagonals_external')
     pieceLengthM: float | None = None    # length of one piece (length-bearing rows only)
     totalLengthM: float | None = None    # qty × pieceLengthM (length-bearing rows only)
     qty: int
