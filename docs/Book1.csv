@@ -1,0 +1,74 @@
+﻿id,type_key,is_default,name_he,מחיר ליחידה (₪),משקל למטר/יחידה,פחת,type,product_type
+054b54a5-f7c6-4a7d-b3b6-50245d52b6ee,sharp_screw_3_5cm,FALSE,בורג שפיץ עם אטם 3.5סמ,0.32,,,ברגים,material
+06f9e067-3a29-47e1-a800-28785f82ab80,hook_5cm_with_3_holes_gallery,FALSE,"הוק 5 ס""מ עם 3 חורים (גלריה)",20,,,אביזרי עיגון,material
+0791b274-3855-4af8-a034-4fad3b0d41c8,flange_nut_m8_stainless_steel,FALSE,אום פלאנצ' M8,0.48,0,,ברגים,material
+1b84faa7-8a85-40e5-a124-bff52bd76d56,hooks,TRUE,"הוק 5.5 ס""מ",20,,,אביזרי עיגון,material
+1e6e16d4-7b7a-43d8-96fb-190973940eb7,meter_box_25a,FALSE,Meter Box 25A ארון מונה,0,,,חשמל - ארונות,material
+1f18123d-6e14-461a-a967-fac8a9962bea,self_drilling_screw_3_5_drill_1_4_1_4_1_with_seal,FALSE,בורג איסכורית קודח 3.5 (עם אטם),0.32,,,ברגים,material
+1f8de1fa-54c1-4863-92e9-7e8177ede6b7,arrow_anchor_bolt_kit,FALSE,קיט בורג עוגן חץ,4,,,ברגים,material
+223f004a-8e3e-4c17-8ebe-7f9ac60d5f52,collection_panel_for_two_50kw_inverters_incl_depreciation_relay,FALSE,לוח איסוף לשני ממירי 50 כולל ממסר פחת,2300,,,חשמל - ארונות,material
+24016696-1f40-4fe6-b2cc-6dc1630ffbc6,flexible_conduit_21,FALSE,צינור שרשורי 21,0,,,חשמל - שחור,material
+2875abaf-eff7-4f98-9fbb-5012a386caed,flexible_conduit_30m_bundle_diameter_18mm_pg16,FALSE,צינור שרשורי 30מ בחבילה קוטר 18ממ PG16,0,,,חשמל - שחור,material
+3147612e-e5e3-4fa3-946f-3dfcfec32f19,circuit_breaker_4x40a,FALSE,מפסק 4X40A,200,,,חשמל - ארונות,material
+3539ffb1-b078-45a1-a3a6-db87d0c89be4,bitumen_sheets,FALSE,יריעת זפת,5.7,,,אביזרי עיגון,material
+368f2e18-3cfd-4e94-b1cc-2be495b1de47,electrical_cable_4x10,FALSE,כבל חשמל 4X10,0,,,חשמל - שחור,material
+38ef1be2-2dca-43cb-8a96-ee33c30d9a3b,rail_40x40,FALSE,קושרות 40*40,16.5,0.9,4,אלומיניום,material
+392975de-8b12-4d05-8d94-3109f840a487,panel_cable_clip_for_rail,FALSE,תפסן כבל לקושרת,1.3,,,אביזרי עזר,material
+3e453336-6c6f-4812-9b4c-a53613e14808,m12_nut_for_arrow_anchor,FALSE,אום M12 לעוגן חץ,0.2,,,ברגים,material
+41f47dde-cca1-49b0-9ce2-eea08c6452c0,roof_connection_accessory_l,FALSE,אביזר חיבור לגג (L),6,,,אביזרי עזר,material
+45518d01-d1d0-42f9-9e93-d3facd0d886f,klazip_kit,FALSE,קיט קלזיפ,13,,,אביזרי עזר,material
+5194049a-f8ad-4b24-ac9b-02317aae36bf,junction_box_2_strings,FALSE,ארון איסוף 2 סטרינגים,1150,,,חשמל - ארונות,material
+5859850e-ae05-4a9b-9dfc-d59c29cb58d3,torx_sharp_screw_for_wood_roof_7_5cm_3,FALSE,בורג שפיץ עם אטם 7.5סמ,0.65,,,ברגים,material
+58c5a817-9653-4182-838b-c6c45a321a77,single_arrow_anchor_bolt,FALSE,בורג עוגן חץ,2.5,,,ברגים,material
+5e3be963-bcc3-4006-bb25-ecb1b8682854,bare_copper_25mm,FALSE,נחושת חשופה 25 ממ,0,,,חשמל - שחור,material
+5fcaf1d1-e6d9-4b41-89d2-7da12f4d129a,end_grounding_panel_clamp_rapid,FALSE,מהדק פאנל קצה הארקה Rapid,6,,,מהדקים,material
+6151d6a7-1e8d-4be0-86eb-927a9e635cca,yellow_green_copper_35mm,FALSE,נחושת צהוב\ירוק 35 ממ,0,,,חשמל - שחור,material
+618177fb-124c-4e3e-a747-a19a93bb6350,washer_m10,FALSE,דיסקית (M10),0.55,,,אביזרי עזר,material
+625be3e6-7d8c-40c0-8339-996077a58699,end_grounding_panel_clamp_without_screw,FALSE,מהדק פאנל קצה הארקה ללא בורג,4,,,מהדקים,material
+63a8e7d7-ee08-4768-a359-2d0c7ec2ab9f,rail_connector,FALSE,מחבר קושרת 40*40,5,,,אביזרי עזר,material
+67529944-77d5-4334-a726-94af727caf2e,rails,FALSE,--- קושרות ---,0,,,,material
+6a01b446-ef09-4047-9238-e1a03c9dddc1,m12_washer_for_arrow_anchor,FALSE,דסקית M12 לעוגן חץ,0.1,,,ברגים,material
+6b338ace-99e1-4937-bcb2-0d71d477f6fb,self_drilling_screw_2_with_seal,FALSE,בורג איסכורית קודח 2 צול עם אטם,0,,,ברגים,material
+6cc271c5-cc23-4d50-afa3-f6d547e3988a,circuit_breaker_4x25a,FALSE,מפסק 4X25A,150,,,חשמל - ארונות,material
+74e3f4fd-7402-4f61-a5eb-eea8056e5427,self_drilling_screw_12_5_5_drill_with_seal,FALSE,בורג איסכורית 12.5 ( 5צול קודח עם אטם),0.9,,,ברגים,material
+760f374e-e253-4b2a-b66a-5f852033a1aa,hardware,FALSE,--- אביזרי עזר ---,0,,,,material
+778e3f80-67a6-4b78-89af-645859279e58,epdm,FALSE,גומי EPDM 40*40,0.78,,,אביזרי עזר,material
+7bec715a-d412-4249-9dc1-b62d5ae8f530,connectors,FALSE,קונקטורים,0,,,חשמל - שחור,material
+800ccb52-a4b5-4f88-8c2d-be6254baf9b0,mid_panel_clamp,FALSE,מהדק פאנל אמצע,4.5,,,מהדקים,material
+8a9c3f85-662d-432e-9e94-89462c6be28b,collection_panel_for_70kw_inverter_incl_depreciation,FALSE,לוח איסוף לממיר 70 כולל פחת,0,,,חשמל - ארונות,material
+8b7739b5-bcc7-48a6-8ae5-00e300ea2d63,trapezoidal_purlins,FALSE,--- טרפזים ---,0,,,,material
+8b9de701-4ccb-4536-a29e-18424fa8d5e7,panel_cable_extensions,FALSE,מאריכי כבל לפאנל,0,,,מאריכי כבל לפאנל,material
+8c0a9c31-c043-4d67-9fcb-4c5cc3851196,breaker_4_200_ampere,FALSE,ברייקר 4*200 אמפר,0,,,חשמל - ארונות,material
+8c893bc8-782c-4503-9af5-7c396a9529cf,cable_6mm_black,FALSE,כבל 6 ממ שחור,4,,,חשמל - שחור,material
+8c9ee1f0-9a62-4956-83aa-d6de62f61a51,self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal,FALSE,בורג איסכורית קודח 7.5 ( עם אטם),0.65,,,ברגים,material
+8fd2f419-4f1f-4042-8b5e-580c96d6696d,disconnect_panel_before_after_production_meter,FALSE,לוח מנתק לפני/אחרי מונה ייצור,0,,,חשמל - ארונות,material
+8fde91b1-321e-4f3e-b42d-3fd9fd15a807,diagonals,FALSE,--- דיאגונלים ---,0,,,,material
+9cbcb4a9-d6ce-4a41-8a1e-e2aa7a30609e,ac_panel_25a,FALSE,ארון AC 25A,1073,,,חשמל - ארונות,material
+a5f559fc-9ea6-4d88-8a8a-fe608d7bba58,yellow_green_copper_16mm,FALSE,נחושת צהוב\ירוק 16 ממ,0,,,חשמל - שחור,material
+a8c9983d-d6cb-4b26-b9ca-3afe9c7523d1,angle_profile_40x40,FALSE,פרופיל זוית 40*40,16.5,0.623,4,אלומיניום,material
+a993dd57-e570-4aaf-9a64-94d771294e52,torx_sharp_screw_for_wood_roof_12_5cm_5,FALSE,בורג טורקס שפיץ לגג עץ 12סמ,0.9,,,ברגים,material
+ab7a56ce-0a44-4fc4-a38b-c690ad45f17b,sandwich_panel_accessory_screws_not_included,FALSE,אביזר סנטף (לא כולל ברגים),5.7,,,אביזרי עזר,material
+ad08f6e2-be08-4af2-8510-d8b995315ee1,bare_copper_16mm,FALSE,נחושת חשופה 16 ממ,7.8,,,חשמל - שחור,material
+b2bbfb43-b7b5-42fd-bb4e-c48299a13fde,self_drilling_screw_3_5_without_seal,FALSE,בורג איסכורית 3.5 ( ללא אטם),0.32,,,ברגים,material
+b7183b2f-b594-4be5-bc4c-54e9fdc3ccb9,sandwich_roof_accessory,FALSE,אומגות,6,,,אביזרי עיגון,material
+b91ea20b-cc3c-4733-8c61-8c778e7092fb,self_drilling_screw_5cm_with_seal,FALSE,איסכורית קודח 5סמ עם אטם,0.4,,,ברגים,material
+bdf6461a-c026-4a20-b2fe-47e35260845d,ac_panel_40a,FALSE,ארון AC 40A,1123,,,חשמל - ארונות,material
+c366047a-1d73-486e-b3d3-426d277c971e,mid_grounding_panel_clamp_without_screw,FALSE,מהדק פאנל אמצע הארקה ללא בורג,4.5,,,מהדקים,material
+c3fe286f-5960-44ee-9b2d-3a7502f46414,rail_end_cap,FALSE,פקק קושרת 40*40,1.2,,,אביזרי עזר,material
+c8352a3e-693c-437b-9696-6de8ad631f01,block_50x24x15,FALSE,,6873.19,43.623,12,,material
+cd0492d2-e75d-401d-a943-6c3f73d65042,connection_angle_10cm_for_base,FALSE,"זוית חיבור 10 ס""מ לבסיס",1.05,,,אביזרי עזר,material
+ce8258c8-4b6d-4cd4-8fb1-a1bf9284cee4,circuit_breaker_100a,FALSE,Circuit Breaker 100A,480,,,חשמל - ארונות,material
+d28cf1e7-760f-4003-ad1b-eb94696dd328,torx_sharp_screw_for_wood_roof_10cm,FALSE,בורג טורקס שפיץ לגג עץ 10סמ,0.85,,,ברגים,material
+d34ee10c-48d1-4f4a-862b-4a184b6aec53,distribution_board_11_holes,FALSE,"ארון פה""פ 11 חורים",0,,,חשמל - ארונות,material
+d7c65c1e-c5d4-4ad1-885d-5003aea219ca,meter_panel_25a,FALSE,ארון מונה 25A,0,,,חשמל - ארונות,material
+d9cb57bf-e041-48cb-963f-6cca9d907f27,jumbo_5x16,TRUE,בורג ג'מבו (16*5),1.5,,,ברגים,material
+dab77273-bae7-478b-8f23-d1a274d88cd7,end_panel_clamp,FALSE,מהדק פאנל קצה,4.5,,,מהדקים,material
+db03489c-ab79-4844-94e8-fbe6a7f4937a,grounding_panel_clamp,FALSE,מהדק פאנל הארקה,6,,,מהדקים,material
+dd45bafc-fab2-446f-910a-c61a2e6079e2,hex_head_bolt_m8x20,FALSE,בורג ראש משושה M8*20,0.52,,,ברגים,material
+e0036873-8404-42b9-bdea-a317a6aa540b,self_drilling_screw_6cm_with_seal,FALSE,איסכורית קודח 6סמ עם אטם,0.6,,,ברגים,material
+e9afbf2b-dfed-4424-ad6b-f2ce88514a38,distribution_board_7_holes,FALSE,"ארון פה""פ 7 חורים",175,,,חשמל - ארונות,material
+ec0e81be-a218-483a-a79e-499cd8b3a13d,sharp_screw_7_5cm,FALSE,בורג שפיץ עם אטם 12.5סמ,0.9,,,ברגים,material
+ed273c78-1c7f-41bd-9933-8da7f2b631b1,cable_6mm_red,FALSE,כבל 6 ממ אדום,4,,,חשמל - שחור,material
+edf087f6-c411-4f5b-84dd-6088299a3f84,yellow_green_copper_25mm,FALSE,נחושת צהוב\ירוק 25 ממ,0,,,חשמל - שחור,material
+ee30e749-e75b-4e59-a4c8-2f2d472e21d2,angle_connector_10cm,FALSE,מחבר זווית 10 ס'מ,0,0.1,,אלומיניום,material
+f018574a-445a-4315-9574-6ea1cbc16710,depreciation_waste,FALSE,פחת,16.5,,4,אלומיניום,material

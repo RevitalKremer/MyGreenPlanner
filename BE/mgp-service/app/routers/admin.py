@@ -73,12 +73,15 @@ async def delete_user(
 
 @router.get("/products", response_model=list[ProductRead])
 async def list_products(
-    product_type: str | None = Query(None, description="Filter by product_type: 'panel' or 'material'"),
+    product_type: str | None = Query(None, description="Filter by product_type. 'material' is an alias for any non-panel category."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(Product)
-    if product_type is not None:
+    if product_type == 'material':
+        # Backwards-compatible alias: every non-panel category counts as a material.
+        q = q.where(Product.product_type != 'panel')
+    elif product_type is not None:
         q = q.where(Product.product_type == product_type)
     result = await db.execute(q.order_by(Product.name))
     return list(result.scalars().all())

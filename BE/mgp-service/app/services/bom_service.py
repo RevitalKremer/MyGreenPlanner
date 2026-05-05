@@ -614,7 +614,7 @@ def is_bom_stale(project_data: dict, bom: ProjectBOM) -> bool:
 async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
     """Load all active material products keyed by type_key."""
     result = await db.execute(
-        select(Product).where(Product.active == True, Product.product_type == 'material')
+        select(Product).where(Product.active == True, Product.product_type != 'panel')
     )
     products = result.scalars().all()
     return {
