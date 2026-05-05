@@ -68,6 +68,7 @@ function TotalBadge({ value, removed, suffix = '' }) {
       display: 'inline-block', minWidth: '2.6rem', textAlign: 'center',
       background: PRIMARY, color: BLACK, fontWeight: '800', fontSize: '0.82rem',
       padding: '2px 8px', borderRadius: '12px', letterSpacing: '0.02em',
+      whiteSpace: 'nowrap',
     }}>{display}</span>
   )
 }
@@ -344,7 +345,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
               <SortTh label={t('bom.colLength')}  colKey="length"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '5.5rem' }} />
               <SortTh label={t('bom.colQty')}     colKey="qty"     sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4rem' }} />
               <SortTh label={t('bom.colExtras')}  colKey="extras"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4.5rem' }} />
-              <SortTh label={t('bom.colTotal')}   colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '5.5rem' }} />
+              <SortTh label={t('bom.colTotal')}   colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '7.5rem' }} />
               <th style={{ background: SECTION_HEADER_BG, width: '3.5rem' }} />
             </tr>
           </thead>
