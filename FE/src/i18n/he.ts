@@ -302,6 +302,13 @@ const he = {
   'bom.defaultSuffix':  '(ברירת מחדל)',
   'bom.badgeNew':       'חדש',
   'bom.badgeAlt':       'חלופה',
+  // ייצוא אקסל
+  'bom.xlsx.appTitle':      'MyGreenPlanner — מערכת תכנון מערכות סולאריות',
+  'bom.xlsx.appSubtitle':   'מבית שדות אנרגיה',
+  'bom.xlsx.project':       'פרויקט',
+  'bom.xlsx.totalKw':       'הספק כולל',
+  'bom.xlsx.colNum':        '#',
+  'bom.xlsx.colPartNumber': 'מק"ט',
 
   // ── Canvas navigator ─────────────────────────────────────────────────────
   'canvas.showNavigator': 'הצג נווט',

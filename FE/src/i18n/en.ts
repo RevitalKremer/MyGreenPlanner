@@ -302,6 +302,13 @@ const en = {
   'bom.defaultSuffix':     '(default)',
   'bom.badgeNew':          'NEW',
   'bom.badgeAlt':          'ALT',
+  // Excel export
+  'bom.xlsx.appTitle':      'MyGreenPlanner — Solar PV Planning System',
+  'bom.xlsx.appSubtitle':   'by Sadot Energy',
+  'bom.xlsx.project':       'Project',
+  'bom.xlsx.totalKw':       'Total kW',
+  'bom.xlsx.colNum':        '#',
+  'bom.xlsx.colPartNumber': 'Part Number',
 
   // ── Canvas navigator ─────────────────────────────────────────────────────
   'canvas.showNavigator': 'Show navigator',

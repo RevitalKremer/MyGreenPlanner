@@ -259,7 +259,7 @@ export default function Step4PdfReport({
   const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
-  const { lang } = useLang()
+  const { lang, t } = useLang()
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
@@ -490,7 +490,8 @@ export default function Step4PdfReport({
   }
 
   const handleExportExcel = async () => {
-    // Fetch effective BOM (base + deltas applied) from server
+    // Fetch effective BOM (base + deltas applied) from server — names already
+    // localized to `lang` by the BE, so prefer row.name over the FE product cache.
     let finalRows
     try {
       if (projectId) {
@@ -503,32 +504,30 @@ export default function Step4PdfReport({
       finalRows = bomItems
     }
 
-    const dateExport = new Date().toLocaleDateString()
+    const localeTag  = lang === 'he' ? 'he-IL' : 'en-US'
+    const dateExport = new Date().toLocaleDateString(localeTag)
     const projectName = project?.name || ''
     const location    = project?.location || ''
 
-    // Sheet data: header block + table
     const sheetData = [
-      ['MyGreenPlanner — Solar PV Planning System'],
-      ['by Sadot Energy'],
+      [t('bom.xlsx.appTitle')],
+      [t('bom.xlsx.appSubtitle')],
       [],
-      ['Project', projectName, '', 'Location', location],
-      ['Date',    dateExport,  '', 'Total kW', totalKw ? `${totalKw.toFixed(2)} kW` : ''],
+      [t('bom.xlsx.project'), projectName, '', t('step4.tb.location'), location],
+      [t('step4.tb.date'),    dateExport,  '', t('bom.xlsx.totalKw'), totalKw ? `${totalKw.toFixed(2)} kW` : ''],
       [],
-      ['#', 'Area', 'Element', 'Part Number', 'Length (m)', 'Qty', 'Extras', 'Total'],
-      ...finalRows.map((row, i) => {
-        const product = productByType[row.element]
-        return [
-          i + 1,
-          row.areaLabel,
-          product?.name ?? row.name ?? row.element,
-          product?.pn   ?? row.partNumber ?? '',
-          row.totalLengthM != null ? +Number(row.totalLengthM).toFixed(2) : '',
-          row.qty,
-          row.extras ?? 0,
-          (row.qty ?? 0) + (row.extras ?? 0),
-        ]
-      }),
+      [t('bom.xlsx.colNum'), t('bom.colArea'), t('bom.colElement'), t('bom.xlsx.colPartNumber'),
+       t('bom.colLength'), t('bom.colQty'), t('bom.colExtras'), t('bom.colTotal')],
+      ...finalRows.map((row, i) => [
+        i + 1,
+        row.areaLabel,
+        row.name ?? productByType[row.element]?.name ?? row.element,
+        row.partNumber ?? productByType[row.element]?.pn ?? '',
+        row.totalLengthM != null ? +Number(row.totalLengthM).toFixed(2) : '',
+        row.qty,
+        row.extras ?? 0,
+        (row.qty ?? 0) + (row.extras ?? 0),
+      ]),
     ]
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData)
@@ -539,8 +538,11 @@ export default function Step4PdfReport({
       { wch: 11 }, { wch: 7 }, { wch: 8 }, { wch: 8 },
     ]
 
+    // Open the sheet in RTL mode for Hebrew so column order reads right-to-left.
+    if (lang === 'he') ws['!views'] = [{ RTL: true }]
+
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Bill of Materials')
+    XLSX.utils.book_append_sheet(wb, ws, t('bom.billOfMaterials'))
 
     // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
     const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
