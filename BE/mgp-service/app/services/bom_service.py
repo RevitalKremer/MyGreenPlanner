@@ -112,7 +112,9 @@ def _derive_row_construction(
     all_bases = _flatten_row_dict(computed_area.get('bases') or {})
     trap_ids = _get_area_field(area, 'trapezoidIds') or []
 
-    if not trap_ids:
+    # Tiles roofs have no frame/trapezoids by design — they still need rails,
+    # clamps and hooks, so don't bail on missing trap_ids in that case.
+    if roof_type != 'tiles' and not trap_ids:
         return None
 
     # Rails (needed for all roof types)
@@ -125,6 +127,21 @@ def _derive_row_construction(
     row_length = 0
     if all_rails:
         row_length = max(r.get('lengthCm', 0) for r in all_rails)
+    # Stock-piece cut list for the rail BOM. A finished rail like 7.15 m is
+    # built from two stock cuts (e.g. 6.00 m + 1.15 m), and the BOM lists the
+    # raw cuts to order — not the finished length. Fall back to lengthCm only
+    # if stockSegmentsMm is absent (older computed data).
+    rail_pieces: list[dict] = []
+    for r in all_rails:
+        segs = r.get('stockSegmentsMm') or []
+        if segs:
+            for seg_mm in segs:
+                if seg_mm > 0:
+                    rail_pieces.append({'qty': 1, 'lenCm': seg_mm / 10})
+        else:
+            ln = r.get('lengthCm', 0)
+            if ln > 0:
+                rail_pieces.append({'qty': 1, 'lenCm': ln})
     num_large_gaps = computed_area.get('numLargeGaps', 0)
 
     # Tiles: no frame geometry needed — only rails + clamps + hooks
@@ -139,6 +156,7 @@ def _derive_row_construction(
             'numLines': max_num_lines,
             'numLargeGaps': num_large_gaps,
             'numRailConnectors': num_rail_connectors,
+            'railPieces': rail_pieces,
         }
 
     # Find geometry from first trapezoid's computed detail
@@ -185,6 +203,7 @@ def _derive_row_construction(
         'numLines': max_num_lines,
         'numLargeGaps': num_large_gaps,
         'numRailConnectors': num_rail_connectors,
+        'railPieces': rail_pieces,
         'internalDiagonals': internal_diagonals,
         'externalDiagonals': external_diagonals,
     }
@@ -241,27 +260,21 @@ def _diagonal_pieces(rc: dict) -> list[dict]:
     return pieces
 
 
-def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
-    """One BOM row per distinct cut length of 40×40 angle profile in this area.
+def _group_pieces_by_length(pieces: list[dict], area_label: str, element: str) -> list[dict]:
+    """Group raw {qty, lenCm} pieces into one BOM row per distinct length.
 
-    Pools every piece (frame beams, legs, internal & external diagonals),
-    rounds each to the nearest cm to merge near-equal lengths, and emits rows
-    sorted longest-first (most useful for cutting).
-
-    Each row has both `pieceLengthM` (length of one piece) and `totalLengthM`
-    (= qty × pieceLengthM), so consumers can show either or both columns.
+    Lengths are rounded to the nearest cm for grouping, so near-equal pieces
+    merge cleanly. Rows are emitted sorted longest-first (most useful as a
+    cutting list).
     """
-    pieces = _frame_pieces(rc) + _diagonal_pieces(rc)
     if not pieces:
         return []
-
     grouped: dict[int, int] = {}
     for p in pieces:
         key_cm = round(p['lenCm'])
         if key_cm <= 0:
             continue
         grouped[key_cm] = grouped.get(key_cm, 0) + p['qty']
-
     rows = []
     for length_cm in sorted(grouped.keys(), reverse=True):
         qty = grouped[length_cm]
@@ -270,7 +283,7 @@ def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
         piece_length_m = length_cm / 100
         rows.append({
             'areaLabel': area_label,
-            'element': 'angle_profile_40x40',
+            'element': element,
             'pieceLengthM': piece_length_m,
             'totalLengthM': round(piece_length_m * qty, 2),
             'qty': qty,
@@ -278,20 +291,31 @@ def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
     return rows
 
 
+def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
+    """One BOM row per distinct cut length of 40×40 angle profile in this area.
+
+    Pools every piece (frame beams, legs, internal & external diagonals).
+    """
+    pieces = _frame_pieces(rc) + _diagonal_pieces(rc)
+    return _group_pieces_by_length(pieces, area_label, 'angle_profile_40x40')
+
+
 def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute rail profiles + connectors + end caps BOM."""
+    """Compute rail profiles + connectors + end caps BOM.
+
+    Rails are emitted as one row per distinct cut length within the area; a
+    later post-processing step (`_aggregate_rails_globally`) merges identical
+    lengths across all areas into a single row, since rails are stocked by
+    standard length without regard to area.
+    """
     num_rails = rc.get('numRails', 2)
     num_rail_connectors = rc.get('numRailConnectors', 0)
-    rows = []
-    if num_rails > 0 and rc.get('rowLength'):
-        piece_length_m = rc['rowLength'] / 100
-        rows.append({
-            'areaLabel': area_label, 'element': 'rail_40x40',
-            'pieceLengthM': round(piece_length_m, 2),
-            'totalLengthM': round(piece_length_m * num_rails, 2),
-            'qty': num_rails,
-        })
-    else:
+    rows: list[dict] = []
+    rail_pieces = rc.get('railPieces') or []
+    if rail_pieces:
+        rows += _group_pieces_by_length(rail_pieces, area_label, 'rail_40x40')
+    elif num_rails > 0:
+        # Fallback when per-rail data isn't available: emit a piece-count row.
         rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': None, 'qty': num_rails})
     rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
     if num_rail_connectors > 0:
@@ -378,6 +402,56 @@ def _compute_hook_bom(rc: dict, area_label: str, spacing_mm: float) -> list[dict
     ]
 
 
+def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
+    """Merge `rail_40x40` rows across areas by piece length.
+
+    Rails are stocked in standard lengths regardless of which area they go in,
+    so the user-facing BOM lists them once per length with the contributing
+    areas joined into a single comma-separated label (e.g. "A, J").
+
+    `rail_end_cap` and `rail_connector` are piece-count items and stay per-area.
+    """
+    rail_rows: list[dict] = []
+    other_rows: list[dict] = []
+    for row in rows:
+        if row.get('element') == 'rail_40x40' and row.get('pieceLengthM') is not None:
+            rail_rows.append(row)
+        else:
+            other_rows.append(row)
+
+    if not rail_rows:
+        return rows
+
+    grouped: dict[int, dict] = {}
+    for row in rail_rows:
+        key_cm = round(row['pieceLengthM'] * 100)
+        bucket = grouped.setdefault(key_cm, {
+            'pieceLengthM': row['pieceLengthM'],
+            'qty': 0,
+            'areas': set(),
+        })
+        bucket['qty'] += row.get('qty', 0)
+        label = row.get('areaLabel')
+        if label:
+            bucket['areas'].add(label)
+
+    aggregated: list[dict] = []
+    for length_cm in sorted(grouped.keys(), reverse=True):
+        g = grouped[length_cm]
+        if g['qty'] <= 0:
+            continue
+        labels = sorted(g['areas'])
+        aggregated.append({
+            'areaLabel': ', '.join(labels),
+            'element': 'rail_40x40',
+            'pieceLengthM': g['pieceLengthM'],
+            'totalLengthM': round(g['pieceLengthM'] * g['qty'], 2),
+            'qty': g['qty'],
+        })
+
+    return other_rows + aggregated
+
+
 def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: float = 0) -> list[dict]:
     """
     Build per-area bill of materials.
@@ -411,7 +485,7 @@ def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: 
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
 
-    return rows
+    return _aggregate_rails_globally(rows)
 
 
 def enrich_bom_with_products(
@@ -434,7 +508,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 3  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 6  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:

@@ -100,7 +100,15 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
   const baseRows = bomItems
-  const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [bomItems])
+  // Some BOM rows aggregate across areas (e.g. rails: areaLabel = "A, J").
+  // Split on commas so the filter dropdown lists individual areas and the
+  // filter predicate can match an aggregated row against any contributing area.
+  const splitAreas = (label) => String(label ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const areaLabels = useMemo(() => {
+    const set = new Set<string>()
+    baseRows.forEach(r => splitAreas(r.areaLabel).forEach(a => set.add(a)))
+    return [...set]
+  }, [bomItems])
 
   // ── Filter / sort state ─────────────────────────────────────────────────
   const [filterArea,   setFilterArea]   = useState('')
@@ -177,7 +185,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       rows = rows.filter(r => !r.removed)
 
     if (filterArea)
-      rows = rows.filter(r => r.areaLabel === filterArea)
+      rows = rows.filter(r => splitAreas(r.areaLabel).includes(filterArea))
 
     if (filterText) {
       const q = filterText.toLowerCase()
