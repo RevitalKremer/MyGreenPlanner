@@ -509,7 +509,7 @@ export default function Step4PdfReport({
     const projectName = project?.name || ''
     const location    = project?.location || ''
 
-    const sheetData = [
+    const sheetData: any[][] = [
       [t('bom.xlsx.appTitle')],
       [t('bom.xlsx.appSubtitle')],
       [],
@@ -518,17 +518,51 @@ export default function Step4PdfReport({
       [],
       [t('bom.xlsx.colNum'), t('bom.colArea'), t('bom.colElement'), t('bom.xlsx.colPartNumber'),
        t('bom.colLength'), t('bom.colQty'), t('bom.colExtras'), t('bom.colTotal')],
-      ...finalRows.map((row, i) => [
-        i + 1,
+    ]
+
+    // Section grouping mirrors the on-screen table: length-bearing rows first
+    // (one section per element, alphabetical), then a single "Other" section
+    // for the rest. Within a section, sort by area.
+    const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
+    const sortedRows = [...finalRows].sort((a, b) => {
+      const aLen = a.pieceLengthM != null
+      const bLen = b.pieceLengthM != null
+      if (aLen !== bLen) return aLen ? -1 : 1
+      if (aLen) {
+        const elementDiff = elementName(a).localeCompare(elementName(b))
+        if (elementDiff !== 0) return elementDiff
+      }
+      return (a.areaLabel ?? '').localeCompare(b.areaLabel ?? '')
+    })
+
+    let prevElement: string | null = null
+    let otherHeaderShown = false
+    let lineNum = 0
+    sortedRows.forEach((row) => {
+      if (row.pieceLengthM != null) {
+        if (row.element !== prevElement) {
+          sheetData.push(['---', '', `── ${elementName(row)} ──`, '', '', '', '', ''])
+        }
+      } else if (!otherHeaderShown) {
+        sheetData.push(['---', '', `── ${t('bom.sectionOther')} ──`, '', '', '', '', ''])
+        otherHeaderShown = true
+      }
+      prevElement = row.element
+
+      lineNum += 1
+      const isLengthRow = row.pieceLengthM != null
+      const totalCount  = (row.qty ?? 0) + (row.extras ?? 0)
+      sheetData.push([
+        lineNum,
         row.areaLabel,
-        row.name ?? productByType[row.element]?.name ?? row.element,
+        elementName(row),
         row.partNumber ?? productByType[row.element]?.pn ?? '',
-        row.totalLengthM != null ? +Number(row.totalLengthM).toFixed(2) : '',
+        isLengthRow ? +Number(row.pieceLengthM).toFixed(2) : '',
         row.qty,
         row.extras ?? 0,
-        (row.qty ?? 0) + (row.extras ?? 0),
-      ]),
-    ]
+        isLengthRow ? +(row.pieceLengthM * totalCount).toFixed(2) : totalCount,
+      ])
+    })
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData)
 

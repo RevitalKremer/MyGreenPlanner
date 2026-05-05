@@ -190,8 +190,12 @@ def _derive_row_construction(
     }
 
 
-def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute angle profile BOM for frame pieces (beams + legs)."""
+def _frame_pieces(rc: dict) -> list[dict]:
+    """Per-piece angle-profile cuts for a single area's frame (beams + legs).
+
+    Returns a list of {qty, lenCm} entries. Caller groups them with diagonal
+    pieces so all 40×40 angle-profile lengths roll up into one element.
+    """
     T = rc['numTrapezoids']
     num_inner_legs = max(0, rc.get('numRails', 2) - 2)
     angle_rad = rc['angle'] * math.pi / 180
@@ -201,58 +205,77 @@ def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
         + (rc['heightRear'] + rc['heightFront']) / 2
     )
 
-    frame_pieces = [
-        p for p in [
-            {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
-            {'qty': T, 'lenCm': rc['topBeamLength']},
-            {'qty': T, 'lenCm': rc['heightRear']},
-            {'qty': T, 'lenCm': rc['heightFront']},
-            {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
-        ]
-        if p['qty'] > 0 and p['lenCm'] > 0
+    raw = [
+        {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
+        {'qty': T, 'lenCm': rc['topBeamLength']},
+        {'qty': T, 'lenCm': rc['heightRear']},
+        {'qty': T, 'lenCm': rc['heightFront']},
+        {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
     ]
-    frame_qty = sum(p['qty'] for p in frame_pieces)
-    frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
-    return [{'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty}]
+    return [p for p in raw if p['qty'] > 0 and p['lenCm'] > 0]
 
 
-def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute diagonal brace BOM from actual diagonal lengths.
+def _diagonal_pieces(rc: dict) -> list[dict]:
+    """Per-piece angle-profile cuts for diagonals (internal + external).
 
-    Combines two independent sources:
-      • internal trap diagonals — between legs of a single trapezoid frame.
-        `isDouble` marks long diagonals that are doubled-up (2 pieces) for stiffness.
-      • external base diagonals — cross-braces between adjacent bases at frame edges.
-        Each external diagonal is one piece, length given in mm.
+    Internal trap diagonals contribute one piece each, doubled when `isDouble`.
+    External base-to-base diagonals contribute one piece each (length in mm).
+    Disabled internal diagonals are skipped.
     """
-    total_length_cm = 0.0
-    count = 0
-
+    pieces: list[dict] = []
     for diag in rc.get('internalDiagonals') or []:
         if diag.get('disabled'):
             continue
         length_cm = diag.get('lengthCm', 0)
         if length_cm <= 0:
             continue
-        multiplier = 2 if diag.get('isDouble') else 1
-        total_length_cm += length_cm * multiplier
-        count += multiplier
+        qty = 2 if diag.get('isDouble') else 1
+        pieces.append({'qty': qty, 'lenCm': length_cm})
 
     for diag in rc.get('externalDiagonals') or []:
         length_mm = diag.get('diagLengthMm', 0)
         if length_mm <= 0:
             continue
-        total_length_cm += length_mm / 10
-        count += 1
+        pieces.append({'qty': 1, 'lenCm': length_mm / 10})
 
-    if count > 0 and total_length_cm > 0:
-        return [{
+    return pieces
+
+
+def _compute_angle_profile_bom(rc: dict, area_label: str) -> list[dict]:
+    """One BOM row per distinct cut length of 40×40 angle profile in this area.
+
+    Pools every piece (frame beams, legs, internal & external diagonals),
+    rounds each to the nearest cm to merge near-equal lengths, and emits rows
+    sorted longest-first (most useful for cutting).
+
+    Each row has both `pieceLengthM` (length of one piece) and `totalLengthM`
+    (= qty × pieceLengthM), so consumers can show either or both columns.
+    """
+    pieces = _frame_pieces(rc) + _diagonal_pieces(rc)
+    if not pieces:
+        return []
+
+    grouped: dict[int, int] = {}
+    for p in pieces:
+        key_cm = round(p['lenCm'])
+        if key_cm <= 0:
+            continue
+        grouped[key_cm] = grouped.get(key_cm, 0) + p['qty']
+
+    rows = []
+    for length_cm in sorted(grouped.keys(), reverse=True):
+        qty = grouped[length_cm]
+        if qty <= 0:
+            continue
+        piece_length_m = length_cm / 100
+        rows.append({
             'areaLabel': area_label,
-            'element': 'angle_profile_40x40_diag',
-            'totalLengthM': total_length_cm / 100,
-            'qty': count,
-        }]
-    return []
+            'element': 'angle_profile_40x40',
+            'pieceLengthM': piece_length_m,
+            'totalLengthM': round(piece_length_m * qty, 2),
+            'qty': qty,
+        })
+    return rows
 
 
 def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
@@ -260,8 +283,16 @@ def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
     num_rails = rc.get('numRails', 2)
     num_rail_connectors = rc.get('numRailConnectors', 0)
     rows = []
-    rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
-    rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
+    if num_rails > 0 and rc.get('rowLength'):
+        piece_length_m = rc['rowLength'] / 100
+        rows.append({
+            'areaLabel': area_label, 'element': 'rail_40x40',
+            'pieceLengthM': round(piece_length_m, 2),
+            'totalLengthM': round(piece_length_m * num_rails, 2),
+            'qty': num_rails,
+        })
+    else:
+        rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': None, 'qty': num_rails})
     rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
     if num_rail_connectors > 0:
         rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
@@ -367,16 +398,14 @@ def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: 
             rows += _compute_hook_bom(rc, area_label, spacing_mm)
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
-            rows += _compute_frame_bom(rc, area_label)
-            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_angle_profile_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
             rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
         else:
             # Concrete (default): full BOM
-            rows += _compute_frame_bom(rc, area_label)
-            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_angle_profile_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_block_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
@@ -405,7 +434,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 2  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 3  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -533,6 +562,17 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
         return bom
 
 
+def _delta_key(item: dict) -> str:
+    """Stable per-row override key. Length-bearing rows include pieceLengthM
+    so multiple cut-length variants of the same element (e.g. 6m vs 1.2m
+    angle profile in the same area) can be edited independently."""
+    base = f"{item['areaLabel']}||{item['element']}"
+    piece_length_m = item.get('pieceLengthM')
+    if piece_length_m is None:
+        return base
+    return f"{base}||{int(round(piece_length_m * 100))}cm"
+
+
 def apply_bom_deltas(
     bom_items: list[dict],
     bom_deltas: dict,
@@ -547,7 +587,7 @@ def apply_bom_deltas(
 
     effective = []
     for item in bom_items:
-        key = f"{item['areaLabel']}||{item['element']}"
+        key = _delta_key(item)
         ov = overrides.get(key)
         if ov and ov.get('removed'):
             continue

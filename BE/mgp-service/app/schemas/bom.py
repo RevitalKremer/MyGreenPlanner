@@ -6,7 +6,8 @@ from pydantic import BaseModel
 class BOMItemRead(BaseModel):
     areaLabel: str
     element: str
-    totalLengthM: float | None = None
+    pieceLengthM: float | None = None    # length of one piece (length-bearing rows only)
+    totalLengthM: float | None = None    # qty × pieceLengthM (length-bearing rows only)
     qty: int
     productId: str | None = None
     partNumber: str | None = None
