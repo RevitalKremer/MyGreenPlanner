@@ -159,6 +159,17 @@ def _derive_row_construction(
         unique_base_positions.add(round(b.get('offsetFromStartCm', 0), 2))
     num_trapezoids = len(unique_base_positions) if unique_base_positions else 1
 
+    # Internal trapezoid diagonals (between legs within a single frame).
+    # Aggregate across every trap that belongs to this area.
+    trap_id_set = set(trap_ids)
+    internal_diagonals: list[dict] = []
+    for ct in computed_trapezoids:
+        if ct.get('trapezoidId') in trap_id_set:
+            internal_diagonals.extend(ct.get('diagonals') or [])
+
+    # External diagonals (between adjacent bases) live on the area itself.
+    external_diagonals = computed_area.get('diagonals') or []
+
     return {
         'rowLength': row_length,
         'angle': geom.get('angle', 0),
@@ -174,6 +185,8 @@ def _derive_row_construction(
         'numLines': max_num_lines,
         'numLargeGaps': num_large_gaps,
         'numRailConnectors': num_rail_connectors,
+        'internalDiagonals': internal_diagonals,
+        'externalDiagonals': external_diagonals,
     }
 
 
@@ -204,28 +217,40 @@ def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute diagonal brace BOM from actual diagonal lengths."""
-    # Sum actual diagonal brace lengths from trapezoid details
-    total_length_cm = 0
+    """Compute diagonal brace BOM from actual diagonal lengths.
+
+    Combines two independent sources:
+      • internal trap diagonals — between legs of a single trapezoid frame.
+        `isDouble` marks long diagonals that are doubled-up (2 pieces) for stiffness.
+      • external base diagonals — cross-braces between adjacent bases at frame edges.
+        Each external diagonal is one piece, length given in mm.
+    """
+    total_length_cm = 0.0
     count = 0
-    
-    # rc may contain trapezoid details with diagonal data
-    if 'trapezoidDetails' in rc:
-        for trap_detail in rc['trapezoidDetails'].values():
-            for diag in trap_detail.get('diagonals', []):
-                if not diag.get('disabled', False):
-                    length = diag.get('lengthCm', 0)
-                    if length > 0:
-                        multiplier = 2 if diag.get('double', False) else 1
-                        total_length_cm += length * multiplier
-                        count += 1
-    
+
+    for diag in rc.get('internalDiagonals') or []:
+        if diag.get('disabled'):
+            continue
+        length_cm = diag.get('lengthCm', 0)
+        if length_cm <= 0:
+            continue
+        multiplier = 2 if diag.get('isDouble') else 1
+        total_length_cm += length_cm * multiplier
+        count += multiplier
+
+    for diag in rc.get('externalDiagonals') or []:
+        length_mm = diag.get('diagLengthMm', 0)
+        if length_mm <= 0:
+            continue
+        total_length_cm += length_mm / 10
+        count += 1
+
     if count > 0 and total_length_cm > 0:
         return [{
             'areaLabel': area_label,
             'element': 'angle_profile_40x40_diag',
             'totalLengthM': total_length_cm / 100,
-            'qty': count
+            'qty': count,
         }]
     return []
 
@@ -380,10 +405,14 @@ def enrich_bom_with_products(
     return enriched
 
 
+_BOM_LOGIC_VERSION = 2  # bump to invalidate all cached BOMs
+
+
 def compute_input_hash(data: dict) -> str:
     """SHA-256 hash of step3 computed data relevant to BOM computation."""
     step3 = data.get('step3', {})
     relevant = {
+        '_v': _BOM_LOGIC_VERSION,
         'computedAreas': step3.get('computedAreas', []),
         'computedTrapezoids': step3.get('computedTrapezoids', []),
     }
