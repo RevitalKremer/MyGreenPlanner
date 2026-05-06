@@ -12,7 +12,10 @@ class Product(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     type_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    product_type: Mapped[str] = mapped_column(String(20), nullable=False, default='material')  # 'panel' | 'material'
+    # 'panel' for solar panels; for materials a category like 'screws',
+    # 'clamps', 'accessories', 'anchoring', 'aluminium', 'electrical_cabinets',
+    # 'electrical_wiring', 'panel_cable_extensions', or the legacy 'material'.
+    product_type: Mapped[str] = mapped_column(String(50), nullable=False, default='material')
     part_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     name_he: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -24,5 +27,8 @@ class Product(Base):
     length_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     width_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     kw_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_ils: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    depreciation_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

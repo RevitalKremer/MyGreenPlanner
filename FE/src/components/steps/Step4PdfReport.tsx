@@ -7,7 +7,7 @@ import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
-import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM } from '../../services/projectsApi'
+import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal, downloadProposalPdf } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -259,7 +259,7 @@ export default function Step4PdfReport({
   const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
-  const { lang } = useLang()
+  const { lang, t } = useLang()
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
@@ -490,7 +490,8 @@ export default function Step4PdfReport({
   }
 
   const handleExportExcel = async () => {
-    // Fetch effective BOM (base + deltas applied) from server
+    // Fetch effective BOM (base + deltas applied) from server — names already
+    // localized to `lang` by the BE, so prefer row.name over the FE product cache.
     let finalRows
     try {
       if (projectId) {
@@ -503,33 +504,81 @@ export default function Step4PdfReport({
       finalRows = bomItems
     }
 
-    const dateExport = new Date().toLocaleDateString()
+    const localeTag  = lang === 'he' ? 'he-IL' : 'en-US'
+    const dateExport = new Date().toLocaleDateString(localeTag)
     const projectName = project?.name || ''
     const location    = project?.location || ''
 
-    // Sheet data: header block + table
-    const sheetData = [
-      ['MyGreenPlanner — Solar PV Planning System'],
-      ['by Sadot Energy'],
+    const sheetData: any[][] = [
+      [t('bom.xlsx.appTitle')],
+      [t('bom.xlsx.appSubtitle')],
       [],
-      ['Project', projectName, '', 'Location', location],
-      ['Date',    dateExport,  '', 'Total kW', totalKw ? `${totalKw.toFixed(2)} kW` : ''],
+      [t('bom.xlsx.project'), projectName, '', t('step4.tb.location'), location],
+      [t('step4.tb.date'),    dateExport,  '', t('bom.xlsx.totalKw'), totalKw ? `${totalKw.toFixed(2)} kW` : ''],
       [],
-      ['#', 'Area', 'Element', 'Part Number', 'Length (m)', 'Qty', 'Extras', 'Total'],
-      ...finalRows.map((row, i) => {
-        const product = productByType[row.element]
-        return [
-          i + 1,
-          row.areaLabel,
-          product?.name ?? row.name ?? row.element,
-          product?.pn   ?? row.partNumber ?? '',
-          row.totalLengthM != null ? +Number(row.totalLengthM).toFixed(2) : '',
-          row.qty,
-          row.extras ?? 0,
-          (row.qty ?? 0) + (row.extras ?? 0),
-        ]
-      }),
+      [t('bom.xlsx.colNum'), t('bom.colArea'), t('bom.colElement'), t('bom.xlsx.colPartNumber'),
+       t('bom.colLength'), t('bom.colQty'), t('bom.colExtras'), t('bom.colTotal')],
     ]
+
+    // Section grouping mirrors the on-screen table: explicitly-tagged sections
+    // (trapezoids, external diagonals) first in fixed order, then unsectioned
+    // length-bearing rows by element name, then a single "Other" catchall.
+    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1 }
+    const sectionRank = (r) => {
+      if (r.pieceLengthM == null) return 1000
+      if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
+      return 100
+    }
+    const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
+    const sectionLabelFor = (row) => {
+      if (row.section) {
+        const key = `bom.section.${row.section.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`
+        const translated = t(key)
+        if (translated && translated !== key) return translated
+      }
+      return elementName(row)
+    }
+    const sortedRows = [...finalRows].sort((a, b) => {
+      const ra = sectionRank(a)
+      const rb = sectionRank(b)
+      if (ra !== rb) return ra - rb
+      if (a.pieceLengthM != null && !a.section && !b.section) {
+        const elementDiff = elementName(a).localeCompare(elementName(b))
+        if (elementDiff !== 0) return elementDiff
+      }
+      return (a.areaLabel ?? '').localeCompare(b.areaLabel ?? '')
+    })
+
+    let prevSectionKey: string | null = null
+    let otherHeaderShown = false
+    let lineNum = 0
+    sortedRows.forEach((row) => {
+      if (row.pieceLengthM != null) {
+        const sectionKey = row.section ?? row.element
+        if (sectionKey !== prevSectionKey) {
+          sheetData.push(['---', '', `── ${sectionLabelFor(row)} ──`, '', '', '', '', ''])
+        }
+        prevSectionKey = sectionKey
+      } else if (!otherHeaderShown) {
+        sheetData.push(['---', '', `── ${t('bom.sectionOther')} ──`, '', '', '', '', ''])
+        otherHeaderShown = true
+        prevSectionKey = '__other__'
+      }
+
+      lineNum += 1
+      const isLengthRow = row.pieceLengthM != null
+      const totalCount  = (row.qty ?? 0) + (row.extras ?? 0)
+      sheetData.push([
+        lineNum,
+        row.areaLabel,
+        elementName(row),
+        row.partNumber ?? productByType[row.element]?.pn ?? '',
+        isLengthRow ? +Number(row.pieceLengthM).toFixed(2) : '',
+        row.qty,
+        row.extras ?? 0,
+        isLengthRow ? +(row.pieceLengthM * totalCount).toFixed(2) : totalCount,
+      ])
+    })
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData)
 
@@ -539,8 +588,11 @@ export default function Step4PdfReport({
       { wch: 11 }, { wch: 7 }, { wch: 8 }, { wch: 8 },
     ]
 
+    // Open the sheet in RTL mode for Hebrew so column order reads right-to-left.
+    if (lang === 'he') ws['!views'] = [{ RTL: true }]
+
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Bill of Materials')
+    XLSX.utils.book_append_sheet(wb, ws, t('bom.billOfMaterials'))
 
     // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
     const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
@@ -596,6 +648,39 @@ export default function Step4PdfReport({
             cursor: 'pointer',
           }}
         >↓ Export Excel</button>
+        <button
+          onClick={async () => {
+            try { await downloadProposal(projectId, project?.name) }
+            catch (err) { console.error('Failed to generate proposal:', err); alert('Failed to generate proposal') }
+          }}
+          disabled={!projectId}
+          style={{
+            padding: '0.35rem 1rem',
+            background: PRIMARY, color: BLACK,
+            border: 'none', borderRadius: '6px',
+            fontSize: '0.78rem', fontWeight: '700',
+            cursor: projectId ? 'pointer' : 'not-allowed',
+            opacity: projectId ? 1 : 0.5,
+          }}
+        >↓ Generate Proposal</button>
+        {(['pricing', 'quantities'] as const).map(sheet => (
+          <button
+            key={sheet}
+            onClick={async () => {
+              try { await downloadProposalPdf(projectId, sheet, project?.name) }
+              catch (err) { console.error(`Failed to generate ${sheet} PDF:`, err); alert(`Failed to generate ${sheet} PDF`) }
+            }}
+            disabled={!projectId}
+            style={{
+              padding: '0.35rem 1rem',
+              background: PRIMARY, color: BLACK,
+              border: 'none', borderRadius: '6px',
+              fontSize: '0.78rem', fontWeight: '700',
+              cursor: projectId ? 'pointer' : 'not-allowed',
+              opacity: projectId ? 1 : 0.5,
+            }}
+          >↓ {sheet === 'pricing' ? 'Pricing' : 'Quantities'} PDF</button>
+        ))}
         {activeTab === 'pdf' && (
           <button
             onClick={handleExportPdf}

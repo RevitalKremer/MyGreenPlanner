@@ -112,7 +112,9 @@ def _derive_row_construction(
     all_bases = _flatten_row_dict(computed_area.get('bases') or {})
     trap_ids = _get_area_field(area, 'trapezoidIds') or []
 
-    if not trap_ids:
+    # Tiles roofs have no frame/trapezoids by design — they still need rails,
+    # clamps and hooks, so don't bail on missing trap_ids in that case.
+    if roof_type != 'tiles' and not trap_ids:
         return None
 
     # Rails (needed for all roof types)
@@ -125,6 +127,21 @@ def _derive_row_construction(
     row_length = 0
     if all_rails:
         row_length = max(r.get('lengthCm', 0) for r in all_rails)
+    # Stock-piece cut list for the rail BOM. A finished rail like 7.15 m is
+    # built from two stock cuts (e.g. 6.00 m + 1.15 m), and the BOM lists the
+    # raw cuts to order — not the finished length. Fall back to lengthCm only
+    # if stockSegmentsMm is absent (older computed data).
+    rail_pieces: list[dict] = []
+    for r in all_rails:
+        segs = r.get('stockSegmentsMm') or []
+        if segs:
+            for seg_mm in segs:
+                if seg_mm > 0:
+                    rail_pieces.append({'qty': 1, 'lenCm': seg_mm / 10})
+        else:
+            ln = r.get('lengthCm', 0)
+            if ln > 0:
+                rail_pieces.append({'qty': 1, 'lenCm': ln})
     num_large_gaps = computed_area.get('numLargeGaps', 0)
 
     # Tiles: no frame geometry needed — only rails + clamps + hooks
@@ -139,6 +156,7 @@ def _derive_row_construction(
             'numLines': max_num_lines,
             'numLargeGaps': num_large_gaps,
             'numRailConnectors': num_rail_connectors,
+            'railPieces': rail_pieces,
         }
 
     # Find geometry from first trapezoid's computed detail
@@ -159,6 +177,52 @@ def _derive_row_construction(
         unique_base_positions.add(round(b.get('offsetFromStartCm', 0), 2))
     num_trapezoids = len(unique_base_positions) if unique_base_positions else 1
 
+    # Internal trapezoid diagonals (between legs within a single frame).
+    # Aggregate across every trap that belongs to this area.
+    trap_id_set = set(trap_ids)
+    internal_diagonals: list[dict] = []
+    for ct in computed_trapezoids:
+        if ct.get('trapezoidId') in trap_id_set:
+            internal_diagonals.extend(ct.get('diagonals') or [])
+
+    # External diagonals (between adjacent bases) live on the area itself.
+    external_diagonals = computed_area.get('diagonals') or []
+
+    # Per-trap material summary: one entry per trapezoidId in this area, with
+    # the total angle-profile material a single instance of that trap consumes
+    # (beams + every leg's actual height + internal diagonals, doubled where
+    # `isDouble`). Multiplied by `count` (instances in this area) at render
+    # time. Used to render a `── Trapezoids ──` BOM section grouped by trap ID.
+    trap_instance_counts: dict[str, int] = {}
+    for b in all_bases:
+        tid = b.get('trapezoidId')
+        if tid:
+            trap_instance_counts[tid] = trap_instance_counts.get(tid, 0) + 1
+    ct_by_id = {ct.get('trapezoidId'): ct for ct in computed_trapezoids}
+    trap_types: list[dict] = []
+    for tid, count in trap_instance_counts.items():
+        ct = ct_by_id.get(tid)
+        if not ct or count <= 0:
+            continue
+        t_geom = ct.get('geometry') or {}
+        t_legs = ct.get('legs') or []
+        t_diags = ct.get('diagonals') or []
+        cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
+        cm += t_geom.get('topBeamLength') or 0
+        for leg in t_legs:
+            cm += leg.get('heightCm', 0) or 0
+        for d in t_diags:
+            if d.get('disabled'):
+                continue
+            mult = 2 if d.get('isDouble') else 1
+            cm += (d.get('lengthCm', 0) or 0) * mult
+        if cm > 0:
+            trap_types.append({
+                'trapId': tid,
+                'count': count,
+                'materialM': round(cm / 100, 2),
+            })
+
     return {
         'rowLength': row_length,
         'angle': geom.get('angle', 0),
@@ -174,69 +238,105 @@ def _derive_row_construction(
         'numLines': max_num_lines,
         'numLargeGaps': num_large_gaps,
         'numRailConnectors': num_rail_connectors,
+        'railPieces': rail_pieces,
+        'internalDiagonals': internal_diagonals,
+        'externalDiagonals': external_diagonals,
+        'trapTypes': trap_types,
     }
 
 
-def _compute_frame_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute angle profile BOM for frame pieces (beams + legs)."""
-    T = rc['numTrapezoids']
-    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
-    angle_rad = rc['angle'] * math.pi / 180
-    beam_thick_cm = rc['angleProfileSizeMm'] / 10
-    avg_inner_leg_cm = (
-        beam_thick_cm * (1 + math.cos(angle_rad) / 2)
-        + (rc['heightRear'] + rc['heightFront']) / 2
-    )
+def _group_pieces_by_length(pieces: list[dict], area_label: str, element: str) -> list[dict]:
+    """Group raw {qty, lenCm} pieces into one BOM row per distinct length.
 
-    frame_pieces = [
-        p for p in [
-            {'qty': T, 'lenCm': rc.get('baseBeamLength') or rc['baseLength']},
-            {'qty': T, 'lenCm': rc['topBeamLength']},
-            {'qty': T, 'lenCm': rc['heightRear']},
-            {'qty': T, 'lenCm': rc['heightFront']},
-            {'qty': num_inner_legs * T, 'lenCm': avg_inner_leg_cm},
-        ]
-        if p['qty'] > 0 and p['lenCm'] > 0
-    ]
-    frame_qty = sum(p['qty'] for p in frame_pieces)
-    frame_length_m = sum(p['qty'] * p['lenCm'] for p in frame_pieces) / 100
-    return [{'areaLabel': area_label, 'element': 'angle_profile_40x40', 'totalLengthM': frame_length_m, 'qty': frame_qty}]
-
-
-def _compute_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute diagonal brace BOM from actual diagonal lengths."""
-    # Sum actual diagonal brace lengths from trapezoid details
-    total_length_cm = 0
-    count = 0
-    
-    # rc may contain trapezoid details with diagonal data
-    if 'trapezoidDetails' in rc:
-        for trap_detail in rc['trapezoidDetails'].values():
-            for diag in trap_detail.get('diagonals', []):
-                if not diag.get('disabled', False):
-                    length = diag.get('lengthCm', 0)
-                    if length > 0:
-                        multiplier = 2 if diag.get('double', False) else 1
-                        total_length_cm += length * multiplier
-                        count += 1
-    
-    if count > 0 and total_length_cm > 0:
-        return [{
+    Lengths are rounded to the nearest cm for grouping, so near-equal pieces
+    merge cleanly. Rows are emitted sorted longest-first (most useful as a
+    cutting list).
+    """
+    if not pieces:
+        return []
+    grouped: dict[int, int] = {}
+    for p in pieces:
+        key_cm = round(p['lenCm'])
+        if key_cm <= 0:
+            continue
+        grouped[key_cm] = grouped.get(key_cm, 0) + p['qty']
+    rows = []
+    for length_cm in sorted(grouped.keys(), reverse=True):
+        qty = grouped[length_cm]
+        if qty <= 0:
+            continue
+        piece_length_m = length_cm / 100
+        rows.append({
             'areaLabel': area_label,
-            'element': 'angle_profile_40x40_diag',
-            'totalLengthM': total_length_cm / 100,
-            'qty': count
-        }]
-    return []
+            'element': element,
+            'pieceLengthM': piece_length_m,
+            'totalLengthM': round(piece_length_m * qty, 2),
+            'qty': qty,
+        })
+    return rows
+
+
+def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
+    """One BOM row per distinct trapezoid type (e.g. B1, B2, B3, J).
+
+    Each row describes the angle-profile material a single trapezoid frame
+    consumes (beams + every leg + internal diagonals, doubled where
+    `isDouble`); `qty` is how many instances of that trap type exist in the
+    area. Trap ID goes into the area column so the user can see which trap
+    is which at a glance. Section `trapezoids` keeps these grouped under one
+    header in the BOM table.
+    """
+    rows: list[dict] = []
+    for tt in rc.get('trapTypes') or []:
+        material_m = tt.get('materialM', 0)
+        count = tt.get('count', 0)
+        if material_m <= 0 or count <= 0:
+            continue
+        rows.append({
+            'areaLabel': tt.get('trapId', '?'),
+            'element': 'angle_profile_40x40',
+            'section': 'trapezoids',
+            'pieceLengthM': material_m,
+            'totalLengthM': round(material_m * count, 2),
+            'qty': count,
+        })
+    return rows
+
+
+def _compute_external_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
+    """One BOM row per distinct cut length of external (base-to-base) diagonal
+    in this area. Section `diagonals_external` separates these from the
+    trapezoid-frame material.
+    """
+    pieces: list[dict] = []
+    for diag in rc.get('externalDiagonals') or []:
+        length_mm = diag.get('diagLengthMm', 0)
+        if length_mm <= 0:
+            continue
+        pieces.append({'qty': 1, 'lenCm': length_mm / 10})
+    rows = _group_pieces_by_length(pieces, area_label, 'angle_profile_40x40')
+    for r in rows:
+        r['section'] = 'diagonals_external'
+    return rows
 
 
 def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute rail profiles + connectors + end caps BOM."""
+    """Compute rail profiles + connectors + end caps BOM.
+
+    Rails are emitted as one row per distinct cut length within the area; a
+    later post-processing step (`_aggregate_rails_globally`) merges identical
+    lengths across all areas into a single row, since rails are stocked by
+    standard length without regard to area.
+    """
     num_rails = rc.get('numRails', 2)
     num_rail_connectors = rc.get('numRailConnectors', 0)
-    rows = []
-    rail_total = num_rails * rc['rowLength'] / 100 if rc.get('rowLength') else None
-    rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': rail_total, 'qty': num_rails})
+    rows: list[dict] = []
+    rail_pieces = rc.get('railPieces') or []
+    if rail_pieces:
+        rows += _group_pieces_by_length(rail_pieces, area_label, 'rail_40x40')
+    elif num_rails > 0:
+        # Fallback when per-rail data isn't available: emit a piece-count row.
+        rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': None, 'qty': num_rails})
     rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
     if num_rail_connectors > 0:
         rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
@@ -322,6 +422,100 @@ def _compute_hook_bom(rc: dict, area_label: str, spacing_mm: float) -> list[dict
     ]
 
 
+def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
+    """Merge `rail_40x40` rows across areas by piece length.
+
+    Rails are stocked in standard lengths regardless of which area they go in,
+    so the user-facing BOM lists them once per length with the contributing
+    areas joined into a single comma-separated label (e.g. "A, J").
+
+    `rail_end_cap` and `rail_connector` are piece-count items and stay per-area.
+    """
+    rail_rows: list[dict] = []
+    other_rows: list[dict] = []
+    for row in rows:
+        if row.get('element') == 'rail_40x40' and row.get('pieceLengthM') is not None:
+            rail_rows.append(row)
+        else:
+            other_rows.append(row)
+
+    if not rail_rows:
+        return rows
+
+    grouped: dict[int, dict] = {}
+    for row in rail_rows:
+        key_cm = round(row['pieceLengthM'] * 100)
+        bucket = grouped.setdefault(key_cm, {
+            'pieceLengthM': row['pieceLengthM'],
+            'qty': 0,
+            'areas': set(),
+        })
+        bucket['qty'] += row.get('qty', 0)
+        label = row.get('areaLabel')
+        if label:
+            bucket['areas'].add(label)
+
+    aggregated: list[dict] = []
+    for length_cm in sorted(grouped.keys(), reverse=True):
+        g = grouped[length_cm]
+        if g['qty'] <= 0:
+            continue
+        labels = sorted(g['areas'])
+        aggregated.append({
+            'areaLabel': ', '.join(labels),
+            'element': 'rail_40x40',
+            'pieceLengthM': g['pieceLengthM'],
+            'totalLengthM': round(g['pieceLengthM'] * g['qty'], 2),
+            'qty': g['qty'],
+        })
+
+    return other_rows + aggregated
+
+
+def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
+    """Merge non-length-bearing rows across areas by element.
+
+    Items in the "Other" section (clamps, bolts, blocks, end caps, screws,
+    hooks, etc.) are stocked by the box without regard to area, so the BOM
+    lists each element once with the contributing areas comma-joined in the
+    area column.
+    """
+    length_rows = [r for r in rows if r.get('pieceLengthM') is not None]
+    other_rows = [r for r in rows if r.get('pieceLengthM') is None]
+    if not other_rows:
+        return rows
+
+    grouped: dict[str, dict] = {}
+    for r in other_rows:
+        element = r.get('element')
+        if not element:
+            continue
+        bucket = grouped.setdefault(element, {
+            'element': element,
+            'qty': 0,
+            'areas': set(),
+        })
+        bucket['qty'] += r.get('qty', 0)
+        label = r.get('areaLabel')
+        if label:
+            bucket['areas'].add(label)
+
+    aggregated: list[dict] = []
+    for element in sorted(grouped.keys()):
+        g = grouped[element]
+        if g['qty'] <= 0:
+            continue
+        labels = sorted(g['areas'])
+        aggregated.append({
+            'areaLabel': ', '.join(labels),
+            'element': element,
+            'totalLengthM': None,
+            'qty': g['qty'],
+        })
+
+    return length_rows + aggregated
+
+
 def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: float = 0) -> list[dict]:
     """
     Build per-area bill of materials.
@@ -342,22 +536,22 @@ def build_bom(row_constructions: list[dict], row_labels: list[str], spacing_mm: 
             rows += _compute_hook_bom(rc, area_label, spacing_mm)
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
-            rows += _compute_frame_bom(rc, area_label)
-            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_trapezoid_bom(rc, area_label)
+            rows += _compute_external_diagonal_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
             rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
         else:
             # Concrete (default): full BOM
-            rows += _compute_frame_bom(rc, area_label)
-            rows += _compute_diagonal_bom(rc, area_label)
+            rows += _compute_trapezoid_bom(rc, area_label)
+            rows += _compute_external_diagonal_bom(rc, area_label)
             rows += _compute_rail_bom(rc, area_label)
             rows += _compute_block_bom(rc, area_label)
             rows += _compute_panel_clamp_bom(rc, area_label)
             rows += _compute_bolt_bom(rc, area_label)
 
-    return rows
+    return _aggregate_other_globally(_aggregate_rails_globally(rows))
 
 
 def enrich_bom_with_products(
@@ -380,10 +574,14 @@ def enrich_bom_with_products(
     return enriched
 
 
+_BOM_LOGIC_VERSION = 9  # bump to invalidate all cached BOMs
+
+
 def compute_input_hash(data: dict) -> str:
     """SHA-256 hash of step3 computed data relevant to BOM computation."""
     step3 = data.get('step3', {})
     relevant = {
+        '_v': _BOM_LOGIC_VERSION,
         'computedAreas': step3.get('computedAreas', []),
         'computedTrapezoids': step3.get('computedTrapezoids', []),
     }
@@ -416,7 +614,7 @@ def is_bom_stale(project_data: dict, bom: ProjectBOM) -> bool:
 async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
     """Load all active material products keyed by type_key."""
     result = await db.execute(
-        select(Product).where(Product.active == True, Product.product_type == 'material')
+        select(Product).where(Product.active == True, Product.product_type != 'panel')
     )
     products = result.scalars().all()
     return {
@@ -504,6 +702,17 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
         return bom
 
 
+def _delta_key(item: dict) -> str:
+    """Stable per-row override key. Length-bearing rows include pieceLengthM
+    so multiple cut-length variants of the same element (e.g. 6m vs 1.2m
+    angle profile in the same area) can be edited independently."""
+    base = f"{item['areaLabel']}||{item['element']}"
+    piece_length_m = item.get('pieceLengthM')
+    if piece_length_m is None:
+        return base
+    return f"{base}||{int(round(piece_length_m * 100))}cm"
+
+
 def apply_bom_deltas(
     bom_items: list[dict],
     bom_deltas: dict,
@@ -518,7 +727,7 @@ def apply_bom_deltas(
 
     effective = []
     for item in bom_items:
-        key = f"{item['areaLabel']}||{item['element']}"
+        key = _delta_key(item)
         ov = overrides.get(key)
         if ov and ov.get('removed'):
             continue

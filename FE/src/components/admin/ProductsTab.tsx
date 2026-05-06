@@ -6,28 +6,72 @@ import {
   DANGER, ADD_GREEN_BG,
 } from '../../styles/colors'
 
-const emptyForm = { type_key: '', product_type: 'material', part_number: '', name: '', name_he: '', additional_info: '', active: true, extra: '', alt_group: '', is_default: false }
+// Material categories the BOM uses (kept in sync with BE migration 0036).
+// 'material' is the legacy catch-all and stays first in the list as the default.
+const MATERIAL_CATEGORIES = [
+  'material',
+  'aluminium',
+  'screws',
+  'clamps',
+  'accessories',
+  'anchoring',
+  'electrical_cabinets',
+  'electrical_wiring',
+  'panel_cable_extensions',
+]
+
+const emptyForm = {
+  type_key: '', product_type: 'material', part_number: '', name: '', name_he: '',
+  additional_info: '', active: true, extra: '', alt_group: '', is_default: false,
+  price_ils: '', weight_kg: '', depreciation_pct: '',
+}
 
 function EditRow({ product, onSave, onCancel }) {
-  const [form, setForm] = useState({ ...emptyForm, ...product, alt_group: product?.alt_group ?? '' })
+  const initial = product
+    ? {
+        ...emptyForm, ...product,
+        alt_group:        product.alt_group ?? '',
+        price_ils:        product.price_ils ?? '',
+        weight_kg:        product.weight_kg ?? '',
+        depreciation_pct: product.depreciation_pct ?? '',
+      }
+    : { ...emptyForm }
+  const [form, setForm] = useState(initial)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const numOrNull = (v) => v === '' || v === null ? null : Number(v)
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
     onSave({
       ...form,
-      alt_group: form.alt_group === '' ? null : Number(form.alt_group),
+      alt_group:        form.alt_group === '' ? null : Number(form.alt_group),
+      price_ils:        numOrNull(form.price_ils),
+      weight_kg:        numOrNull(form.weight_kg),
+      depreciation_pct: numOrNull(form.depreciation_pct),
     })
   }
-  const inp = (key, placeholder, style = {}) => (
-    <input value={form[key] ?? ''} onChange={e => set(key, e.target.value)} placeholder={placeholder}
+  const inp = (key, placeholder, style = {}, type = 'text') => (
+    <input type={type} value={form[key] ?? ''} onChange={e => set(key, e.target.value)} placeholder={placeholder}
       style={{ padding: '0.3rem 0.5rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', width: '100%', ...style }} />
   )
   return (
     <tr style={{ background: ADD_GREEN_BG }}>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'type_key', { fontFamily: 'monospace' })}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>
+        <select value={form.product_type} onChange={e => set('product_type', e.target.value)}
+          style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', width: '100%' }}>
+          {MATERIAL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          {/* Allow keeping a non-standard category that came from the DB. */}
+          {form.product_type && !MATERIAL_CATEGORIES.includes(form.product_type) && form.product_type !== 'panel' && (
+            <option value={form.product_type}>{form.product_type}</option>
+          )}
+        </select>
+      </td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'Product name')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name_he', 'שם בעברית', { direction: 'rtl' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('price_ils', '₪',           { textAlign: 'right' }, 'number')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('weight_kg', 'kg',          { textAlign: 'right' }, 'number')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('depreciation_pct', '%',    { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('extra', 'e.g. 10%')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('alt_group', '#', { width: '3.5rem' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
@@ -68,7 +112,7 @@ export default function ProductsTab() {
 
   const handleCreate = async (form) => {
     try {
-      const created = await createProduct({ ...form, product_type: 'material' })
+      const created = await createProduct({ ...form, product_type: form.product_type || 'material' })
       setProducts(prev => [...prev, created])
       setAddingNew(false)
     } catch { setError('Failed to create material') }
@@ -116,15 +160,19 @@ export default function ProductsTab() {
 
   function sortVal(p, key) {
     switch (key) {
-      case 'type_key':    return p.type_key ?? ''
-      case 'name':        return p.name ?? ''
-      case 'name_he':     return p.name_he ?? ''
-      case 'part_number': return p.part_number ?? ''
-      case 'extra':       return p.extra ?? ''
-      case 'alt_group':   return p.alt_group ?? Infinity
-      case 'is_default':  return p.is_default ? 0 : 1
-      case 'active':      return p.active ? 0 : 1
-      default:            return ''
+      case 'type_key':         return p.type_key ?? ''
+      case 'product_type':     return p.product_type ?? ''
+      case 'name':             return p.name ?? ''
+      case 'name_he':          return p.name_he ?? ''
+      case 'part_number':      return p.part_number ?? ''
+      case 'price_ils':        return p.price_ils ?? Infinity
+      case 'weight_kg':        return p.weight_kg ?? Infinity
+      case 'depreciation_pct': return p.depreciation_pct ?? Infinity
+      case 'extra':            return p.extra ?? ''
+      case 'alt_group':        return p.alt_group ?? Infinity
+      case 'is_default':       return p.is_default ? 0 : 1
+      case 'active':           return p.active ? 0 : 1
+      default:                 return ''
     }
   }
 
@@ -189,14 +237,18 @@ export default function ProductsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
-              <SortTh colKey="type_key"    label="Key" />
-              <SortTh colKey="name"        label="Name" />
-              <SortTh colKey="name_he"    label="שם (HE)" />
-              <SortTh colKey="part_number" label="P.N." />
-              <SortTh colKey="extra"       label="Extra" />
-              <SortTh colKey="alt_group"   label="Alt Group" />
-              <SortTh colKey="is_default"  label="Default" />
-              <SortTh colKey="active"      label="Status" />
+              <SortTh colKey="type_key"         label="Key" />
+              <SortTh colKey="product_type"     label="Category" />
+              <SortTh colKey="name"             label="Name" />
+              <SortTh colKey="name_he"          label="שם (HE)" />
+              <SortTh colKey="part_number"      label="P.N." />
+              <SortTh colKey="price_ils"        label="Price ₪" />
+              <SortTh colKey="weight_kg"        label="Weight kg" />
+              <SortTh colKey="depreciation_pct" label="פחת %" />
+              <SortTh colKey="extra"            label="Extra" />
+              <SortTh colKey="alt_group"        label="Alt Group" />
+              <SortTh colKey="is_default"       label="Default" />
+              <SortTh colKey="active"           label="Status" />
               <th style={thStyle}>Actions</th>
             </tr>
           </thead>
@@ -206,7 +258,7 @@ export default function ProductsTab() {
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
-                <td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
+                <td colSpan={13} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
                   No materials found.
                 </td>
               </tr>
@@ -217,9 +269,13 @@ export default function ProductsTab() {
               ) : (
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.type_key}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, fontFamily: 'monospace', fontSize: '0.75rem' }}>{p.product_type}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, direction: 'rtl' }}>{p.name_he || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.part_number || '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.price_ils ?? '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.weight_kg ?? '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.depreciation_pct ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, fontSize: '0.78rem' }}>{p.extra || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'center' }}>{p.alt_group ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', textAlign: 'center', color: p.is_default ? SUCCESS : TEXT_VERY_LIGHT }}>{p.is_default ? '✓' : '—'}</td>

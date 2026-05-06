@@ -10,6 +10,7 @@ import Step4PlanApproval from './components/steps/Step4PlanApproval'
 import Step5PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
+import FinishCelebration from './components/FinishCelebration'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
@@ -49,6 +50,8 @@ function App() {
   // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
   // don't auto-open on normal app load — only after explicit logout.
   const [openLoginOnWelcome, setOpenLoginOnWelcome] = useState(false)
+  // Celebration modal shown when the user clicks Finish on step 5.
+  const [showFinishModal, setShowFinishModal] = useState(false)
 
   // Handle ?verifyToken= and ?resetToken= URL params on mount
   useEffect(() => {
@@ -396,10 +399,10 @@ function App() {
     }
   }
 
-  const handleUpdateCloudProject = async (projectId, name, location) => {
+  const handleUpdateCloudProject = async (projectId, name, clientName, location) => {
     try {
-      await updateProject(projectId, { name, location })
-      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, location } : p))
+      await updateProject(projectId, { name, client_name: clientName, location })
+      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, client_name: clientName, location } : p))
     } catch (err) {
       alert(`Could not update project: ${err.message}`)
     }
@@ -805,6 +808,11 @@ function App() {
           />
         )}
 
+        <FinishCelebration
+          open={showFinishModal}
+          onDone={() => { setShowFinishModal(false); s.handleStartOver() }}
+        />
+
         {verifyBanner && (
           <div style={{
             position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
@@ -853,6 +861,12 @@ function App() {
           className="btn-nav btn-next"
           onClick={async () => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
+            // On the final step the button reads "Finish" — show the
+            // celebration popup instead of trying to advance.
+            if (s.currentStep === TOTAL_STEPS) {
+              setShowFinishModal(true)
+              return
+            }
             const stepBeforeNext = s.currentStep
             s.handleNext(TOTAL_STEPS)
             // Wait for React to flush state updates from handleNext

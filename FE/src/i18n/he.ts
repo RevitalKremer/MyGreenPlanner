@@ -27,6 +27,11 @@ const he = {
   'nav.finish': 'סיום',
   'nav.signIn': 'התחבר כדי להמשיך →',
 
+  // ── מסך סיום חגיגי ──────────────────────────────────────────────────────
+  'finish.title':    'הפרויקט הושלם!',
+  'finish.message':  'כל הכבוד — תכנית הסולאר מוכנה. הצעת המחיר, כתב הכמויות וקבצי ה-PDF נשמרו בפרויקט. תוכל לפתוח אותו שוב ממסך הבית בכל עת.',
+  'finish.backHome': 'חזרה לדף הבית',
+
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'תיחום גג',
   'step.2.name': 'פריסת פנלים',
@@ -50,9 +55,11 @@ const he = {
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':             'פרויקט חדש',
-  'welcome.newProjectDesc':         'פתח תהליך תכנון סולארי חדש',
+  'welcome.newProjectDesc':         'פתח פרויקט תכנון סולארי חדש',
   'welcome.projectName':            'שם הפרויקט',
   'welcome.projectNamePlaceholder': 'לדוגמה: בית כהן',
+  'welcome.clientName':             'שם לקוח',
+  'welcome.clientNamePlaceholder':  'לדוגמה: My Solar',
   'welcome.location':               'מיקום',
   'welcome.locationPlaceholder':    'לדוגמה: תל אביב',
   'welcome.date':                   'תאריך',
@@ -60,10 +67,6 @@ const he = {
   'welcome.startPlanning':          'התחל תכנון →',
   'welcome.loadingSettings':        'טוען הגדרות…',
   'welcome.importProject':          'ייבוא פרויקט',
-  'welcome.importProjectDesc':      'המשך מקובץ .mgp שמור',
-  'welcome.importInstruction':      'בחר קובץ .mgp שיוצא מסשן קודם.',
-  'welcome.selectFile':             'בחר קובץ…',
-  'welcome.importError':            'לא ניתן לקרוא את קובץ הפרויקט. ודא שזהו קובץ .mgp תקין.',
   'welcome.savedProjects':          'הפרויקטים שלי',
   'welcome.allProjects':            'כל הפרויקטים (אדמין)',
   'welcome.loading':                'טוען…',
@@ -269,6 +272,7 @@ const he = {
   'bom.areas':          'אזורים {n}',
   'bom.lineItems':      'פריטים {n}',
   'bom.angleProfile':   'פרופיל זווית',
+  'bom.railProfile':    'קושרת',
   'bom.totalPieces':    'סה"כ יחידות',
   'bom.reset':          '↺ אפס',
   'bom.filter':         'סינון',
@@ -302,6 +306,16 @@ const he = {
   'bom.defaultSuffix':  '(ברירת מחדל)',
   'bom.badgeNew':       'חדש',
   'bom.badgeAlt':       'חלופה',
+  'bom.sectionOther':              'אביזרים אחרים',
+  'bom.section.trapezoids':        'טרפזים',
+  'bom.section.diagonalsExternal': 'דיאגונלים',
+  // ייצוא אקסל
+  'bom.xlsx.appTitle':      'MyGreenPlanner — מערכת תכנון מערכות סולאריות',
+  'bom.xlsx.appSubtitle':   'מבית שדות אנרגיה',
+  'bom.xlsx.project':       'פרויקט',
+  'bom.xlsx.totalKw':       'הספק כולל',
+  'bom.xlsx.colNum':        '#',
+  'bom.xlsx.colPartNumber': 'מק"ט',
 
   // ── Canvas navigator ─────────────────────────────────────────────────────
   'canvas.showNavigator': 'הצג נווט',

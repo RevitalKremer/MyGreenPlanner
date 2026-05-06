@@ -1,5 +1,6 @@
 import copy
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from app.services import rail_service
 from app.services import base_service
 from app.services import trapezoid_detail_service
 from app.services import bom_service
+from app.services import proposal_service
 from app.services import settings_cache
 from app.routers.deps import get_current_user, require_admin
 
@@ -87,6 +89,7 @@ async def list_projects(
         proj_dict = {
             "id": proj.id,
             "name": proj.name,
+            "client_name": proj.client_name,
             "location": proj.location,
             "roof_spec": proj.roof_spec,
             "navigation": proj.navigation,
@@ -541,6 +544,77 @@ async def get_effective_bom(
         items=_localize_bom_items(effective_items, resolved_lang),
         createdAt=bom.created_at,
         updatedAt=bom.updated_at,
+    )
+
+
+@router.get("/{project_id}/proposal.xlsx")
+async def download_proposal(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Generate the Hebrew price proposal xlsx (always Hebrew, regardless of
+    the requesting user's language)."""
+    try:
+        xlsx_bytes = await proposal_service.generate_proposal(db, project)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    from urllib.parse import quote
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_proposal_{today}.xlsx"
+    # HTTP headers are latin-1 — encode the unicode filename per RFC 5987,
+    # and provide a plain ASCII fallback for legacy clients.
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return Response(
+        content=xlsx_bytes,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            ),
+        },
+    )
+
+
+def _attachment_disposition(filename: str) -> str:
+    """RFC 5987-compliant Content-Disposition value with both an ASCII
+    fallback and a UTF-8 percent-encoded form, so Hebrew project names
+    survive the latin-1 HTTP header constraint."""
+    from urllib.parse import quote
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename)}'
+
+
+@router.get("/{project_id}/proposal/{sheet}.pdf")
+async def download_proposal_pdf(
+    project_id: uuid.UUID,
+    sheet: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Render either the pricing or quantities sheet of the proposal xlsx to
+    PDF via headless LibreOffice."""
+    if sheet not in ('pricing', 'quantities'):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown sheet: {sheet}")
+    try:
+        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, sheet)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_{sheet}_{today}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type='application/pdf',
+        headers={'Content-Disposition': _attachment_disposition(filename)},
     )
 
 

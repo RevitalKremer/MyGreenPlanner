@@ -5,7 +5,10 @@ from pydantic import BaseModel
 
 class ProductBase(BaseModel):
     type_key: str
-    product_type: str = 'material'  # 'panel' | 'material'
+    # 'panel' for solar panels; for materials a category like 'screws',
+    # 'clamps', 'accessories', 'anchoring', 'aluminium', 'electrical_cabinets',
+    # 'electrical_wiring', 'panel_cable_extensions', or the legacy 'material'.
+    product_type: str = 'material'
     part_number: str | None = None
     name: str
     name_he: str | None = None
@@ -14,6 +17,10 @@ class ProductBase(BaseModel):
     extra: str | None = None
     alt_group: int | None = None
     is_default: bool = False
+    # Material pricing/weight (per meter for length items, per piece otherwise)
+    price_ils: float | None = None
+    weight_kg: float | None = None
+    depreciation_pct: float | None = None
     # Panel-only fields — only relevant when product_type == 'panel'
     length_cm: float | None = None
     width_cm: float | None = None
@@ -34,6 +41,9 @@ class ProductUpdate(BaseModel):
     extra: str | None = None
     alt_group: int | None = None
     is_default: bool | None = None
+    price_ils: float | None = None
+    weight_kg: float | None = None
+    depreciation_pct: float | None = None
     # Panel-only fields
     length_cm: float | None = None
     width_cm: float | None = None

@@ -13,13 +13,14 @@ export async function listProjects({ limit = null, offset = 0, search = null }: 
   return res.json() // returns { projects, total, offset, limit, has_more }
 }
 
-export async function createProject(name, location, layout, data, roofSpec = null) {
+export async function createProject(name, clientName, location, layout, data, roofSpec = null) {
   const res = await mgpRequest('/projects', {
     method: 'POST',
-    body: JSON.stringify({ 
-      name, 
-      location: location || null, 
-      layout, 
+    body: JSON.stringify({
+      name,
+      client_name: clientName,
+      location: location || null,
+      layout,
       data,
       ...(roofSpec ? { roof_spec: roofSpec } : {})
     }),
@@ -28,7 +29,7 @@ export async function createProject(name, location, layout, data, roofSpec = nul
   return res.json()
 }
 
-export async function updateProject(id: string, payload: { name?: string; location?: string | null; layout?: ProjectLayout; data?: ProjectData }, step: number | null = null) {
+export async function updateProject(id: string, payload: { name?: string; client_name?: string; location?: string | null; layout?: ProjectLayout; data?: ProjectData }, step: number | null = null) {
   const url = step != null ? `/projects/${id}?step=${step}` : `/projects/${id}`
   const res = await mgpRequest(url, {
     method: 'PUT',
@@ -138,6 +139,33 @@ export async function getEffectiveBOM(id, lang = null) {
   const res = await mgpRequest(url)
   if (!res.ok) throw new Error('Failed to fetch effective BOM')
   return res.json()
+}
+
+async function _downloadFromServer(path, suggestedFilename) {
+  const res = await mgpRequest(path)
+  if (!res.ok) throw new Error(`Failed to fetch ${path}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = suggestedFilename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export async function downloadProposal(id, projectName = 'proposal') {
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/proposal.xlsx`, `${safeName}_proposal_${date}.xlsx`)
+}
+
+export async function downloadProposalPdf(id, sheet, projectName = 'proposal') {
+  // sheet ∈ {'pricing', 'quantities'} — must match the BE endpoint.
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/proposal/${sheet}.pdf`, `${safeName}_${sheet}_${date}.pdf`)
 }
 
 // ── Version ─────────────────────────────────────────────────────────────────

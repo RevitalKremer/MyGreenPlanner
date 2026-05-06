@@ -11,7 +11,14 @@ import {
   SECTION_HEADER_BG,
 } from '../../../styles/colors'
 
-function deltaKey(areaLabel, element) { return `${areaLabel}||${element}` }
+// Delta keys must match BE/mgp-service/app/services/bom_service.py::_delta_key.
+// Length-bearing rows include pieceLengthM so multiple cut-length variants of
+// the same element (e.g. 6m vs 1.2m angle profile) can be edited independently.
+function deltaKey(areaLabel, element, pieceLengthM = null) {
+  const base = `${areaLabel}||${element}`
+  if (pieceLengthM == null) return base
+  return `${base}||${Math.round(pieceLengthM * 100)}cm`
+}
 
 // ── Inline editable number ──────────────────────────────────────────────────
 function EditNum({ value, disabled, onCommit, dim = false }) {
@@ -51,16 +58,18 @@ function EditNum({ value, disabled, onCommit, dim = false }) {
 }
 
 // ── Total badge ─────────────────────────────────────────────────────────────
-function TotalBadge({ value, removed }) {
+function TotalBadge({ value, removed, suffix = '' }) {
+  const display = suffix ? `${value}${suffix}` : value
   if (removed) return (
-    <span style={{ fontWeight: '700', color: TEXT_FAINT, textDecoration: 'line-through', fontSize: '0.88rem' }}>{value}</span>
+    <span style={{ fontWeight: '700', color: TEXT_FAINT, textDecoration: 'line-through', fontSize: '0.88rem' }}>{display}</span>
   )
   return (
     <span style={{
       display: 'inline-block', minWidth: '2.6rem', textAlign: 'center',
       background: PRIMARY, color: BLACK, fontWeight: '800', fontSize: '0.82rem',
       padding: '2px 8px', borderRadius: '12px', letterSpacing: '0.02em',
-    }}>{value}</span>
+      whiteSpace: 'nowrap',
+    }}>{display}</span>
   )
 }
 
@@ -92,7 +101,16 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
   const baseRows = bomItems
-  const areaLabels = useMemo(() => [...new Set(baseRows.map(r => r.areaLabel))], [bomItems])
+  // Some BOM rows aggregate across areas (e.g. rails: areaLabel = "A, J";
+  // Other items: "A, B, C, J"). Split on commas so the filter dropdown lists
+  // individual areas and the filter predicate matches aggregated rows against
+  // any contributing area.
+  const splitAreas = (label) => String(label ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const areaLabels = useMemo(() => {
+    const set = new Set<string>()
+    baseRows.forEach(r => splitAreas(r.areaLabel).forEach(a => set.add(a)))
+    return [...set]
+  }, [bomItems])
 
   // ── Filter / sort state ─────────────────────────────────────────────────
   const [filterArea,   setFilterArea]   = useState('')
@@ -144,17 +162,18 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   // ── Build display rows ──────────────────────────────────────────────────
   const displayRows = useMemo(() => {
     const result = baseRows.map(row => {
-      const key    = deltaKey(row.areaLabel, row.element)
+      const key    = deltaKey(row.areaLabel, row.element, row.pieceLengthM)
       const ov     = overrides[key]
       const qty    = ov?.qty    != null ? ov.qty    : row.qty
       const extras = ov?.extras != null ? ov.extras : defaultExtras(row.element, qty)
+      const totalLengthM = row.pieceLengthM != null ? +(row.pieceLengthM * (qty + extras)).toFixed(2) : row.totalLengthM
       return { ...row, key, isAdded: false, removed: ov?.removed ?? false,
-        modified: ov != null, qty, extras, total: qty + extras, baseQty: row.qty }
+        modified: ov != null, qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty }
     })
     additions.forEach(add => {
       const extras = add.extras ?? 0
       result.push({ areaLabel: add.areaLabel, element: add.element, qty: add.qty, extras,
-        total: add.qty + extras, totalLengthM: null, key: add.id, isAdded: true,
+        total: add.qty + extras, pieceLengthM: null, totalLengthM: null, key: add.id, isAdded: true,
         removed: false, modified: false, baseQty: null, addId: add.id })
     })
     return result
@@ -168,7 +187,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       rows = rows.filter(r => !r.removed)
 
     if (filterArea)
-      rows = rows.filter(r => r.areaLabel === filterArea)
+      rows = rows.filter(r => splitAreas(r.areaLabel).includes(filterArea))
 
     if (filterText) {
       const q = filterText.toLowerCase()
@@ -183,20 +202,37 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       })
     }
 
+    // Section grouping is fixed:
+    //   1. Length-bearing rows tagged with an explicit `section` come first,
+    //      ordered by SECTION_ORDER below (trapezoids → external diagonals → …)
+    //   2. Length-bearing rows without a section, alphabetically by element
+    //   3. Non-length rows (single "Other" section)
+    // Within a section the user's chosen sort applies as a secondary order.
+    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1 }
+    const sectionRank = (r) => {
+      if (r.pieceLengthM == null) return 1000  // "Other"
+      if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
+      return 100  // unsectioned length rows (rails fall here)
+    }
     const dir = sortDir === 'asc' ? 1 : -1
+    const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
     rows = [...rows].sort((a, b) => {
+      const ra = sectionRank(a)
+      const rb = sectionRank(b)
+      if (ra !== rb) return ra - rb
+      // Within unsectioned length rows, group by element name.
+      if (a.pieceLengthM != null && !a.section && !b.section) {
+        const elementDiff = elementName(a).localeCompare(elementName(b))
+        if (elementDiff !== 0) return elementDiff
+      }
       switch (sortKey) {
         case 'area':    return dir * a.areaLabel.localeCompare(b.areaLabel)
-        case 'element': {
-          const na = a.name ?? productByType[a.element]?.name ?? a.element
-          const nb = b.name ?? productByType[b.element]?.name ?? b.element
-          return dir * na.localeCompare(nb)
-        }
-        case 'length':  return dir * ((a.totalLengthM ?? -1) - (b.totalLengthM ?? -1))
+        case 'element': return dir * elementName(a).localeCompare(elementName(b))
+        case 'length':  return dir * ((a.pieceLengthM ?? a.totalLengthM ?? -1) - (b.pieceLengthM ?? b.totalLengthM ?? -1))
         case 'qty':     return dir * (a.qty    - b.qty)
         case 'extras':  return dir * (a.extras - b.extras)
         case 'total':   return dir * (a.total  - b.total)
-        default:        return 0
+        default:        return a.areaLabel.localeCompare(b.areaLabel)
       }
     })
 
@@ -205,12 +241,21 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
 
   // ── Totals (over unfiltered+unremoved rows for summary, filtered for footer) ─
   const totalAngleM = useMemo(() =>
-    displayRows.filter(r => !r.removed && (r.element === 'angle_profile_40x40' || r.element === 'angle_profile_40x40_diag'))
+    displayRows.filter(r => !r.removed && r.element === 'angle_profile_40x40')
       .reduce((s, r) => s + (r.totalLengthM ?? 0), 0)
   , [displayRows])
 
+  const totalRailM = useMemo(() =>
+    displayRows.filter(r => !r.removed && r.element === 'rail_40x40' && r.pieceLengthM != null)
+      .reduce((s, r) => s + (r.totalLengthM ?? 0), 0)
+  , [displayRows])
+
+  // Total pieces counts only piece-count items (the "Other" section) so we
+  // don't double-report the length-bearing rows whose totals are already in
+  // the angle-profile / rail-profile metrics above.
   const grandTotal = useMemo(() =>
-    displayRows.filter(r => !r.removed).reduce((s, r) => s + r.total, 0)
+    displayRows.filter(r => !r.removed && r.pieceLengthM == null)
+      .reduce((s, r) => s + r.total, 0)
   , [displayRows])
 
   const totalItems = displayRows.filter(r => !r.removed).length
@@ -233,13 +278,17 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             {t('bom.billOfMaterials')}
           </div>
           <div style={{ fontSize: '1.05rem', fontWeight: '800', color: WHITE, letterSpacing: '-0.01em' }}>
-            {t('bom.areas', { n: areaLabels.length, s: areaLabels.length !== 1 ? 's' : '' })} · {t('bom.lineItems', { n: totalItems, s: totalItems !== 1 ? 's' : '' })}
+            {t('bom.lineItems', { n: totalItems, s: totalItems !== 1 ? 's' : '' })}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'stretch', borderLeft: `1px solid ${WHITE_10}` }}>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem', borderRight: `1px solid ${WHITE_10}` }}>
             <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.angleProfile')}</div>
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalAngleM.toFixed(1)} m</div>
+          </div>
+          <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem', borderRight: `1px solid ${WHITE_10}` }}>
+            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.railProfile')}</div>
+            <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalRailM.toFixed(1)} m</div>
           </div>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem' }}>
             <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.totalPieces')}</div>
@@ -320,14 +369,50 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
               <SortTh label={t('bom.colLength')}  colKey="length"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '5.5rem' }} />
               <SortTh label={t('bom.colQty')}     colKey="qty"     sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4rem' }} />
               <SortTh label={t('bom.colExtras')}  colKey="extras"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thRight, width: '4.5rem' }} />
-              <SortTh label={t('bom.colTotal')}   colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '5.5rem' }} />
+              <SortTh label={t('bom.colTotal')}   colKey="total"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ ...thCenter, width: '7.5rem' }} />
               <th style={{ background: SECTION_HEADER_BG, width: '3.5rem' }} />
             </tr>
           </thead>
           <tbody>
             {(() => {
               let lineNum = 0
-              return visibleRows.map((row, ri) => {
+              const out = []
+              let prevSectionKey = null
+              let otherHeaderShown = false
+              const sectionHeader = (key, label) => (
+                <tr key={key} style={{ background: SECTION_HEADER_BG }}>
+                  <td colSpan={8} style={{ padding: '0.4rem 0.8rem', fontSize: '0.72rem', fontWeight: '700',
+                    color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    ── {label} ──
+                  </td>
+                </tr>
+              )
+              const sectionLabelFor = (row) => {
+                // Explicit section field has its own translated label.
+                if (row.section) {
+                  const key = `bom.section.${row.section.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`
+                  const translated = t(key)
+                  if (translated && translated !== key) return translated
+                }
+                const product = productByType[row.element]
+                return row.name ?? product?.name ?? row.element
+              }
+              visibleRows.forEach((row, ri) => {
+                if (row.pieceLengthM != null) {
+                  // Header transitions on section key (explicit `section` field
+                  // OR fall back to element when no section is set).
+                  const sectionKey = row.section ?? row.element
+                  if (sectionKey !== prevSectionKey) {
+                    out.push(sectionHeader(`hdr-${sectionKey}-${ri}`, sectionLabelFor(row)))
+                  }
+                  prevSectionKey = sectionKey
+                } else if (!otherHeaderShown) {
+                  // Single catchall header for all non-length rows.
+                  out.push(sectionHeader(`hdr-other-${ri}`, t('bom.sectionOther')))
+                  otherHeaderShown = true
+                  prevSectionKey = '__other__'
+                }
+
                 if (!row.removed) lineNum++
                 const displayNum = row.removed ? null : lineNum
               const rowBg      = row.isAdded  ? ADD_GREEN_BG
@@ -338,7 +423,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                                : row.removed  ? `3px solid ${BORDER}`
                                : row.modified ? `3px solid ${AMBER}`
                                : '3px solid transparent'
-              return (
+              out.push(
                 <tr key={row.key} style={{
                   background: rowBg,
                   borderTop: `1px solid ${BORDER_FAINT}`,
@@ -419,9 +504,9 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                     })()}
                   </td>
 
-                  {/* Length */}
+                  {/* Length (per piece) */}
                   <td style={{ padding: '0.5rem 0.8rem', textAlign: 'right', color: TEXT_PLACEHOLDER, fontSize: '0.8rem' }}>
-                    {row.totalLengthM != null ? row.totalLengthM.toFixed(2) : '—'}
+                    {row.pieceLengthM != null ? row.pieceLengthM.toFixed(2) : '—'}
                   </td>
 
                   {/* Qty */}
@@ -436,9 +521,11 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                       onCommit={v => row.isAdded ? setAdditionField(row.addId, 'extras', v) : setOverrideField(row.key, 'extras', v)} />
                   </td>
 
-                  {/* Total */}
+                  {/* Total — meters for length-bearing rows, piece count otherwise */}
                   <td style={{ padding: '0.5rem 0.8rem', textAlign: 'center' }}>
-                    <TotalBadge value={row.total} removed={row.removed} />
+                    {row.pieceLengthM != null && row.totalLengthM != null
+                      ? <TotalBadge value={row.totalLengthM.toFixed(2)} removed={row.removed} suffix=" m" />
+                      : <TotalBadge value={row.total} removed={row.removed} />}
                   </td>
 
                   {/* Actions */}
@@ -460,7 +547,8 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                   </td>
                 </tr>
               )
-            })
+              })
+              return out
             })()}
 
             {visibleRows.length === 0 && (

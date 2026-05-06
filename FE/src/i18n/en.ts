@@ -27,6 +27,11 @@ const en = {
   'nav.finish': 'Finish',
   'nav.signIn': 'Sign In to Continue →',
 
+  // ── Finish celebration ──────────────────────────────────────────────────
+  'finish.title':    'Project Complete!',
+  'finish.message':  'Your solar plan is ready. The proposal, BOM and PDFs are saved to your project — you can re-open it from the home screen any time.',
+  'finish.backHome': 'Back to home',
+
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'Allocate Roof',
   'step.2.name': 'Panel Layout',
@@ -53,6 +58,8 @@ const en = {
   'welcome.newProjectDesc':       'Start a new solar planning session',
   'welcome.projectName':          'Project Name',
   'welcome.projectNamePlaceholder': 'e.g. Smith Residence',
+  'welcome.clientName':           'Client Name',
+  'welcome.clientNamePlaceholder': 'e.g. My Solar',
   'welcome.location':             'Location',
   'welcome.locationPlaceholder':  'e.g. Tel Aviv, Israel',
   'welcome.date':                 'Date',
@@ -60,10 +67,7 @@ const en = {
   'welcome.startPlanning':        'Start Planning →',
   'welcome.loadingSettings':      'Loading settings…',
   'welcome.importProject':        'Import Project',
-  'welcome.importProjectDesc':    'Resume from a saved .mgp file',
-  'welcome.importInstruction':    'Select a .mgp project file exported from a previous session.',
-  'welcome.selectFile':           'Select File…',
-  'welcome.importError':          'Could not read project file. Make sure it is a valid .mgp file.',
+  'welcome.':    'Resume from a saved .mgp file',
   'welcome.savedProjects':        'My Saved Projects',
   'welcome.allProjects':          'All Projects (Admin)',
   'welcome.loading':              'Loading…',
@@ -269,6 +273,7 @@ const en = {
   'bom.areas':             '{n} area{s}',
   'bom.lineItems':         '{n} line item{s}',
   'bom.angleProfile':      'Angle profile',
+  'bom.railProfile':       'Rail profile',
   'bom.totalPieces':       'Total pieces',
   'bom.reset':             '↺ Reset',
   'bom.filter':            'Filter',
@@ -302,6 +307,16 @@ const en = {
   'bom.defaultSuffix':     '(default)',
   'bom.badgeNew':          'NEW',
   'bom.badgeAlt':          'ALT',
+  'bom.sectionOther':                 'Other',
+  'bom.section.trapezoids':           'Trapezoids',
+  'bom.section.diagonalsExternal':    'External diagonals',
+  // Excel export
+  'bom.xlsx.appTitle':      'MyGreenPlanner — Solar PV Planning System',
+  'bom.xlsx.appSubtitle':   'by Sadot Energy',
+  'bom.xlsx.project':       'Project',
+  'bom.xlsx.totalKw':       'Total kW',
+  'bom.xlsx.colNum':        '#',
+  'bom.xlsx.colPartNumber': 'Part Number',
 
   // ── Canvas navigator ─────────────────────────────────────────────────────
   'canvas.showNavigator': 'Show navigator',

@@ -62,7 +62,7 @@ async def list_materials(db: AsyncSession = Depends(get_db)):
     """Return active material products (public endpoint)."""
     result = await db.execute(
         select(Product)
-        .where(Product.active == True, Product.product_type == 'material')
+        .where(Product.active == True, Product.product_type != 'panel')
         .order_by(Product.name)
     )
     return list(result.scalars().all())
@@ -85,7 +85,7 @@ async def list_alt_groups(db: AsyncSession = Depends(get_db)):
         select(Product)
         .where(
             Product.active == True,
-            Product.product_type == 'material',
+            Product.product_type != 'panel',
             Product.alt_group.is_not(None),
         )
         .order_by(Product.alt_group, Product.is_default.desc(), Product.name)
