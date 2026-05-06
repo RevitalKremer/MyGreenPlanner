@@ -19,8 +19,13 @@ and SUM ranges in the totals row are rewritten to span the new data block.
 """
 from __future__ import annotations
 
+import asyncio
 import io
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import uuid
 import xml.etree.ElementTree as ET
 from copy import copy
@@ -37,15 +42,21 @@ from app.models.product import Product
 from app.services import bom_service
 
 
-TEMPLATE_PATH = Path(__file__).resolve().parents[1] / 'templates' / 'proposal_template.xlsx'
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / 'templates'
+TEMPLATE_PATH = _TEMPLATES_DIR / 'proposal_template.xlsx'
+_LOGO_PATH = _TEMPLATES_DIR / 'proposal_logo.png'
+_FOOTER_PATH = _TEMPLATES_DIR / 'proposal_footer.png'
 
 
 # Section labels in Hebrew (proposal is Hebrew-only regardless of app lang).
+# We use the em-dash (U+2014) rather than the box-drawing horizontal (U+2500)
+# the BOM Excel uses, because Noto Sans Hebrew (and most Hebrew fonts) don't
+# include U+2500 — LibreOffice's PDF renderer falls back to a tofu rectangle.
 _SECTION_LABEL_HE = {
-    'rails':              '── קושרות ──',
-    'trapezoids':         '── טרפזים ──',
-    'diagonals_external': '── דיאגונלים ──',
-    'other':              '── אביזרי עזר ──',
+    'rails':              '— קושרות —',
+    'trapezoids':         '— טרפזים —',
+    'diagonals_external': '— דיאגונלים —',
+    'other':              '— אביזרי עזר —',
 }
 
 # Order rows are emitted in (mirrors the proposal template screenshot).
@@ -589,3 +600,308 @@ def _restore_header_footer_images(template_bytes: bytes, output_bytes: bytes) ->
         for name, data in output_files.items():
             out_zip.writestr(name, data)
     return buf.getvalue()
+
+
+# ───────────────────────────────────────────────────────────────────────
+# PDF generation (one PDF per sheet, via LibreOffice headless)
+# ───────────────────────────────────────────────────────────────────────
+
+# Sheet-name → suggested filename stub. Hebrew names rendered in the PDF
+# come from the worksheet itself; this is just the file label.
+_PDF_SHEETS = ('pricing', 'quantities')
+
+# soffice cold-start timeout in seconds. Conversion of a small workbook
+# typically completes in 3-5 s; we give it generous headroom.
+_SOFFICE_TIMEOUT = 60
+
+
+def _apply_pdf_table_stripes(ws) -> None:
+    """LibreOffice's xlsx → PDF export doesn't render `TableStyleMedium15`'s
+    row stripes visibly, so the printed PDF looks like a flat black-and-white
+    grid even though the same xlsx in Excel shows clear zebra rows. Explicitly
+    paint every other table data row with a light-teal fill so the PDF has
+    visible striping regardless of how the renderer interprets table styles.
+    """
+    from openpyxl.styles import PatternFill
+    from openpyxl.utils.cell import range_boundaries
+
+    # Same colour TableStyleMedium15 uses (Excel theme accent1, ~30% tint).
+    stripe = PatternFill(start_color='FFD9E5F1', end_color='FFD9E5F1', fill_type='solid')
+
+    for table_name in list(ws.tables):
+        table = ws.tables[table_name]
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        except Exception:
+            continue
+        first_data = min_row + (table.headerRowCount or 1)
+        for r in range(first_data, max_row + 1):
+            if (r - first_data) % 2 == 0:  # 1st, 3rd, 5th data row → stripe
+                for c in range(min_col, max_col + 1):
+                    cell = ws.cell(r, c)
+                    # Only paint when the cell isn't already filled — skips
+                    # the section-header rows etc. that picked up template
+                    # styling we don't want to clobber.
+                    if cell.fill is None or cell.fill.fill_type in (None, 'none'):
+                        cell.fill = stripe
+
+
+def _force_rtl_sheet(ws) -> None:
+    """Lock the sheet into right-to-left mode for the PDF path.
+
+    Two layers of fixes:
+
+    1. Sheet-view RTL (`sheet_view.rightToLeft=True`) — column ordering.
+    2. Cell-level reading order — explicitly stamp `readingOrder=2` (RTL)
+       on every cell whose alignment leaves the order auto-detected. The
+       template author only set explicit RTL on a handful of cells; the
+       rest defaulted to `readingOrder=0`. LibreOffice's PDF renderer
+       resolves `0` as LTR-context when a cell contains *any* neutral or
+       Latin character (parens, colon, the ₪ symbol, digits inside a
+       formula), placing those characters on the wrong side of the Hebrew
+       text. Forcing `2` makes bidi resolve in an RTL paragraph context
+       across the whole sheet, regardless of mixed content.
+    """
+    from openpyxl.styles import Alignment
+    try:
+        ws.sheet_view.rightToLeft = True
+    except Exception:
+        pass
+    for row in ws.iter_rows():
+        for cell in row:
+            a = cell.alignment
+            if a.readingOrder == 2:
+                continue
+            cell.alignment = Alignment(
+                horizontal=a.horizontal,
+                vertical=a.vertical,
+                indent=a.indent,
+                wrap_text=a.wrap_text,
+                shrink_to_fit=a.shrink_to_fit,
+                text_rotation=a.text_rotation,
+                relativeIndent=a.relativeIndent,
+                justifyLastLine=a.justifyLastLine,
+                readingOrder=2,
+            )
+
+
+def _force_pdf_page_layout(ws) -> None:
+    """Force the whole table onto a single page width (margins respected),
+    spilling vertically across as many pages as needed.
+
+    The template ships with both `pageSetUpPr.fitToPage=true` and
+    `pageSetup.scale=76`. Excel and LibreOffice resolve that conflict
+    differently — Excel uses the explicit scale, LibreOffice uses the fit
+    settings (which are unset, so it auto-fits). Either side of that picks
+    a layout that doesn't match the other. We resolve it explicitly: clear
+    the fixed scale and set fitToWidth=1 / fitToHeight=0 (unlimited),
+    which both renderers honour identically — table fits to one page
+    wide, height is whatever it needs to be.
+    """
+    if ws.sheet_properties.pageSetUpPr is not None:
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.scale = None
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    # Template ships with ~1 mm left/right margins which leaves the table
+    # almost flush with the page edge. Bump them so the printed table has
+    # some breathing room (≈ 8 mm). Top/bottom unchanged so the header
+    # block + footer image still sit where the template intends.
+    ws.page_margins.left = 0.3
+    ws.page_margins.right = 0.3
+
+
+def _embed_branding_images_for_pdf(ws) -> None:
+    """LibreOffice's xlsx → PDF converter does not render Excel's
+    legacyDrawingHF (print-time `&G` placeholder pointing to VML drawings),
+    so the logo + footer don't show up in the PDF. As a workaround for the
+    PDF path only, embed those same images as cell-anchored pictures on the
+    sheet itself. The images live next to the template as standalone PNGs
+    so they can be swapped without touching the xlsx. Sized to match the
+    template's print-time VML dimensions (logo 5in×36pt; footer 805pt×116pt)
+    so the PDF visually matches what Excel prints from the template.
+    """
+    from openpyxl.drawing.image import Image as XLImage
+
+    if _LOGO_PATH.exists():
+        # Logo: 5in × 36pt → 480 × 48 px @ 96 DPI. Anchored across the top
+        # row block (rows 1-3 are whitespace placeholders in the template),
+        # roughly centered on column D in the table's RTL layout.
+        logo = XLImage(str(_LOGO_PATH))
+        logo.width = 480
+        logo.height = 48
+        logo.anchor = 'D1'
+        ws.add_image(logo)
+
+    if _FOOTER_PATH.exists():
+        # Footer spans the full printable width via TwoCellAnchor — the
+        # image is bound to a cell rectangle covering the entire print
+        # area (cols A through last) on a single row, so it always lines
+        # up with the table edges regardless of fitToWidth scaling. Aspect
+        # ratio is preserved by sizing the row height proportionally to
+        # the print area's column-width sum.
+        from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
+        from PIL import Image as PILImage
+
+        with PILImage.open(_FOOTER_PATH) as pil:
+            aspect = pil.size[0] / pil.size[1]  # original w/h, e.g. ~6.97
+
+        bounds = _parse_print_area_bounds(ws)
+        min_col, _, max_col, _ = bounds if bounds else (1, 1, 9, 1)
+
+        # Convert the print area's column-width-sum to points to set a row
+        # height that keeps the image's aspect ratio. (Excel char width × 7
+        # = pixels at 96 DPI; pixels × 0.75 = points.)
+        col_chars = sum(
+            (ws.column_dimensions.get(get_column_letter(c)).width
+             if ws.column_dimensions.get(get_column_letter(c)) and
+                ws.column_dimensions.get(get_column_letter(c)).width
+             else 8.43)
+            for c in range(min_col, max_col + 1)
+        )
+        col_pt = col_chars * 7 * 0.75
+        row_h_pt = col_pt / aspect
+
+        footer_row = ws.max_row + 1
+        ws.row_dimensions[footer_row].height = row_h_pt + 4  # small bottom pad
+
+        footer = XLImage(str(_FOOTER_PATH))
+        footer.anchor = TwoCellAnchor(
+            _from=AnchorMarker(col=min_col - 1, colOff=0, row=footer_row - 1, rowOff=0),
+            to=AnchorMarker(col=max_col, colOff=0, row=footer_row, rowOff=0),
+            editAs='oneCell',
+        )
+        ws.add_image(footer)
+        _ensure_print_area_includes_row(ws, footer_row)
+
+
+def _parse_print_area_bounds(ws):
+    """Return (min_col, min_row, max_col, max_row) for the worksheet's print
+    area, or None if it isn't set."""
+    pa = ws.print_area
+    if not pa:
+        return None
+    pa_str = pa[0] if isinstance(pa, list) else pa
+    if not pa_str:
+        return None
+    body = pa_str
+    if '!' in body:
+        _, body = body.rsplit('!', 1)
+    from openpyxl.utils.cell import range_boundaries
+    try:
+        return range_boundaries(body.replace('$', ''))
+    except Exception:
+        return None
+
+
+def _ensure_print_area_includes_row(ws, target_row: int) -> None:
+    """Grow the print area's bottom row to at least `target_row`,
+    keeping its column range untouched."""
+    pa = ws.print_area
+    if not pa:
+        return
+    pa_str = pa[0] if isinstance(pa, list) else pa
+    if not pa_str:
+        return
+    sheet_prefix = ''
+    body = pa_str
+    if '!' in body:
+        sheet_prefix, body = body.rsplit('!', 1)
+        sheet_prefix += '!'
+    from openpyxl.utils.cell import range_boundaries, get_column_letter
+    try:
+        min_col, min_row, max_col, max_row = range_boundaries(body.replace('$', ''))
+    except Exception:
+        return
+    if max_row >= target_row:
+        return
+    ws.print_area = (
+        f"{sheet_prefix}${get_column_letter(min_col)}${min_row}:"
+        f"${get_column_letter(max_col)}${target_row}"
+    )
+
+
+def _isolate_xlsx_to_single_sheet(full_xlsx_bytes: bytes, keep_sheet: str) -> bytes:
+    """Return xlsx bytes containing only `keep_sheet`. Drops sibling sheets
+    via openpyxl, embeds the template's logo + footer as cell-anchored
+    images so they render in the PDF (LibreOffice doesn't render Excel's
+    legacyDrawingHF), saves, and re-applies the header/footer-image
+    post-process so the original print-time VML images survive too (in case
+    the user later opens this xlsx in Excel and prints).
+    """
+    wb = load_workbook(io.BytesIO(full_xlsx_bytes))
+    for name in [s for s in wb.sheetnames if s != keep_sheet]:
+        del wb[name]
+    if keep_sheet in wb.sheetnames:
+        wb.active = wb.sheetnames.index(keep_sheet)
+        wb[keep_sheet].sheet_state = 'visible'
+        _force_rtl_sheet(wb[keep_sheet])
+        _apply_pdf_table_stripes(wb[keep_sheet])
+        _force_pdf_page_layout(wb[keep_sheet])
+        _embed_branding_images_for_pdf(wb[keep_sheet])
+    out = io.BytesIO()
+    wb.save(out)
+    return _restore_header_footer_images(TEMPLATE_PATH.read_bytes(), out.getvalue())
+
+
+def _xlsx_to_pdf_sync(xlsx_bytes: bytes) -> bytes:
+    """Run `soffice --headless --convert-to pdf` against the given xlsx.
+
+    LibreOffice locks `~/.config/libreoffice` per process, so concurrent
+    calls collide. We give each invocation its own UserInstallation in a
+    private temp directory.
+    """
+    soffice = shutil.which('soffice') or shutil.which('libreoffice')
+    if not soffice:
+        raise RuntimeError(
+            "LibreOffice (soffice) not found in PATH — cannot generate PDF. "
+            "Make sure libreoffice-calc is installed in the BE container."
+        )
+
+    with tempfile.TemporaryDirectory(prefix='proposal-pdf-') as workdir:
+        in_path = Path(workdir) / 'in.xlsx'
+        out_dir = Path(workdir) / 'out'
+        profile_dir = Path(workdir) / 'profile'
+        out_dir.mkdir()
+        profile_dir.mkdir()
+        in_path.write_bytes(xlsx_bytes)
+
+        result = subprocess.run(
+            [
+                soffice,
+                f'-env:UserInstallation=file://{profile_dir}',
+                '--headless',
+                '--norestore',
+                '--nolockcheck',
+                '--nologo',
+                '--convert-to', 'pdf',
+                '--outdir', str(out_dir),
+                str(in_path),
+            ],
+            capture_output=True,
+            timeout=_SOFFICE_TIMEOUT,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"soffice xlsx→pdf failed (rc={result.returncode}): "
+                f"{result.stderr.decode('utf-8', errors='replace')[-500:]}"
+            )
+
+        pdfs = list(out_dir.glob('*.pdf'))
+        if not pdfs:
+            raise RuntimeError(
+                "soffice produced no PDF; stderr: "
+                f"{result.stderr.decode('utf-8', errors='replace')[-500:]}"
+            )
+        return pdfs[0].read_bytes()
+
+
+async def generate_proposal_pdf(db: AsyncSession, project, sheet: str) -> bytes:
+    """Generate the proposal xlsx, isolate the requested sheet, convert to PDF."""
+    if sheet not in _PDF_SHEETS:
+        raise ValueError(f"Unknown sheet {sheet!r}; expected one of {_PDF_SHEETS}")
+    full_xlsx = await generate_proposal(db, project)
+    single_xlsx = _isolate_xlsx_to_single_sheet(full_xlsx, sheet)
+    # soffice is blocking; offload to a thread so the FastAPI event loop stays
+    # responsive while the (3-5 s) cold-start runs.
+    return await asyncio.to_thread(_xlsx_to_pdf_sync, single_xlsx)

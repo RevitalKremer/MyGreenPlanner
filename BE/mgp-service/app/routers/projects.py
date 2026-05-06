@@ -579,6 +579,44 @@ async def download_proposal(
     )
 
 
+def _attachment_disposition(filename: str) -> str:
+    """RFC 5987-compliant Content-Disposition value with both an ASCII
+    fallback and a UTF-8 percent-encoded form, so Hebrew project names
+    survive the latin-1 HTTP header constraint."""
+    from urllib.parse import quote
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename)}'
+
+
+@router.get("/{project_id}/proposal/{sheet}.pdf")
+async def download_proposal_pdf(
+    project_id: uuid.UUID,
+    sheet: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Render either the pricing or quantities sheet of the proposal xlsx to
+    PDF via headless LibreOffice."""
+    if sheet not in ('pricing', 'quantities'):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown sheet: {sheet}")
+    try:
+        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, sheet)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_{sheet}_{today}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type='application/pdf',
+        headers={'Content-Disposition': _attachment_disposition(filename)},
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Image Upload/Fetch Endpoints
 # ─────────────────────────────────────────────────────────────────────────────

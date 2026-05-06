@@ -7,7 +7,7 @@ import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
-import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal } from '../../services/projectsApi'
+import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal, downloadProposalPdf } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -663,6 +663,24 @@ export default function Step4PdfReport({
             opacity: projectId ? 1 : 0.5,
           }}
         >↓ Generate Proposal</button>
+        {(['pricing', 'quantities'] as const).map(sheet => (
+          <button
+            key={sheet}
+            onClick={async () => {
+              try { await downloadProposalPdf(projectId, sheet, project?.name) }
+              catch (err) { console.error(`Failed to generate ${sheet} PDF:`, err); alert(`Failed to generate ${sheet} PDF`) }
+            }}
+            disabled={!projectId}
+            style={{
+              padding: '0.35rem 1rem',
+              background: PRIMARY, color: BLACK,
+              border: 'none', borderRadius: '6px',
+              fontSize: '0.78rem', fontWeight: '700',
+              cursor: projectId ? 'pointer' : 'not-allowed',
+              opacity: projectId ? 1 : 0.5,
+            }}
+          >↓ {sheet === 'pricing' ? 'Pricing' : 'Quantities'} PDF</button>
+        ))}
         {activeTab === 'pdf' && (
           <button
             onClick={handleExportPdf}

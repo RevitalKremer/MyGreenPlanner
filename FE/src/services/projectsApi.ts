@@ -140,20 +140,31 @@ export async function getEffectiveBOM(id, lang = null) {
   return res.json()
 }
 
-export async function downloadProposal(id, projectName = 'proposal') {
-  const res = await mgpRequest(`/projects/${id}/proposal.xlsx`)
-  if (!res.ok) throw new Error('Failed to generate proposal')
+async function _downloadFromServer(path, suggestedFilename) {
+  const res = await mgpRequest(path)
+  if (!res.ok) throw new Error(`Failed to fetch ${path}`)
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
-  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
-  const date = new Date().toISOString().split('T')[0]
   const a = document.createElement('a')
   a.href = url
-  a.download = `${safeName}_proposal_${date}.xlsx`
+  a.download = suggestedFilename
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+export async function downloadProposal(id, projectName = 'proposal') {
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/proposal.xlsx`, `${safeName}_proposal_${date}.xlsx`)
+}
+
+export async function downloadProposalPdf(id, sheet, projectName = 'proposal') {
+  // sheet ∈ {'pricing', 'quantities'} — must match the BE endpoint.
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/proposal/${sheet}.pdf`, `${safeName}_${sheet}_${date}.pdf`)
 }
 
 // ── Version ─────────────────────────────────────────────────────────────────
