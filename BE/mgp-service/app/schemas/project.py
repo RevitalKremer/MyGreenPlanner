@@ -6,6 +6,7 @@ from app.schemas.roof_spec import RoofSpec
 
 class ProjectCreate(BaseModel):
     name: str
+    client_name: str
     location: str | None = None
     roof_spec: RoofSpec = Field(default_factory=lambda: RoofSpec(type='concrete'))
     layout: dict = Field(default_factory=dict)
@@ -14,6 +15,7 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
+    client_name: str | None = None
     location: str | None = None
     layout: dict | None = None
     data: dict | None = None
@@ -23,6 +25,7 @@ class ProjectRead(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
     name: str
+    client_name: str
     location: str | None
     roof_spec: dict
     navigation: dict
@@ -37,6 +40,7 @@ class ProjectRead(BaseModel):
 class ProjectSummary(BaseModel):
     id: uuid.UUID
     name: str
+    client_name: str
     roof_spec: dict
     location: str | None
     navigation: dict

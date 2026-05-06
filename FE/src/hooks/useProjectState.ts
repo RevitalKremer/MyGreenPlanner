@@ -520,19 +520,23 @@ export function useProjectState() {
   }
 
   const handleSaveProject = async (step = null) => {
-    const name     = currentProject?.name || 'Untitled'
-    const location = currentProject?.location || null
-    const roofSpec = currentProject?.roofSpec || null
-    const layout   = getLayoutData()
-    const data     = getProjectData()
+    const name       = currentProject?.name || 'Untitled'
+    // Mandatory at the BE level. Fall back to 'UNKNOWN' (matching the
+    // migration backfill) only as a defensive last resort — the welcome
+    // form requires a non-empty value before reaching here.
+    const clientName = currentProject?.client_name || 'UNKNOWN'
+    const location   = currentProject?.location || null
+    const roofSpec   = currentProject?.roofSpec || null
+    const layout     = getLayoutData()
+    const data       = getProjectData()
     pendingSaveRef.current = null  // consumed — clear so subsequent saves use state
-    
+
     let projectId
     if (cloudProjectId) {
       await updateProject(cloudProjectId, { name, location, layout, data }, step)
       projectId = cloudProjectId
     } else {
-      const saved = await createProject(name, location, layout, data, roofSpec)
+      const saved = await createProject(name, clientName, location, layout, data, roofSpec)
       setCloudProjectId(saved.id)
       projectId = saved.id
     }

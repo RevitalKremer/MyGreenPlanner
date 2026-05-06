@@ -53,6 +53,8 @@ const en = {
   'welcome.newProjectDesc':       'Start a new solar planning session',
   'welcome.projectName':          'Project Name',
   'welcome.projectNamePlaceholder': 'e.g. Smith Residence',
+  'welcome.clientName':           'Client Name',
+  'welcome.clientNamePlaceholder': 'e.g. My Solar',
   'welcome.location':             'Location',
   'welcome.locationPlaceholder':  'e.g. Tel Aviv, Israel',
   'welcome.date':                 'Date',

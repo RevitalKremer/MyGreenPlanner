@@ -31,6 +31,16 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     }
   }, [openLoginOnMount, onClearOpenLogin])
   const [projectName, setProjectName] = useState('')
+  // Defaults to the logged-in user's full name; admins may override per-project
+  // when generating proposals for someone else. Re-prefilled when the user
+  // object arrives async, but only while the field is still untouched.
+  const [clientName, setClientName] = useState(user?.full_name ?? '')
+  const clientNameTouchedRef = useRef(false)
+  useEffect(() => {
+    if (!clientNameTouchedRef.current && user?.full_name) {
+      setClientName(user.full_name)
+    }
+  }, [user?.full_name])
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [roofType, setRoofType] = useState('concrete')
@@ -38,6 +48,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const [installationOrientation, setInstallationOrientation] = useState('perpendicular')
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
+  const [editClientName, setEditClientName] = useState('')
   const [editLocation, setEditLocation] = useState('')
   const [localSearch, setLocalSearch] = useState(projectsSearch || '')
   const searchTimerRef = useRef(null)
@@ -49,7 +60,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     getBackendVersion().then(version => setBackendVersion(version)).catch(() => {})
   }, [])
 
-  const canCreate = projectName.trim().length > 0 && appConfigReady
+  const canCreate = projectName.trim().length > 0 && clientName.trim().length > 0 && appConfigReady
 
   const handleSearchChange = (e) => {
     const value = e.target.value
@@ -75,7 +86,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
         installationOrientation: installationOrientation
       } : {})
     }
-    onCreateProject({ name: projectName.trim(), location: location.trim(), date, roofSpec })
+    onCreateProject({ name: projectName.trim(), client_name: clientName.trim(), location: location.trim(), date, roofSpec })
   }
 
   const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
@@ -194,6 +205,23 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                   style={{
                     width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
                     border: `1.5px solid ${projectName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
+                    borderRadius: '8px', fontSize: '0.92rem', outline: 'none'
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                  {t('welcome.clientName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
+                </label>
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={e => { clientNameTouchedRef.current = true; setClientName(e.target.value) }}
+                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                  placeholder={t('welcome.clientNamePlaceholder')}
+                  style={{
+                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
+                    border: `1.5px solid ${clientName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
                     borderRadius: '8px', fontSize: '0.92rem', outline: 'none'
                   }}
                 />
@@ -409,6 +437,17 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                           />
                           <input
                             type="text"
+                            value={editClientName}
+                            onChange={e => setEditClientName(e.target.value)}
+                            placeholder={t('welcome.clientName')}
+                            style={{
+                              width: '100%', padding: '0.4rem 0.6rem', boxSizing: 'border-box',
+                              border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '6px',
+                              fontSize: '0.85rem', outline: 'none'
+                            }}
+                          />
+                          <input
+                            type="text"
                             value={editLocation}
                             onChange={e => setEditLocation(e.target.value)}
                             placeholder={t('welcome.location')}
@@ -421,18 +460,18 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                         </div>
                         <button
                           onClick={() => {
-                            if (editName.trim()) {
-                              onUpdateCloudProject(p.id, editName.trim(), editLocation.trim())
+                            if (editName.trim() && editClientName.trim()) {
+                              onUpdateCloudProject(p.id, editName.trim(), editClientName.trim(), editLocation.trim())
                               setEditingId(null)
                             }
                           }}
-                          disabled={!editName.trim()}
+                          disabled={!editName.trim() || !editClientName.trim()}
                           style={{
                             padding: '0.4rem 0.9rem',
-                            background: editName.trim() ? PRIMARY : BORDER_LIGHT,
-                            color: editName.trim() ? 'white' : TEXT_VERY_LIGHT,
+                            background: (editName.trim() && editClientName.trim()) ? PRIMARY : BORDER_LIGHT,
+                            color: (editName.trim() && editClientName.trim()) ? 'white' : TEXT_VERY_LIGHT,
                             border: 'none', borderRadius: '7px',
-                            cursor: editName.trim() ? 'pointer' : 'default',
+                            cursor: (editName.trim() && editClientName.trim()) ? 'pointer' : 'default',
                             fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap',
                           }}
                         >
@@ -458,6 +497,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                             {p.name}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
+                            {p.client_name ? `${p.client_name} · ` : ''}
                             {p.location ? `${p.location} · ` : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
@@ -478,6 +518,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                           onClick={() => {
                             setEditingId(p.id)
                             setEditName(p.name)
+                            setEditClientName(p.client_name || '')
                             setEditLocation(p.location || '')
                           }}
                           title={t('welcome.editProject')}

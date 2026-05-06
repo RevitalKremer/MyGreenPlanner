@@ -396,10 +396,10 @@ function App() {
     }
   }
 
-  const handleUpdateCloudProject = async (projectId, name, location) => {
+  const handleUpdateCloudProject = async (projectId, name, clientName, location) => {
     try {
-      await updateProject(projectId, { name, location })
-      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, location } : p))
+      await updateProject(projectId, { name, client_name: clientName, location })
+      setCloudProjects(prev => prev.map(p => p.id === projectId ? { ...p, name, client_name: clientName, location } : p))
     } catch (err) {
       alert(`Could not update project: ${err.message}`)
     }

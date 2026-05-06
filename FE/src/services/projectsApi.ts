@@ -13,13 +13,14 @@ export async function listProjects({ limit = null, offset = 0, search = null }: 
   return res.json() // returns { projects, total, offset, limit, has_more }
 }
 
-export async function createProject(name, location, layout, data, roofSpec = null) {
+export async function createProject(name, clientName, location, layout, data, roofSpec = null) {
   const res = await mgpRequest('/projects', {
     method: 'POST',
-    body: JSON.stringify({ 
-      name, 
-      location: location || null, 
-      layout, 
+    body: JSON.stringify({
+      name,
+      client_name: clientName,
+      location: location || null,
+      layout,
       data,
       ...(roofSpec ? { roof_spec: roofSpec } : {})
     }),
@@ -28,7 +29,7 @@ export async function createProject(name, location, layout, data, roofSpec = nul
   return res.json()
 }
 
-export async function updateProject(id: string, payload: { name?: string; location?: string | null; layout?: ProjectLayout; data?: ProjectData }, step: number | null = null) {
+export async function updateProject(id: string, payload: { name?: string; client_name?: string; location?: string | null; layout?: ProjectLayout; data?: ProjectData }, step: number | null = null) {
   const url = step != null ? `/projects/${id}?step=${step}` : `/projects/${id}`
   const res = await mgpRequest(url, {
     method: 'PUT',

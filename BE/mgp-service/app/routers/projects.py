@@ -89,6 +89,7 @@ async def list_projects(
         proj_dict = {
             "id": proj.id,
             "name": proj.name,
+            "client_name": proj.client_name,
             "location": proj.location,
             "roof_spec": proj.roof_spec,
             "navigation": proj.navigation,

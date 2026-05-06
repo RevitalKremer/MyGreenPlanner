@@ -50,9 +50,11 @@ const he = {
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':             'פרויקט חדש',
-  'welcome.newProjectDesc':         'פתח תהליך תכנון סולארי חדש',
+  'welcome.newProjectDesc':         'פתח פרויקט תכנון סולארי חדש',
   'welcome.projectName':            'שם הפרויקט',
   'welcome.projectNamePlaceholder': 'לדוגמה: בית כהן',
+  'welcome.clientName':             'שם לקוח',
+  'welcome.clientNamePlaceholder':  'לדוגמה: My Solar',
   'welcome.location':               'מיקום',
   'welcome.locationPlaceholder':    'לדוגמה: תל אביב',
   'welcome.date':                   'תאריך',

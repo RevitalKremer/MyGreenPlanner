@@ -417,12 +417,8 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
     wb = load_workbook(TEMPLATE_PATH)
 
     today = datetime.now(timezone.utc).strftime('%-d/%-m/%Y')
-    # No first-class "customer" field on Project — read from project.data.step5
-    # (where step 5 can stash extra metadata) and fall back to blank. The
-    # generated xlsx leaves the cell empty for the user to fill in by hand.
-    step5 = (project.data or {}).get('step5') or {}
     ctx = {
-        'CUSTOMER_NAME': step5.get('customerName') or '',
+        'CUSTOMER_NAME': getattr(project, 'client_name', '') or '',
         'PROJECT_NAME':  project.name or '',
         'PROPOSAL_DATE': today,
     }
