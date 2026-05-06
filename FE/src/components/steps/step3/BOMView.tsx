@@ -245,8 +245,17 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       .reduce((s, r) => s + (r.totalLengthM ?? 0), 0)
   , [displayRows])
 
+  const totalRailM = useMemo(() =>
+    displayRows.filter(r => !r.removed && r.element === 'rail_40x40' && r.pieceLengthM != null)
+      .reduce((s, r) => s + (r.totalLengthM ?? 0), 0)
+  , [displayRows])
+
+  // Total pieces counts only piece-count items (the "Other" section) so we
+  // don't double-report the length-bearing rows whose totals are already in
+  // the angle-profile / rail-profile metrics above.
   const grandTotal = useMemo(() =>
-    displayRows.filter(r => !r.removed).reduce((s, r) => s + r.total, 0)
+    displayRows.filter(r => !r.removed && r.pieceLengthM == null)
+      .reduce((s, r) => s + r.total, 0)
   , [displayRows])
 
   const totalItems = displayRows.filter(r => !r.removed).length
@@ -269,13 +278,17 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             {t('bom.billOfMaterials')}
           </div>
           <div style={{ fontSize: '1.05rem', fontWeight: '800', color: WHITE, letterSpacing: '-0.01em' }}>
-            {t('bom.areas', { n: areaLabels.length, s: areaLabels.length !== 1 ? 's' : '' })} · {t('bom.lineItems', { n: totalItems, s: totalItems !== 1 ? 's' : '' })}
+            {t('bom.lineItems', { n: totalItems, s: totalItems !== 1 ? 's' : '' })}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'stretch', borderLeft: `1px solid ${WHITE_10}` }}>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem', borderRight: `1px solid ${WHITE_10}` }}>
             <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.angleProfile')}</div>
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalAngleM.toFixed(1)} m</div>
+          </div>
+          <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem', borderRight: `1px solid ${WHITE_10}` }}>
+            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.railProfile')}</div>
+            <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalRailM.toFixed(1)} m</div>
           </div>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem' }}>
             <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.totalPieces')}</div>

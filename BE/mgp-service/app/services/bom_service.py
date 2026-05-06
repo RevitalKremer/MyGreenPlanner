@@ -574,7 +574,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 8  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 9  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
