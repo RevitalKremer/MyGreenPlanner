@@ -44,6 +44,8 @@ FE/.vite/
 *.pdf
 *.xlsx
 *.docx
+# … but commit the proposal template
+!BE/mgp-service/app/templates/*.xlsx
 
 # Python
 __pycache__/

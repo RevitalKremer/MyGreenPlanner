@@ -1,5 +1,6 @@
 import copy
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from app.services import rail_service
 from app.services import base_service
 from app.services import trapezoid_detail_service
 from app.services import bom_service
+from app.services import proposal_service
 from app.services import settings_cache
 from app.routers.deps import get_current_user, require_admin
 
@@ -541,6 +543,39 @@ async def get_effective_bom(
         items=_localize_bom_items(effective_items, resolved_lang),
         createdAt=bom.created_at,
         updatedAt=bom.updated_at,
+    )
+
+
+@router.get("/{project_id}/proposal.xlsx")
+async def download_proposal(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Generate the Hebrew price proposal xlsx (always Hebrew, regardless of
+    the requesting user's language)."""
+    try:
+        xlsx_bytes = await proposal_service.generate_proposal(db, project)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    from urllib.parse import quote
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_proposal_{today}.xlsx"
+    # HTTP headers are latin-1 — encode the unicode filename per RFC 5987,
+    # and provide a plain ASCII fallback for legacy clients.
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return Response(
+        content=xlsx_bytes,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            ),
+        },
     )
 
 

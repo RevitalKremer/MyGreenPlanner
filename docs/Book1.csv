@@ -1,7 +1,7 @@
 ﻿id,type_key,is_default,name_he,מחיר ליחידה (₪),משקל למטר/יחידה,פחת,type,product_type
 054b54a5-f7c6-4a7d-b3b6-50245d52b6ee,sharp_screw_3_5cm,FALSE,בורג שפיץ עם אטם 3.5סמ,0.32,,,ברגים,material
 06f9e067-3a29-47e1-a800-28785f82ab80,hook_5cm_with_3_holes_gallery,FALSE,"הוק 5 ס""מ עם 3 חורים (גלריה)",20,,,אביזרי עיגון,material
-0791b274-3855-4af8-a034-4fad3b0d41c8,flange_nut_m8_stainless_steel,FALSE,אום פלאנצ' M8,0.48,0,,ברגים,material
+0791b274-3855-4af8-a034-4fad3b0d41c8,flange_nut_m8_stainless_steel,FALSE,אום פלאנצ' M8,0.48,,,ברגים,material
 1b84faa7-8a85-40e5-a124-bff52bd76d56,hooks,TRUE,"הוק 5.5 ס""מ",20,,,אביזרי עיגון,material
 1e6e16d4-7b7a-43d8-96fb-190973940eb7,meter_box_25a,FALSE,Meter Box 25A ארון מונה,0,,,חשמל - ארונות,material
 1f18123d-6e14-461a-a967-fac8a9962bea,self_drilling_screw_3_5_drill_1_4_1_4_1_with_seal,FALSE,בורג איסכורית קודח 3.5 (עם אטם),0.32,,,ברגים,material

@@ -140,6 +140,22 @@ export async function getEffectiveBOM(id, lang = null) {
   return res.json()
 }
 
+export async function downloadProposal(id, projectName = 'proposal') {
+  const res = await mgpRequest(`/projects/${id}/proposal.xlsx`)
+  if (!res.ok) throw new Error('Failed to generate proposal')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${safeName}_proposal_${date}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ── Version ─────────────────────────────────────────────────────────────────
 
 export async function getBackendVersion() {

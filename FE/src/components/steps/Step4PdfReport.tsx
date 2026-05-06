@@ -7,7 +7,7 @@ import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
-import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM } from '../../services/projectsApi'
+import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -648,6 +648,21 @@ export default function Step4PdfReport({
             cursor: 'pointer',
           }}
         >↓ Export Excel</button>
+        <button
+          onClick={async () => {
+            try { await downloadProposal(projectId, project?.name) }
+            catch (err) { console.error('Failed to generate proposal:', err); alert('Failed to generate proposal') }
+          }}
+          disabled={!projectId}
+          style={{
+            padding: '0.35rem 1rem',
+            background: PRIMARY, color: BLACK,
+            border: 'none', borderRadius: '6px',
+            fontSize: '0.78rem', fontWeight: '700',
+            cursor: projectId ? 'pointer' : 'not-allowed',
+            opacity: projectId ? 1 : 0.5,
+          }}
+        >↓ Generate Proposal</button>
         {activeTab === 'pdf' && (
           <button
             onClick={handleExportPdf}
