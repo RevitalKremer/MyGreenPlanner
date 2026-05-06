@@ -27,6 +27,11 @@ const en = {
   'nav.finish': 'Finish',
   'nav.signIn': 'Sign In to Continue →',
 
+  // ── Finish celebration ──────────────────────────────────────────────────
+  'finish.title':    'Project Complete!',
+  'finish.message':  'Your solar plan is ready. The proposal, BOM and PDFs are saved to your project — you can re-open it from the home screen any time.',
+  'finish.backHome': 'Back to home',
+
   // ── Step names ───────────────────────────────────────────────────────────
   'step.1.name': 'Allocate Roof',
   'step.2.name': 'Panel Layout',
