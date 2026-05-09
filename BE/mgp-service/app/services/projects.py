@@ -1094,6 +1094,38 @@ def _compute_row_bases(
     return row_bases, bases_data_map, consolidated
 
 
+def _compute_row_hook_bases(
+    bs, data: dict, area: dict, area_idx: int,
+    app_defaults: dict, roof_spec: dict,
+    panel_grid: dict, row_idx: int,
+    rails: list[dict],
+) -> list[dict]:
+    """Compute virtual hook bases for one tile-area row.
+
+    Reuses `compute_area_bases` with no owning trapezoid (full panel-row X
+    extent → auto-computed by the function when trap_start/end are None),
+    then `fill_hook_offsets` populates each base's hookOffsets from
+    the rail intersections. Returns the bases list (empty list on no panels).
+    """
+    inputs = _build_base_inputs(
+        data, area, area_idx, app_defaults, trapezoid_id=None,
+        trapezoid_configs=None,
+        trap_start_cm=None, trap_end_cm=None,
+        roof_spec=roof_spec,
+        panel_grid=panel_grid, row_index=row_idx,
+    )
+    result = bs.compute_area_bases(**inputs)
+    if not result:
+        return []
+    bases = result.get('bases') or []
+    bs.fill_hook_offsets(
+        bases, rails, panel_grid,
+        inputs['panel_width_cm'], inputs['panel_length_cm'],
+        inputs['line_gap_cm'],
+    )
+    return bases
+
+
 async def compute_and_save_bases(
     db: AsyncSession, project: Project, bs,
     step3_data: dict | None = None, trapezoid_configs: dict | None = None,
@@ -1110,30 +1142,57 @@ async def compute_and_save_bases(
     app_defaults = settings_cache.get_all_settings()
     project_roof_spec = project.roof_spec
 
-    # Global tiles skip only when the PROJECT is entirely tiles. For mixed
-    # projects, the per-area check inside the loop decides whether each area
-    # contributes bases. Non-mixed non-tiles projects hit neither branch.
-    if project_roof_spec.get('type') == 'tiles':
-        project.data = data
-        flag_modified(project, 'data')
-        await db.commit()
-        return []
-
     stored_custom = _sync_custom_offsets(step3, trapezoid_configs)
     result = []
 
     for i, area in enumerate(areas):
         area_id = area.get('id', i + 1)
         label = area.get('label') or str(i)
+
+        # Resolve this area's roof spec (per-area for mixed projects,
+        # otherwise the project spec). Tile areas use the virtual-hook
+        # branch below — they have no construction frame, but each rail
+        # crossing a virtual base line becomes one hook on the tile.
+        roof_spec = resolve_roof_spec(project_roof_spec, area)
+        if roof_spec.get('type') == 'tiles':
+            computed_area = _get_computed_area(data, area_id) or {}
+            panel_rows = area.get('panelRows', [])
+            if not panel_rows:
+                pg = area.get('panelGrid')
+                panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
+            all_row_bases: dict[int, list] = {}
+            for pr in panel_rows:
+                if pr is None:
+                    continue
+                row_idx = pr.get('rowIndex', 0)
+                rails_dict = computed_area.get('rails', {})
+                if isinstance(rails_dict, list):
+                    row_rails = rails_dict
+                else:
+                    row_rails = rails_dict.get(row_idx) or rails_dict.get(str(row_idx)) or []
+                row_bases = _compute_row_hook_bases(
+                    bs, data, area, i,
+                    app_defaults, roof_spec,
+                    panel_grid=pr.get('panelGrid') or {},
+                    row_idx=row_idx,
+                    rails=row_rails,
+                )
+                all_row_bases[row_idx] = row_bases
+            _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
+            result.append({
+                'areaId': area_id,
+                'areaLabel': label,
+                'bases': all_row_bases,
+                'basesDataMap': {},
+                'trapIds': [],
+                'consolidated': {},
+                'perRowData': {},
+            })
+            continue
+
         trap_ids = area.get('trapezoidIds', [])
         if not trap_ids:
             trap_ids = [label]
-
-        # Resolve this area's roof spec (per-area for mixed projects,
-        # otherwise the project spec). Skip tile areas — they have no frame.
-        roof_spec = resolve_roof_spec(project_roof_spec, area)
-        if roof_spec.get('type') == 'tiles':
-            continue
 
         computed_area = _get_computed_area(data, area_id)
         existing_bases = computed_area.get('bases', {}) if computed_area else {}

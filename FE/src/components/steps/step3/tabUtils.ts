@@ -72,11 +72,17 @@ export function buildRowGroups(panels) {
   return { map, keys }
 }
 
-/** Group panels by trapezoidId, return { map, keys } (keys sorted alphabetically) */
+/** Group panels by trapezoidId, return { map, keys } (keys sorted alphabetically).
+ *  Panels without a trapezoidId (tile-roof areas — no construction frame)
+ *  bucket under the explicit 'NOTRAP' sentinel rather than a guessed label,
+ *  so consumers can recognize and special-case the no-trap case if needed.
+ */
+export const NO_TRAP_KEY = 'NOTRAP'
+
 export function buildTrapezoidGroups(panels) {
   const map = {}
   for (const p of panels) {
-    const key = p.trapezoidId ?? 'A1'
+    const key = p.trapezoidId ?? NO_TRAP_KEY
     if (!map[key]) map[key] = []
     map[key].push(p)
   }

@@ -412,6 +412,7 @@ const he = {
   'step3.layer.ruler':           '📏 סרגל',
   'step3.layer.rulerOn':         '📏 סרגל פעיל',
   'step3.layer.bases':           'בסיסים',
+  'step3.layer.hooks':           'הוקים',
   'step3.layer.blocks':          'בלוקים',
   'step3.layer.baseIDs':         'מזהי בסיס',
   'step3.layer.railLines':       'קווי קושרות',

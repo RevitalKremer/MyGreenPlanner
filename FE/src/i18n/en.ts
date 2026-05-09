@@ -413,6 +413,7 @@ const en = {
   'step3.layer.ruler':           '📏 Ruler',
   'step3.layer.rulerOn':         '📏 Ruler ON',
   'step3.layer.bases':           'Bases',
+  'step3.layer.hooks':           'Hooks',
   'step3.layer.blocks':          'Blocks',
   'step3.layer.baseIDs':         'Base IDs',
   'step3.layer.railLines':       'Rail lines',

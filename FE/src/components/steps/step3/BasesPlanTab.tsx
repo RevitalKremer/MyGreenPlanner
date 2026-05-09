@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, SUCCESS_DARK, WHITE } from '../../../styles/colors'
 import { consolidateAreaBases, buildTrapAreaMaps, buildBasePlanBeRailLookup, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
+import { computeRowRailLayout, buildLineRailsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
 import { localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -19,7 +20,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -31,6 +32,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const { t } = useLang()
   const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
+  const [showHooks,      setShowHooks]      = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
   const [showRailLines,  setShowRailLines]  = useState(true)
@@ -55,6 +57,41 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     () => computeExpandedBasePlans({ trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, customBasesMap, beRailsData, areas }),
     [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beRailsData, areas],
   )
+
+  // Tile-area rails: the trap-keyed pipeline above produces nothing for tile
+  // panels (no construction frame → trap settings are absent). Detect tile
+  // panels by their *area's* resolved roof type — robust against legacy
+  // saves that defaulted trapezoidId to 'A' instead of leaving it null.
+  // Group by (areaGroupKey, panelRowIdx) and feed `computeRowRailLayout`
+  // with global rail settings + the area's BE-computed lineRails.
+  const tileRailLayouts = useMemo(() => {
+    if (roofType !== 'tiles' && roofType !== 'mixed') return [] as Array<{ rl: any; areaLabel: string }>
+    const overhangCm = globalRailConfig?.overhangCm
+    const stockLengths = globalRailConfig?.stockLengths
+    if (!overhangCm || !stockLengths) return []
+
+    const buckets: Record<string, { areaGroupKey: number; ri: number; panels: any[] }> = {}
+    for (const p of panels) {
+      const agk = p.areaGroupKey
+      if (agk == null) continue
+      const area = areaByGroupKey[agk]
+      if (!area || resolveAreaRoofSpec(roofType, area).type !== 'tiles') continue
+      const ri = p.panelRowIdx ?? 0
+      const key = `${agk}:${ri}`
+      if (!buckets[key]) buckets[key] = { areaGroupKey: agk, ri, panels: [] }
+      buckets[key].panels.push(p)
+    }
+
+    const out: Array<{ rl: any; areaLabel: string }> = []
+    for (const { areaGroupKey, ri, panels: rowPanels } of Object.values(buckets)) {
+      const area = areaByGroupKey[areaGroupKey]
+      if (!area?.label) continue
+      const lineRails = buildLineRailsFromBE(beRailsData, area.label, ri) ?? null
+      const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm, stockLengths })
+      if (rl) out.push({ rl, areaLabel: area.label })
+    }
+    return out
+  }, [roofType, panels, beRailsData, pixelToCmRatio, globalRailConfig, areaByGroupKey])
 
   // Wait for BE data to be ready before rendering
   const dataReady = (beBasesData && beBasesData.length > 0) || printMode
@@ -152,8 +189,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const effTrapId = printMode ? null : effectiveSelectedTrapId
   const effZoom   = printMode ? 1 : zoom
   const sBases    = printMode || showBases
+  const sHooks    = printMode || showHooks
   const sBlocks   = printMode || showBlocks
   const sBaseIDs  = printMode || showBaseIDs
+
+  // Hooks are populated only on tile-roof bases (one per rail × base intersection).
+  // Detect any non-empty hookOffsets to surface the toggle.
+  const hasHooks = (beBasesData ?? []).some(ad => (ad.bases ?? []).some(b => (b.hookOffsets?.length ?? 0) > 0))
   const sRails    = !printMode && showRailLines
   const sDiags    = printMode || showDiagonals
   const sDims     = printMode || showDimensions
@@ -254,6 +296,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   trapSettingsMap={trapSettingsMap}
                 />
 
+                {/* 1b. Tile-area rails — independent of the trap-keyed pipeline. */}
+                {tileRailLayouts.length > 0 && (
+                  <RailsOverlay
+                    railLayouts={tileRailLayouts.map(t => t.rl)}
+                    rowKeys={tileRailLayouts.map(t => t.areaLabel)}
+                    rowGroups={{}}
+                    beRailByKey={{}}
+                    toSvg={toSvg}
+                    sc={sc}
+                    pixelToCmRatio={pixelToCmRatio}
+                    zoom={effZoom}
+                    layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false }}
+                    crossRailEdgeDistMm={globalRailConfig?.crossRailEdgeDistMm ?? 50}
+                    trapSettingsMap={{}}
+                  />
+                )}
+
                 {/* 2. Blocks */}
                 {sBlocks && (beBasesData ?? []).map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
@@ -300,12 +359,40 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const { af } = ctx
                     const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
+                    // Tile bases are virtual anchor lines (no physical beam) —
+                    // their hooks + rails carry the meaning, so the base line
+                    // would only add visual noise. Detect via non-empty
+                    // hookOffsets and skip the line/ID render.
+                    const isTileBase = (sb.hookOffsets?.length ?? 0) > 0
+                    if (isTileBase) return null
                     return (
                       <g key={`base-${ai}-${sbi}`}>
                         <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
                         {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><AreaLabel x={mx} y={my} label={sb.trapezoidId} fontSize={Math.max(6, Math.min(Math.max(14, 20 / effZoom), smallestPanelW / (2 * 0.6)))} showChevron={false} /></g>}
                       </g>
                     )
+                  })
+                })}
+
+                {/* 4.5 Hooks — tile-roof: one mark per rail crossing each virtual base line */}
+                {sHooks && hasHooks && (beBasesData ?? []).map((areaData, ai) => {
+                  return (areaData.bases ?? []).map((sb, sbi) => {
+                    const offsets = sb.hookOffsets ?? []
+                    if (!offsets.length || !(sb.lengthCm > 0)) return null
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { btx, bty, bbx, bby } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
+                    const r = Math.max(2, 4 / effZoom)
+                    return offsets.map((off, oi) => {
+                      const frac = Math.max(0, Math.min(1, off / sb.lengthCm))
+                      const hx = btx + (bbx - btx) * frac
+                      const hy = bty + (bby - bty) * frac
+                      return (
+                        <circle key={`hook-${ai}-${sbi}-${oi}`} cx={hx} cy={hy} r={r}
+                          fill={SUCCESS_DARK} stroke={WHITE} strokeWidth={1.5 / effZoom} />
+                      )
+                    })
                   })
                 })}
 
@@ -580,6 +667,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
+            ...(hasHooks ? [{ label: t('step3.layer.hooks'), checked: showHooks, setter: setShowHooks }] : []),
             { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
