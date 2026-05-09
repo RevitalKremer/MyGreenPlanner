@@ -7,7 +7,7 @@ import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
-import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal, downloadProposalPdf } from '../../services/projectsApi'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, getEffectiveBOM, downloadProposal, downloadProposalPdf } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -305,6 +305,27 @@ export default function Step4PdfReport({
       try { await saveBomDeltas(projectId, {}) } catch (err) { console.error('Failed to reset BOM deltas:', err) }
     }
   }, [projectId, onBomDeltasChange])
+
+  // Recalc: flush any pending deltas to the server, run materialize on the
+  // BE (apply deltas + expand bundles + clear deltas), then refetch the BOM.
+  const handleRecalc = useCallback(async () => {
+    if (!projectId) return
+    setBomLoading(true)
+    try {
+      // Flush pending debounced deltas synchronously before recalc.
+      clearTimeout(saveDeltasTimer.current)
+      if (bomDeltas) {
+        try { await saveBomDeltas(projectId, bomDeltas) } catch (err) { console.error('Failed to flush BOM deltas:', err) }
+      }
+      const bom = await recalcBOM(projectId, lang)
+      setBomItems(bom.items ?? [])
+      onBomDeltasChange?.({})
+    } catch (err) {
+      console.error('Failed to recalc BOM:', err)
+    } finally {
+      setBomLoading(false)
+    }
+  }, [projectId, lang, bomDeltas, onBomDeltasChange])
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -701,7 +722,7 @@ export default function Step4PdfReport({
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
             {bomLoading
               ? <div style={{ textAlign: 'center', padding: '3rem', color: TEXT_PLACEHOLDER }}>Loading BOM...</div>
-              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} products={products} productByType={productByType} altsByType={altsByType} />
+              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} onRecalc={handleRecalc} products={products} productByType={productByType} altsByType={altsByType} />
             }
           </div>
         </div>

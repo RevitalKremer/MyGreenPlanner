@@ -493,6 +493,32 @@ async def compute_bom(
     )
 
 
+@router.put("/{project_id}/bom/recalc", response_model=BOMRead)
+async def recalc_bom(
+    project_id: uuid.UUID,
+    lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Materialise pending bomDeltas + expand bundles into the saved BOM,
+    then clear deltas. Triggered by the FE 'Recalc' button so the user
+    sees their alt-swaps and the resulting bundle children persisted."""
+
+    bom = await bom_service.materialize_bom(db, project)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
+    resolved_lang = _resolve_lang(lang, current_user)
+    return BOMRead(
+        id=bom.id,
+        projectId=bom.project_id,
+        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        isStale=False,
+        createdAt=bom.created_at,
+        updatedAt=bom.updated_at,
+    )
+
+
 @router.get("/{project_id}/bom/deltas")
 async def get_bom_deltas(
     project_id: uuid.UUID,
@@ -544,6 +570,11 @@ async def get_effective_bom(
     step5 = (project.data or {}).get('step5', {})
     deltas = step5.get('bomDeltas') or {}
     effective_items = bom_service.apply_bom_deltas(fresh_items, deltas)
+    # Bundle expansion last — operates on whatever the user is actually
+    # ordering after deltas resolve (incl. alt-swaps). Exports must never
+    # generate from stale data.
+    products_by_type = await bom_service._load_products_by_type(db)
+    effective_items = bom_service.expand_bundles(effective_items, products_by_type)
     resolved_lang = _resolve_lang(lang, current_user)
 
     return BOMEffectiveRead(

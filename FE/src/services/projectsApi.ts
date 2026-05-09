@@ -119,6 +119,13 @@ export async function computeBOM(id, lang = null) {
   return res.json()
 }
 
+export async function recalcBOM(id, lang = null) {
+  const url = lang ? `/projects/${id}/bom/recalc?lang=${lang}` : `/projects/${id}/bom/recalc`
+  const res = await mgpRequest(url, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to recalc BOM')
+  return res.json()
+}
+
 export async function getBomDeltas(id) {
   const res = await mgpRequest(`/projects/${id}/bom/deltas`)
   if (!res.ok) throw new Error('Failed to fetch BOM deltas')

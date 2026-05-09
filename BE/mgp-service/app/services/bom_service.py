@@ -390,7 +390,6 @@ def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
     elif num_rails > 0:
         # Fallback when per-rail data isn't available: emit a piece-count row.
         rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': None, 'qty': num_rails})
-    rows.append({'areaLabel': area_label, 'element': 'rail_end_cap', 'totalLengthM': None, 'qty': 2 * num_rails})
     if num_rail_connectors > 0:
         rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
     return rows
@@ -410,7 +409,6 @@ def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
         return []
     return [
         {'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty},
-        {'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty},
         {'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty},
     ]
 
@@ -451,28 +449,22 @@ def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
-    """One screw per trapezoid punch, split by punch origin.
+    """One bolt per trapezoid punch, split by punch origin.
 
-      • block-origin punches  → 1 single_arrow_anchor_bolt
-                                + 2 m12_nut_for_arrow_anchor
-                                + 2 m12_washer_for_arrow_anchor   (per punch)
-      • all other punches     → 1 hex_head_bolt_m8x20 + 1 flange_nut_m8_stainless_steel
+      • block-origin punches  → single_arrow_anchor_bolt  (per punch)
+      • all other punches     → hex_head_bolt_m8x20       (per punch)
 
-    The per-trap-instance punch counts are aggregated in
-    `_derive_row_construction` so multi-row areas with mixed trap shapes
-    sum correctly (the old `T × numRails` shortcut over-counted by
-    treating every base as a frame with the row-summed rail count).
+    Companion items (m12 nut/washer for arrow-anchors, flange nut for
+    hex bolts) are emitted automatically by `expand_bundles` from the
+    `products.bundle` rows — no longer hand-rolled here.
     """
     other_q = rc.get('numOtherPunches', 0)
     block_q = rc.get('numBlockPunches', 0)
     rows: list[dict] = []
     if other_q > 0:
         rows.append({'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': other_q})
-        rows.append({'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': other_q})
     if block_q > 0:
         rows.append({'areaLabel': area_label, 'element': 'single_arrow_anchor_bolt', 'totalLengthM': None, 'qty': block_q})
-        rows.append({'areaLabel': area_label, 'element': 'm12_nut_for_arrow_anchor', 'totalLengthM': None, 'qty': 2 * block_q})
-        rows.append({'areaLabel': area_label, 'element': 'm12_washer_for_arrow_anchor', 'totalLengthM': None, 'qty': 2 * block_q})
     return rows
 
 
@@ -653,7 +645,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 16  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 19  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -722,9 +714,110 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
             'name_he': p.name_he,
             'extra': p.extra,
             'alt_group': p.alt_group,
+            'bundle': p.bundle,
         }
         for p in products
     }
+
+
+def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list[dict]:
+    """Append derived rows for every bundle whose parent appears in `items`.
+
+    Idempotent: any pre-existing `bundleParent`-tagged rows are dropped up
+    front so a re-run regenerates the children from the *current* parents
+    (and current `products.bundle` rules) instead of stacking on top of a
+    previous expansion. Without this, every Recalc would duplicate the
+    flange-nut / m12-nut / m12-washer rows.
+
+    A bundled product carries `bundle = {"parentType": str, "multiplier": int}`.
+    For each base row the *effective* product type is `altElement or element`
+    — respects user alt-swaps. Per match we emit one child row with
+    qty = parent.qty * multiplier, tagged `bundleParent` + `bundleMultiplier`.
+    Bundle children inherit `areaLabel` from the parent (which after the
+    global aggregation pass may already be a comma-joined list like "A, B"),
+    so duplicates across areas don't reappear here.
+    """
+    if not items:
+        return []
+    # Drop previously-expanded children to keep the call idempotent.
+    base = [it for it in items if not it.get('bundleParent')]
+
+    # parentType → list of (child product dict, multiplier)
+    by_parent: dict[str, list[tuple[dict, int]]] = {}
+    for prod in products_by_type.values():
+        b = prod.get('bundle')
+        if not b:
+            continue
+        parent_type = b.get('parentType')
+        mult = b.get('multiplier')
+        if not parent_type or not isinstance(mult, int) or mult <= 0:
+            continue
+        by_parent.setdefault(parent_type, []).append((prod, mult))
+
+    if not by_parent:
+        return base
+
+    expanded: list[dict] = []
+    for item in base:
+        expanded.append(item)
+        effective_type = item.get('altElement') or item.get('element')
+        for child_prod, mult in by_parent.get(effective_type, []):
+            qty = (item.get('qty') or 0) * mult
+            if qty <= 0:
+                continue
+            expanded.append({
+                'areaLabel': item.get('areaLabel', ''),
+                'element': child_prod['type_key'],
+                'section': item.get('section'),
+                'totalLengthM': None,
+                'qty': qty,
+                'productId': str(child_prod['id']) if child_prod.get('id') else None,
+                'partNumber': child_prod.get('part_number'),
+                'name': child_prod.get('name'),
+                'nameHe': child_prod.get('name_he'),
+                'extraPct': child_prod.get('extra'),
+                'altGroup': child_prod.get('alt_group'),
+                'bundleParent': effective_type,
+                'bundleMultiplier': mult,
+            })
+    return expanded
+
+
+async def materialize_bom(db: AsyncSession, project) -> ProjectBOM:
+    """Recalc button: apply bomDeltas + expand bundles, save back, clear deltas.
+
+    Reads the cached `bom.items`, applies the user's pending edits
+    (overrides / additions / alternatives) onto a fresh copy, runs
+    `expand_bundles` so bundle children appear under their (possibly
+    alt-swapped) parents, persists the merged list as `bom.items`, and
+    clears `project.data.step5.bomDeltas`. Future edits start from a
+    clean slate on top of the materialised BOM.
+    """
+    bom = await get_bom(db, project.id)
+    if not bom:
+        return None
+    data = project.data or {}
+    step5 = data.get('step5') or {}
+    deltas = step5.get('bomDeltas') or {}
+
+    products_by_type = await _load_products_by_type(db)
+    base = enrich_bom_with_products(bom.items or [], products_by_type)
+    effective = apply_bom_deltas(base, deltas)
+    expanded = expand_bundles(effective, products_by_type)
+
+    bom.items = expanded
+    bom.updated_at = datetime.now(timezone.utc)
+    flag_modified(bom, 'items')
+
+    if step5.get('bomDeltas'):
+        step5['bomDeltas'] = {}
+        data['step5'] = step5
+        project.data = data
+        flag_modified(project, 'data')
+
+    await db.commit()
+    await db.refresh(bom)
+    return bom
 
 
 async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
@@ -767,12 +860,25 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
 
     bom_items = build_bom(row_constructions, row_labels)
 
-    # Enrich with product data
+    # Enrich + expand bundles. Step-5 entry resets the BOM, so bomDeltas is
+    # also wiped — we don't apply alt-swaps here, just fire bundles whose
+    # parent is the canonical element. Alt-swap-driven bundles materialise
+    # later when the user clicks Recalc (`materialize_bom`).
     products_by_type = await _load_products_by_type(db)
     enriched_items = enrich_bom_with_products(bom_items, products_by_type)
+    enriched_items = expand_bundles(enriched_items, products_by_type)
 
     # Compute hash for staleness detection
     input_hash = compute_input_hash(data)
+
+    # Step-5 entry policy: any pending bomDeltas are wiped, since the
+    # canonical regen replaces the materialised state the user was editing.
+    step5 = data.get('step5') or {}
+    if step5.get('bomDeltas'):
+        step5['bomDeltas'] = {}
+        data['step5'] = step5
+        project.data = data
+        flag_modified(project, 'data')
 
     # Upsert: find existing or create new
     existing = await get_bom(db, project.id)

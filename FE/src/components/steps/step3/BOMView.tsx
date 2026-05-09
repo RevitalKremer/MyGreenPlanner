@@ -96,7 +96,7 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string, any>, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
+export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string, any>, onBomDeltasChange, onResetDefaults, onRecalc, products = [], productByType = {}, altsByType = {} }) {
   const { t, lang } = useLang()
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
   // Localized product name lookup — BOM rows arrive with `name` already
@@ -314,13 +314,22 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.totalPieces')}</div>
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{grandTotal.toLocaleString()}</div>
           </div>
-          {hasAnyDelta && (
-            <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', borderLeft: `1px solid ${WHITE_10}` }}>
-              <button onClick={resetToDefaults} style={{
-                fontSize: '0.72rem', padding: '0.35rem 0.75rem', cursor: 'pointer',
-                background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: '6px',
-                color: AMBER_DARK, fontWeight: '700', whiteSpace: 'nowrap',
-              }}>{t('bom.reset')}</button>
+          {(hasAnyDelta || onRecalc) && (
+            <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: `1px solid ${WHITE_10}` }}>
+              {hasAnyDelta && (
+                <button onClick={resetToDefaults} style={{
+                  fontSize: '0.72rem', padding: '0.35rem 0.75rem', cursor: 'pointer',
+                  background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: '6px',
+                  color: AMBER_DARK, fontWeight: '700', whiteSpace: 'nowrap',
+                }}>{t('bom.reset')}</button>
+              )}
+              {onRecalc && (
+                <button onClick={onRecalc} style={{
+                  fontSize: '0.72rem', padding: '0.35rem 0.75rem', cursor: 'pointer',
+                  background: PRIMARY, border: `1px solid ${PRIMARY_DARK}`, borderRadius: '6px',
+                  color: BLACK, fontWeight: '700', whiteSpace: 'nowrap',
+                }}>{t('bom.recalc')}</button>
+              )}
             </div>
           )}
         </div>

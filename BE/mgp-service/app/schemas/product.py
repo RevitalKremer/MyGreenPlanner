@@ -25,6 +25,9 @@ class ProductBase(BaseModel):
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
+    # Bundle: when this product appears in the effective BOM, the named
+    # parent emits this product as a child with qty = parent.qty * multiplier.
+    bundle: dict | None = None
 
 
 class ProductCreate(ProductBase):
@@ -48,6 +51,7 @@ class ProductUpdate(BaseModel):
     length_cm: float | None = None
     width_cm: float | None = None
     kw_peak: int | None = None
+    bundle: dict | None = None
 
 
 class ProductRead(ProductBase):

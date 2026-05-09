@@ -276,6 +276,7 @@ const en = {
   'bom.railProfile':       'Rail profile',
   'bom.totalPieces':       'Total pieces',
   'bom.reset':             '↺ Reset',
+  'bom.recalc':            '⟳ Recalc',
   'bom.filter':            'Filter',
   'bom.allAreas':          'All areas',
   'bom.searchElement':     'Search element…',

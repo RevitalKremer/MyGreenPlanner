@@ -54,6 +54,7 @@ class MaterialRead(BaseModel):
     extra: str | None
     alt_group: int | None
     is_default: bool
+    bundle: dict | None = None
 
     model_config = {"from_attributes": True}
 

@@ -55,7 +55,15 @@ function EditRow({ product, onSave, onCancel }) {
   )
   return (
     <tr style={{ background: ADD_GREEN_BG }}>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'type_key', { fontFamily: 'monospace' })}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>
+        {product
+          ? <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: TEXT_SECONDARY }}>{form.type_key}</span>
+          : inp('type_key', 'type_key', { fontFamily: 'monospace' })
+        }
+      </td>
+      <td style={{ padding: '0.4rem 0.3rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.75rem' }}>
+        {form.bundle?.multiplier != null ? `×${form.bundle.multiplier}` : ''}
+      </td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <select value={form.product_type} onChange={e => set('product_type', e.target.value)}
           style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', width: '100%' }}>
@@ -170,25 +178,55 @@ export default function ProductsTab() {
       case 'depreciation_pct': return p.depreciation_pct ?? Infinity
       case 'extra':            return p.extra ?? ''
       case 'alt_group':        return p.alt_group ?? Infinity
+      case 'multiplier':       return p.bundle?.multiplier ?? Infinity
       case 'is_default':       return p.is_default ? 0 : 1
       case 'active':           return p.active ? 0 : 1
       default:                 return ''
     }
   }
 
-  const filtered = products
-    .filter(p =>
-      (filterActive === 'all' || (filterActive === 'active' ? p.active : !p.active)) &&
-      (!filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type_key.toLowerCase().includes(filter.toLowerCase()))
-    )
-    .sort((a, b) => {
-      for (const { key, dir } of sortCols) {
-        const av = sortVal(a, key), bv = sortVal(b, key)
-        const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv
-        if (cmp !== 0) return dir === 'asc' ? cmp : -cmp
+  const filtered = (() => {
+    const sorted = products
+      .filter(p =>
+        (filterActive === 'all' || (filterActive === 'active' ? p.active : !p.active)) &&
+        (!filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type_key.toLowerCase().includes(filter.toLowerCase()))
+      )
+      .sort((a, b) => {
+        for (const { key, dir } of sortCols) {
+          const av = sortVal(a, key), bv = sortVal(b, key)
+          const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv
+          if (cmp !== 0) return dir === 'asc' ? cmp : -cmp
+        }
+        return 0
+      })
+
+    // Thread bundle children right under their parent (parent's `type_key`
+    // matches the child's `bundle.parentType`). Children that fall out of
+    // the current filter — or whose parent is filtered out — keep their
+    // natural position, so the user always sees them somewhere.
+    const childrenByParent = new Map()
+    const top = []
+    for (const p of sorted) {
+      const parentType = p.bundle?.parentType
+      if (parentType) {
+        if (!childrenByParent.has(parentType)) childrenByParent.set(parentType, [])
+        childrenByParent.get(parentType).push(p)
+      } else {
+        top.push(p)
       }
-      return 0
-    })
+    }
+    const threaded = []
+    const consumed = new Set()
+    for (const p of top) {
+      threaded.push(p)
+      const ch = childrenByParent.get(p.type_key)
+      if (ch) { threaded.push(...ch); consumed.add(p.type_key) }
+    }
+    for (const [k, ch] of childrenByParent) {
+      if (!consumed.has(k)) threaded.push(...ch)
+    }
+    return threaded
+  })()
 
   const thStyle: React.CSSProperties = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }
 
@@ -238,6 +276,7 @@ export default function ProductsTab() {
           <thead>
             <tr>
               <SortTh colKey="type_key"         label="Key" />
+              <SortTh colKey="multiplier"       label="×" style={{ width: '1px', textAlign: 'center' }} />
               <SortTh colKey="product_type"     label="Category" />
               <SortTh colKey="name"             label="Name" />
               <SortTh colKey="name_he"          label="שם (HE)" />
@@ -258,7 +297,7 @@ export default function ProductsTab() {
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
-                <td colSpan={13} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
+                <td colSpan={14} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
                   No materials found.
                 </td>
               </tr>
@@ -268,7 +307,13 @@ export default function ProductsTab() {
                 <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} />
               ) : (
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
-                  <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.type_key}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', paddingLeft: p.bundle?.parentType ? '2rem' : '0.75rem' }}>
+                    {p.bundle?.parentType && <span style={{ color: TEXT_VERY_LIGHT, marginRight: '0.3rem' }}>└─</span>}
+                    {p.type_key}
+                  </td>
+                  <td style={{ padding: '0.45rem 0.3rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {p.bundle?.multiplier != null ? `×${p.bundle.multiplier}` : ''}
+                  </td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, fontFamily: 'monospace', fontSize: '0.75rem' }}>{p.product_type}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, direction: 'rtl' }}>{p.name_he || '—'}</td>

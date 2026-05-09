@@ -15,6 +15,11 @@ class BOMItemRead(BaseModel):
     name: str | None = None
     extraPct: str | None = None
     altGroup: int | None = None
+    # Set on rows derived from a bundle expansion. `bundleParent` is the
+    # parent's effective type_key (post alt-resolution); the multiplier is
+    # what was applied. UI nests the row under the parent and locks edits.
+    bundleParent: str | None = None
+    bundleMultiplier: int | None = None
 
 
 class BOMRead(BaseModel):
