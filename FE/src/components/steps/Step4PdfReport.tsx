@@ -2,7 +2,7 @@ import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import * as XLSX from 'xlsx'
-import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT, ADD_GREEN, DANGER } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
@@ -265,6 +265,7 @@ export default function Step4PdfReport({
   const [isExporting, setIsExporting] = useState(false)
   const [bomItems, setBomItems] = useState([])
   const [bomLoading, setBomLoading] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle')
 
   // Fetch BOM from server on mount
   useEffect(() => {
@@ -287,45 +288,47 @@ export default function Step4PdfReport({
     return () => { cancelled = true }
   }, [projectId, lang])
 
-  // Debounced save of bomDeltas to server
-  const saveDeltasTimer = useRef(null)
+  // Auto-save: debounce 600 ms after the last delta change, then save +
+  // materialize in one shot so the user never has to click Recalc.
+  const autoSaveTimer = useRef(null)
+  const autoSaveAbort = useRef<AbortController | null>(null)
+
+  const runAutoSave = useCallback(async (deltas) => {
+    if (!projectId) return
+    autoSaveAbort.current?.abort()
+    const ctrl = new AbortController()
+    autoSaveAbort.current = ctrl
+    setSaveStatus('saving')
+    try {
+      await saveBomDeltas(projectId, deltas)
+      if (ctrl.signal.aborted) return
+      const bom = await recalcBOM(projectId, lang)
+      if (ctrl.signal.aborted) return
+      setBomItems(bom.items ?? [])
+      onBomDeltasChange?.({})
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 2000)
+    } catch (err) {
+      if (!ctrl.signal.aborted) {
+        console.error('Auto-save BOM failed:', err)
+        setSaveStatus('error')
+      }
+    }
+  }, [projectId, lang, onBomDeltasChange])
+
   const handleBomDeltasChange = useCallback((deltas) => {
     onBomDeltasChange?.(deltas)
     if (!projectId) return
-    clearTimeout(saveDeltasTimer.current)
-    saveDeltasTimer.current = setTimeout(() => {
-      saveBomDeltas(projectId, deltas).catch(err => console.error('Failed to save BOM deltas:', err))
-    }, 800)
-  }, [projectId, onBomDeltasChange])
+    clearTimeout(autoSaveTimer.current)
+    setSaveStatus('saving')
+    autoSaveTimer.current = setTimeout(() => runAutoSave(deltas), 600)
+  }, [projectId, onBomDeltasChange, runAutoSave])
 
   const handleResetDefaults = useCallback(async () => {
+    clearTimeout(autoSaveTimer.current)
     onBomDeltasChange?.({})
-    clearTimeout(saveDeltasTimer.current)
-    if (projectId) {
-      try { await saveBomDeltas(projectId, {}) } catch (err) { console.error('Failed to reset BOM deltas:', err) }
-    }
-  }, [projectId, onBomDeltasChange])
-
-  // Recalc: flush any pending deltas to the server, run materialize on the
-  // BE (apply deltas + expand bundles + clear deltas), then refetch the BOM.
-  const handleRecalc = useCallback(async () => {
-    if (!projectId) return
-    setBomLoading(true)
-    try {
-      // Flush pending debounced deltas synchronously before recalc.
-      clearTimeout(saveDeltasTimer.current)
-      if (bomDeltas) {
-        try { await saveBomDeltas(projectId, bomDeltas) } catch (err) { console.error('Failed to flush BOM deltas:', err) }
-      }
-      const bom = await recalcBOM(projectId, lang)
-      setBomItems(bom.items ?? [])
-      onBomDeltasChange?.({})
-    } catch (err) {
-      console.error('Failed to recalc BOM:', err)
-    } finally {
-      setBomLoading(false)
-    }
-  }, [projectId, lang, bomDeltas, onBomDeltasChange])
+    await runAutoSave({})
+  }, [onBomDeltasChange, runAutoSave])
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -722,7 +725,7 @@ export default function Step4PdfReport({
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
             {bomLoading
               ? <div style={{ textAlign: 'center', padding: '3rem', color: TEXT_PLACEHOLDER }}>Loading BOM...</div>
-              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} onRecalc={handleRecalc} products={products} productByType={productByType} altsByType={altsByType} />
+              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} saveStatus={saveStatus} products={products} productByType={productByType} altsByType={altsByType} />
             }
           </div>
         </div>
