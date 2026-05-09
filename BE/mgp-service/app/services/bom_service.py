@@ -401,6 +401,8 @@ def _compute_rail_bom(rc: dict, area_label: str, products_by_type: dict) -> list
         rows.append({'areaLabel': area_label, 'element': rail_element, 'totalLengthM': None, 'qty': num_rails})
     if num_rail_connectors > 0:
         rows.append({'areaLabel': area_label, 'element': connector_element, 'totalLengthM': None, 'qty': num_rail_connectors})
+        screw_element = _alt_group_default(products_by_type, _CONNECTOR_SCREW_ANCHOR)
+        rows.append({'areaLabel': area_label, 'element': screw_element, 'totalLengthM': None, 'qty': num_rail_connectors * 4})
     return rows
 
 
@@ -480,6 +482,7 @@ _OTHER_PUNCH_BOLT_ANCHOR     = 'hex_head_bolt_m8x20'
 _BLOCK_PUNCH_ANCHOR          = 'jumbo_5x16'
 _ISKURIT_SCREW_ANCHOR        = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal'
 _INSULATED_SCREW_ANCHOR      = 'self_drilling_screw_12_5_5_drill_with_seal'
+_CONNECTOR_SCREW_ANCHOR      = 'self_drilling_screw_3_5_drill_1_4_1_4_1_with_seal'
 _HOOK_ANCHOR                 = 'hooks'
 
 
@@ -692,7 +695,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 23  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 25  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -784,14 +787,43 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
     Bundle children inherit `areaLabel` from the parent (which after the
     global aggregation pass may already be a comma-joined list like "A, B"),
     so duplicates across areas don't reappear here.
+
+    Alt-group-aware deduplication: when multiple products share the same
+    bundle.parentType AND the same alt_group, only one is expanded per parent
+    row.  The committed member (recorded from existing bundle-child rows) takes
+    priority; if none is committed yet the is_default=True member is used.
+    This allows the user to switch between alt variants of a bundle child
+    (e.g. 7.5 cm vs 12.5 cm hook screw) without both being emitted.
     """
     if not items:
         return []
+
+    # Before dropping bundle children, record the previously committed alt for
+    # each (parent_type, alt_group) pair so re-expansion honours the user's
+    # choice.  `altElement` takes precedence when apply_bom_deltas has just set
+    # a pending swap; fall back to `element` for already-materialised items.
+    committed_alts: dict[tuple[str, int], str] = {}
+    for it in items:
+        parent = it.get('bundleParent')
+        if not parent:
+            continue
+        elem = it.get('altElement') or it.get('element')
+        if not elem:
+            continue
+        prod = products_by_type.get(elem)
+        if prod:
+            ag = prod.get('alt_group')
+            if ag is not None:
+                committed_alts[(parent, ag)] = elem
+
     # Drop previously-expanded children to keep the call idempotent.
     base = [it for it in items if not it.get('bundleParent')]
 
-    # parentType → list of (child product dict, multiplier)
+    # Build by_parent.  For alt-grouped bundle members keep only one entry per
+    # (parent_type, alt_group): the committed alt if present, else is_default.
     by_parent: dict[str, list[tuple[dict, int]]] = {}
+    alt_winners: dict[tuple[str, int], tuple[dict, int]] = {}
+
     for prod in products_by_type.values():
         b = prod.get('bundle')
         if not b:
@@ -800,6 +832,21 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
         mult = b.get('multiplier')
         if not parent_type or not isinstance(mult, int) or mult <= 0:
             continue
+        ag = prod.get('alt_group')
+        if ag is None:
+            by_parent.setdefault(parent_type, []).append((prod, mult))
+        else:
+            key = (parent_type, ag)
+            committed_elem = committed_alts.get(key)
+            if committed_elem:
+                committed_prod = products_by_type.get(committed_elem)
+                if committed_prod:
+                    committed_mult = (committed_prod.get('bundle') or {}).get('multiplier', mult)
+                    alt_winners[key] = (committed_prod, committed_mult)
+            elif key not in alt_winners or prod.get('is_default'):
+                alt_winners[key] = (prod, mult)
+
+    for (parent_type, _), (prod, mult) in alt_winners.items():
         by_parent.setdefault(parent_type, []).append((prod, mult))
 
     expanded: list[dict] = []
