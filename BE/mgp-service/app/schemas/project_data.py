@@ -133,13 +133,22 @@ class Rail(_StrictBase):
 
 
 class Base(_StrictBase):
-    """One base beam position computed by base_service."""
+    """One base beam position computed by base_service.
+
+    For concrete / iskurit / insulated-panel areas this is a physical base
+    beam owned by a trapezoid. For tile-roof areas the same struct doubles
+    as a *virtual* hook line — `trapezoidId` is None and `hookOffsets`
+    holds the per-rail intersection positions along the line.
+    """
     baseId: str
-    trapezoidId: str
+    trapezoidId: Optional[str] = None
     offsetFromStartCm: float
     panelLineIdx: int
     startCm: float
     lengthCm: float
+    hookOffsets: list[float] = Field(default_factory=list)
+    # Position of each rail along this base, measured from `startCm`.
+    # Populated only for tile-roof areas.
 
 
 class ExternalDiagonal(_StrictBase):

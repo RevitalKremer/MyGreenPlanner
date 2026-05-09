@@ -273,6 +273,80 @@ def compute_area_bases(
     }
 
 
+# ── Tile-roof hooks ──────────────────────────────────────────────────────────
+
+def _line_rear_edges_cm(
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    line_gap_cm: float,
+) -> dict[int, float]:
+    """Cumulative rear-edge position (cm from area's rear edge) for each line.
+
+    Mirrors the line-info computation in `compute_area_bases`, but returns
+    only what the hook calculation needs: a `lineIdx → rearEdgeCm` map.
+    """
+    rows = panel_grid.get('rows', [])
+    out: dict[int, float] = {}
+    cumulative = 0.0
+    for line_idx, cells in enumerate(rows):
+        orient = infer_row_orientation(cells)
+        if line_idx > 0:
+            cumulative += line_gap_cm
+        depth = panel_length_cm if orient == PANEL_V else (panel_width_cm if orient == PANEL_H else 0)
+        if orient:
+            out[line_idx] = cumulative
+        cumulative += depth
+    return out
+
+
+def fill_hook_offsets(
+    bases: list[dict],
+    rails: list[dict],
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    line_gap_cm: float,
+) -> None:
+    """For each base, populate `base['hookOffsets']` with the rail × base
+    intersection positions (in cm from the base's `startCm`, measured along
+    the base's depth axis). Mutates `bases` in place.
+
+    Both `rail.offsetFromRearEdgeCm` and `base.startCm` are LINE-relative
+    in the source data (relative to the rail's owning line and the base's
+    `panelLineIdx` respectively). They are translated into a shared
+    area-Y space using each line's cumulative rear-edge offset before
+    intersection — otherwise rails from different lines collapse together.
+
+    A rail is considered to cross a base only when both:
+      • the rail's area-Y lies within the base's area-Y span, AND
+      • the base's X position lies within the rail's X span
+        (`startCm .. startCm + lengthCm`).
+
+    Called only on tile-roof rows. Non-tile rows do not invoke this, so
+    concrete / iskurit / insulated bases keep an empty `hookOffsets`.
+    """
+    line_rears = _line_rear_edges_cm(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
+    for b in bases:
+        base_line = b.get('panelLineIdx', 0)
+        base_rear = line_rears.get(base_line, 0.0)
+        base_y0 = base_rear + b.get('startCm', 0)
+        base_y1 = base_y0 + b.get('lengthCm', 0)
+        base_x = b.get('offsetFromStartCm', 0)
+        offsets: list[float] = []
+        for r in rails:
+            line_rear = line_rears.get(r.get('lineIdx', 0), 0.0)
+            rail_y = line_rear + r.get('offsetFromRearEdgeCm', 0)
+            if not (base_y0 <= rail_y <= base_y1):
+                continue
+            r_start = r.get('startCm', 0)
+            r_end = r_start + r.get('lengthCm', 0)
+            if not (r_start <= base_x <= r_end):
+                continue
+            offsets.append(round_to_2dp(rail_y - base_y0))
+        b['hookOffsets'] = offsets
+
+
 # ── External diagonals (runs after trapezoid details) ────────────────────────
 
 def _diagonal_pairs(n: int, base_lengths: list[float] | None = None) -> list[list[int]]:

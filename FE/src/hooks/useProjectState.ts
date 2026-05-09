@@ -339,7 +339,7 @@ export function useProjectState() {
           const areaGroupKey = groupId != null
             ? enrichedRectAreas.findIndex(a => a.areaGroupId === groupId)
             : areaIdx
-          return { ...p, area: areaIdx, trapezoidId: p.trapezoidId ?? 'A', panelRowIdx, areaGroupKey: areaGroupKey >= 0 ? areaGroupKey : areaIdx }
+          return { ...p, area: areaIdx, trapezoidId: p.trapezoidId ?? null, panelRowIdx, areaGroupKey: areaGroupKey >= 0 ? areaGroupKey : areaIdx }
         }) : [],
         rectAreas: enrichedRectAreas,
         deletedPanelKeys: layout.deletedPanelKeys ?? {},

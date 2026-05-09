@@ -355,6 +355,12 @@ export default function Step3ConstructionPlanning({
               roofType={roofType}
               purlinDistCm={purlinDistCm}
               installationOrientation={installationOrientation}
+              globalRailConfig={{
+                overhangCm: settings.globalSettings.railOverhangCm,
+                stockLengths: settings.globalSettings.stockLengths,
+                crossRailEdgeDistMm: settings.globalSettings.crossRailEdgeDistMm,
+              }}
+              areaByGroupKey={rowData.areaByGroupKey}
             />
           </div>
         </div>

@@ -216,9 +216,17 @@ export function computeExpandedBasePlans({
  */
 export function buildAreaFrames(panels: PanelLayout[], trapAreaMap: Record<string, string | number>, areas: Step2Area[]): Record<string, any> {
   const rowPanels: Record<string, { areaKey: string | number; ri: number; panels: PanelLayout[] }> = {}
+  // Tile-area panels carry trapezoidId=null. Resolve their areaKey via the
+  // panel's area index (set by computePanelsAction) → step2 areas[] entry,
+  // not via a guessed trap-id stem. Keeps each tile area in its own frame.
   for (const p of panels) {
-    const tid = p.trapezoidId ?? 'A1'
-    const areaKey = trapAreaMap[tid] ?? tid.replace(/\d+$/, '')
+    let areaKey: string | number
+    if (p.trapezoidId) {
+      areaKey = trapAreaMap[p.trapezoidId] ?? p.trapezoidId.replace(/\d+$/, '')
+    } else {
+      const a = areas?.[p.area as number]
+      areaKey = a?.id ?? p.area ?? 0
+    }
     const ri = p.panelRowIdx ?? 0
     const key = `${areaKey}:${ri}`
     if (!rowPanels[key]) rowPanels[key] = { areaKey, ri, panels: [] }
