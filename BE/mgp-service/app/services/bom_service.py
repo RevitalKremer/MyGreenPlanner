@@ -235,7 +235,14 @@ def _derive_row_construction(
     # so multi-row areas with mixed trap shapes get the right total — the
     # area-aggregate `(numRails − 2 + 2) × numTrapezoids` shortcut over-counts
     # by treating every base as if it had the row-summed rail count.
+    #
+    # Also count punches per origin so the bolt BOM can match the rule
+    #   block punches  → single_arrow_anchor_bolt + m12_nut + m12_washer
+    #   other punches  → hex_head_bolt_m8x20 + flange_nut_m8_stainless_steel
+    # (one screw per punch).
     num_blocks = 0
+    num_block_punches = 0
+    num_other_punches = 0
     for tid, count in trap_instance_counts.items():
         ct = ct_by_id.get(tid)
         if not ct or count <= 0:
@@ -243,7 +250,11 @@ def _derive_row_construction(
         t_geom = ct.get('geometry') or {}
         t_legs = ct.get('legs') or []
         t_diags = ct.get('diagonals') or []
+        t_punches = ct.get('punches') or []
         num_blocks += count * len(t_legs)
+        block_p = sum(1 for p in t_punches if p.get('origin') == 'block')
+        num_block_punches += count * block_p
+        num_other_punches += count * (len(t_punches) - block_p)
         cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
         cm += t_geom.get('topBeamLength') or 0
         for leg in t_legs:
@@ -282,6 +293,8 @@ def _derive_row_construction(
         'interPanelClampPositions': inter_panel_positions,
         'groundingPanelCount': grounding_panel_count,
         'numBlocks': num_blocks,
+        'numBlockPunches': num_block_punches,
+        'numOtherPunches': num_other_punches,
     }
 
 
@@ -438,16 +451,29 @@ def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute hex bolts + flange nuts BOM."""
-    T = rc['numTrapezoids']
-    num_rails = rc.get('numRails', 2)
-    num_inner_legs = max(0, num_rails - 2)
-    legs_per_trapezoid = 2 + num_inner_legs
-    hex_bolt_qty = T * (2 * legs_per_trapezoid + 2) + num_rails * T
-    return [
-        {'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': hex_bolt_qty},
-        {'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': hex_bolt_qty},
-    ]
+    """One screw per trapezoid punch, split by punch origin.
+
+      • block-origin punches  → 1 single_arrow_anchor_bolt
+                                + 2 m12_nut_for_arrow_anchor
+                                + 2 m12_washer_for_arrow_anchor   (per punch)
+      • all other punches     → 1 hex_head_bolt_m8x20 + 1 flange_nut_m8_stainless_steel
+
+    The per-trap-instance punch counts are aggregated in
+    `_derive_row_construction` so multi-row areas with mixed trap shapes
+    sum correctly (the old `T × numRails` shortcut over-counted by
+    treating every base as a frame with the row-summed rail count).
+    """
+    other_q = rc.get('numOtherPunches', 0)
+    block_q = rc.get('numBlockPunches', 0)
+    rows: list[dict] = []
+    if other_q > 0:
+        rows.append({'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': other_q})
+        rows.append({'areaLabel': area_label, 'element': 'flange_nut_m8_stainless_steel', 'totalLengthM': None, 'qty': other_q})
+    if block_q > 0:
+        rows.append({'areaLabel': area_label, 'element': 'single_arrow_anchor_bolt', 'totalLengthM': None, 'qty': block_q})
+        rows.append({'areaLabel': area_label, 'element': 'm12_nut_for_arrow_anchor', 'totalLengthM': None, 'qty': 2 * block_q})
+        rows.append({'areaLabel': area_label, 'element': 'm12_washer_for_arrow_anchor', 'totalLengthM': None, 'qty': 2 * block_q})
+    return rows
 
 
 def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str) -> list[dict]:
@@ -627,7 +653,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 14  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 16  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -662,6 +688,23 @@ def is_bom_stale(project_data: dict, bom: ProjectBOM) -> bool:
     if items and 'nameHe' not in items[0]:
         return True
     return False
+
+
+async def reenrich_items_with_fresh_products(
+    db: AsyncSession, items: list[dict],
+) -> list[dict]:
+    """Overlay current products-table data onto cached BOM items.
+
+    The computed quantities (areaLabel, element, qty, totalLengthM) are
+    stable as long as step3 hasn't changed, but the enriched fields
+    (name, nameHe, partNumber, extraPct, altGroup) are read-through to
+    the products table on every call so admin edits propagate without
+    needing a BOM cache invalidation. The DB row is not mutated.
+    """
+    if not items:
+        return []
+    products_by_type = await _load_products_by_type(db)
+    return enrich_bom_with_products(items, products_by_type)
 
 
 async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:

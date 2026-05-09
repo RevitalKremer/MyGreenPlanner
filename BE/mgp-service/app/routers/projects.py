@@ -455,11 +455,16 @@ async def get_bom(
     if not bom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
 
+    # Re-enrich on every read so product-table edits (extra%, name, etc.)
+    # propagate without bumping the BOM logic version. The cached row's
+    # computed quantities are kept; only the product-derived fields are
+    # overlaid from current DB state.
+    fresh_items = await bom_service.reenrich_items_with_fresh_products(db, bom.items or [])
     resolved_lang = _resolve_lang(lang, current_user)
     return BOMRead(
         id=bom.id,
         projectId=bom.project_id,
-        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        items=[BOMItemRead(**item) for item in _localize_bom_items(fresh_items, resolved_lang)],
         isStale=bom_service.is_bom_stale(project.data or {}, bom),
         createdAt=bom.created_at,
         updatedAt=bom.updated_at,
@@ -535,9 +540,10 @@ async def get_effective_bom(
     if not bom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
 
+    fresh_items = await bom_service.reenrich_items_with_fresh_products(db, bom.items or [])
     step5 = (project.data or {}).get('step5', {})
     deltas = step5.get('bomDeltas') or {}
-    effective_items = bom_service.apply_bom_deltas(bom.items, deltas)
+    effective_items = bom_service.apply_bom_deltas(fresh_items, deltas)
     resolved_lang = _resolve_lang(lang, current_user)
 
     return BOMEffectiveRead(

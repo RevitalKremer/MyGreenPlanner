@@ -99,7 +99,21 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string, any>, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
   const { t } = useLang()
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
-  const defaultExtras = (element, qty) => Math.ceil(qty * (productByType[element]?.extraPct ?? 0) / 100)
+  // BOM payload carries `extraPct` per row as a string like "10%" or "5%"
+  // (re-enriched from the products table on every GET /bom on the BE).
+  // Parse to an int. Use the row's own value for existing rows so admin
+  // edits to product extras propagate without a full page reload.
+  const parseExtraPct = (raw) => {
+    if (raw == null) return 0
+    if (typeof raw === 'number') return raw
+    const n = parseInt(raw, 10)
+    return isNaN(n) ? 0 : n
+  }
+  const extrasFromPct = (qty, pct) => Math.ceil(qty * (pct ?? 0) / 100)
+  // For user-added rows we don't have a BOM row, so fall back to the
+  // FE-cached `productByType` snapshot (loaded once on app mount; refresh
+  // via page reload if extras were edited mid-session).
+  const defaultExtras = (element, qty) => extrasFromPct(qty, productByType[element]?.extraPct)
   const baseRows = bomItems
   // Some BOM rows aggregate across areas (e.g. rails: areaLabel = "A, J";
   // Other items: "A, B, C, J"). Split on commas so the filter dropdown lists
@@ -165,7 +179,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       const key    = deltaKey(row.areaLabel, row.element, row.pieceLengthM)
       const ov     = overrides[key]
       const qty    = ov?.qty    != null ? ov.qty    : row.qty
-      const extras = ov?.extras != null ? ov.extras : defaultExtras(row.element, qty)
+      const extras = ov?.extras != null ? ov.extras : extrasFromPct(qty, parseExtraPct(row.extraPct))
       const totalLengthM = row.pieceLengthM != null ? +(row.pieceLengthM * (qty + extras)).toFixed(2) : row.totalLengthM
       return { ...row, key, isAdded: false, removed: ov?.removed ?? false,
         modified: ov != null, qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty }
