@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "noreply@mygreenplanner.com"
     SMTP_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:5173"
+    COMPANY_REPORT_EMAIL: str = "lorikremer4@gmail.com"
 
     # Sysadmin bootstrap (created automatically on startup if not found)
     SYSADMIN_EMAIL: str = "sysadmin@mgp.local"

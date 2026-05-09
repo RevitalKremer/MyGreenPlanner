@@ -171,6 +171,13 @@ export async function fetchProposalPdfBytes(id: string, content: string[]): Prom
   return res.arrayBuffer()
 }
 
+export async function sendReportEmail(id: string, pdfBytes: ArrayBuffer, filename: string): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), filename)
+  const res = await mgpRequest(`/projects/${id}/send-report`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error('Failed to send report email')
+}
+
 // ── Version ─────────────────────────────────────────────────────────────────
 
 export async function getBackendVersion() {

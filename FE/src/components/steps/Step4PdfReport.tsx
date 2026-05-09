@@ -7,7 +7,7 @@ import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { PDFDocument } from 'pdf-lib'
-import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes } from '../../services/projectsApi'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -568,15 +568,19 @@ export default function Step4PdfReport({
       const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
       const dateStr  = new Date().toISOString().split('T')[0]
       const label    = [...beContent, ...(pdfContent.plans ? ['plans'] : [])].join('_')
+      const filename = `${safeName}_${label}_${dateStr}.pdf`
+
       const blob = new Blob([finalBytes], { type: 'application/pdf' })
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href = url
-      a.download = `${safeName}_${label}_${dateStr}.pdf`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+
+      await sendReportEmail(projectId, finalBytes, filename)
     } catch (err) {
       console.error('Generate PDF failed:', err)
       alert('Generate PDF failed')

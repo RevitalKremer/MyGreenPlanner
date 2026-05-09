@@ -25,6 +25,8 @@ from app.services import trapezoid_detail_service
 from app.services import bom_service
 from app.services import proposal_service
 from app.services import settings_cache
+from app.services import email_service
+from app.config import settings as app_settings
 from app.routers.deps import get_current_user, require_admin
 
 class TabSettings(BaseModel):
@@ -657,6 +659,29 @@ async def download_proposal_pdf(
         media_type='application/pdf',
         headers={'Content-Disposition': _attachment_disposition(filename)},
     )
+
+
+@router.post("/{project_id}/send-report")
+async def send_report_email(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Email the uploaded PDF report to the company inbox."""
+    pdf_bytes = await file.read()
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'report'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_{today}.pdf"
+    await email_service.send_email_with_attachment(
+        to=app_settings.COMPANY_REPORT_EMAIL,
+        subject=f"Project Report — {project.name or project_id}",
+        html=f"<p>Please find attached the generated report for project <strong>{project.name or project_id}</strong>.</p>",
+        attachment=pdf_bytes,
+        filename=filename,
+    )
+    return {"status": "sent", "to": app_settings.COMPANY_REPORT_EMAIL}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
