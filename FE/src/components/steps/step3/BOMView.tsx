@@ -135,7 +135,6 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   // ── Filter / sort state ─────────────────────────────────────────────────
   const [filterArea,   setFilterArea]   = useState('')
   const [filterText,   setFilterText]   = useState('')
-  const [showRemoved,  setShowRemoved]  = useState(true)
   const [sortKey,      setSortKey]      = useState('area')
   const [sortDir,      setSortDir]      = useState('asc')
 
@@ -203,9 +202,6 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   const visibleRows = useMemo(() => {
     let rows = displayRows
 
-    if (!showRemoved)
-      rows = rows.filter(r => !r.removed)
-
     if (filterArea)
       rows = rows.filter(r => splitAreas(r.areaLabel).includes(filterArea))
 
@@ -257,7 +253,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
     })
 
     return rows
-  }, [displayRows, showRemoved, filterArea, filterText, sortKey, sortDir])
+  }, [displayRows, filterArea, filterText, sortKey, sortDir])
 
   // ── Totals (over unfiltered+unremoved rows for summary, filtered for footer) ─
   const totalAngleM = useMemo(() =>
@@ -376,18 +372,6 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             {t('bom.clearSort')}
           </button>
         )}
-        <button
-          onClick={() => setShowRemoved(v => !v)}
-          style={{
-            fontSize: '0.75rem', padding: '0.2rem 0.6rem', cursor: 'pointer', borderRadius: '5px',
-            border: `1px solid ${showRemoved ? BORDER : AMBER_BORDER}`,
-            background: showRemoved ? 'none' : AMBER_BG,
-            color: showRemoved ? TEXT_MUTED : AMBER_DARK,
-            fontWeight: showRemoved ? '400' : '600',
-          }}
-        >
-          {showRemoved ? t('bom.hideRemoved') : t('bom.showRemoved')}
-        </button>
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: TEXT_PLACEHOLDER, flexShrink: 0 }}>
           {t('bom.rowsOf', { n: visibleRows.length, total: displayRows.length })}
         </span>
