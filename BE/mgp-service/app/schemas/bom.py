@@ -20,6 +20,7 @@ class BOMItemRead(BaseModel):
     # what was applied. UI nests the row under the parent and locks edits.
     bundleParent: str | None = None
     bundleMultiplier: int | None = None
+    weightKgPerUnit: float | None = None   # kg/m for length items, kg/piece for piece items
 
 
 class BOMRead(BaseModel):

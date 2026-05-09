@@ -275,6 +275,7 @@ const en = {
   'bom.angleProfile':      'Angle profile',
   'bom.railProfile':       'Rail profile',
   'bom.totalPieces':       'Total pieces',
+  'bom.alumWeight':        'Alum. weight',
   'bom.reset':             '↺ Reset',
   'bom.saving':            'Saving…',
   'bom.saved':             '✓ Saved',

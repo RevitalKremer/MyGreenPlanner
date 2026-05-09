@@ -266,12 +266,27 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       .reduce((s, r) => s + (r.totalLengthM ?? 0), 0)
   , [displayRows])
 
-  // Total pieces counts only piece-count items (the "Other" section) so we
-  // don't double-report the length-bearing rows whose totals are already in
-  // the angle-profile / rail-profile metrics above.
+  // Footer: total pieces across ALL non-removed rows (length-bearing + piece items).
   const grandTotal = useMemo(() =>
-    displayRows.filter(r => !r.removed && r.pieceLengthM == null)
-      .reduce((s, r) => s + r.total, 0)
+    displayRows.filter(r => !r.removed).reduce((s, r) => s + r.total, 0)
+  , [displayRows])
+
+  // Footer: total weight across ALL non-removed rows.
+  // Length items: totalLengthM (m) × weightKgPerUnit (kg/m).
+  // Piece items:  total (pcs)    × weightKgPerUnit (kg/pc).
+  const totalWeightKg = useMemo(() =>
+    displayRows.filter(r => !r.removed && r.weightKgPerUnit != null).reduce((s, r) =>
+      s + (r.pieceLengthM != null
+        ? (r.totalLengthM ?? 0) * r.weightKgPerUnit
+        : r.total              * r.weightKgPerUnit)
+    , 0)
+  , [displayRows])
+
+  // Header: aluminium profile weight only (angle + rail length-bearing rows).
+  const totalAlumWeightKg = useMemo(() =>
+    displayRows
+      .filter(r => !r.removed && r.pieceLengthM != null && r.weightKgPerUnit != null)
+      .reduce((s, r) => s + (r.totalLengthM ?? 0) * r.weightKgPerUnit, 0)
   , [displayRows])
 
   const totalItems = displayRows.filter(r => !r.removed).length
@@ -307,8 +322,8 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalRailM.toFixed(1)} m</div>
           </div>
           <div style={{ padding: '0.8rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.1rem' }}>
-            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.totalPieces')}</div>
-            <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{grandTotal.toLocaleString()}</div>
+            <div style={{ fontSize: '0.6rem', color: WHITE_50, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t('bom.alumWeight')}</div>
+            <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalAlumWeightKg > 0 ? `${totalAlumWeightKg.toFixed(1)} kg` : '—'}</div>
           </div>
           <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', borderLeft: `1px solid ${WHITE_10}` }}>
             {hasAnyDelta && (
@@ -583,13 +598,10 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
           </tbody>
           <tfoot>
             <tr style={{ background: PRIMARY_BG, borderTop: `2px solid ${PRIMARY}` }}>
-              <td colSpan={3} style={{ padding: '0.55rem 0.8rem', color: PRIMARY_DARK, fontWeight: '700', fontSize: '0.82rem' }}>
-                {t('bom.totalAngle')}
+              <td colSpan={5} style={{ padding: '0.55rem 0.8rem', color: PRIMARY_DARK, fontWeight: '700', fontSize: '0.82rem' }}>
+                Total:{totalWeightKg > 0 && <span style={{ marginLeft: '0.4rem', fontWeight: '800' }}>{totalWeightKg.toFixed(1)} kg</span>}
               </td>
-              <td style={{ padding: '0.55rem 0.8rem', textAlign: 'right', fontWeight: '800', color: PRIMARY_DARK, fontSize: '0.95rem' }}>
-                {totalAngleM.toFixed(2)} m
-              </td>
-              <td /><td />
+              <td />
               <td style={{ padding: '0.55rem 0.8rem', textAlign: 'center' }}>
                 <span style={{
                   display: 'inline-block', minWidth: '2.6rem', textAlign: 'center',

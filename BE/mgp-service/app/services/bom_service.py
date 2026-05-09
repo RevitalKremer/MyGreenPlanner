@@ -691,6 +691,7 @@ def enrich_bom_with_products(
             'nameHe': prod['name_he'] if prod else None,
             'extraPct': prod['extra'] if prod else None,
             'altGroup': prod['alt_group'] if prod else None,
+            'weightKgPerUnit': prod['weight_kg'] if prod else None,
         })
     return enriched
 
@@ -766,6 +767,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
             'alt_group': p.alt_group,
             'is_default': p.is_default,
             'bundle': p.bundle,
+            'weight_kg': p.weight_kg,
         }
         for p in products
     }

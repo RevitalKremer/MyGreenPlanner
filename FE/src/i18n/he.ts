@@ -274,6 +274,7 @@ const he = {
   'bom.angleProfile':   'פרופיל זווית',
   'bom.railProfile':    'קושרת',
   'bom.totalPieces':    'סה"כ יחידות',
+  'bom.alumWeight':     'משקל אלומיניום',
   'bom.reset':          '↺ אפס',
   'bom.saving':         'שומר…',
   'bom.saved':          '✓ נשמר',
