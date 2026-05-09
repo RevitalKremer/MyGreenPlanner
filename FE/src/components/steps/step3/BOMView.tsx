@@ -97,8 +97,14 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, style = {} }) {
 
 // ───────────────────────────────────────────────────────────────────────────
 export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string, any>, onBomDeltasChange, onResetDefaults, products = [], productByType = {}, altsByType = {} }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const ALL_ELEMENTS = useMemo(() => products.map(p => p.type), [products])
+  // Localized product name lookup — BOM rows arrive with `name` already
+  // swapped to nameHe by the BE based on the requested lang, but the
+  // alt-dropdown sources its options from the FE-cached `productByType`
+  // (loaded once on mount with both name + nameHe), so it has to do its
+  // own lang switch.
+  const productName = (p) => (lang === 'he' ? p?.nameHe : p?.name) ?? p?.name ?? ''
   // BOM payload carries `extraPct` per row as a string like "10%" or "5%"
   // (re-enriched from the products table on every GET /bom on the BE).
   // Parse to an int. Use the row's own value for existing rows so admin
@@ -229,7 +235,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       return 100  // unsectioned length rows (rails fall here)
     }
     const dir = sortDir === 'asc' ? 1 : -1
-    const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
+    const elementName = (r) => r.name ?? productName(productByType[r.element]) ?? r.element
     rows = [...rows].sort((a, b) => {
       const ra = sectionRank(a)
       const rb = sectionRank(b)
@@ -480,7 +486,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                             <div style={{ fontSize: '0.85rem', fontWeight: '600',
                               color: row.removed ? TEXT_LIGHT : TEXT,
                               textDecoration: row.removed ? 'line-through' : 'none' }}>
-                              {row.name ?? effectProduct?.name ?? chosenType}
+                              {row.name ?? productName(effectProduct) ?? chosenType}
                             </div>
                             {effectProduct?.pn && (
                               <div style={{ fontFamily: 'monospace', fontSize: '0.72rem',
@@ -504,11 +510,14 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                                   }}
                                   style={{ fontSize: '0.72rem', padding: '1px 4px', border: `1px solid ${isAlt ? PRIMARY : BORDER}`, borderRadius: '4px', background: isAlt ? PRIMARY_BG : WHITE, color: isAlt ? PRIMARY_DARK : TEXT, fontWeight: isAlt ? '700' : '400', cursor: 'pointer' }}
                                 >
-                                  {allOptions.map(opt => (
-                                    <option key={opt.type} value={opt.type}>
-                                      {opt.type === row.element ? `${opt.name} ${t('bom.defaultSuffix')}` : opt.name}
-                                    </option>
-                                  ))}
+                                  {allOptions.map(opt => {
+                                    const nm = productName(opt)
+                                    return (
+                                      <option key={opt.type} value={opt.type}>
+                                        {opt.type === row.element ? `${nm} ${t('bom.defaultSuffix')}` : nm}
+                                      </option>
+                                    )
+                                  })}
                                 </select>
                               </div>
                             )}
@@ -617,7 +626,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
               style={{ ...selectStyle, minWidth: '16rem' }}>
               <option value="">{t('bom.selectElement')}</option>
               {ALL_ELEMENTS.map(el => (
-                <option key={el} value={el}>{productByType[el]?.name ?? el}</option>
+                <option key={el} value={el}>{productName(productByType[el]) || el}</option>
               ))}
             </select>
           </Field>
