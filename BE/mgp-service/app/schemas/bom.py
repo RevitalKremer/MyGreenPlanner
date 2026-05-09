@@ -9,12 +9,18 @@ class BOMItemRead(BaseModel):
     section: str | None = None           # logical section for grouping (e.g. 'trapezoids', 'diagonals_external')
     pieceLengthM: float | None = None    # length of one piece (length-bearing rows only)
     totalLengthM: float | None = None    # qty × pieceLengthM (length-bearing rows only)
-    qty: int
+    qty: float   # int for most rows; float for depreciation_waste (meters)
     productId: str | None = None
     partNumber: str | None = None
     name: str | None = None
     extraPct: str | None = None
     altGroup: int | None = None
+    # Set on rows derived from a bundle expansion. `bundleParent` is the
+    # parent's effective type_key (post alt-resolution); the multiplier is
+    # what was applied. UI nests the row under the parent and locks edits.
+    bundleParent: str | None = None
+    bundleMultiplier: int | None = None
+    weightKgPerUnit: float | None = None   # kg/m for length items, kg/piece for piece items
 
 
 class BOMRead(BaseModel):

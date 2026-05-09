@@ -10,26 +10,15 @@ const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
 
 export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, projectId, panelType, panelWp, totalKw, date, pageRef, user }) {
   const { t } = useLang()
-  const { naturalW, naturalH, sc } = useMemo(() => {
+
+  const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
-    if (!nonEmpty.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+    if (!nonEmpty.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmpty)
-
-    // If image exists, expand bbox to include full image dimensions
-    let bbox = panelBbox
-    if (uploadedImageData) {
-      const imgW = uploadedImageData.width || 3000
-      const imgH = uploadedImageData.height || 2000
-      bbox = {
-        minX: Math.min(panelBbox.minX, 0),
-        maxX: Math.max(panelBbox.maxX, imgW),
-        minY: Math.min(panelBbox.minY, 0),
-        maxY: Math.max(panelBbox.maxY, imgH)
-      }
-    }
-
-    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
-  }, [panels, uploadedImageData])
+    // Fit to the panel extent only — never expand to full image size, so panels always fill the page.
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
+    return { panelBbox, ...fit }
+  }, [panels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -61,6 +50,7 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
             imageSrc={imageSrc}
             printMode
             printSc={sc}
+            printBbox={panelBbox}
             printShowAreas={false}
             printShowCounts
           />

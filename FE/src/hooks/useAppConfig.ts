@@ -124,9 +124,10 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
       .catch(() => {})
     fetchProducts()
       .then(items => setProducts(items.map(p => ({
-        type: p.type_key, pn: p.part_number ?? '', name: p.name,
+        type: p.type_key, pn: p.part_number ?? '', name: p.name, nameHe: p.name_he,
         extraPct: p.extra ? parseInt(p.extra) || 0 : 0,
         altGroup: p.alt_group, isDefault: p.is_default,
+        bundle: p.bundle ?? null,  // {parentType, multiplier} or null
       }))))
       .catch(() => {})
   }, [])

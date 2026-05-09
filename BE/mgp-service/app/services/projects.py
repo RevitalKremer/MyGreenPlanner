@@ -1460,11 +1460,14 @@ async def update_project_step(
                     break
 
     # ── Auto-compute BOM on entering step 4 ──
+    # Always force recompute when coming back from step 5 so materialized
+    # alt-swaps are discarded and default elements are restored.
     bom_result = None
     if new_step >= 4:
         await db.refresh(project)
         existing_bom = await bom_service.get_bom(db, project.id)
-        if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom):
+        coming_back_from_step5 = 'step5' in cleared
+        if not existing_bom or bom_service.is_bom_stale(project.data or {}, existing_bom) or coming_back_from_step5:
             bom_obj = await bom_service.compute_and_save_bom(db, project)
             bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
 

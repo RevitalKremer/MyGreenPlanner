@@ -25,6 +25,8 @@ from app.services import trapezoid_detail_service
 from app.services import bom_service
 from app.services import proposal_service
 from app.services import settings_cache
+from app.services import email_service
+from app.config import settings as app_settings
 from app.routers.deps import get_current_user, require_admin
 
 class TabSettings(BaseModel):
@@ -455,11 +457,16 @@ async def get_bom(
     if not bom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
 
+    # Re-enrich on every read so product-table edits (extra%, name, etc.)
+    # propagate without bumping the BOM logic version. The cached row's
+    # computed quantities are kept; only the product-derived fields are
+    # overlaid from current DB state.
+    fresh_items = await bom_service.reenrich_items_with_fresh_products(db, bom.items or [])
     resolved_lang = _resolve_lang(lang, current_user)
     return BOMRead(
         id=bom.id,
         projectId=bom.project_id,
-        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        items=[BOMItemRead(**item) for item in _localize_bom_items(fresh_items, resolved_lang)],
         isStale=bom_service.is_bom_stale(project.data or {}, bom),
         createdAt=bom.created_at,
         updatedAt=bom.updated_at,
@@ -477,6 +484,32 @@ async def compute_bom(
     """Compute (or recompute) BOM from current step3 data and save."""
 
     bom = await bom_service.compute_and_save_bom(db, project)
+    resolved_lang = _resolve_lang(lang, current_user)
+    return BOMRead(
+        id=bom.id,
+        projectId=bom.project_id,
+        items=[BOMItemRead(**item) for item in _localize_bom_items(bom.items, resolved_lang)],
+        isStale=False,
+        createdAt=bom.created_at,
+        updatedAt=bom.updated_at,
+    )
+
+
+@router.put("/{project_id}/bom/recalc", response_model=BOMRead)
+async def recalc_bom(
+    project_id: uuid.UUID,
+    lang: str | None = Query(None, description="Language for product names: 'en' or 'he'"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Materialise pending bomDeltas + expand bundles into the saved BOM,
+    then clear deltas. Triggered by the FE 'Recalc' button so the user
+    sees their alt-swaps and the resulting bundle children persisted."""
+
+    bom = await bom_service.materialize_bom(db, project)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
     resolved_lang = _resolve_lang(lang, current_user)
     return BOMRead(
         id=bom.id,
@@ -535,9 +568,15 @@ async def get_effective_bom(
     if not bom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BOM not yet computed")
 
+    fresh_items = await bom_service.reenrich_items_with_fresh_products(db, bom.items or [])
     step5 = (project.data or {}).get('step5', {})
     deltas = step5.get('bomDeltas') or {}
-    effective_items = bom_service.apply_bom_deltas(bom.items, deltas)
+    effective_items = bom_service.apply_bom_deltas(fresh_items, deltas)
+    # Bundle expansion last — operates on whatever the user is actually
+    # ordering after deltas resolve (incl. alt-swaps). Exports must never
+    # generate from stale data.
+    products_by_type = await bom_service._load_products_by_type(db)
+    effective_items = bom_service.expand_bundles(effective_items, products_by_type)
     resolved_lang = _resolve_lang(lang, current_user)
 
     return BOMEffectiveRead(
@@ -589,20 +628,23 @@ def _attachment_disposition(filename: str) -> str:
     return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename)}'
 
 
-@router.get("/{project_id}/proposal/{sheet}.pdf")
+@router.get("/{project_id}/proposal.pdf")
 async def download_proposal_pdf(
     project_id: uuid.UUID,
-    sheet: str,
+    content: list[str] = Query(default=['pricing', 'quantities']),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
-    """Render either the pricing or quantities sheet of the proposal xlsx to
-    PDF via headless LibreOffice."""
-    if sheet not in ('pricing', 'quantities'):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown sheet: {sheet}")
+    """Render the requested proposal sheets to a single PDF via headless LibreOffice.
+
+    `content` may be repeated: ?content=pricing&content=quantities
+    Valid values: 'pricing', 'quantities'. Unknown values are silently ignored.
+    """
     try:
-        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, sheet)
+        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, content)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     except RuntimeError as e:
@@ -610,12 +652,36 @@ async def download_proposal_pdf(
 
     safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    filename = f"{safe_name}_{sheet}_{today}.pdf"
+    label = '_'.join(s for s in content if s in ('pricing', 'quantities')) or 'proposal'
+    filename = f"{safe_name}_{label}_{today}.pdf"
     return Response(
         content=pdf_bytes,
         media_type='application/pdf',
         headers={'Content-Disposition': _attachment_disposition(filename)},
     )
+
+
+@router.post("/{project_id}/send-report")
+async def send_report_email(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Email the uploaded PDF report to the company inbox."""
+    pdf_bytes = await file.read()
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'report'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_{today}.pdf"
+    await email_service.send_email_with_attachment(
+        to=app_settings.COMPANY_REPORT_EMAIL,
+        subject=f"Project Report — {project.name or project_id}",
+        html=f"<p>Please find attached the generated report for project <strong>{project.name or project_id}</strong>.</p>",
+        attachment=pdf_bytes,
+        filename=filename,
+    )
+    return {"status": "sent", "to": app_settings.COMPANY_REPORT_EMAIL}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
