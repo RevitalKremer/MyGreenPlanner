@@ -1,20 +1,16 @@
 import aiosmtplib
 from email.message import EmailMessage
+from typing import Optional
 
 from app.config import settings
 
 
-async def send_email(to: str, subject: str, html: str) -> None:
+async def _send_msg(msg: EmailMessage) -> None:
     if not settings.SMTP_HOST:
-        # Dev mode: log to console instead of sending
-        print(f"\n📧 EMAIL (SMTP not configured):\nTo: {to}\nSubject: {subject}\n{html}\n")
+        to = msg["To"]
+        subject = msg["Subject"]
+        print(f"\n📧 EMAIL (SMTP not configured):\nTo: {to}\nSubject: {subject}\n")
         return
-
-    msg = EmailMessage()
-    msg["From"] = settings.SMTP_FROM
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.set_content(html, subtype="html")
 
     await aiosmtplib.send(
         msg,
@@ -24,6 +20,33 @@ async def send_email(to: str, subject: str, html: str) -> None:
         password=settings.SMTP_PASSWORD or None,
         start_tls=settings.SMTP_TLS,
     )
+
+
+async def send_email(to: str, subject: str, html: str) -> None:
+    msg = EmailMessage()
+    msg["From"] = settings.SMTP_FROM
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(html, subtype="html")
+    await _send_msg(msg)
+
+
+async def send_email_with_attachment(
+    to: str,
+    subject: str,
+    html: str,
+    attachment: bytes,
+    filename: str,
+    mimetype: str = "application/pdf",
+) -> None:
+    msg = EmailMessage()
+    msg["From"] = settings.SMTP_FROM
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(html, subtype="html")
+    maintype, subtype = mimetype.split("/", 1)
+    msg.add_attachment(attachment, maintype=maintype, subtype=subtype, filename=filename)
+    await _send_msg(msg)
 
 
 async def send_verification_email(to: str, token: str) -> None:

@@ -49,10 +49,12 @@ async def list_panel_types(db: AsyncSession = Depends(get_db)):
 class MaterialRead(BaseModel):
     type_key: str
     name: str
+    name_he: str | None = None
     part_number: str | None
     extra: str | None
     alt_group: int | None
     is_default: bool
+    bundle: dict | None = None
 
     model_config = {"from_attributes": True}
 

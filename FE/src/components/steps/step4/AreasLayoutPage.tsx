@@ -2,7 +2,7 @@ import { useMemo, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import AreasTab from '../step3/AreasTab'
-import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups, computePrintFit } from '../step3/tabUtils'
+import { getPanelsBoundingBox, buildRowGroups, computePrintFit } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
@@ -42,12 +42,12 @@ export default function AreasLayoutPage({
     return g ? `${g}` : t('step4.pdf.area', { n: i + 1 })
   }, [areas, areaByGroupKey, t])
 
-  const { naturalW, naturalH, sc } = useMemo(() => {
-    if (!nonEmptyPanels.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+  const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
+    if (!nonEmptyPanels.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
-    const bbox = expandBboxForImage(panelBbox, uploadedImageData)
-    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
-  }, [nonEmptyPanels, uploadedImageData])
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
+    return { panelBbox, ...fit }
+  }, [nonEmptyPanels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -82,6 +82,7 @@ export default function AreasLayoutPage({
             imageSrc={imageSrc}
             printMode
             printSc={sc}
+            printBbox={panelBbox}
             printShowCounts={false}
           />
         </div>

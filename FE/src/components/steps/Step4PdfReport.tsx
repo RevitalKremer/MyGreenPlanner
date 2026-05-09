@@ -1,13 +1,13 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import * as XLSX from 'xlsx'
-import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BORDER, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step4/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
-import { getBOM, computeBOM, saveBomDeltas, getEffectiveBOM, downloadProposal, downloadProposalPdf } from '../../services/projectsApi'
+import { PDFDocument } from 'pdf-lib'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail } from '../../services/projectsApi'
 import PanelsLayoutPage from './step4/PanelsLayoutPage'
 import AreasLayoutPage from './step4/AreasLayoutPage'
 import RailsLayoutPage from './step4/RailsLayoutPage'
@@ -259,12 +259,13 @@ export default function Step4PdfReport({
   const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
-  const { lang, t } = useLang()
+  const { lang } = useLang()
   const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
   const [bomItems, setBomItems] = useState([])
   const [bomLoading, setBomLoading] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle')
 
   // Fetch BOM from server on mount
   useEffect(() => {
@@ -287,24 +288,47 @@ export default function Step4PdfReport({
     return () => { cancelled = true }
   }, [projectId, lang])
 
-  // Debounced save of bomDeltas to server
-  const saveDeltasTimer = useRef(null)
+  // Auto-save: debounce 600 ms after the last delta change, then save +
+  // materialize in one shot so the user never has to click Recalc.
+  const autoSaveTimer = useRef(null)
+  const autoSaveAbort = useRef<AbortController | null>(null)
+
+  const runAutoSave = useCallback(async (deltas) => {
+    if (!projectId) return
+    autoSaveAbort.current?.abort()
+    const ctrl = new AbortController()
+    autoSaveAbort.current = ctrl
+    setSaveStatus('saving')
+    try {
+      await saveBomDeltas(projectId, deltas)
+      if (ctrl.signal.aborted) return
+      const bom = await recalcBOM(projectId, lang)
+      if (ctrl.signal.aborted) return
+      setBomItems(bom.items ?? [])
+      onBomDeltasChange?.({})
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 2000)
+    } catch (err) {
+      if (!ctrl.signal.aborted) {
+        console.error('Auto-save BOM failed:', err)
+        setSaveStatus('error')
+      }
+    }
+  }, [projectId, lang, onBomDeltasChange])
+
   const handleBomDeltasChange = useCallback((deltas) => {
     onBomDeltasChange?.(deltas)
     if (!projectId) return
-    clearTimeout(saveDeltasTimer.current)
-    saveDeltasTimer.current = setTimeout(() => {
-      saveBomDeltas(projectId, deltas).catch(err => console.error('Failed to save BOM deltas:', err))
-    }, 800)
-  }, [projectId, onBomDeltasChange])
+    clearTimeout(autoSaveTimer.current)
+    setSaveStatus('saving')
+    autoSaveTimer.current = setTimeout(() => runAutoSave(deltas), 600)
+  }, [projectId, onBomDeltasChange, runAutoSave])
 
   const handleResetDefaults = useCallback(async () => {
+    clearTimeout(autoSaveTimer.current)
     onBomDeltasChange?.({})
-    clearTimeout(saveDeltasTimer.current)
-    if (projectId) {
-      try { await saveBomDeltas(projectId, {}) } catch (err) { console.error('Failed to reset BOM deltas:', err) }
-    }
-  }, [projectId, onBomDeltasChange])
+    await runAutoSave({})
+  }, [onBomDeltasChange, runAutoSave])
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -448,25 +472,26 @@ export default function Step4PdfReport({
     }
   }
 
-  const handleExportPdf = async () => {
-    setIsExporting(true)
+  // Render mounted plan pages to PDF bytes. Returns null if no pages are mounted
+  // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
+  const buildPlansPdfBytes = async (): Promise<ArrayBuffer | null> => {
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
 
     for (const ref of refs) {
-      const el = ref?.current ?? ref   // handle both useRef objects and direct DOM elements
+      // For useRef objects: use .current (null when unmounted → skip).
+      // For direct DOM elements (trapPageRefs): use as-is.
+      const el = (ref && 'current' in ref) ? ref.current : ref
       if (!el) continue
 
-      // Temporarily neutralise the ScaledPage transform so html2canvas captures
-      // the page at its natural PAGE_W_PX × PAGE_H_PX size, not the screen-scaled size.
       const parent = el.parentElement
       const savedTransform = parent?.style.transform ?? ''
       if (parent) parent.style.transform = 'none'
 
       const swaps = await rasterizeSvgs(el)
       const canvas = await html2canvas(el, {
-        scale: 3,
+        scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -476,128 +501,92 @@ export default function Step4PdfReport({
       })
       restoreSvgs(swaps)
       if (parent) parent.style.transform = savedTransform
-      const imgData = canvas.toDataURL('image/png')
+      const imgData = canvas.toDataURL('image/jpeg', 0.85)
       if (!firstPage) pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM)
+      pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_W_MM, PAGE_H_MM)
       firstPage = false
     }
 
-    // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
-    const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
-    const dateStr  = new Date().toISOString().split('T')[0]
-    pdf.save(`${safeName}_${dateStr}.pdf`)
-    setIsExporting(false)
+    return firstPage ? null : (pdf.output('arraybuffer') as ArrayBuffer)
   }
 
-  const handleExportExcel = async () => {
-    // Fetch effective BOM (base + deltas applied) from server — names already
-    // localized to `lang` by the BE, so prefer row.name over the FE product cache.
-    let finalRows
+  // ── Generate menu ────────────────────────────────────────────────────────
+  const [menuOpen, setMenuOpen]     = useState(false)
+  const [pdfContent, setPdfContent] = useState({ pricing: true, quantities: true, plans: true })
+  const menuRef      = useRef<HTMLDivElement>(null)
+  const generateRef  = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node) && !generateRef.current?.contains(e.target as Node))
+        setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  const allPdfChecked = pdfContent.pricing && pdfContent.quantities && pdfContent.plans
+  const anyPdfChecked = pdfContent.pricing || pdfContent.quantities || pdfContent.plans
+
+  const handleGeneratePdf = async () => {
+    setMenuOpen(false)
+    const beContent: string[] = []
+    if (pdfContent.pricing)    beContent.push('pricing')
+    if (pdfContent.quantities) beContent.push('quantities')
+
+    setIsExporting(true)
     try {
-      if (projectId) {
-        const effective = await getEffectiveBOM(projectId, lang)
-        finalRows = effective.items ?? []
-      } else {
-        finalRows = bomItems
-      }
-    } catch {
-      finalRows = bomItems
-    }
-
-    const localeTag  = lang === 'he' ? 'he-IL' : 'en-US'
-    const dateExport = new Date().toLocaleDateString(localeTag)
-    const projectName = project?.name || ''
-    const location    = project?.location || ''
-
-    const sheetData: any[][] = [
-      [t('bom.xlsx.appTitle')],
-      [t('bom.xlsx.appSubtitle')],
-      [],
-      [t('bom.xlsx.project'), projectName, '', t('step4.tb.location'), location],
-      [t('step4.tb.date'),    dateExport,  '', t('bom.xlsx.totalKw'), totalKw ? `${totalKw.toFixed(2)} kW` : ''],
-      [],
-      [t('bom.xlsx.colNum'), t('bom.colArea'), t('bom.colElement'), t('bom.xlsx.colPartNumber'),
-       t('bom.colLength'), t('bom.colQty'), t('bom.colExtras'), t('bom.colTotal')],
-    ]
-
-    // Section grouping mirrors the on-screen table: explicitly-tagged sections
-    // (trapezoids, external diagonals) first in fixed order, then unsectioned
-    // length-bearing rows by element name, then a single "Other" catchall.
-    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1 }
-    const sectionRank = (r) => {
-      if (r.pieceLengthM == null) return 1000
-      if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
-      return 100
-    }
-    const elementName = (r) => r.name ?? productByType[r.element]?.name ?? r.element
-    const sectionLabelFor = (row) => {
-      if (row.section) {
-        const key = `bom.section.${row.section.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`
-        const translated = t(key)
-        if (translated && translated !== key) return translated
-      }
-      return elementName(row)
-    }
-    const sortedRows = [...finalRows].sort((a, b) => {
-      const ra = sectionRank(a)
-      const rb = sectionRank(b)
-      if (ra !== rb) return ra - rb
-      if (a.pieceLengthM != null && !a.section && !b.section) {
-        const elementDiff = elementName(a).localeCompare(elementName(b))
-        if (elementDiff !== 0) return elementDiff
-      }
-      return (a.areaLabel ?? '').localeCompare(b.areaLabel ?? '')
-    })
-
-    let prevSectionKey: string | null = null
-    let otherHeaderShown = false
-    let lineNum = 0
-    sortedRows.forEach((row) => {
-      if (row.pieceLengthM != null) {
-        const sectionKey = row.section ?? row.element
-        if (sectionKey !== prevSectionKey) {
-          sheetData.push(['---', '', `── ${sectionLabelFor(row)} ──`, '', '', '', '', ''])
-        }
-        prevSectionKey = sectionKey
-      } else if (!otherHeaderShown) {
-        sheetData.push(['---', '', `── ${t('bom.sectionOther')} ──`, '', '', '', '', ''])
-        otherHeaderShown = true
-        prevSectionKey = '__other__'
+      // PDF pages are only mounted when the PDF tab is active.
+      if (pdfContent.plans && activeTab !== 'pdf') {
+        setActiveTab('pdf')
+        await new Promise(resolve => requestAnimationFrame(resolve))
       }
 
-      lineNum += 1
-      const isLengthRow = row.pieceLengthM != null
-      const totalCount  = (row.qty ?? 0) + (row.extras ?? 0)
-      sheetData.push([
-        lineNum,
-        row.areaLabel,
-        elementName(row),
-        row.partNumber ?? productByType[row.element]?.pn ?? '',
-        isLengthRow ? +Number(row.pieceLengthM).toFixed(2) : '',
-        row.qty,
-        row.extras ?? 0,
-        isLengthRow ? +(row.pieceLengthM * totalCount).toFixed(2) : totalCount,
+      const [beBytes, planBytes] = await Promise.all([
+        beContent.length > 0 ? fetchProposalPdfBytes(projectId, beContent) : Promise.resolve(null),
+        pdfContent.plans ? buildPlansPdfBytes() : Promise.resolve(null),
       ])
-    })
 
-    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+      if (!beBytes && !planBytes) return
 
-    // Column widths
-    ws['!cols'] = [
-      { wch: 4 }, { wch: 14 }, { wch: 28 }, { wch: 18 },
-      { wch: 11 }, { wch: 7 }, { wch: 8 }, { wch: 8 },
-    ]
+      let finalBytes: ArrayBuffer
+      if (beBytes && planBytes) {
+        // Merge BE pages (pricing/quantities) followed by plan pages into one PDF.
+        const merged  = await PDFDocument.create()
+        const bePdf   = await PDFDocument.load(beBytes)
+        const planPdf = await PDFDocument.load(planBytes)
+        const bePages   = await merged.copyPages(bePdf,   bePdf.getPageIndices())
+        bePages.forEach(p => merged.addPage(p))
+        const planPages = await merged.copyPages(planPdf, planPdf.getPageIndices())
+        planPages.forEach(p => merged.addPage(p))
+        finalBytes = (await merged.save()).buffer as ArrayBuffer
+      } else {
+        finalBytes = (beBytes ?? planBytes)!
+      }
 
-    // Open the sheet in RTL mode for Hebrew so column order reads right-to-left.
-    if (lang === 'he') ws['!views'] = [{ RTL: true }]
+      const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
+      const dateStr  = new Date().toISOString().split('T')[0]
+      const label    = [...beContent, ...(pdfContent.plans ? ['plans'] : [])].join('_')
+      const filename = `${safeName}_${label}_${dateStr}.pdf`
 
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, t('bom.billOfMaterials'))
+      const blob = new Blob([finalBytes], { type: 'application/pdf' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
 
-    // Only replace filesystem-unsafe characters, preserve Unicode (Hebrew, etc.)
-    const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
-    const dateStr  = new Date().toISOString().split('T')[0]
-    XLSX.writeFile(wb, `${safeName}_BOM_${dateStr}.xlsx`)
+      await sendReportEmail(projectId, finalBytes, filename)
+    } catch (err) {
+      console.error('Generate PDF failed:', err)
+      alert('Generate PDF failed')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const dateStr = new Date().toLocaleDateString('he-IL')
@@ -610,9 +599,15 @@ export default function Step4PdfReport({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG, position: 'relative' }}>
       {isExporting && (
-        <div className="processing-overlay">
-          <div className="spinner"></div>
-          <p>Generating PDF...</p>
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.35)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div className="processing-overlay" style={{ position: 'static', transform: 'none', margin: 0 }}>
+            <div className="spinner"></div>
+            <p>Generating PDF...</p>
+          </div>
         </div>
       )}
 
@@ -638,38 +633,12 @@ export default function Step4PdfReport({
           >{tab.label}</button>
         ))}
         <div style={{ flex: 1 }} />
-        <button
-          onClick={handleExportExcel}
-          style={{
-            padding: '0.35rem 1rem',
-            background: SUCCESS_DARK, color: WHITE,
-            border: 'none', borderRadius: '6px',
-            fontSize: '0.78rem', fontWeight: '700',
-            cursor: 'pointer',
-          }}
-        >↓ Export Excel</button>
-        <button
-          onClick={async () => {
-            try { await downloadProposal(projectId, project?.name) }
-            catch (err) { console.error('Failed to generate proposal:', err); alert('Failed to generate proposal') }
-          }}
-          disabled={!projectId}
-          style={{
-            padding: '0.35rem 1rem',
-            background: PRIMARY, color: BLACK,
-            border: 'none', borderRadius: '6px',
-            fontSize: '0.78rem', fontWeight: '700',
-            cursor: projectId ? 'pointer' : 'not-allowed',
-            opacity: projectId ? 1 : 0.5,
-          }}
-        >↓ Generate Proposal</button>
-        {(['pricing', 'quantities'] as const).map(sheet => (
+
+        {/* ── Generate dropdown ── */}
+        <div style={{ position: 'relative' }}>
           <button
-            key={sheet}
-            onClick={async () => {
-              try { await downloadProposalPdf(projectId, sheet, project?.name) }
-              catch (err) { console.error(`Failed to generate ${sheet} PDF:`, err); alert(`Failed to generate ${sheet} PDF`) }
-            }}
+            ref={generateRef}
+            onClick={() => setMenuOpen(o => !o)}
             disabled={!projectId}
             style={{
               padding: '0.35rem 1rem',
@@ -679,20 +648,71 @@ export default function Step4PdfReport({
               cursor: projectId ? 'pointer' : 'not-allowed',
               opacity: projectId ? 1 : 0.5,
             }}
-          >↓ {sheet === 'pricing' ? 'Pricing' : 'Quantities'} PDF</button>
-        ))}
-        {activeTab === 'pdf' && (
-          <button
-            onClick={handleExportPdf}
-            style={{
-              padding: '0.35rem 1rem',
-              background: SUCCESS_DARK, color: WHITE,
-              border: 'none', borderRadius: '6px',
-              fontSize: '0.78rem', fontWeight: '700',
-              cursor: 'pointer',
-            }}
-          >↓ Export PDF</button>
-        )}
+          >↓ Generate ▾</button>
+
+          {menuOpen && (
+            <div
+              ref={menuRef}
+              style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                background: WHITE, border: `1px solid ${BORDER}`,
+                borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                padding: '0.75rem', minWidth: '200px', zIndex: 999,
+                display: 'flex', flexDirection: 'column', gap: '0.5rem',
+              }}
+            >
+              {/* Excel */}
+              <button
+                onClick={async () => {
+                  setMenuOpen(false)
+                  try { await downloadProposal(projectId, project?.name) }
+                  catch (err) { console.error('Failed to generate proposal:', err); alert('Failed to generate proposal') }
+                }}
+                style={{
+                  padding: '0.35rem 0.75rem', background: SUCCESS_DARK, color: WHITE,
+                  border: 'none', borderRadius: '5px', fontSize: '0.78rem', fontWeight: '700',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >↓ Excel</button>
+
+              {/* Divider */}
+              <div style={{ borderTop: `1px solid ${BORDER}`, margin: '0.25rem 0' }} />
+
+              {/* PDF checkboxes */}
+              <div style={{ fontSize: '0.75rem', fontWeight: '600', color: TEXT_MUTED, marginBottom: '0.1rem' }}>PDF content</div>
+              {(['pricing', 'quantities', 'plans'] as const).map(key => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={pdfContent[key]}
+                    onChange={e => setPdfContent(p => ({ ...p, [key]: e.target.checked }))}
+                  />
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </label>
+              ))}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={allPdfChecked}
+                  ref={el => { if (el) el.indeterminate = anyPdfChecked && !allPdfChecked }}
+                  onChange={e => setPdfContent({ pricing: e.target.checked, quantities: e.target.checked, plans: e.target.checked })}
+                />
+                All
+              </label>
+
+              <button
+                onClick={handleGeneratePdf}
+                disabled={!anyPdfChecked}
+                style={{
+                  marginTop: '0.25rem', padding: '0.35rem 0.75rem',
+                  background: anyPdfChecked ? PRIMARY : BG_LIGHT, color: anyPdfChecked ? BLACK : TEXT_MUTED,
+                  border: 'none', borderRadius: '5px', fontSize: '0.78rem', fontWeight: '700',
+                  cursor: anyPdfChecked ? 'pointer' : 'not-allowed',
+                }}
+              >↓ Generate PDF</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* BOM tab */}
@@ -701,7 +721,7 @@ export default function Step4PdfReport({
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
             {bomLoading
               ? <div style={{ textAlign: 'center', padding: '3rem', color: TEXT_PLACEHOLDER }}>Loading BOM...</div>
-              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} products={products} productByType={productByType} altsByType={altsByType} />
+              : <BOMView bomItems={bomItems} bomDeltas={bomDeltas} onBomDeltasChange={handleBomDeltasChange} onResetDefaults={handleResetDefaults} saveStatus={saveStatus} products={products} productByType={productByType} altsByType={altsByType} />
             }
           </div>
         </div>

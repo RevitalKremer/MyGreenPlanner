@@ -274,7 +274,11 @@ const he = {
   'bom.angleProfile':   'פרופיל זווית',
   'bom.railProfile':    'קושרת',
   'bom.totalPieces':    'סה"כ יחידות',
+  'bom.alumWeight':     'משקל אלומיניום',
   'bom.reset':          '↺ אפס',
+  'bom.saving':         'שומר…',
+  'bom.saved':          '✓ נשמר',
+  'bom.saveError':      'שמירה נכשלה',
   'bom.filter':         'סינון',
   'bom.allAreas':       'כל האזורים',
   'bom.searchElement':  'חפש פריט…',
@@ -426,9 +430,9 @@ const he = {
   'step3.detail.topBeam':        'קורת עליון',
   'step3.detail.rearLeg':        'רגל אחורית',
   'step3.detail.frontLeg':       'רגל קדמית',
-  'step3.detail.diagonal':       'אלכסון',
+  'step3.detail.diagonal':       'דיאגונל',
   'step3.detail.baseBeamPunches': 'קורת בסיס — מיקומי ניקובים',
-  'step3.detail.slopeBeamPunches': 'קורת שיפוע — מיקומי ניקובים',
+  'step3.detail.slopeBeamPunches': 'קורת יתר — מיקומי ניקובים',
 
   // ── Step 3 – Shared labels ────────────────────────────────────────────────
   'step3.label.row':  '{n} שורה',
@@ -436,7 +440,7 @@ const he = {
 
   // ── Step 3 – Rails table ──────────────────────────────────────────────────
   'step3.rails.colRail':     'קושרת',
-  'step3.rails.colLine':     'שןרה',
+  'step3.rails.colLine':     'שורה',
   'step3.rails.colPanelLine': 'שורת פנלים #',
   'step3.rails.colType':     'סוג',
   'step3.rails.colLength':   'אורך (מ"מ)',

@@ -123,6 +123,7 @@ export default function AreasTab({
   printShowAreas = true, printShowCounts = true, printShowRoofImage = true,
   printShowInstallMethod = false,
   printSc = null,
+  printBbox = null,   // when set in printMode, overrides the internal bbox (skips image expansion)
   roofType = 'concrete',
   uploadedImageData, imageSrc,
 }) {
@@ -143,10 +144,11 @@ export default function AreasTab({
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
   const bbox = useMemo(() => {
+    if (printMode && printBbox) return printBbox
     if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
     return expandBboxForImage(panelBbox, uploadedImageData)
-  }, [nonEmptyPanels, uploadedImageData])
+  }, [printMode, printBbox, nonEmptyPanels, uploadedImageData])
 
   const bboxW = bbox.maxX - bbox.minX
   const bboxH = bbox.maxY - bbox.minY

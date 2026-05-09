@@ -20,7 +20,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -127,10 +127,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
 
   const bbox = useMemo(() => {
+    if (printMode && printBbox) return printBbox
     if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
     return expandBboxForImage(panelBbox, uploadedImageData)
-  }, [nonEmptyPanels, uploadedImageData])
+  }, [printMode, printBbox, nonEmptyPanels, uploadedImageData])
 
   const PAD = printMode ? 12 : 60  // edit needs room for edit bars; print is tight
   const MAX_W = 779  // edit-mode width target
