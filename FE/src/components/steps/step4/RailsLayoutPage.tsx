@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import RailLayoutTab from '../step3/RailLayoutTab'
-import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
+import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
@@ -17,15 +17,13 @@ export default function RailsLayoutPage({
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
-  const { naturalW, naturalH, sc } = useMemo(() => {
-    // Match RailLayoutTab's bbox computation (uses non-empty panels) so the
-    // geometry is centered correctly inside the wrapper.
+  const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
-    if (!nonEmpty.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+    if (!nonEmpty.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmpty)
-    const bbox = expandBboxForImage(panelBbox, uploadedImageData)
-    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PM_PAD)
-  }, [panels, uploadedImageData])
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PM_PAD)
+    return { panelBbox, ...fit }
+  }, [panels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -61,6 +59,7 @@ export default function RailsLayoutPage({
             beRailsData={beRailsData}
             printMode
             printSc={sc}
+            printBbox={panelBbox}
           />
         </div>
       </div>

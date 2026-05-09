@@ -28,6 +28,7 @@ export default function RailLayoutTab({
   printMode = false,
   printShowRoofImage = true,
   printSc = null,   // pre-computed scale to maximize page fit (PDF only)
+  printBbox = null, // when set in printMode, overrides the internal bbox (skips image expansion)
   trapSettingsMap = {},
   trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
@@ -86,10 +87,11 @@ export default function RailLayoutTab({
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
 
   const bbox = useMemo(() => {
+    if (printMode && printBbox) return printBbox
     if (nonEmptyPanels.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
     return expandBboxForImage(panelBbox, uploadedImageData)
-  }, [nonEmptyPanels, uploadedImageData])
+  }, [printMode, printBbox, nonEmptyPanels, uploadedImageData])
 
   const PAD = 24, PAD_LEFT = 180, MAX_W = 851  // edit-mode width target
   const bboxW = bbox.maxX - bbox.minX, bboxH = bbox.maxY - bbox.minY

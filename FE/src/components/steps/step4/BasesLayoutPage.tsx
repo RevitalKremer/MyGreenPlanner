@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import BasesPlanTab from '../step3/BasesPlanTab'
-import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
+import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 
 const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
 const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
@@ -17,14 +17,13 @@ export default function BasesLayoutPage({
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
-  const { naturalW, naturalH, sc } = useMemo(() => {
-    // Match BasesPlanTab's bbox computation (uses non-empty panels)
+  const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
-    if (!nonEmpty.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+    if (!nonEmpty.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmpty)
-    const bbox = expandBboxForImage(panelBbox, uploadedImageData)
-    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
-  }, [panels, uploadedImageData])
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
+    return { panelBbox, ...fit }
+  }, [panels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -64,6 +63,7 @@ export default function BasesLayoutPage({
             beTrapezoidsData={beTrapezoidsData}
             printMode
             printSc={sc}
+            printBbox={panelBbox}
           />
         </div>
       </div>
