@@ -817,24 +817,30 @@ def _ensure_print_area_includes_row(ws, target_row: int) -> None:
     )
 
 
-def _isolate_xlsx_to_single_sheet(full_xlsx_bytes: bytes, keep_sheet: str) -> bytes:
-    """Return xlsx bytes containing only `keep_sheet`. Drops sibling sheets
-    via openpyxl, embeds the template's logo + footer as cell-anchored
-    images so they render in the PDF (LibreOffice doesn't render Excel's
-    legacyDrawingHF), saves, and re-applies the header/footer-image
-    post-process so the original print-time VML images survive too (in case
-    the user later opens this xlsx in Excel and prints).
+def _isolate_xlsx_to_sheets(full_xlsx_bytes: bytes, keep_sheets: list[str]) -> bytes:
+    """Return xlsx bytes containing only the requested sheets in the given order.
+
+    Drops all other sheets, applies PDF-rendering fixes (RTL, stripes, page
+    layout, branding images) to each kept sheet, and re-embeds the header/
+    footer VML images so they survive both LibreOffice PDF export and direct
+    Excel printing.
     """
+    keep_set = set(keep_sheets)
     wb = load_workbook(io.BytesIO(full_xlsx_bytes))
-    for name in [s for s in wb.sheetnames if s != keep_sheet]:
+    for name in [s for s in wb.sheetnames if s not in keep_set]:
         del wb[name]
-    if keep_sheet in wb.sheetnames:
-        wb.active = wb.sheetnames.index(keep_sheet)
-        wb[keep_sheet].sheet_state = 'visible'
-        _force_rtl_sheet(wb[keep_sheet])
-        _apply_pdf_table_stripes(wb[keep_sheet])
-        _force_pdf_page_layout(wb[keep_sheet])
-        _embed_branding_images_for_pdf(wb[keep_sheet])
+    for sheet_name in keep_sheets:
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        ws.sheet_state = 'visible'
+        _force_rtl_sheet(ws)
+        _apply_pdf_table_stripes(ws)
+        _force_pdf_page_layout(ws)
+        _embed_branding_images_for_pdf(ws)
+    first = next((s for s in keep_sheets if s in wb.sheetnames), None)
+    if first:
+        wb.active = wb.sheetnames.index(first)
     out = io.BytesIO()
     wb.save(out)
     return _restore_header_footer_images(TEMPLATE_PATH.read_bytes(), out.getvalue())
@@ -892,12 +898,14 @@ def _xlsx_to_pdf_sync(xlsx_bytes: bytes) -> bytes:
         return pdfs[0].read_bytes()
 
 
-async def generate_proposal_pdf(db: AsyncSession, project, sheet: str) -> bytes:
-    """Generate the proposal xlsx, isolate the requested sheet, convert to PDF."""
-    if sheet not in _PDF_SHEETS:
-        raise ValueError(f"Unknown sheet {sheet!r}; expected one of {_PDF_SHEETS}")
+async def generate_proposal_pdf(db: AsyncSession, project, sheets: list[str]) -> bytes:
+    """Generate the proposal xlsx, keep only the requested sheets, convert to PDF."""
+    valid = set(_PDF_SHEETS)
+    clean = [s for s in sheets if s in valid]
+    if not clean:
+        raise ValueError(f"No valid sheets requested; expected a subset of {_PDF_SHEETS}")
     full_xlsx = await generate_proposal(db, project)
-    single_xlsx = _isolate_xlsx_to_single_sheet(full_xlsx, sheet)
+    filtered_xlsx = _isolate_xlsx_to_sheets(full_xlsx, clean)
     # soffice is blocking; offload to a thread so the FastAPI event loop stays
     # responsive while the (3-5 s) cold-start runs.
-    return await asyncio.to_thread(_xlsx_to_pdf_sync, single_xlsx)
+    return await asyncio.to_thread(_xlsx_to_pdf_sync, filtered_xlsx)

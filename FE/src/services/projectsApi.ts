@@ -126,25 +126,12 @@ export async function recalcBOM(id, lang = null) {
   return res.json()
 }
 
-export async function getBomDeltas(id) {
-  const res = await mgpRequest(`/projects/${id}/bom/deltas`)
-  if (!res.ok) throw new Error('Failed to fetch BOM deltas')
-  return res.json()
-}
-
 export async function saveBomDeltas(id, deltas) {
   const res = await mgpRequest(`/projects/${id}/bom/deltas`, {
     method: 'PUT',
     body: JSON.stringify(deltas),
   })
   if (!res.ok) throw new Error('Failed to save BOM deltas')
-  return res.json()
-}
-
-export async function getEffectiveBOM(id, lang = null) {
-  const url = lang ? `/projects/${id}/bom/effective?lang=${lang}` : `/projects/${id}/bom/effective`
-  const res = await mgpRequest(url)
-  if (!res.ok) throw new Error('Failed to fetch effective BOM')
   return res.json()
 }
 
@@ -168,11 +155,20 @@ export async function downloadProposal(id, projectName = 'proposal') {
   await _downloadFromServer(`/projects/${id}/proposal.xlsx`, `${safeName}_proposal_${date}.xlsx`)
 }
 
-export async function downloadProposalPdf(id, sheet, projectName = 'proposal') {
-  // sheet ∈ {'pricing', 'quantities'} — must match the BE endpoint.
+export async function downloadProposalPdf(id, content: string[], projectName = 'proposal') {
+  // content ∈ ['pricing', 'quantities'] — subset or both, must match BE endpoint.
   const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
   const date = new Date().toISOString().split('T')[0]
-  await _downloadFromServer(`/projects/${id}/proposal/${sheet}.pdf`, `${safeName}_${sheet}_${date}.pdf`)
+  const label = content.join('_')
+  const params = content.map(c => `content=${encodeURIComponent(c)}`).join('&')
+  await _downloadFromServer(`/projects/${id}/proposal.pdf?${params}`, `${safeName}_${label}_${date}.pdf`)
+}
+
+export async function fetchProposalPdfBytes(id: string, content: string[]): Promise<ArrayBuffer> {
+  const params = content.map(c => `content=${encodeURIComponent(c)}`).join('&')
+  const res = await mgpRequest(`/projects/${id}/proposal.pdf?${params}`)
+  if (!res.ok) throw new Error('Failed to fetch proposal PDF')
+  return res.arrayBuffer()
 }
 
 // ── Version ─────────────────────────────────────────────────────────────────

@@ -626,20 +626,23 @@ def _attachment_disposition(filename: str) -> str:
     return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename)}'
 
 
-@router.get("/{project_id}/proposal/{sheet}.pdf")
+@router.get("/{project_id}/proposal.pdf")
 async def download_proposal_pdf(
     project_id: uuid.UUID,
-    sheet: str,
+    content: list[str] = Query(default=['pricing', 'quantities']),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
-    """Render either the pricing or quantities sheet of the proposal xlsx to
-    PDF via headless LibreOffice."""
-    if sheet not in ('pricing', 'quantities'):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown sheet: {sheet}")
+    """Render the requested proposal sheets to a single PDF via headless LibreOffice.
+
+    `content` may be repeated: ?content=pricing&content=quantities
+    Valid values: 'pricing', 'quantities'. Unknown values are silently ignored.
+    """
     try:
-        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, sheet)
+        pdf_bytes = await proposal_service.generate_proposal_pdf(db, project, content)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     except RuntimeError as e:
@@ -647,7 +650,8 @@ async def download_proposal_pdf(
 
     safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'proposal'))
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    filename = f"{safe_name}_{sheet}_{today}.pdf"
+    label = '_'.join(s for s in content if s in ('pricing', 'quantities')) or 'proposal'
+    filename = f"{safe_name}_{label}_{today}.pdf"
     return Response(
         content=pdf_bytes,
         media_type='application/pdf',
