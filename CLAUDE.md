@@ -115,6 +115,24 @@ Each step entry has:
 
 ---
 
+## 6. Versioning
+
+**Rule:** Every merge to `master` must include a version bump in `FE/package.json`.
+
+Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
+
+- `PATCH` — bug fixes, small tweaks
+- `MINOR` — new features, non-breaking changes
+- `MAJOR` — breaking changes or major milestones
+
+**Steps when merging to master:**
+
+1. On the branch being merged (or on `dev`), update `"version"` in `FE/package.json`.
+2. Commit the bump (`chore: bump version to X.Y.Z`).
+3. Merge to `master` and push.
+
+---
+
 ## Project Structure Reference
 
 ```
