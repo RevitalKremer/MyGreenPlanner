@@ -491,7 +491,7 @@ export default function Step4PdfReport({
 
       const swaps = await rasterizeSvgs(el)
       const canvas = await html2canvas(el, {
-        scale: 3,
+        scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -501,9 +501,9 @@ export default function Step4PdfReport({
       })
       restoreSvgs(swaps)
       if (parent) parent.style.transform = savedTransform
-      const imgData = canvas.toDataURL('image/png')
+      const imgData = canvas.toDataURL('image/jpeg', 0.85)
       if (!firstPage) pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM)
+      pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_W_MM, PAGE_H_MM)
       firstPage = false
     }
 
