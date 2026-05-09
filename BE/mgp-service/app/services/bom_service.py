@@ -329,7 +329,7 @@ def _group_pieces_by_length(pieces: list[dict], area_label: str, element: str) -
     return rows
 
 
-def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
+def _compute_trapezoid_bom(rc: dict, _area_label: str, products_by_type: dict) -> list[dict]:
     """One BOM row per distinct trapezoid type (e.g. B1, B2, B3, J).
 
     Each row describes the angle-profile material a single trapezoid frame
@@ -339,6 +339,7 @@ def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
     is which at a glance. Section `trapezoids` keeps these grouped under one
     header in the BOM table.
     """
+    element = _alt_group_default(products_by_type, _ANGLE_PROFILE_ANCHOR)
     rows: list[dict] = []
     for tt in rc.get('trapTypes') or []:
         material_m = tt.get('materialM', 0)
@@ -347,7 +348,7 @@ def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
             continue
         rows.append({
             'areaLabel': tt.get('trapId', '?'),
-            'element': 'angle_profile_40x40',
+            'element': element,
             'section': 'trapezoids',
             'pieceLengthM': material_m,
             'totalLengthM': round(material_m * count, 2),
@@ -356,25 +357,26 @@ def _compute_trapezoid_bom(rc: dict, _area_label: str) -> list[dict]:
     return rows
 
 
-def _compute_external_diagonal_bom(rc: dict, area_label: str) -> list[dict]:
+def _compute_external_diagonal_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
     """One BOM row per distinct cut length of external (base-to-base) diagonal
     in this area. Section `diagonals_external` separates these from the
     trapezoid-frame material.
     """
+    element = _alt_group_default(products_by_type, _ANGLE_PROFILE_ANCHOR)
     pieces: list[dict] = []
     for diag in rc.get('externalDiagonals') or []:
         length_mm = diag.get('diagLengthMm', 0)
         if length_mm <= 0:
             continue
         pieces.append({'qty': 1, 'lenCm': length_mm / 10})
-    rows = _group_pieces_by_length(pieces, area_label, 'angle_profile_40x40')
+    rows = _group_pieces_by_length(pieces, area_label, element)
     for r in rows:
         r['section'] = 'diagonals_external'
     return rows
 
 
-def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute rail profiles + connectors + end caps BOM.
+def _compute_rail_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
+    """Compute rail profiles + connectors BOM.
 
     Rails are emitted as one row per distinct cut length within the area; a
     later post-processing step (`_aggregate_rails_globally`) merges identical
@@ -383,37 +385,33 @@ def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
     """
     num_rails = rc.get('numRails', 2)
     num_rail_connectors = rc.get('numRailConnectors', 0)
+    rail_element      = _alt_group_default(products_by_type, _RAIL_ANCHOR)
+    connector_element = _alt_group_default(products_by_type, _RAIL_CONNECTOR_ANCHOR)
     rows: list[dict] = []
     rail_pieces = rc.get('railPieces') or []
     if rail_pieces:
-        rows += _group_pieces_by_length(rail_pieces, area_label, 'rail_40x40')
+        rows += _group_pieces_by_length(rail_pieces, area_label, rail_element)
     elif num_rails > 0:
         # Fallback when per-rail data isn't available: emit a piece-count row.
-        rows.append({'areaLabel': area_label, 'element': 'rail_40x40', 'totalLengthM': None, 'qty': num_rails})
+        rows.append({'areaLabel': area_label, 'element': rail_element, 'totalLengthM': None, 'qty': num_rails})
     if num_rail_connectors > 0:
-        rows.append({'areaLabel': area_label, 'element': 'rail_connector', 'totalLengthM': None, 'qty': num_rail_connectors})
+        rows.append({'areaLabel': area_label, 'element': connector_element, 'totalLengthM': None, 'qty': num_rail_connectors})
     return rows
 
 
-def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute blocks + bitumen sheets + jumbo bolts BOM.
-
-    One block (and its matching bitumen sheet + jumbo bolt) per trapezoid
-    leg. The total is summed in `_derive_row_construction` over (trap-type
-    instances × legs-per-trap) — area-level `numTrapezoids × numRails`
-    over-counts in multi-row areas where row-sums are conflated with
-    per-frame leg counts.
-    """
+def _compute_block_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
+    """One block per trapezoid leg. bundle children (bitumen_sheets) are
+    appended automatically by expand_bundles."""
     block_qty = rc.get('numBlocks', 0)
     if block_qty <= 0:
         return []
+    element = _alt_group_default(products_by_type, _BLOCK_ANCHOR)
     return [
-        {'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty},
-        {'areaLabel': area_label, 'element': 'jumbo_5x16', 'totalLengthM': None, 'qty': block_qty},
+        {'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': block_qty},
     ]
 
 
-def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
+def _compute_panel_clamp_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
     """Compute all panel clamp types (end, grounding, mid) BOM.
 
     Mid + grounding clamps live at every adjacent-panel boundary on every
@@ -428,14 +426,17 @@ def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
     num_rails = rc.get('numRails', 2)
     num_lines = rc.get('numLines', 1)
     num_large_gaps = rc.get('numLargeGaps', 0)
+    end_clamp_element      = _alt_group_default(products_by_type, _END_CLAMP_ANCHOR)
+    grounding_clamp_element = _alt_group_default(products_by_type, _GROUNDING_CLAMP_ANCHOR)
+    mid_clamp_element      = _alt_group_default(products_by_type, _MID_CLAMP_ANCHOR)
     rows = []
 
     rails_per_line = num_rails / num_lines if num_lines else num_rails
     end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
-    rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
+    rows.append({'areaLabel': area_label, 'element': end_clamp_element, 'totalLengthM': None, 'qty': round(end_clamp_qty)})
 
     grounding_qty = rc.get('groundingPanelCount', 0)
-    rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
+    rows.append({'areaLabel': area_label, 'element': grounding_clamp_element, 'totalLengthM': None, 'qty': grounding_qty})
 
     inter_panel_positions = rc.get('interPanelClampPositions', 0)
     # Large-gap boundaries don't get a mid-clamp — the rail is split there
@@ -443,45 +444,76 @@ def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
     mid_positions = max(0, inter_panel_positions - num_large_gaps)
     mid_clamp_qty = max(0, mid_positions - grounding_qty)
     if mid_clamp_qty > 0:
-        rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
+        rows.append({'areaLabel': area_label, 'element': mid_clamp_element, 'totalLengthM': None, 'qty': mid_clamp_qty})
 
     return rows
 
 
-def _compute_bolt_bom(rc: dict, area_label: str) -> list[dict]:
+def _alt_group_default(products_by_type: dict, anchor_key: str) -> str:
+    """Return the type_key of the is_default product in the same alt group as
+    anchor_key. Falls back to anchor_key if alt_group is unset or no default
+    is marked in the group."""
+    anchor = products_by_type.get(anchor_key, {})
+    grp = anchor.get('alt_group')
+    if grp is not None:
+        for prod in products_by_type.values():
+            if prod.get('alt_group') == grp and prod.get('is_default'):
+                return prod['type_key']
+    return anchor_key
+
+
+# Stable anchors that identify each alt group used in BOM computation.
+# The actual element emitted is whichever member of the group has is_default=True.
+_ANGLE_PROFILE_ANCHOR        = 'angle_profile_40x40'
+_RAIL_ANCHOR                 = 'rail_40x40'
+_RAIL_CONNECTOR_ANCHOR       = 'rail_connector'
+_BLOCK_ANCHOR                = 'block_50x24x15'
+_END_CLAMP_ANCHOR            = 'end_panel_clamp'
+_GROUNDING_CLAMP_ANCHOR      = 'grounding_panel_clamp'
+_MID_CLAMP_ANCHOR            = 'mid_panel_clamp'
+_OTHER_PUNCH_BOLT_ANCHOR     = 'hex_head_bolt_m8x20'
+_BLOCK_PUNCH_ANCHOR          = 'jumbo_5x16'
+_ISKURIT_SCREW_ANCHOR        = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal'
+_INSULATED_SCREW_ANCHOR      = 'self_drilling_screw_12_5_5_drill_with_seal'
+_HOOK_ANCHOR                 = 'hooks'
+
+
+def _compute_bolt_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
     """One bolt per trapezoid punch, split by punch origin.
 
-      • block-origin punches  → single_arrow_anchor_bolt  (per punch)
-      • all other punches     → hex_head_bolt_m8x20       (per punch)
+      • block-origin punches  → default product in the block-punch alt group
+                                (anchor: jumbo_5x16; alt: single_arrow_anchor_bolt)
+      • all other punches     → hex_head_bolt_m8x20 (per punch)
 
-    Companion items (m12 nut/washer for arrow-anchors, flange nut for
-    hex bolts) are emitted automatically by `expand_bundles` from the
-    `products.bundle` rows — no longer hand-rolled here.
+    When the user alt-swaps a block-punch bolt to single_arrow_anchor_bolt,
+    expand_bundles auto-appends its bundle children (m12_nut_for_arrow_anchor
+    ×2, m12_washer_for_arrow_anchor ×2). Flange nut for hex bolts likewise
+    comes via expand_bundles — no companion items are hand-rolled here.
     """
     other_q = rc.get('numOtherPunches', 0)
     block_q = rc.get('numBlockPunches', 0)
     rows: list[dict] = []
     if other_q > 0:
-        rows.append({'areaLabel': area_label, 'element': 'hex_head_bolt_m8x20', 'totalLengthM': None, 'qty': other_q})
+        element = _alt_group_default(products_by_type, _OTHER_PUNCH_BOLT_ANCHOR)
+        rows.append({'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': other_q})
     if block_q > 0:
-        rows.append({'areaLabel': area_label, 'element': 'single_arrow_anchor_bolt', 'totalLengthM': None, 'qty': block_q})
+        element = _alt_group_default(products_by_type, _BLOCK_PUNCH_ANCHOR)
+        rows.append({'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': block_q})
     return rows
 
 
-def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str) -> list[dict]:
+def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str, products_by_type: dict) -> list[dict]:
     """Compute screws for iskurit/insulated_panel — 2 per panel."""
     panel_count = rc.get('panelCount', 0)
     if panel_count <= 0:
         return []
-    if roof_type == 'iskurit':
-        element = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_seal'
-    else:
-        element = 'self_drilling_screw_12_5_5_drill_with_seal'
+    anchor = _ISKURIT_SCREW_ANCHOR if roof_type == 'iskurit' else _INSULATED_SCREW_ANCHOR
+    element = _alt_group_default(products_by_type, anchor)
     return [{'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': 2 * panel_count}]
 
 
-def _compute_hook_bom(rc: dict, area_label: str) -> list[dict]:
-    """One `hooks` line item per tile-roof area.
+def _compute_hook_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
+    """One hook line item per tile-roof area.
 
     Quantity = total rail × virtual-base intersections, computed upstream by
     base_service.fill_hook_offsets and rolled up into rc['numHooks'].
@@ -489,9 +521,8 @@ def _compute_hook_bom(rc: dict, area_label: str) -> list[dict]:
     hook_count = rc.get('numHooks', 0)
     if hook_count <= 0:
         return []
-    return [
-        {'areaLabel': area_label, 'element': 'hooks', 'totalLengthM': None, 'qty': hook_count},
-    ]
+    element = _alt_group_default(products_by_type, _HOOK_ANCHOR)
+    return [{'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': hook_count}]
 
 
 def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
@@ -588,39 +619,45 @@ def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
     return length_rows + aggregated
 
 
-def build_bom(row_constructions: list[dict], row_labels: list[str]) -> list[dict]:
+def build_bom(
+    row_constructions: list[dict],
+    row_labels: list[str],
+    products_by_type: dict | None = None,
+) -> list[dict]:
     """
     Build per-area bill of materials.
     Direct port of FE constructionCalculator.js → buildBOM().
     Returns list of { areaLabel, element, totalLengthM, qty }.
     """
+    products_by_type = products_by_type or {}
     rows: list[dict] = []
 
     for i, rc in enumerate(row_constructions):
         area_label = row_labels[i] if i < len(row_labels) else f'Area {i + 1}'
         roof_type = rc.get('roofType', 'concrete')
 
+        p = products_by_type
         if roof_type == 'tiles':
             # Tiles: rails + clamps + hooks only (no frame, no blocks)
-            rows += _compute_rail_bom(rc, area_label)
-            rows += _compute_panel_clamp_bom(rc, area_label)
-            rows += _compute_hook_bom(rc, area_label)
+            rows += _compute_rail_bom(rc, area_label, p)
+            rows += _compute_panel_clamp_bom(rc, area_label, p)
+            rows += _compute_hook_bom(rc, area_label, p)
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
-            rows += _compute_trapezoid_bom(rc, area_label)
-            rows += _compute_external_diagonal_bom(rc, area_label)
-            rows += _compute_rail_bom(rc, area_label)
-            rows += _compute_panel_clamp_bom(rc, area_label)
-            rows += _compute_bolt_bom(rc, area_label)
-            rows += _compute_purlin_screw_bom(rc, area_label, roof_type)
+            rows += _compute_trapezoid_bom(rc, area_label, p)
+            rows += _compute_external_diagonal_bom(rc, area_label, p)
+            rows += _compute_rail_bom(rc, area_label, p)
+            rows += _compute_panel_clamp_bom(rc, area_label, p)
+            rows += _compute_bolt_bom(rc, area_label, p)
+            rows += _compute_purlin_screw_bom(rc, area_label, roof_type, p)
         else:
             # Concrete (default): full BOM
-            rows += _compute_trapezoid_bom(rc, area_label)
-            rows += _compute_external_diagonal_bom(rc, area_label)
-            rows += _compute_rail_bom(rc, area_label)
-            rows += _compute_block_bom(rc, area_label)
-            rows += _compute_panel_clamp_bom(rc, area_label)
-            rows += _compute_bolt_bom(rc, area_label)
+            rows += _compute_trapezoid_bom(rc, area_label, p)
+            rows += _compute_external_diagonal_bom(rc, area_label, p)
+            rows += _compute_rail_bom(rc, area_label, p)
+            rows += _compute_block_bom(rc, area_label, p)
+            rows += _compute_panel_clamp_bom(rc, area_label, p)
+            rows += _compute_bolt_bom(rc, area_label, p)
 
     return _aggregate_other_globally(_aggregate_rails_globally(rows))
 
@@ -645,7 +682,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 19  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 20  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -714,6 +751,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
             'name_he': p.name_he,
             'extra': p.extra,
             'alt_group': p.alt_group,
+            'is_default': p.is_default,
             'bundle': p.bundle,
         }
         for p in products
@@ -805,6 +843,22 @@ async def materialize_bom(db: AsyncSession, project) -> ProjectBOM:
     effective = apply_bom_deltas(base, deltas)
     expanded = expand_bundles(effective, products_by_type)
 
+    # Commit alt-swaps: replace element with altElement so the stored BOM
+    # reflects the user's choice. Without this, element stays as the default
+    # key and the swap is invisible after the BOM is saved.
+    for item in expanded:
+        alt = item.pop('altElement', None)
+        if alt:
+            item['element'] = alt
+            prod = products_by_type.get(alt)
+            if prod:
+                item['productId'] = str(prod['id'])
+                item['partNumber'] = prod.get('part_number')
+                item['name'] = prod.get('name')
+                item['nameHe'] = prod.get('name_he')
+                item['extraPct'] = prod.get('extra')
+                item['altGroup'] = prod.get('alt_group')
+
     bom.items = expanded
     bom.updated_at = datetime.now(timezone.utc)
     flag_modified(bom, 'items')
@@ -858,13 +912,15 @@ async def compute_and_save_bom(db: AsyncSession, project) -> ProjectBOM:
         row_constructions.append(rc)
         row_labels.append(label)
 
-    bom_items = build_bom(row_constructions, row_labels)
+    # Load products first — build_bom needs them to resolve the default
+    # product within each alt group (e.g. block-punch bolt).
+    products_by_type = await _load_products_by_type(db)
+    bom_items = build_bom(row_constructions, row_labels, products_by_type)
 
     # Enrich + expand bundles. Step-5 entry resets the BOM, so bomDeltas is
     # also wiped — we don't apply alt-swaps here, just fire bundles whose
     # parent is the canonical element. Alt-swap-driven bundles materialise
     # later when the user clicks Recalc (`materialize_bom`).
-    products_by_type = await _load_products_by_type(db)
     enriched_items = enrich_bom_with_products(bom_items, products_by_type)
     enriched_items = expand_bundles(enriched_items, products_by_type)
 
