@@ -632,6 +632,33 @@ def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
     return length_rows + aggregated
 
 
+def _append_depreciation_waste(
+    items: list[dict],
+    products_by_type: dict,
+) -> list[dict]:
+    """Sum totalLengthM × depreciation_pct/100 across all length-bearing BOM items
+    and append a single depreciation_waste row (pieceLengthM=1, qty=meters).
+    Items without a depreciation_pct or without a totalLengthM are skipped."""
+    total = sum(
+        item['totalLengthM'] * prod['depreciation_pct'] / 100.0
+        for item in items
+        if item.get('totalLengthM') is not None
+        and (prod := products_by_type.get(item['element']))
+        and prod.get('depreciation_pct')
+    )
+    if total <= 0:
+        return items
+    dep_qty = round(total, 2)
+    return items + [{
+        'areaLabel': '-',
+        'element': 'depreciation_waste',
+        'qty': dep_qty,
+        'pieceLengthM': 1.0,
+        'totalLengthM': dep_qty,
+        'section': 'depreciation',
+    }]
+
+
 def build_bom(
     row_constructions: list[dict],
     row_labels: list[str],
@@ -672,7 +699,8 @@ def build_bom(
             rows += _compute_panel_clamp_bom(rc, area_label, p)
             rows += _compute_bolt_bom(rc, area_label, p)
 
-    return _aggregate_other_globally(_aggregate_rails_globally(rows))
+    aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows))
+    return _append_depreciation_waste(aggregated, products_by_type)
 
 
 def enrich_bom_with_products(
@@ -696,7 +724,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 25  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 26  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -768,6 +796,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
             'is_default': p.is_default,
             'bundle': p.bundle,
             'weight_kg': p.weight_kg,
+            'depreciation_pct': p.depreciation_pct,
         }
         for p in products
     }
