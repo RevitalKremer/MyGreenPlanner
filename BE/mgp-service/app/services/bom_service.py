@@ -94,6 +94,15 @@ def _derive_row_construction(
 
     total_panel_count = 0
     max_num_lines = 0
+    # Per-row breakdowns used for panel-clamp counting. Aggregating rails +
+    # panels at the area level loses the per-row × per-line structure (mixed
+    # row shapes and varying line counts), so the clamp formulas need the
+    # raw per-row data:
+    #   inter_panel_positions = Σ over (row, line) of (real_panels − 1) × rails_on_that_line
+    #   grounding_panel_count  = Σ over rows of ⌈real_panels_in_row / 2⌉
+    rails_by_row = computed_area.get('rails') or {}
+    inter_panel_positions = 0
+    grounding_panel_count = 0
     for pr in panel_rows:
         # Skip None entries — panelRows can be sparse when a row's rowIndex
         # is not 0-based (e.g. single-row area with rowIndex=2).
@@ -104,6 +113,22 @@ def _derive_row_construction(
         nl = _count_lines(pg)
         if nl > max_num_lines:
             max_num_lines = nl
+
+        row_idx = pr.get('rowIndex', 0)
+        row_rails = rails_by_row.get(row_idx) or rails_by_row.get(str(row_idx)) or []
+        rails_on_line: dict[int, int] = {}
+        for r in row_rails:
+            li = r.get('lineIdx', 0)
+            rails_on_line[li] = rails_on_line.get(li, 0) + 1
+
+        row_real_panels = 0
+        for line_idx, cells in enumerate(pg.get('rows') or []):
+            real = sum(1 for c in cells if c in REAL_PANELS)
+            row_real_panels += real
+            if real > 1:
+                inter_panel_positions += (real - 1) * rails_on_line.get(line_idx, 0)
+        if row_real_panels > 0:
+            grounding_panel_count += math.ceil(row_real_panels / 2)
     if max_num_lines == 0:
         max_num_lines = 1
 
@@ -161,6 +186,8 @@ def _derive_row_construction(
             'numRailConnectors': num_rail_connectors,
             'railPieces': rail_pieces,
             'numHooks': num_hooks,
+            'interPanelClampPositions': inter_panel_positions,
+            'groundingPanelCount': grounding_panel_count,
         }
 
     # Find geometry from first trapezoid's computed detail
@@ -204,6 +231,11 @@ def _derive_row_construction(
             trap_instance_counts[tid] = trap_instance_counts.get(tid, 0) + 1
     ct_by_id = {ct.get('trapezoidId'): ct for ct in computed_trapezoids}
     trap_types: list[dict] = []
+    # Each trapezoid instance sits on one block per leg. Sum across instances
+    # so multi-row areas with mixed trap shapes get the right total — the
+    # area-aggregate `(numRails − 2 + 2) × numTrapezoids` shortcut over-counts
+    # by treating every base as if it had the row-summed rail count.
+    num_blocks = 0
     for tid, count in trap_instance_counts.items():
         ct = ct_by_id.get(tid)
         if not ct or count <= 0:
@@ -211,6 +243,7 @@ def _derive_row_construction(
         t_geom = ct.get('geometry') or {}
         t_legs = ct.get('legs') or []
         t_diags = ct.get('diagonals') or []
+        num_blocks += count * len(t_legs)
         cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
         cm += t_geom.get('topBeamLength') or 0
         for leg in t_legs:
@@ -246,6 +279,9 @@ def _derive_row_construction(
         'internalDiagonals': internal_diagonals,
         'externalDiagonals': external_diagonals,
         'trapTypes': trap_types,
+        'interPanelClampPositions': inter_panel_positions,
+        'groundingPanelCount': grounding_panel_count,
+        'numBlocks': num_blocks,
     }
 
 
@@ -348,10 +384,17 @@ def _compute_rail_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute blocks + bitumen sheets + jumbo bolts BOM."""
-    T = rc['numTrapezoids']
-    num_inner_legs = max(0, rc.get('numRails', 2) - 2)
-    block_qty = T * (2 + num_inner_legs)
+    """Compute blocks + bitumen sheets + jumbo bolts BOM.
+
+    One block (and its matching bitumen sheet + jumbo bolt) per trapezoid
+    leg. The total is summed in `_derive_row_construction` over (trap-type
+    instances × legs-per-trap) — area-level `numTrapezoids × numRails`
+    over-counts in multi-row areas where row-sums are conflated with
+    per-frame leg counts.
+    """
+    block_qty = rc.get('numBlocks', 0)
+    if block_qty <= 0:
+        return []
     return [
         {'areaLabel': area_label, 'element': 'block_50x24x15', 'totalLengthM': None, 'qty': block_qty},
         {'areaLabel': area_label, 'element': 'bitumen_sheets', 'totalLengthM': None, 'qty': block_qty},
@@ -360,24 +403,34 @@ def _compute_block_bom(rc: dict, area_label: str) -> list[dict]:
 
 
 def _compute_panel_clamp_bom(rc: dict, area_label: str) -> list[dict]:
-    """Compute all panel clamp types (end, grounding, mid) BOM."""
+    """Compute all panel clamp types (end, grounding, mid) BOM.
+
+    Mid + grounding clamps live at every adjacent-panel boundary on every
+    rail crossing that boundary. The total boundary-position count and the
+    grounding count are computed per panel row in `_derive_row_construction`
+    (see `interPanelClampPositions` / `groundingPanelCount`) — area-level
+    averages don't work for areas with mixed-shape rows.
+
+    Grounding clamps are mid-clamp positions reused as the electrical bond,
+    so subtract them from the inter-panel total to get the plain mid count.
+    """
     num_rails = rc.get('numRails', 2)
     num_lines = rc.get('numLines', 1)
     num_large_gaps = rc.get('numLargeGaps', 0)
-    panel_count = rc.get('panelCount', 0)
     rows = []
 
     rails_per_line = num_rails / num_lines if num_lines else num_rails
     end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
     rows.append({'areaLabel': area_label, 'element': 'end_panel_clamp', 'totalLengthM': None, 'qty': round(end_clamp_qty)})
 
-    grounding_qty = math.ceil(panel_count / 2)
+    grounding_qty = rc.get('groundingPanelCount', 0)
     rows.append({'areaLabel': area_label, 'element': 'grounding_panel_clamp', 'totalLengthM': None, 'qty': grounding_qty})
 
-    panels_per_line = panel_count / num_lines if num_lines else panel_count
-    total_boundaries = max(0, panels_per_line - 1) * num_lines
-    normal_boundaries = max(0, total_boundaries - num_large_gaps)
-    mid_clamp_qty = max(0, round(normal_boundaries * rails_per_line) - grounding_qty)
+    inter_panel_positions = rc.get('interPanelClampPositions', 0)
+    # Large-gap boundaries don't get a mid-clamp — the rail is split there
+    # and gets two end-clamps instead.
+    mid_positions = max(0, inter_panel_positions - num_large_gaps)
+    mid_clamp_qty = max(0, mid_positions - grounding_qty)
     if mid_clamp_qty > 0:
         rows.append({'areaLabel': area_label, 'element': 'mid_panel_clamp', 'totalLengthM': None, 'qty': mid_clamp_qty})
 
@@ -574,7 +627,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 12  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 14  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
