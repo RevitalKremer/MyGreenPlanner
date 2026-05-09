@@ -372,6 +372,11 @@ def _compute_external_diagonal_bom(rc: dict, area_label: str, products_by_type: 
     rows = _group_pieces_by_length(pieces, area_label, element)
     for r in rows:
         r['section'] = 'diagonals_external'
+    # 2 hex bolts per diagonal cut (one at each connection point)
+    total_cuts = len(pieces)
+    if total_cuts > 0:
+        bolt_element = _alt_group_default(products_by_type, _OTHER_PUNCH_BOLT_ANCHOR)
+        rows.append({'areaLabel': area_label, 'element': bolt_element, 'totalLengthM': None, 'qty': total_cuts * 2})
     return rows
 
 
@@ -513,7 +518,8 @@ def _compute_purlin_screw_bom(rc: dict, area_label: str, roof_type: str, product
 
 
 def _compute_hook_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
-    """One hook line item per tile-roof area.
+    """One hook line item per tile-roof area, plus 1 hex bolt per hook when
+    the resolved hook type is 'hooks' (not hook_5cm_with_3_holes_gallery).
 
     Quantity = total rail × virtual-base intersections, computed upstream by
     base_service.fill_hook_offsets and rolled up into rc['numHooks'].
@@ -522,7 +528,11 @@ def _compute_hook_bom(rc: dict, area_label: str, products_by_type: dict) -> list
     if hook_count <= 0:
         return []
     element = _alt_group_default(products_by_type, _HOOK_ANCHOR)
-    return [{'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': hook_count}]
+    bolt_element = _alt_group_default(products_by_type, _OTHER_PUNCH_BOLT_ANCHOR)
+    return [
+        {'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': hook_count},
+        {'areaLabel': area_label, 'element': bolt_element, 'totalLengthM': None, 'qty': hook_count},
+    ]
 
 
 def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
@@ -682,7 +692,7 @@ def enrich_bom_with_products(
     return enriched
 
 
-_BOM_LOGIC_VERSION = 20  # bump to invalidate all cached BOMs
+_BOM_LOGIC_VERSION = 23  # bump to invalidate all cached BOMs
 
 
 def compute_input_hash(data: dict) -> str:
@@ -791,9 +801,6 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
         if not parent_type or not isinstance(mult, int) or mult <= 0:
             continue
         by_parent.setdefault(parent_type, []).append((prod, mult))
-
-    if not by_parent:
-        return base
 
     expanded: list[dict] = []
     for item in base:
