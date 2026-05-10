@@ -591,6 +591,12 @@ def compute_trapezoid_details(
         'blocks': blocks,
         'punches': punches,
         'diagonals': diagonals,
+        'diagSettings': {
+            'topPct': diag_top_pct,
+            'basePct': diag_base_pct,
+            'skipBelowCm': skip_below_cm,
+            'doubleAboveCm': double_above_cm,
+        },
     }
 
 
@@ -1009,6 +1015,23 @@ def trim_trapezoid(
             ib = pos_to_idx.get(pb)
             if ia is not None and ib is not None and ib == ia + 1:
                 new_diags.append({**d, 'spanIdx': ia})
+
+    # Fallback: trim trap has legs but inherited no diagonals from the full trap
+    # (e.g. full trap's diagonal was at a different span). Re-run the bracing
+    # computation using only this trim trap's legs so at least one diagonal appears.
+    if not new_diags and len(filtered_legs) >= 2:
+        ds = full_trap_detail.get('diagSettings', {})
+        new_diags = _compute_diagonal_bracing(
+            detail['legs'],
+            None,
+            ds.get('topPct', 25),
+            ds.get('basePct', 75),
+            ds.get('skipBelowCm', 60),
+            ds.get('doubleAboveCm', 200),
+            angle * math.pi / 180,
+            beam_thick,
+        )
+
     detail['diagonals'] = new_diags
-    
+
     return detail
