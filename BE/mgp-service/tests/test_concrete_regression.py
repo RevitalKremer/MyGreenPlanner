@@ -31,7 +31,7 @@ APP_DEFAULTS = {
     'panelThickCm': 3.5,
     'panelGapCm': 2.5,
     'lineGapCm': 2,
-    'diagSkipBelowCm': 60,
+    'diagSkipBelowCm': 8,
     'diagDoubleAboveCm': 200,
     'punchOverlapMarginCm': 2,
     'punchInnerOffsetCm': 8,
