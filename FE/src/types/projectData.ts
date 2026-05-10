@@ -149,8 +149,9 @@ export interface Punch {
 
 export interface Diagonal {
   spanIdx: number
-  topPct: number
-  botPct: number
+  topDistFromLegCm: number
+  botDistFromLegCm: number
+  punchSpanCm: number
   lengthCm: number
   isDouble: boolean
   disabled?: boolean

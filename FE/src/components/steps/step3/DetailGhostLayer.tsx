@@ -64,8 +64,9 @@ export default function DetailGhostLayer({
         if (d.spanIdx >= gLegs.length - 1) return null
         const { topX, topY, botX, botY } = calculateDiagonalPosition({
           spanIdx: d.spanIdx,
-          topPct: d.topPct,
-          botPct: d.botPct,
+          topDistFromLegCm: d.topDistFromLegCm,
+          botDistFromLegCm: d.botDistFromLegCm,
+          punchSpanCm: d.punchSpanCm,
           legXs: gLegXPositions,
           legEndXs: gLegEndXPositions,
           legHeights: gLegHeights,

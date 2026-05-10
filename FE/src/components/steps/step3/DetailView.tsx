@@ -129,10 +129,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     return allLegTopYs[0] + (x - legX0) / legBW * ((allLegTopYs[allLegTopYs.length - 1] ?? allLegTopYs[0]) - allLegTopYs[0])
   }
   const legHeightAtX = (x) => (baseY - beamYFromLegs(x)) / SC
-  // Build diagonal data: use BE decisions (topPct, botPct from server) combined with user overrides
-  // (topDistFromLegCm/botDistFromLegCm). Always compute pixel positions from current leg geometry.
+  // Build diagonal data: use BE decisions (topDistFromLegCm, botDistFromLegCm from server) combined with user overrides.
+  // Always compute pixel positions from current leg geometry.
 
-  const diagonals = buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allLegEndXs, allLegHeights, baseY, BEAM_THICK_PX, beLegs, SC)
+  const diagonals = buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allLegEndXs, allLegHeights, baseY, BEAM_THICK_PX)
 
   // All legs are active (ghost handled by overlay)
   const firstActiveLegIdx = 0

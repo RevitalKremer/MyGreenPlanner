@@ -65,29 +65,16 @@ export function buildDetailDiagonals(
   allLegHeights: number[],
   baseY: number,
   BEAM_THICK_PX: number,
-  beLegs: { positionCm: number; positionEndCm: number }[] = [],
-  SC: number = 2.2,
 ) {
   const beDiags = beDetailData?.diagonals ?? []
   const numSpans = allLegXs.length - 1
-  const ph_cm = BEAM_THICK_PX / (2 * SC)
   const raw = beDiags.map(d => {
     if (d.spanIdx >= numSpans) return null
     const ov = diagOverrides[d.spanIdx] ?? {}
-    let topPct = d.topPct
-    let botPct = d.botPct
-    if (ov.topDistFromLegCm != null || ov.botDistFromLegCm != null) {
-      const leg = beLegs[d.spanIdx], nextLeg = beLegs[d.spanIdx + 1]
-      if (leg && nextLeg) {
-        const span_cm = (nextLeg.positionEndCm - ph_cm) - (leg.positionCm + ph_cm)
-        if (span_cm > 0) {
-          if (ov.topDistFromLegCm != null) topPct = ov.topDistFromLegCm / span_cm
-          if (ov.botDistFromLegCm != null) botPct = ov.botDistFromLegCm / span_cm
-        }
-      }
-    }
+    const topDist = ov.topDistFromLegCm ?? d.topDistFromLegCm
+    const botDist = ov.botDistFromLegCm ?? d.botDistFromLegCm
     const { xA, xB, spanW, topX, botX, topY, botY } = calculateDiagonalPosition({
-      spanIdx: d.spanIdx, topPct, botPct,
+      spanIdx: d.spanIdx, topDistFromLegCm: topDist, botDistFromLegCm: botDist, punchSpanCm: d.punchSpanCm,
       legXs: allLegXs, legEndXs: allLegEndXs, legHeights: allLegHeights,
       baseY, beamThickPx: BEAM_THICK_PX,
     })
@@ -131,7 +118,7 @@ export function buildPunchPoints(
  * labels update immediately when the user drags a handle (before server recomputes).
  */
 export function computeLiveDiagPunchPositions(
-  beDiags: { spanIdx: number; topPct: number; botPct: number }[],
+  beDiags: { spanIdx: number; topDistFromLegCm: number; botDistFromLegCm: number }[],
   diagOverrides: Record<number, { topDistFromLegCm?: number; botDistFromLegCm?: number }>,
   beLegs: { positionCm: number; positionEndCm: number }[],
   beamThickCm: number,
@@ -144,9 +131,8 @@ export function computeLiveDiagPunchPositions(
     if (!beLegs[d.spanIdx] || !beLegs[d.spanIdx + 1]) return null
     const ov = diagOverrides[d.spanIdx] ?? {}
     const ps = beLegs[d.spanIdx].positionCm + ph
-    const span = (beLegs[d.spanIdx + 1].positionEndCm - ph) - ps
-    const topSlope = ov.topDistFromLegCm != null ? ps + ov.topDistFromLegCm : ps + d.topPct * span
-    const botSlope = ov.botDistFromLegCm != null ? ps + ov.botDistFromLegCm : ps + d.botPct * span
+    const topSlope = ps + (ov.topDistFromLegCm ?? d.topDistFromLegCm)
+    const botSlope = ps + (ov.botDistFromLegCm ?? d.botDistFromLegCm)
     // Mirror server: top = slope coords from beam start, bot = _slope_to_base
     const topPosCm = topSlope - legOffsetCm
     const botPosCm = legOffsetCm + ph + (botSlope - legOffsetCm - ph) * cosA
@@ -195,8 +181,9 @@ export function buildLegData(
 
 interface DiagonalPositionParams {
   spanIdx: number
-  topPct: number
-  botPct: number
+  topDistFromLegCm: number
+  botDistFromLegCm: number
+  punchSpanCm: number
   legXs: number[]
   legEndXs: number[]
   legHeights: number[]
@@ -205,16 +192,16 @@ interface DiagonalPositionParams {
 }
 
 export const calculateDiagonalPosition = ({
-  spanIdx, topPct, botPct, legXs, legEndXs, legHeights, baseY, beamThickPx,
+  spanIdx, topDistFromLegCm, botDistFromLegCm, punchSpanCm, legXs, legEndXs, legHeights, baseY, beamThickPx,
 }: DiagonalPositionParams) => {
-  // Punch-to-punch span: percentages apply between leg centers (punch points),
-  // matching the BE _compute_diagonal_bracing calculation.
   const halfThick = beamThickPx / 2
   const punchA = legXs[spanIdx] + halfThick
   const punchB = legEndXs[spanIdx + 1] - halfThick
   const xA = legXs[spanIdx]
   const xB = legEndXs[spanIdx + 1]
   const spanW = punchB - punchA
+  const topPct = punchSpanCm > 0 ? topDistFromLegCm / punchSpanCm : 0
+  const botPct = punchSpanCm > 0 ? botDistFromLegCm / punchSpanCm : 0
   const topX = punchA + topPct * spanW
   const botX = punchA + botPct * spanW
   const hA = legHeights[spanIdx] ?? 0

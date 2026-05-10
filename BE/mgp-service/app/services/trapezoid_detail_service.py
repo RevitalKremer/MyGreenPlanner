@@ -278,8 +278,9 @@ def _compute_diagonal_bracing(
 
         raw_diagonals.append({
             'spanIdx': i,
-            'topPct': top_pct,
-            'botPct': bot_pct,
+            'topDistFromLegCm': _r(top_pct * punch_span),
+            'botDistFromLegCm': _r(bot_pct * punch_span),
+            'punchSpanCm': _r(punch_span),
             'lengthCm': _r(length_cm),
             'isDouble': is_double,
             'disabled': skip,
@@ -436,11 +437,8 @@ def _compute_structural_punches(
     for diag in diagonals:
         si = diag['spanIdx']
         punch_start = legs[si]['positionCm'] + profile_half
-        punch_end = legs[si + 1]['positionEndCm'] - profile_half
-        punch_span = punch_end - punch_start
-
-        top_pos_slope = punch_start + diag['topPct'] * punch_span
-        bot_pos_slope = punch_start + diag['botPct'] * punch_span
+        top_pos_slope = punch_start + diag['topDistFromLegCm']
+        bot_pos_slope = punch_start + diag['botDistFromLegCm']
         
         # Round final positions to integer on each beam
         top_pos = round(top_pos_slope - leg_offset)
