@@ -236,6 +236,9 @@ export default function Step3ConstructionPlanning({
         paramSchema={PARAM_SCHEMA}
         paramGroup={PARAM_GROUP}
         onApplyChanges={(tab) => onTabSave?.(tab === 'detail' ? 'trapezoids' : tab)}
+        effectiveDiagSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDiagSettings ?? null}
+        effectiveDetailSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDetailSettings ?? null}
+        effectiveBasesSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveBasesSettings ?? null}
       />
 
       {/* ── Main content ── */}

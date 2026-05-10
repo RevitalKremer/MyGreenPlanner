@@ -17,7 +17,7 @@ UPDATE app_settings SET visible = true WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
     'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
     'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
-    'diagTopPct', 'diagBasePct',
+    'diagDistFromLegCm', 'diagPreferredAngleDeg',
     'purlinBufferCm', 'extendFront', 'extendRear'
 );
 
@@ -31,7 +31,7 @@ UPDATE app_settings SET highlight_group = 'base-edges'    WHERE key = 'edgeOffse
 UPDATE app_settings SET highlight_group = 'base-spacing'  WHERE key = 'spacingMm';
 UPDATE app_settings SET highlight_group = 'base-overhang' WHERE key = 'baseOverhangCm';
 UPDATE app_settings SET highlight_group = 'blocks'        WHERE key IN ('blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm');
-UPDATE app_settings SET highlight_group = 'diagonal'      WHERE key IN ('diagTopPct', 'diagBasePct');
+UPDATE app_settings SET highlight_group = 'diagonal'      WHERE key IN ('diagDistFromLegCm', 'diagPreferredAngleDeg');
 UPDATE app_settings SET highlight_group = 'diagonals'     WHERE key IN ('diagSkipBelowCm', 'diagDoubleAboveCm');
 UPDATE app_settings SET highlight_group = 'punches'       WHERE key IN ('punchOverlapMarginCm', 'punchInnerOffsetCm');
 UPDATE app_settings SET highlight_group = 'extension'     WHERE key IN ('purlinBufferCm', 'extendFront', 'extendRear');
@@ -53,7 +53,7 @@ UPDATE app_settings SET roof_types = '["concrete"]'::jsonb WHERE key IN (
 
 -- Concrete + purlin types (not tiles)
 UPDATE app_settings SET roof_types = '["concrete", "iskurit", "insulated_panel"]'::jsonb WHERE key IN (
-    'diagTopPct', 'diagBasePct', 'diagSkipBelowCm', 'diagDoubleAboveCm',
+    'diagDistFromLegCm', 'diagPreferredAngleDeg', 'diagSkipBelowCm', 'diagDoubleAboveCm',
     'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
     'angleProfileSizeMm', 'punchOverlapMarginCm', 'punchInnerOffsetCm'
 );

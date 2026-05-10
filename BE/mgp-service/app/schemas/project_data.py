@@ -204,7 +204,7 @@ class ComputedTrapezoid(_StrictBase):
     punches: list[dict] = Field(default_factory=list)
     # punches[]: beamType ('base'|'slope'), positionCm, origin ('outerLeg'|'innerLeg'|'rail'|'diagonal'|'block')
     diagonals: list[dict] = Field(default_factory=list)
-    # diagonals[]: spanIdx, topPct, botPct, lengthCm, isDouble, disabled
+    # diagonals[]: spanIdx, topPct, botPct (server-computed), lengthCm, isDouble, disabled
 
 
 class Step3Data(_StrictBase):

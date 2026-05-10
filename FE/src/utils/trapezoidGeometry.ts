@@ -59,20 +59,33 @@ export function buildRailItems(
  */
 export function buildDetailDiagonals(
   beDetailData: ComputedTrapezoid | null,
-  diagOverrides: Record<number, Partial<Diagonal> & { disabled?: boolean }>,
+  diagOverrides: Record<number, { topDistFromLegCm?: number; botDistFromLegCm?: number; disabled?: boolean }>,
   allLegXs: number[],
   allLegEndXs: number[],
   allLegHeights: number[],
   baseY: number,
   BEAM_THICK_PX: number,
+  beLegs: { positionCm: number; positionEndCm: number }[] = [],
+  SC: number = 2.2,
 ) {
   const beDiags = beDetailData?.diagonals ?? []
   const numSpans = allLegXs.length - 1
+  const ph_cm = BEAM_THICK_PX / (2 * SC)
   const raw = beDiags.map(d => {
     if (d.spanIdx >= numSpans) return null
     const ov = diagOverrides[d.spanIdx] ?? {}
-    const topPct = ov.topPct ?? d.topPct
-    const botPct = ov.botPct ?? d.botPct
+    let topPct = d.topPct
+    let botPct = d.botPct
+    if (ov.topDistFromLegCm != null || ov.botDistFromLegCm != null) {
+      const leg = beLegs[d.spanIdx], nextLeg = beLegs[d.spanIdx + 1]
+      if (leg && nextLeg) {
+        const span_cm = (nextLeg.positionEndCm - ph_cm) - (leg.positionCm + ph_cm)
+        if (span_cm > 0) {
+          if (ov.topDistFromLegCm != null) topPct = ov.topDistFromLegCm / span_cm
+          if (ov.botDistFromLegCm != null) botPct = ov.botDistFromLegCm / span_cm
+        }
+      }
+    }
     const { xA, xB, spanW, topX, botX, topY, botY } = calculateDiagonalPosition({
       spanIdx: d.spanIdx, topPct, botPct,
       legXs: allLegXs, legEndXs: allLegEndXs, legHeights: allLegHeights,
@@ -93,6 +106,8 @@ export function buildDetailDiagonals(
 
 /**
  * Build sorted punch points array for DetailPunchSketch.
+ * When liveDiagPoints is provided, it replaces server diagonal punches so the
+ * bar reflects the current (potentially overridden) diagonal positions.
  */
 export function buildPunchPoints(
   punches: Punch[],
@@ -100,13 +115,43 @@ export function buildPunchPoints(
   excludeOrigin: string,
   atFn: (pos: number) => number,
   labelFor: (p: Punch) => string,
+  liveDiagPoints?: { x: number; label: string; origin: string }[],
 ) {
   const matches = (origin: (o: string) => boolean) => (p: Punch) =>
     p.beamType === beamType && p.origin !== excludeOrigin && origin(p.origin)
   const toPoint = (origin: string) => (p: Punch) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
   const nonDiag = punches.filter(matches(o => o !== 'diagonal')).map(p => toPoint(p.origin)(p))
-  const diag    = punches.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
+  const diag    = liveDiagPoints ?? punches.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
   return [...nonDiag, ...diag].sort((a, b) => a.x - b.x)
+}
+
+/**
+ * Compute diagonal punch positions in cm (for both beams) from pct values + leg geometry.
+ * Replicates server logic from _compute_structural_punches / _slope_to_base so punch
+ * labels update immediately when the user drags a handle (before server recomputes).
+ */
+export function computeLiveDiagPunchPositions(
+  beDiags: { spanIdx: number; topPct: number; botPct: number }[],
+  diagOverrides: Record<number, { topDistFromLegCm?: number; botDistFromLegCm?: number }>,
+  beLegs: { positionCm: number; positionEndCm: number }[],
+  beamThickCm: number,
+  angleRad: number,
+  legOffsetCm: number,
+) {
+  const ph = beamThickCm / 2
+  const cosA = Math.cos(angleRad)
+  return beDiags.map(d => {
+    if (!beLegs[d.spanIdx] || !beLegs[d.spanIdx + 1]) return null
+    const ov = diagOverrides[d.spanIdx] ?? {}
+    const ps = beLegs[d.spanIdx].positionCm + ph
+    const span = (beLegs[d.spanIdx + 1].positionEndCm - ph) - ps
+    const topSlope = ov.topDistFromLegCm != null ? ps + ov.topDistFromLegCm : ps + d.topPct * span
+    const botSlope = ov.botDistFromLegCm != null ? ps + ov.botDistFromLegCm : ps + d.botPct * span
+    // Mirror server: top = slope coords from beam start, bot = _slope_to_base
+    const topPosCm = topSlope - legOffsetCm
+    const botPosCm = legOffsetCm + ph + (botSlope - legOffsetCm - ph) * cosA
+    return { spanIndex: d.spanIdx, topPosCm, botPosCm }
+  }).filter((x): x is { spanIndex: number; topPosCm: number; botPosCm: number } => x !== null)
 }
 
 /**

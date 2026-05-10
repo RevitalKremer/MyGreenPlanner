@@ -75,7 +75,7 @@ export default function useStep3Settings({
       delete copy.diagOverrides
       return { ...prev, [areaIdx]: copy }
     })
-  }, [])
+  }, [PARAM_SCHEMA])
 
   const resetLineRails = useCallback(async () => {
     const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')

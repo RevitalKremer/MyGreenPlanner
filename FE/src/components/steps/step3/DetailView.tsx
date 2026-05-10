@@ -4,7 +4,7 @@ import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUB
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { buildRailItems, buildDetailDiagonals, buildPunchPoints, computeActiveDepths, buildLegData } from '../../../utils/trapezoidGeometry'
+import { buildRailItems, buildDetailDiagonals, buildPunchPoints, computeActiveDepths, buildLegData, computeLiveDiagPunchPositions } from '../../../utils/trapezoidGeometry'
 import LayersPanel from './LayersPanel'
 import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
@@ -129,10 +129,10 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     return allLegTopYs[0] + (x - legX0) / legBW * ((allLegTopYs[allLegTopYs.length - 1] ?? allLegTopYs[0]) - allLegTopYs[0])
   }
   const legHeightAtX = (x) => (baseY - beamYFromLegs(x)) / SC
-  // Build diagonal data: use BE decisions (topPct, botPct, isDouble, disabled) when available,
-  // but always compute pixel positions (topX, botX, topY, botY) from leg positions.
+  // Build diagonal data: use BE decisions (topPct, botPct from server) combined with user overrides
+  // (topDistFromLegCm/botDistFromLegCm). Always compute pixel positions from current leg geometry.
 
-  const diagonals = buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allLegEndXs, allLegHeights, baseY, BEAM_THICK_PX)
+  const diagonals = buildDetailDiagonals(beDetailData, diagOverrides, allLegXs, allLegEndXs, allLegHeights, baseY, BEAM_THICK_PX, beLegs, SC)
 
   // All legs are active (ghost handled by overlay)
   const firstActiveLegIdx = 0
@@ -161,6 +161,14 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const activeSlopeBeamLenCm = topBeamLength
   const activeBaseBeamLenCm  = geom.baseBeamLength ?? (legBW / SC)
 
+  // Live diagonal punch positions: recomputed from current pct values (including overrides)
+  // so punch circles and labels update immediately when the user drags a handle.
+  const beDiags = beDetailData?.diagonals ?? []
+  const legOffsetCm = geom.rearExtensionCm ?? 0
+  const liveDiagPunches = computeLiveDiagPunchPositions(
+    beDiags, diagOverrides, beLegs, beamThickCm, angleRad, legOffsetCm
+  ).filter(d => activeDiags.some(a => a.spanIndex === d.spanIndex))
+
   // Spans with no diagonal (skipped by rules or user-deleted) — used for "add" affordance
   const activeSpanSet    = new Set(diagonals.map(d => d.spanIndex))
   const naturallySkipped = new Set(
@@ -186,28 +194,36 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   }
 
   const deleteDiagonal = (spanIndex) => {
-    const { topPct, botPct, ...rest } = diagOverrides[spanIndex] ?? {}  // eslint-disable-line no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { topDistFromLegCm: _td, botDistFromLegCm: _bd, ...rest } = diagOverrides[spanIndex] ?? {}
     onUpdateSetting?.('diagOverrides', { ...diagOverrides, [spanIndex]: { ...rest, disabled: true } })
+  }
+
+  const _spanCmForIdx = (spanIndex: number) => {
+    const ph = BEAM_THICK_PX / (2 * SC)
+    const leg = beLegs[spanIndex], nextLeg = beLegs[spanIndex + 1]
+    return leg && nextLeg ? (nextLeg.positionEndCm - ph) - (leg.positionCm + ph) : null
   }
 
   // ── Handle drag (window-listener based, click-vs-drag) ────────────────────
   const startHandleDrag = (e, which, d) => {
     e.stopPropagation()
     const startClientX = e.clientX
-    const initialPct   = which === 'top'
-      ? (diagOverrides[d.spanIndex]?.topPct ?? (d.spanW > 0 ? (d.topX - d.xA) / d.spanW : 0.25))
-      : (diagOverrides[d.spanIndex]?.botPct ?? (d.spanW > 0 ? (d.botX - d.xA) / d.spanW : 0.90))
+    const span_cm      = _spanCmForIdx(d.spanIndex) ?? d.spanW / SC
+    const initialDist  = which === 'top'
+      ? (diagOverrides[d.spanIndex]?.topDistFromLegCm ?? (d.spanW > 0 ? (d.topX - d.xA) / SC : 0.25 * span_cm))
+      : (diagOverrides[d.spanIndex]?.botDistFromLegCm ?? (d.spanW > 0 ? (d.botX - d.xA) / SC : 0.90 * span_cm))
     const capturedOv   = { ...diagOverrides }
     let didDrag        = false
 
     const onMove = (me) => {
       if (Math.abs(me.clientX - startClientX) > 3) didDrag = true
       if (!didDrag) return
-      const deltaSvgX = (me.clientX - startClientX) / zoom
-      const pct = Math.max(0.05, Math.min(0.95, initialPct + deltaSvgX / d.spanW))
-      const key = which === 'top' ? 'topPct' : 'botPct'
+      const deltaCm = (me.clientX - startClientX) / zoom / SC
+      const distCm  = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, initialDist + deltaCm))
+      const key     = which === 'top' ? 'topDistFromLegCm' : 'botDistFromLegCm'
       const existing = capturedOv[d.spanIndex] ?? {}
-      onUpdateSetting?.('diagOverrides', { ...capturedOv, [d.spanIndex]: { ...existing, [key]: pct } })
+      onUpdateSetting?.('diagOverrides', { ...capturedOv, [d.spanIndex]: { ...existing, [key]: distCm } })
     }
     const onUp = () => {
       if (!didDrag) deleteDiagonal(d.spanIndex)
@@ -227,12 +243,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     const svgX = toSvgX(e.clientX)
     const span = findSpan(svgX)
     if (!span || activeSpanSet.has(span.spanIndex)) return
-    const clickedPct = Math.max(0.05, Math.min(0.95, (svgX - span.xA) / span.spanW))
-    const topPct = which === 'top' ? clickedPct : 0.5
-    const botPct = which === 'bot' ? clickedPct : 0.5
+    const span_cm    = _spanCmForIdx(span.spanIndex) ?? span.spanW / SC
+    const clickedDist = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, (svgX - span.xA) / SC))
+    const topDist = which === 'top' ? clickedDist : 0.5 * span_cm
+    const botDist = which === 'bot' ? clickedDist : 0.5 * span_cm
     const entry  = naturallySkipped.has(span.spanIndex)
-      ? { disabled: false, topPct, botPct }
-      : { topPct, botPct }
+      ? { disabled: false, topDistFromLegCm: topDist, botDistFromLegCm: botDist }
+      : { topDistFromLegCm: topDist, botDistFromLegCm: botDist }
     onUpdateSetting?.('diagOverrides', { ...diagOverrides, [span.spanIndex]: entry })
   }
 
@@ -266,8 +283,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 
   const punches = beDetailData?.punches ?? []
-  const makePunchPoints = (beamType, excludeOrigin, atFn, labelFor) =>
-    buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor)
+  const makePunchPoints = (beamType, excludeOrigin, atFn, labelFor, liveDiagPoints?) =>
+    buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor, liveDiagPoints)
 
   const beamAngleDeg = legBW > 0
     ? Math.atan2(allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0], legX1 - legX0) * 180 / Math.PI
@@ -642,7 +659,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const bbX0 = legX0 - flp * SC
                 const bbW = baseBeamLen * SC
                 const atBase = (posCm) => bbX0 + (posCm / baseBeamLen) * bbW
-                const points = makePunchPoints('base', 'block', atBase, p => fmt(p.positionCm))
+                const baseLiveDiag = liveDiagPunches.map(d => ({ x: atBase(d.botPosCm), label: fmt(d.botPosCm), origin: 'diagonal' }))
+                const points = makePunchPoints('base', 'block', atBase, p => fmt(p.positionCm), baseLiveDiag)
                 return <DetailPunchSketch which="bot" ry={blockBotY + 150}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={points} activeDiags={activeDiags}
@@ -659,7 +677,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const slopeLen = topBeamLength
                 const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
                 const slopeLabel = (p) => fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm)
-                const points = makePunchPoints('slope', 'rail', atSlope2, slopeLabel)
+                const slopeLiveDiag = liveDiagPunches.map(d => ({ x: atSlope2(d.topPosCm), label: fmt(d.topPosCm), origin: 'diagonal' }))
+                const points = makePunchPoints('slope', 'rail', atSlope2, slopeLabel, slopeLiveDiag)
                 return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={points} activeDiags={activeDiags}

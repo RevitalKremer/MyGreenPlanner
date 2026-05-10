@@ -172,30 +172,51 @@ def _compute_leg_positions(
     return legs, inner_legs
 
 
+_DIAG_MIN_DIST_CM  = 5.0   # DB minimum for diagDistFromLegCm
+_DIAG_MAX_ANGLE_DEG = 85.0  # hard ceiling for diagPreferredAngleDeg
+
+
 def _compute_diagonal_bracing(
     legs: list[dict],
     custom_diagonals: dict | None,
-    diag_top_pct: float,
-    diag_base_pct: float,
+    diag_dist_from_leg_cm: float,
+    diag_preferred_angle_deg: float,
     skip_below_cm: float,
     double_above_cm: float,
     angle_rad: float,
     beam_thick_cm: float,
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """
     Compute diagonal bracing between legs.
 
-    Percentages (topPct/botPct) are applied to the punch-to-punch span
-    (leg centers), not the full leg-to-leg span. This mirrors the base beam
-    calculation where trig is applied between punch points.
+    The bottom attachment (lower point) is placed diag_dist_from_leg_cm from the
+    near leg along the base beam — the same tilt-direction logic as before
+    (reversed for the first span in a multi-span trap, forward for all others).
+    The top attachment is then derived by projecting upward at diag_preferred_angle_deg
+    from horizontal. If the top lands within the effective dist of the far leg
+    on the slope beam, it is clamped outward (angle steepens).
 
-    Returns list of active (non-disabled) diagonals.
+    Server-side constraints enforced per span:
+      - effective_dist = min(dist, punch_span - 2 * _DIAG_MIN_DIST_CM)
+      - effective_angle = min(angle, _DIAG_MAX_ANGLE_DEG)
+
+    User overrides (topDistFromLegCm/botDistFromLegCm in custom_diagonals) bypass this logic entirely.
+    Returns (active_diagonals, effective_settings) where effective_settings reports
+    the tightest constraints applied — used by the FE to update the sidebar.
     """
     custom = custom_diagonals or {}
     num_spans = len(legs) - 1
-    diag_top_frac = diag_top_pct / 100
-    diag_base_frac = diag_base_pct / 100
     profile_half = beam_thick_cm / 2
+    sin_a = math.sin(angle_rad)
+    cos_a = math.cos(angle_rad)
+    # Enforce angle ceiling
+    effective_angle = min(diag_preferred_angle_deg, _DIAG_MAX_ANGLE_DEG)
+    tan_pref = math.tan(math.radians(effective_angle))
+    dist = diag_dist_from_leg_cm
+    bolt_inset = 2.75
+
+    min_max_dist = None   # tightest per-span max across all spans
+    min_eff_dist = dist   # most restrictive effective dist applied
 
     raw_diagonals = []
     for i in range(num_spans):
@@ -209,38 +230,50 @@ def _compute_diagonal_bracing(
         elif ov_d.get('disabled') is False:
             skip = False
 
-        # Pre-compute isDouble from leg heights for default attachment points.
-        # Final isDouble is re-evaluated after length is known (see below).
-        legs_double = h_a >= double_above_cm or h_b >= double_above_cm
-
-        reversed_span = num_spans > 1 and i == 0
-        def_top = (0.90 if legs_double else 1 - diag_top_frac) if reversed_span else (0.10 if legs_double else diag_top_frac)
-        def_bot = (1 - diag_base_frac) if reversed_span else diag_base_frac
-
-        top_pct = ov_d.get('topPct', def_top)
-        bot_pct = ov_d.get('botPct', def_bot)
-
         # Punch-to-punch span: from center of left leg to center of right leg
         punch_start = legs[i]['positionCm'] + profile_half
         punch_end = legs[i + 1]['positionEndCm'] - profile_half
         punch_span = punch_end - punch_start
+        base_span = punch_span * cos_a  # horizontal punch-to-punch distance
 
-        sin_a = math.sin(angle_rad)
-        cos_a = math.cos(angle_rad)
+        # Per-span distance constraint: both ends must have at least _DIAG_MIN_DIST_CM
+        span_max_dist = max(_DIAG_MIN_DIST_CM, punch_span - 2 * _DIAG_MIN_DIST_CM)
+        effective_dist = min(dist, span_max_dist)
+        if min_max_dist is None or span_max_dist < min_max_dist:
+            min_max_dist = span_max_dist
+        if effective_dist < min_eff_dist:
+            min_eff_dist = effective_dist
 
-        # Diagonal length from clean geometry (no intermediate rounding):
-        # - vert: leg height minus 2×bolt_inset (bolt offsets) plus slope rise
-        # - horiz: span × (botPct − topPct) × cos (direct, no projection)
-        # - cut length: PP + extension at each end (angle-dependent)
-        bolt_inset = 2.75  # distance from leg end to bolt hole center
+        if ov_d.get('topDistFromLegCm') is not None and ov_d.get('botDistFromLegCm') is not None:
+            top_pct = ov_d['topDistFromLegCm'] / punch_span if punch_span > 0 else 0.25
+            bot_pct = ov_d['botDistFromLegCm'] / punch_span if punch_span > 0 else 0.90
+        else:
+            # Tilt direction: first span in multi-span is reversed (bottom near
+            # left leg); all other spans are forward (bottom near right leg).
+            reversed_span = num_spans > 1 and i == 0
+
+            if not reversed_span:
+                # Forward: bottom near RIGHT leg, top to the left on slope beam.
+                bot_base_pos = base_span - effective_dist
+                denom = sin_a + tan_pref * cos_a  # always positive
+                s_top = (tan_pref * bot_base_pos - h_a) / denom
+            else:
+                # Reversed: bottom near LEFT leg, top to the right on slope beam.
+                bot_base_pos = effective_dist
+                denom = tan_pref * cos_a - sin_a
+                s_top = (h_a + tan_pref * bot_base_pos) / denom if denom > 1e-9 else punch_span
+
+            # Clamp: top must be at least effective_dist from each leg on slope beam
+            s_top = max(effective_dist, min(s_top, punch_span - effective_dist))
+
+            top_pct = s_top / punch_span if punch_span > 0 else 0.5
+            bot_pct = bot_base_pos / base_span if base_span > 0 else 0.5
+
+        # Diagonal geometry (unchanged from original formulation)
         vert = (h_a - 2 * bolt_inset) + top_pct * punch_span * sin_a
         horiz = (bot_pct - top_pct) * punch_span * cos_a
-        # Length is symmetric on horiz sign — backward-tilted diagonals (bot_pct
-        # < top_pct, higher end on the right) have the same physical length.
         pp_length = math.sqrt(vert ** 2 + horiz ** 2)
         length_cm = _diagonal_cut_length(pp_length, vert, horiz, beam_thick_cm)
-
-        # isDouble: true when the diagonal LENGTH exceeds the threshold
         is_double = length_cm >= double_above_cm
 
         raw_diagonals.append({
@@ -259,7 +292,13 @@ def _compute_diagonal_bracing(
                 d['disabled'] = False
                 break
 
-    return [d for d in raw_diagonals if not d['disabled']]
+    effective_settings = {
+        'maxDistFromLegCm': _r(min_max_dist if min_max_dist is not None else dist),
+        'distFromLegCm':    _r(min_eff_dist),
+        'preferredAngleDeg': effective_angle,
+        'distClamped':      min_eff_dist < dist,
+    }
+    return [d for d in raw_diagonals if not d['disabled']], effective_settings
 
 
 def _compute_block_positions(
@@ -450,8 +489,8 @@ def compute_trapezoid_details(
     block_height_cm      = _s(settings, ov, 'blockHeightCm')
     block_length_cm      = _s(settings, ov, 'blockLengthCm')
     block_punch_cm       = _s(settings, ov, 'blockPunchCm')
-    diag_top_pct         = _s(settings, ov, 'diagTopPct')
-    diag_base_pct        = _s(settings, ov, 'diagBasePct')
+    diag_dist_from_leg_cm    = _s(settings, ov, 'diagDistFromLegCm')
+    diag_preferred_angle_deg = _s(settings, ov, 'diagPreferredAngleDeg')
     base_overhang_cm     = _s(settings, ov, 'baseOverhangCm')
     cross_rail_edge_dist_mm = gs.get('crossRailEdgeDistMm', settings['crossRailEdgeDistMm'])
     beam_thick_cm        = settings['angleProfileSizeMm'] / 10
@@ -499,8 +538,18 @@ def compute_trapezoid_details(
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
     slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
-    # For purlin types: no blocks, base beam sits on roof surface
-    effective_block_height = 0 if roof_type in ('iskurit', 'insulated_panel') else block_height_cm
+
+    # Block height constraint: blocks can't be taller than the rear leg height at zero blocks.
+    # max = front_height_cm + slope_offset*sin_a - cross_rail_cm/cos_a (= height_rear when block=0)
+    if roof_type in ('iskurit', 'insulated_panel'):
+        effective_block_height = 0.0
+        max_block_height_cm = 0.0
+        block_height_clamped = False
+    else:
+        max_block_height_cm = max(0.0, front_height_cm + slope_offset * sin_a - cross_rail_cm / cos_a)
+        effective_block_height = min(block_height_cm, max_block_height_cm)
+        block_height_clamped = effective_block_height < block_height_cm
+
     height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
     base_length_horiz = base_beam_core  # original (without extension) for leg placement
@@ -550,8 +599,8 @@ def compute_trapezoid_details(
     )
 
     # ── Diagonals ──────────────────────────────────────────────────────────
-    diagonals = _compute_diagonal_bracing(
-        legs, custom_diagonals, diag_top_pct, diag_base_pct,
+    diagonals, effective_diag_settings = _compute_diagonal_bracing(
+        legs, custom_diagonals, diag_dist_from_leg_cm, diag_preferred_angle_deg,
         skip_below_cm, double_above_cm, angle_rad, beam_thick_cm,
     )
 
@@ -585,15 +634,23 @@ def compute_trapezoid_details(
         elif p['beamType'] == 'slope' and p['origin'] != 'rail':
             p['reversedPositionCm'] = _r(top_beam_length - p['positionCm'])
 
+    bases_effective = (bases_data or {}).get('effectiveBasesSettings')
+
     return {
         'geometry': geometry,
         'legs': legs,
         'blocks': blocks,
         'punches': punches,
         'diagonals': diagonals,
+        'effectiveDiagSettings': effective_diag_settings,
+        'effectiveDetailSettings': {
+            'maxBlockHeightCm': _r(max_block_height_cm),
+            'blockHeightClamped': block_height_clamped,
+        },
+        'effectiveBasesSettings': bases_effective,
         'diagSettings': {
-            'topPct': diag_top_pct,
-            'basePct': diag_base_pct,
+            'distFromLegCm': diag_dist_from_leg_cm,
+            'preferredAngleDeg': diag_preferred_angle_deg,
             'skipBelowCm': skip_below_cm,
             'doubleAboveCm': double_above_cm,
         },
@@ -1021,12 +1078,12 @@ def trim_trapezoid(
     # computation using only this trim trap's legs so at least one diagonal appears.
     if not new_diags and len(filtered_legs) >= 2:
         ds = full_trap_detail.get('diagSettings', {})
-        new_diags = _compute_diagonal_bracing(
+        new_diags, _ = _compute_diagonal_bracing(
             detail['legs'],
             None,
-            ds.get('topPct', 25),
-            ds.get('basePct', 75),
-            ds.get('skipBelowCm', 60),
+            ds.get('distFromLegCm', 10),
+            ds.get('preferredAngleDeg', 45),
+            ds.get('skipBelowCm', 8),
             ds.get('doubleAboveCm', 200),
             angle * math.pi / 180,
             beam_thick,
