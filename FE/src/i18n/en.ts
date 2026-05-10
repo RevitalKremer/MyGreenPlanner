@@ -403,6 +403,7 @@ const en = {
 
   // ── Step 3 – Layers panel ─────────────────────────────────────────────────
   'step3.layers.title':          'Layers',
+  'step3.layers.all':            'All',
   'step3.layer.roofImage':       'Roof Image',
   'step3.layer.rails':           'Rails',
   'step3.layer.dimensions':      'Dimensions',
