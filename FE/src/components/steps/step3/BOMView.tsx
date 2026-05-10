@@ -285,7 +285,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   // Header: aluminium profile weight only (angle + rail length-bearing rows).
   const totalAlumWeightKg = useMemo(() =>
     displayRows
-      .filter(r => !r.removed && r.pieceLengthM != null && r.weightKgPerUnit != null)
+      .filter(r => !r.removed && r.pieceLengthM != null && r.weightKgPerUnit != null && r.element !== 'depreciation_waste')
       .reduce((s, r) => s + (r.totalLengthM ?? 0) * r.weightKgPerUnit, 0)
   , [displayRows])
 
