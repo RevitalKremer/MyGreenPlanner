@@ -131,6 +131,7 @@ export interface Leg {
   heightCm: number
   isDouble: boolean
   railPositionCm?: number
+  virtual?: boolean
 }
 
 export interface Block {

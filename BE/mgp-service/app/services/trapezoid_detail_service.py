@@ -167,6 +167,8 @@ def _compute_leg_positions(
         {'positionCm': _r(front_outer_pos), 'positionEndCm': _r(front_outer_pos + beam_thick_cm), 'heightCm': _r(height_front)},
     ], key=lambda l: l['positionCm'])
     for leg in legs:
+        if leg['heightCm'] == beam_thick_cm:
+            leg['virtual'] = True
         leg['isDouble'] = leg['heightCm'] >= double_above_cm
 
     return legs, inner_legs
@@ -537,22 +539,24 @@ def compute_trapezoid_details(
     tan_a = math.tan(angle_rad)
     slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
 
-    # Block height constraint: blocks can't be taller than the rear leg height at zero blocks.
-    # max = front_height_cm + slope_offset*sin_a - cross_rail_cm/cos_a (= height_rear when block=0)
-    if roof_type in ('iskurit', 'insulated_panel'):
-        effective_block_height = 0.0
-        max_block_height_cm = 0.0
-        block_height_clamped = False
-    else:
-        max_block_height_cm = max(0.0, front_height_cm + slope_offset * sin_a - cross_rail_cm / cos_a)
-        effective_block_height = min(block_height_cm, max_block_height_cm)
-        block_height_clamped = effective_block_height < block_height_cm
+    # Only concrete uses blocks; all other roof types treat block height as zero.
+    effective_block_height = block_height_cm if roof_type == 'concrete' else 0.0
 
     height_rear = front_height_cm - effective_block_height + slope_offset * sin_a - cross_rail_cm / cos_a
 
     base_length_horiz = base_beam_core  # original (without extension) for leg placement
     # Height rise only across punch-to-punch horizontal distance (beam ends are straight)
     height_front = height_rear + (base_length_horiz - beam_thick_cm) * math.tan(angle_rad)
+
+    # Short front leg: rear (first, index-0) leg below machine minimum → clamp to beam profile height.
+    # Shift panel down so height_rear == beam_thick_cm, keeping angle unchanged.
+    short_front_leg = False
+    if height_rear < skip_below_cm:
+        short_front_leg = True
+        shift = height_rear - beam_thick_cm
+        front_height_cm = front_height_cm - shift
+        height_front = height_front - shift
+        height_rear = beam_thick_cm
 
     geometry = {
         'heightRear': _r(height_rear),
@@ -642,8 +646,7 @@ def compute_trapezoid_details(
         'diagonals': diagonals,
         'effectiveDiagSettings': effective_diag_settings,
         'effectiveDetailSettings': {
-            'maxBlockHeightCm': _r(max_block_height_cm),
-            'blockHeightClamped': block_height_clamped,
+            'shortFrontLeg': short_front_leg,
         },
         'effectiveBasesSettings': bases_effective,
         'diagSettings': {

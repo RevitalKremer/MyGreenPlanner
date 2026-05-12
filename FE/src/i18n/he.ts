@@ -432,6 +432,8 @@ const he = {
   'step3.detail.topBeam':        'קורת עליון',
   'step3.detail.rearLeg':        'רגל אחורית',
   'step3.detail.frontLeg':       'רגל קדמית',
+  'step3.detail.adjusted':            'מותאם',
+  'step3.detail.shortFrontLegTooltip': 'רגל קצרה מדי — גובה הפנל הותאם כך שהרגל יושבת ברמת הקרקע',
   'step3.detail.diagonal':       'דיאגונל',
   'step3.detail.baseBeamPunches': 'קורת בסיס — מיקומי ניקובים',
   'step3.detail.slopeBeamPunches': 'קורת יתר — מיקומי ניקובים',

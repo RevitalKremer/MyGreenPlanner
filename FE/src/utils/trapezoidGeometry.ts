@@ -206,7 +206,8 @@ export const calculateDiagonalPosition = ({
   const botX = punchA + botPct * spanW
   const hA = legHeights[spanIdx] ?? 0
   const hB = legHeights[spanIdx + 1] ?? 0
-  const topY = baseY - (hA + topPct * (hB - hA))
+  // BE height = slope TOP to base BOTTOM; slope CENTER = baseY + 3*halfThick - h
+  const topY = baseY + halfThick + beamThickPx - (hA + topPct * (hB - hA))
   const botY = baseY + halfThick
   return { xA, xB, spanW, topX, botX, topY, botY }
 }

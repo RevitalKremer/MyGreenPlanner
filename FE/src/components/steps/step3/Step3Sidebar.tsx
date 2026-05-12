@@ -142,7 +142,6 @@ export default function Step3Sidebar({
   paramGroup: PARAM_GROUP = {},
   onApplyChanges,
   effectiveDiagSettings = null,
-  effectiveDetailSettings = null,
   effectiveBasesSettings = null,
 }) {
   const { t } = useLang()
@@ -327,11 +326,9 @@ export default function Step3Sidebar({
 
     const effectiveMax = (() => {
       if (key === 'diagDistFromLegCm' && effectiveDiagSettings?.maxDistFromLegCm != null) return effectiveDiagSettings.maxDistFromLegCm
-      if (key === 'blockHeightCm' && effectiveDetailSettings?.maxBlockHeightCm != null) return effectiveDetailSettings.maxBlockHeightCm
       return max
     })()
     const isClamped = (key === 'diagDistFromLegCm' && !!effectiveDiagSettings?.distClamped)
-      || (key === 'blockHeightCm' && !!effectiveDetailSettings?.blockHeightClamped)
 
     return (
       <div key={key} style={{ marginBottom: '0.45rem' }}>
@@ -347,8 +344,7 @@ export default function Step3Sidebar({
             fontWeight: overridden ? '700' : '400',
           }} />
         {isClamped && (() => {
-          const clampedVal = key === 'diagDistFromLegCm' ? effectiveDiagSettings?.distFromLegCm
-            : key === 'blockHeightCm' ? effectiveDetailSettings?.maxBlockHeightCm : null
+          const clampedVal = key === 'diagDistFromLegCm' ? effectiveDiagSettings?.distFromLegCm : null
           return clampedVal != null ? (
             <div style={{ fontSize: '0.6rem', color: WARNING, marginTop: '2px' }}>
               {t('step3.sidebar.clampedTo')} {fmt(clampedVal)}

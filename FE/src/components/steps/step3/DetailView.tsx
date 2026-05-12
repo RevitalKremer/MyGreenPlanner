@@ -12,7 +12,7 @@ import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function DetailView({ rc, trapId = null, panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showDimensions,  setShowDimensions]  = useState(true)
   const [showPunches,     setShowPunches]      = useState(true)
@@ -118,17 +118,25 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   // ── Leg positions and heights — always from BE data ─────────────────────
   const beLegs = beDetailData?.legs ?? []
   const legData = buildLegData(beLegs, atTrap, beamThickCm, SC, baseY)
-  const { allLegXs, allLegEndXs, allLegHeights, allLegTopYs, firstLegPos } = legData
-  let legX0 = legData.legX0 || (x0 - OHx)
+  const { allLegXs, allLegEndXs, allLegHeights, firstLegPos } = legData
+  // allLegTopYs: slope beam CENTER y at each leg — derived from leg.heightCm directly.
+  // This matches calculateDiagonalPosition (which uses allLegHeights = leg.heightCm * SC) and
+  // ensures the slope punch is exactly BEAM_THICK/2 from the beam edge at every leg.
+  // Using atTrap (heightRear-based) caused a tilt when geom.heightRear ≠ leg.heightCm.
+  // allLegTopYs[li] = slope beam CENTER y at the CENTER of leg li.
+  const allLegTopYs = beLegs.map(leg => baseY + 3 * BEAM_THICK_PX / 2 - leg.heightCm * SC)
+let legX0 = legData.legX0 || (x0 - OHx)
   let legX1 = legData.legX1 || (x1 + OHx)
   let legBW = legX1 - legX0
 
-  // Beam Y interpolation from leg positions (pure rendering logic)
+  const legCenterXs = beLegs.map((_, li) => (allLegXs[li] + allLegEndXs[li]) / 2)
+  const _slopeY0 = allLegTopYs[0] ?? baseY
+  const _slopeYN = allLegTopYs[allLegTopYs.length - 1] ?? _slopeY0
   const beamYFromLegs = (x) => {
-    if (legBW <= 0) return allLegTopYs[0] ?? baseY
-    return allLegTopYs[0] + (x - legX0) / legBW * ((allLegTopYs[allLegTopYs.length - 1] ?? allLegTopYs[0]) - allLegTopYs[0])
+    if (legBW <= 0) return _slopeY0
+    return _slopeY0 + (x - legX0) / legBW * (_slopeYN - _slopeY0)
   }
-  const legHeightAtX = (x) => (baseY - beamYFromLegs(x)) / SC
+  const legHeightAtX = (x) => (baseY + 3 * BEAM_THICK_PX / 2 - beamYFromLegs(x)) / SC
   // Build diagonal data: use BE decisions (topDistFromLegCm, botDistFromLegCm from server) combined with user overrides.
   // Always compute pixel positions from current leg geometry.
 
@@ -287,7 +295,7 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
     buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor, liveDiagPoints)
 
   const beamAngleDeg = legBW > 0
-    ? Math.atan2(allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0], legX1 - legX0) * 180 / Math.PI
+    ? Math.atan2(_slopeYN - _slopeY0, legBW) * 180 / Math.PI
     : 0
 
   // Panel start/end positions — includes perpendicular offset to match rendered panel bar
@@ -338,7 +346,15 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             display: 'inline-block',
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
-              {trapId ?? `${rc.typeLetter}${Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}`} — {angle}° · Panel Front {fmt(geom.panelFrontHeight ?? 0)} cm
+              {trapId ?? `${rc.typeLetter}${Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}`} — {angle}° · Panel Front{' '}
+              <span style={effectiveDetailSettings?.shortFrontLeg ? { color: AMBER_DARK } : undefined}>
+                {fmt(geom.panelFrontHeight ?? 0)} cm
+              </span>
+              {effectiveDetailSettings?.shortFrontLeg && (
+                <span title={t('step3.detail.shortFrontLegTooltip')} style={{ marginLeft: '0.3rem', fontSize: '0.7rem', color: AMBER_DARK, fontWeight: '600' }}>
+                  ↑ {t('step3.detail.adjusted')}
+                </span>
+              )}
               <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
                 · Panel {fmt(panelLengthCm)}×{fmt(settings.panelWidthCm)} cm
               </span>
@@ -397,9 +413,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 const lx = allLegXs[li]
                 const lxEnd = allLegEndXs[li]
                 const lw = lxEnd - lx
-                const slopeTopY = allLegTopYs[li] - Math.cos(angleRad) * BEAM_THICK_PX / 2
-                const legH = baseY + BEAM_THICK_PX - slopeTopY
-                if (legH <= 0) return null
+                // Top of slope beam at this leg's x position — the leg rect must touch the beam.
+                // Using allLegTopYs (beam center) rather than leg.heightCm keeps this consistent
+                // with the slope beam rendering even when geom.heightRear ≠ leg.heightCm.
+                const slopeTopY = beamYFromLegs(legCenterXs[li]) - BEAM_THICK_PX / 2
+                const legH = (baseY + BEAM_THICK_PX) - slopeTopY
+                if (legH <= 0 || leg.virtual) return null
                 return (
                   <g key={`leg-${li}`}>
                     <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
@@ -413,8 +432,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 )
               })}
 
-              {/* ── Slope beam ── */}
-              {lProfileLine({ x1: legX0, y1: allLegTopYs[0], x2: legX1, y2: allLegTopYs[allLegTopYs.length - 1], strokeWidth: BEAM_THICK_PX })}
+              {/* ── Slope beam — endpoints at legX0/legX1 with y from linear-through-leg-centers ── */}
+              {lProfileLine({ x1: legX0, y1: beamYFromLegs(legX0), x2: legX1, y2: beamYFromLegs(legX1), strokeWidth: BEAM_THICK_PX })}
               {diagonals.map((d, di) => {
                 return (
                   <g key={di}>
@@ -519,12 +538,14 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
               })}
 
               {/* ── Inner leg height dimensions ── */}
-              {showDimensions && beLegs.slice(1, -1).map((leg, ci) => {
+              {showDimensions && beLegs.slice(1, -1).map((_leg, ci) => {
+                if (_leg.virtual) return null
                 const lx = allLegXs[ci + 1]
                 const lxEnd = allLegEndXs[ci + 1]
                 const mx = (lx + lxEnd) / 2
-                const slopeTopY = allLegTopYs[ci + 1] - Math.cos(angleRad) * BEAM_THICK_PX / 2
-                return <Dim key={`ilh-${ci}`} ax1={mx} ay1={slopeTopY} ax2={mx} ay2={blockTopY} label={fmt(leg.heightCm)} off={14} />
+                const slopeTopY = beamYFromLegs(legCenterXs[ci + 1]) - BEAM_THICK_PX / 2
+                const legHCm = ((baseY + BEAM_THICK_PX) - slopeTopY) / SC
+                return <Dim key={`ilh-${ci}`} ax1={mx} ay1={slopeTopY} ax2={mx} ay2={blockTopY} label={fmt(legHCm)} off={14} />
               })}
 
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
@@ -539,12 +560,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                       fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                   }
                   const px = legX0 + (p.positionCm / (topBeamLength || 1)) * legBW
-                  const slopeY = allLegTopYs[0] + (px - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
+                  const slopeY = beamYFromLegs(px)
                   return <circle key={`p-${i}`} cx={px} cy={slopeY} r={r}
                     fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                 })}
                 {activeDiags.map((d, di) => {
-                  const slopeY = allLegTopYs[0] + (d.topX - legX0) / (legBW || 1) * (allLegTopYs[allLegTopYs.length - 1] - allLegTopYs[0])
+                  const slopeY = beamYFromLegs(d.topX)
                   return (<g key={`dp-${di}`}>
                     <circle cx={d.topX} cy={slopeY} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
                     <circle cx={d.botX} cy={baseY + BEAM_THICK_PX / 2} r={2} fill="white" stroke={TEXT_SECONDARY} strokeWidth="1" />
@@ -616,12 +637,12 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   </>)
                 })()}
 
-                {/* Left leg height: from BE data, annotation on OUTSIDE (left) */}
-                {(() => {
-                  const legH = beLegs[0]?.heightCm ?? 0
-                  const slopeTopY = allLegTopYs[0] - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                {/* Left leg height: annotation on OUTSIDE (left) */}
+                {!beLegs[0]?.virtual && (() => {
+                  const slopeTopY = beamYFromLegs(legCenterXs[0]) - BEAM_THICK_PX / 2
+                  const legHCm = ((baseY + BEAM_THICK_PX) - slopeTopY) / SC
                   return <Dim ax1={activeBeamL} ay1={slopeTopY} ax2={activeBeamL} ay2={baseY + BEAM_THICK_PX}
-                    label={fmt(legH)} off={-18} />
+                    label={fmt(legHCm)} off={-18} />
                 })()}
 
                 <Dim ax1={activePanelStartBot.x} ay1={blockBotY}
@@ -629,12 +650,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   label={fmt(geom.panelFrontHeight ?? 0)}
                   off={-22} />
 
-                {/* Right leg height: from BE data, annotation on OUTSIDE (right) */}
-                {(() => {
-                  const legH = beLegs[beLegs.length - 1]?.heightCm ?? 0
-                  const slopeTopY = allLegTopYs[allLegTopYs.length - 1] - Math.cos(angleRad) * BEAM_THICK_PX / 2
+                {/* Right leg height: annotation on OUTSIDE (right) */}
+                {!beLegs[beLegs.length - 1]?.virtual && (() => {
+                  const lastIdx = legCenterXs.length - 1
+                  const slopeTopY = beamYFromLegs(legCenterXs[lastIdx]) - BEAM_THICK_PX / 2
+                  const legHCm = ((baseY + BEAM_THICK_PX) - slopeTopY) / SC
                   return <Dim ax1={activeBeamR} ay1={slopeTopY} ax2={activeBeamR} ay2={baseY + BEAM_THICK_PX}
-                    label={fmt(legH)} off={18} />
+                    label={fmt(legHCm)} off={18} />
                 })()}
 
                 <Dim ax1={activePanelEndBot.x} ay1={blockBotY}
@@ -706,8 +728,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   {[
                     [t('step3.detail.baseBeam'),  activeBaseBeamLenCm],
                     [t('step3.detail.topBeam'),   activeSlopeBeamLenCm],
-                    [t('step3.detail.rearLeg'),   beLegs[0]?.heightCm ?? 0],
-                    [t('step3.detail.frontLeg'),  beLegs[beLegs.length - 1]?.heightCm ?? 0],
+                    ...(!beLegs[0]?.virtual ? [[t('step3.detail.rearLeg'), beLegs[0]?.heightCm ?? 0]] : []),
+                    ...(!beLegs[beLegs.length - 1]?.virtual ? [[t('step3.detail.frontLeg'), beLegs[beLegs.length - 1]?.heightCm ?? 0]] : []),
                     ...activeDiags.map((d, i) => [
                       activeDiags.length > 1
                         ? `${t('step3.detail.diagonal')} ${i + 1}${d.isDouble ? ' ×2' : ''}`
