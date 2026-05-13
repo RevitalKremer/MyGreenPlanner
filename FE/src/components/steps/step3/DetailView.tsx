@@ -132,9 +132,14 @@ let legX0 = legData.legX0 || (x0 - OHx)
   const legCenterXs = beLegs.map((_, li) => (allLegXs[li] + allLegEndXs[li]) / 2)
   const _slopeY0 = allLegTopYs[0] ?? baseY
   const _slopeYN = allLegTopYs[allLegTopYs.length - 1] ?? _slopeY0
+  // _slopeY0/_slopeYN are beam center y at leg CENTERS — anchor interpolation at center x's
+  // so the rendered slope matches geom.angle and inner-leg labels match leg.heightCm exactly.
+  const _slopeXC0 = legCenterXs[0] ?? legX0
+  const _slopeXCN = legCenterXs[legCenterXs.length - 1] ?? legX1
+  const _slopeXSpan = _slopeXCN - _slopeXC0
   const beamYFromLegs = (x) => {
-    if (legBW <= 0) return _slopeY0
-    return _slopeY0 + (x - legX0) / legBW * (_slopeYN - _slopeY0)
+    if (_slopeXSpan <= 0) return _slopeY0
+    return _slopeY0 + (x - _slopeXC0) / _slopeXSpan * (_slopeYN - _slopeY0)
   }
   const legHeightAtX = (x) => (baseY + 3 * BEAM_THICK_PX / 2 - beamYFromLegs(x)) / SC
   // Build diagonal data: use BE decisions (topDistFromLegCm, botDistFromLegCm from server) combined with user overrides.
@@ -294,8 +299,8 @@ let legX0 = legData.legX0 || (x0 - OHx)
   const makePunchPoints = (beamType, excludeOrigin, atFn, labelFor, liveDiagPoints?) =>
     buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor, liveDiagPoints)
 
-  const beamAngleDeg = legBW > 0
-    ? Math.atan2(_slopeYN - _slopeY0, legBW) * 180 / Math.PI
+  const beamAngleDeg = _slopeXSpan > 0
+    ? Math.atan2(_slopeYN - _slopeY0, _slopeXSpan) * 180 / Math.PI
     : 0
 
   // Panel start/end positions — includes perpendicular offset to match rendered panel bar

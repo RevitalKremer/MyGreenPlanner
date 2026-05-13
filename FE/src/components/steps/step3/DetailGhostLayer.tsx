@@ -35,13 +35,21 @@ export default function DetailGhostLayer({
   const gActualX1 = gLegEndXPositions[gLegEndXPositions.length - 1] ?? legX1
 
   const gLegCenterXs = gLegs.map((_: unknown, li: number) => (gLegXPositions[li] + gLegEndXPositions[li]) / 2)
-  const gLegBW = gActualX1 - gActualX0
   const _gH0 = gLegHeights[0] ?? 0
   const _gHN = gLegHeights[gLegHeights.length - 1] ?? _gH0
+  // Full base beam (including front/rear extensions) — matches DetailView.tsx base beam math.
+  const gBaseBeamLen = gGeom.baseBeamLength ?? 0
+  const gBaseBeamX0 = gActualX0 - gFirstLegPos * SC
+  const gBaseBeamW = gBaseBeamLen * SC
 
+  // Anchor at leg CENTER x's (heights are leg-center heights) so the rendered slope
+  // matches geom.angle exactly and inner-leg labels match leg.heightCm.
+  const _gXC0 = gLegCenterXs[0] ?? gActualX0
+  const _gXCN = gLegCenterXs[gLegCenterXs.length - 1] ?? gActualX1
+  const _gXSpan = _gXCN - _gXC0
   const gBeamY = (x: number) => {
-    if (gLegBW <= 0) return gBaseY + 3 * BEAM_THICK_PX / 2 - _gH0
-    return gBaseY + 3 * BEAM_THICK_PX / 2 - (_gH0 + (x - gActualX0) / gLegBW * (_gHN - _gH0))
+    if (_gXSpan <= 0) return gBaseY + 3 * BEAM_THICK_PX / 2 - _gH0
+    return gBaseY + 3 * BEAM_THICK_PX / 2 - (_gH0 + (x - _gXC0) / _gXSpan * (_gHN - _gH0))
   }
   const gAtSlope = (dCm) => {
     const x = legX0 + originDelta + (dCm - gOriginCm) * Math.cos(gAngleRad) * SC
@@ -50,12 +58,13 @@ export default function DetailGhostLayer({
 
   return (
     <g pointerEvents="none">
-      {/* Ghost base beam */}
-      {GR({ key: 'g-base', x: gActualX0, y: gBaseY, width: gActualX1 - gActualX0, height: BEAM_THICK_PX })}
+      {/* Ghost base beam — full length including front/rear extensions */}
+      {GR({ key: 'g-base', x: gBaseBeamX0, y: gBaseY, width: gBaseBeamW, height: BEAM_THICK_PX })}
       {/* Ghost slope beam — endpoints evaluated via leg-center interpolation */}
       {GL({ key: 'g-slope', x1: gActualX0, y1: gBeamY(gActualX0), x2: gActualX1, y2: gBeamY(gActualX1), sw: BEAM_THICK_PX })}
-      {/* Ghost legs */}
-      {gLegs.map((_, li) => {
+      {/* Ghost legs — skip virtual legs (matches DetailView) */}
+      {gLegs.map((leg, li) => {
+        if (leg.virtual) return null
         const lx = gLegXPositions[li], lxEnd = gLegEndXPositions[li]
         const lw = lxEnd - lx
         const slopeTopY = gBeamY(gLegCenterXs[li]) - BEAM_THICK_PX / 2
@@ -77,12 +86,10 @@ export default function DetailGhostLayer({
         })
         return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: botY, sw: BEAM_THICK_PX * 0.75 })
       })}
-      {/* Ghost blocks */}
+      {/* Ghost blocks — physical scaling (1 cm = SC px), matches DetailView */}
       {(() => {
-        const gBaseBeamLen = gGeom.baseBeamLength || 1
-        const gBW = gActualX1 - gActualX0
-        const gAtBase = (posCm) => gActualX0 + (posCm / gBaseBeamLen) * gBW
-        const gbw = (blockLengthCm / gBaseBeamLen) * gBW
+        const gAtBase = (posCm: number) => gBaseBeamX0 + posCm * SC
+        const gbw = blockLengthCm * SC
         return (fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) =>
           GR({ key: `gb${bi}`, x: gAtBase(blk.positionCm), y: gBlockTopY, width: gbw, height: blockH })
         )
@@ -90,7 +97,7 @@ export default function DetailGhostLayer({
       {/* Ghost panels */}
       {(() => {
         const gBeamYLocal = gBeamY
-        const gBeamDeg = gLegBW > 0 ? Math.atan2(gBeamY(gActualX1) - gBeamY(gActualX0), gLegBW) * 180 / Math.PI : 0
+        const gBeamDeg = _gXSpan > 0 ? Math.atan2(_gHN - _gH0, _gXSpan) * -180 / Math.PI : 0
         let dCm = 0
         return (fullTrapGhost.panelLines ?? []).map((seg, si) => {
           dCm += (seg.gapBeforeCm ?? 0)
