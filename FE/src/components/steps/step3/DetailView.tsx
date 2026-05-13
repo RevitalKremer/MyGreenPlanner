@@ -4,7 +4,7 @@ import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUB
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
-import { buildRailItems, buildDetailDiagonals, buildPunchPoints, computeActiveDepths, buildLegData, computeLiveDiagPunchPositions } from '../../../utils/trapezoidGeometry'
+import { buildRailItems, buildDetailDiagonals, buildPunchPoints, computeActiveDepths, computeTrapStructureGeometry, computeLiveDiagPunchPositions } from '../../../utils/trapezoidGeometry'
 import LayersPanel from './LayersPanel'
 import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
@@ -115,32 +115,23 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + CROSS_RAIL_GAP_PX + PANEL_THICK_PX / 2
 
 
-  // ── Leg positions and heights — always from BE data ─────────────────────
+  // ── Structural geometry — single source of truth (shared with DetailGhostLayer) ──
   const beLegs = beDetailData?.legs ?? []
-  const legData = buildLegData(beLegs, atTrap, beamThickCm, SC, baseY)
-  const { allLegXs, allLegEndXs, allLegHeights, firstLegPos } = legData
-  // allLegTopYs: slope beam CENTER y at each leg — derived from leg.heightCm directly.
-  // This matches calculateDiagonalPosition (which uses allLegHeights = leg.heightCm * SC) and
-  // ensures the slope punch is exactly BEAM_THICK/2 from the beam edge at every leg.
-  // Using atTrap (heightRear-based) caused a tilt when geom.heightRear ≠ leg.heightCm.
-  // allLegTopYs[li] = slope beam CENTER y at the CENTER of leg li.
-  const allLegTopYs = beLegs.map(leg => baseY + 3 * BEAM_THICK_PX / 2 - leg.heightCm * SC)
-let legX0 = legData.legX0 || (x0 - OHx)
-  let legX1 = legData.legX1 || (x1 + OHx)
+  const structGeo = computeTrapStructureGeometry({
+    beLegs,
+    baseBeamLengthCm: geom.baseBeamLength ?? 0,
+    atTrapX: (posCm) => atTrap(posCm).x,
+    baseY,
+    beamThickPx: BEAM_THICK_PX,
+    SC,
+  })
+  const {
+    legXs: allLegXs, legEndXs: allLegEndXs, legHeights: allLegHeights, legTopYs: allLegTopYs,
+    legCenterXs, beamYAt: beamYFromLegs, beamAngleDeg, firstLegPos,
+  } = structGeo
+  let legX0 = structGeo.legX0 || (x0 - OHx)
+  let legX1 = structGeo.legX1 || (x1 + OHx)
   let legBW = legX1 - legX0
-
-  const legCenterXs = beLegs.map((_, li) => (allLegXs[li] + allLegEndXs[li]) / 2)
-  const _slopeY0 = allLegTopYs[0] ?? baseY
-  const _slopeYN = allLegTopYs[allLegTopYs.length - 1] ?? _slopeY0
-  // _slopeY0/_slopeYN are beam center y at leg CENTERS — anchor interpolation at center x's
-  // so the rendered slope matches geom.angle and inner-leg labels match leg.heightCm exactly.
-  const _slopeXC0 = legCenterXs[0] ?? legX0
-  const _slopeXCN = legCenterXs[legCenterXs.length - 1] ?? legX1
-  const _slopeXSpan = _slopeXCN - _slopeXC0
-  const beamYFromLegs = (x) => {
-    if (_slopeXSpan <= 0) return _slopeY0
-    return _slopeY0 + (x - _slopeXC0) / _slopeXSpan * (_slopeYN - _slopeY0)
-  }
   const legHeightAtX = (x) => (baseY + 3 * BEAM_THICK_PX / 2 - beamYFromLegs(x)) / SC
   // Build diagonal data: use BE decisions (topDistFromLegCm, botDistFromLegCm from server) combined with user overrides.
   // Always compute pixel positions from current leg geometry.
@@ -299,10 +290,6 @@ let legX0 = legData.legX0 || (x0 - OHx)
   const makePunchPoints = (beamType, excludeOrigin, atFn, labelFor, liveDiagPoints?) =>
     buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor, liveDiagPoints)
 
-  const beamAngleDeg = _slopeXSpan > 0
-    ? Math.atan2(_slopeYN - _slopeY0, _slopeXSpan) * 180 / Math.PI
-    : 0
-
   // Panel start/end positions — includes perpendicular offset to match rendered panel bar
   const panelBottomPos = (dCm) => {
     const sx = atSlope(dCm).x
@@ -372,7 +359,7 @@ let legX0 = legData.legX0 || (x0 - OHx)
               {showGhost && fullTrapGhost?.beDetailData?.geometry && (
                 <DetailGhostLayer
                   fullTrapGhost={fullTrapGhost} originCm={originCm}
-                  legX0={legX0} legX1={legX1} baseY={baseY} beamThickCm={beamThickCm}
+                  legX0={legX0} baseY={baseY}
                   BEAM_THICK_PX={BEAM_THICK_PX} PANEL_OFFSET_PX={PANEL_OFFSET_PX} PANEL_THICK_PX={PANEL_THICK_PX}
                   SC={SC} blockLengthCm={blockLengthCm} blockH={blockH}
                 />

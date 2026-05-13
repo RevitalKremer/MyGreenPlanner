@@ -157,24 +157,79 @@ export function computeActiveDepths(segments: PanelLineSegment[]) {
 }
 
 /**
- * Derive all leg pixel data from BE legs.
+ * Pure geometry for the side-view "structure" of a trapezoid (base beam, slope
+ * beam, legs, blocks, panels). Used by DetailView (main render) and
+ * DetailGhostLayer (ghost overlay) so both share one source of truth.
+ *
+ * - `atTrapX(posCm)` maps a BE slope position (rebased so first leg = 0) to SVG x.
+ *   DetailView passes its own atTrap; the ghost passes an anchored variant.
+ * - All y-side values are derived from `leg.heightCm * SC` (the slope beam
+ *   CENTER y at the leg CENTER): `legTopYs[i] = baseY + 3*beamThickPx/2 - h*SC`.
+ * - `beamYAt(x)` linearly interpolates between leg-CENTER anchors so the rendered
+ *   slope matches `geom.angle` exactly (anchoring at outer edges would flatten it).
  */
-export function buildLegData(
-  beLegs: Leg[],
-  atTrap: (posCm: number) => { x: number; y: number },
-  beamThickCm: number,
-  SC: number,
-  baseY: number,
-) {
+export interface TrapStructureGeometry {
+  legXs: number[]
+  legEndXs: number[]
+  legCenterXs: number[]
+  legHeights: number[]
+  legTopYs: number[]
+  slopeY0: number
+  slopeYN: number
+  slopeXC0: number
+  slopeXCN: number
+  slopeXSpan: number
+  beamYAt: (x: number) => number
+  beamAngleDeg: number
+  legX0: number
+  legX1: number
+  legBW: number
+  firstLegPos: number   // cm
+  baseBeamX0: number    // px — start of base beam (incl. front extension)
+  baseBeamW: number     // px — full base beam width (incl. extensions)
+}
+
+export function computeTrapStructureGeometry({
+  beLegs, baseBeamLengthCm, atTrapX, baseY, beamThickPx, SC,
+}: {
+  beLegs: Leg[]
+  baseBeamLengthCm: number
+  atTrapX: (posCm: number) => number
+  baseY: number
+  beamThickPx: number
+  SC: number
+}): TrapStructureGeometry {
   const firstLegPos = beLegs[0]?.positionCm ?? 0
-  const allLegXs = beLegs.map(leg => atTrap(leg.positionCm - firstLegPos).x)
-  const allLegEndXs = beLegs.map(leg => atTrap((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos).x)
-  const allLegHeights = beLegs.map(leg => leg.heightCm * SC)
-  const allLegTopYs = allLegHeights.map(h => baseY - h)
-  const legX0 = allLegXs[0] ?? 0
-  const legX1 = allLegEndXs[allLegEndXs.length - 1] ?? 0
+  const beamThickCm = beamThickPx / SC
+  const legXs = beLegs.map(leg => atTrapX(leg.positionCm - firstLegPos))
+  const legEndXs = beLegs.map(leg => atTrapX((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos))
+  const legCenterXs = beLegs.map((_, li) => (legXs[li] + legEndXs[li]) / 2)
+  const legHeights = beLegs.map(leg => leg.heightCm * SC)
+  const legTopYs = beLegs.map(leg => baseY + 3 * beamThickPx / 2 - leg.heightCm * SC)
+  const slopeY0 = legTopYs[0] ?? baseY
+  const slopeYN = legTopYs[legTopYs.length - 1] ?? slopeY0
+  const slopeXC0 = legCenterXs[0] ?? legXs[0] ?? 0
+  const slopeXCN = legCenterXs[legCenterXs.length - 1] ?? legEndXs[legEndXs.length - 1] ?? 0
+  const slopeXSpan = slopeXCN - slopeXC0
+  const beamYAt = (x: number) => slopeXSpan > 0
+    ? slopeY0 + (x - slopeXC0) / slopeXSpan * (slopeYN - slopeY0)
+    : slopeY0
+  const beamAngleDeg = slopeXSpan > 0
+    ? Math.atan2(slopeYN - slopeY0, slopeXSpan) * 180 / Math.PI
+    : 0
+  const legX0 = legXs[0] ?? 0
+  const legX1 = legEndXs[legEndXs.length - 1] ?? 0
   const legBW = legX1 - legX0
-  return { allLegXs, allLegEndXs, allLegHeights, allLegTopYs, legX0, legX1, legBW, firstLegPos }
+  const baseBeamX0 = legX0 - firstLegPos * SC
+  // Fall back to leg-to-leg span when baseBeamLengthCm is missing (matches DetailView's prior behavior).
+  const baseBeamW = baseBeamLengthCm > 0 ? baseBeamLengthCm * SC : legBW
+  return {
+    legXs, legEndXs, legCenterXs, legHeights, legTopYs,
+    slopeY0, slopeYN, slopeXC0, slopeXCN, slopeXSpan,
+    beamYAt, beamAngleDeg,
+    legX0, legX1, legBW, firstLegPos,
+    baseBeamX0, baseBeamW,
+  }
 }
 
 // ─── Diagonal rendering helpers ───────────────────────────────────────────────
