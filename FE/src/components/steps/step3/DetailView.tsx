@@ -13,7 +13,7 @@ import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
-export default function DetailView({ rc, trapId = null, panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function DetailView({ rc, trapId = null, twinIds = [] as string[], panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
   const { t } = useLang()
   const [showDimensions,  setShowDimensions]  = useState(true)
   const [showPunches,     setShowPunches]      = useState(true)
@@ -213,9 +213,19 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
       if (!didDrag) return
       const deltaCm = (me.clientX - startClientX) / zoom / SC
       const distCm  = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, initialDist + deltaCm))
-      const key     = which === 'top' ? 'topDistFromLegCm' : 'botDistFromLegCm'
       const existing = capturedOv[d.spanIndex] ?? {}
-      onUpdateSetting?.('diagOverrides', { ...capturedOv, [d.spanIndex]: { ...existing, [key]: distCm } })
+      // Persist BOTH endpoints. The BE override path requires top + bot
+      // together; a single-key override is dropped by the saveTab payload
+      // builder and the diagonal stays at its default position.
+      const dragKey  = which === 'top' ? 'topDistFromLegCm' : 'botDistFromLegCm'
+      const otherKey = which === 'top' ? 'botDistFromLegCm' : 'topDistFromLegCm'
+      const otherCurrent = existing[otherKey] ?? (which === 'top'
+        ? (d.spanW > 0 ? (d.botX - d.xA) / SC : 0.90 * span_cm)
+        : (d.spanW > 0 ? (d.topX - d.xA) / SC : 0.25 * span_cm))
+      onUpdateSetting?.('diagOverrides', {
+        ...capturedOv,
+        [d.spanIndex]: { ...existing, [dragKey]: distCm, [otherKey]: otherCurrent },
+      })
     }
     const onUp = () => {
       if (!didDrag) deleteDiagonal(d.spanIndex)
@@ -325,19 +335,26 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
             padding: '1rem 1.5rem',
             display: 'inline-block',
           }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, marginBottom: '0.75rem' }}>
-              {trapId ?? `${rc.typeLetter}${Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}`} — {angle}° · Panel Front{' '}
-              <span style={effectiveDetailSettings?.shortFrontLeg ? { color: AMBER_DARK } : undefined}>
-                {fmt(geom.panelFrontHeight ?? 0)} cm
-              </span>
-              {effectiveDetailSettings?.shortFrontLeg && (
-                <span title={t('step3.detail.shortFrontLegTooltip')} style={{ marginLeft: '0.3rem', fontSize: '0.7rem', color: AMBER_DARK, fontWeight: '600' }}>
-                  ↑ {t('step3.detail.adjusted')}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY }}>
+                {trapId ?? `${rc.typeLetter}${Math.max(...(rc.panelsPerLine?.length ? rc.panelsPerLine : [1]))}`} — {angle}° · Panel Front{' '}
+                <span style={effectiveDetailSettings?.shortFrontLeg ? { color: AMBER_DARK } : undefined}>
+                  {fmt(geom.panelFrontHeight ?? 0)} cm
                 </span>
+                {effectiveDetailSettings?.shortFrontLeg && (
+                  <span title={t('step3.detail.shortFrontLegTooltip')} style={{ marginLeft: '0.3rem', fontSize: '0.7rem', color: AMBER_DARK, fontWeight: '600' }}>
+                    ↑ {t('step3.detail.adjusted')}
+                  </span>
+                )}
+                <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
+                  · Panel {fmt(panelLengthCm)}×{fmt(settings.panelWidthCm)} cm
+                </span>
+              </div>
+              {twinIds.length > 0 && (
+                <div style={{ marginTop: '0.15rem', fontSize: '0.68rem', fontWeight: '600', color: BLUE }}>
+                  ≡ identical to {twinIds.join(', ')}
+                </div>
               )}
-              <span style={{ fontWeight: '400', color: TEXT_PLACEHOLDER, marginLeft: '0.5rem' }}>
-                · Panel {fmt(panelLengthCm)}×{fmt(settings.panelWidthCm)} cm
-              </span>
             </div>
 
             <svg ref={svgRef} width={svgW} height={svgH}

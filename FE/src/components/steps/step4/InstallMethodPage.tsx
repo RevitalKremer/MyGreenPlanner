@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step4PdfReport'
 import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
-import { getPanelsBoundingBox, expandBboxForImage, computePrintFit } from '../step3/tabUtils'
+import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
 import { resolveAreaRoofType } from '../../../utils/roofSpecUtils'
 
@@ -27,12 +27,12 @@ export default function InstallMethodPage({
   const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
-  const { naturalW, naturalH, sc } = useMemo(() => {
-    if (!nonEmptyPanels.length) return { naturalW: CONTENT_W, naturalH: 200, sc: 1 }
+  const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
+    if (!nonEmptyPanels.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmptyPanels)
-    const bbox = expandBboxForImage(panelBbox, uploadedImageData)
-    return computePrintFit(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY, CONTENT_W, CONTENT_H, PAD)
-  }, [nonEmptyPanels, uploadedImageData])
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
+    return { panelBbox, ...fit }
+  }, [nonEmptyPanels])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
@@ -66,6 +66,7 @@ export default function InstallMethodPage({
             roofType={roofType}
             printMode
             printSc={sc}
+            printBbox={panelBbox}
             printShowAreas={false}
             printShowCounts={false}
             printShowInstallMethod

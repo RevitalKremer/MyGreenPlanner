@@ -53,6 +53,9 @@ const he = {
   'step5.reset':           'אפס אישור',
   'step5.blockMsg':        'נדרש אישור תכנית כדי להמשיך לשלב הבא.',
 
+  // ── Project info (read-only modal opened from header) ───────────────────
+  'projectInfo.title':              'פרטי הפרויקט',
+
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':             'פרויקט חדש',
   'welcome.newProjectDesc':         'פתח פרויקט תכנון סולארי חדש',

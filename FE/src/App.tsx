@@ -11,6 +11,7 @@ import Step5PdfReport from './components/steps/Step4PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import FinishCelebration from './components/FinishCelebration'
+import ProjectInfoModal from './components/ProjectInfoModal'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
@@ -53,6 +54,7 @@ function App() {
   const [openLoginOnWelcome, setOpenLoginOnWelcome] = useState(false)
   // Celebration modal shown when the user clicks Finish on step 5.
   const [showFinishModal, setShowFinishModal] = useState(false)
+  const [showProjectInfo, setShowProjectInfo] = useState(false)
 
   // Handle ?verifyToken= and ?resetToken= URL params on mount
   useEffect(() => {
@@ -104,6 +106,7 @@ function App() {
   const [beRailsData, setBeRailsData] = useState(null)
   const [beBasesData, setBeBasesData] = useState(null)
   const [beTrapezoidsData, setBeTrapezoidsData] = useState(null)
+  const [beTrapezoidGroups, setBeTrapezoidGroups] = useState([])
   const [savedActiveTab, setSavedActiveTab] = useState(null)
   const [railsComputing] = useState(false)
   const [basesComputing] = useState(false)
@@ -207,6 +210,11 @@ function App() {
       }
     })
     setBeTrapezoidsData(trapDetails)
+
+    // Groups of structurally identical traps — populated by the BE at the end
+    // of compute_and_save_trapezoid_details. Older projects without this field
+    // fall back to one group per trap on the consumer side.
+    setBeTrapezoidGroups(step3.trapezoidGroups ?? [])
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
@@ -382,7 +390,13 @@ function App() {
         ? savedTab 
         : (currentStep === 3 ? 'areas' : null)
       const merged = {
-        project:     { name: cloudProject.name, location: cloudProject.location, roofSpec: cloudProject.roof_spec },
+        project:     {
+          name: cloudProject.name,
+          clientName: cloudProject.client_name,
+          location: cloudProject.location,
+          date: cloudProject.created_at,
+          roofSpec: cloudProject.roof_spec,
+        },
         currentStep,
         activeTab,
         layout,
@@ -525,7 +539,13 @@ function App() {
               <h1 style={{ margin: 0 }}>{t('app.title')}</h1>
               {s.currentProject?.name ? (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '2px', minWidth: 0 }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: '600', color: PRIMARY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '260px' }}>
+                  <span
+                    onClick={() => setShowProjectInfo(true)}
+                    title={t('projectInfo.title')}
+                    style={{ fontSize: '0.85rem', fontWeight: '600', color: PRIMARY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '260px', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'transparent', transition: 'text-decoration-color 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.textDecorationColor = PRIMARY)}
+                    onMouseLeave={e => (e.currentTarget.style.textDecorationColor = 'transparent')}
+                  >
                     {s.currentProject.name}
                   </span>
                   {s.currentProject.location && (
@@ -732,6 +752,7 @@ function App() {
             key={step3ResetKey}
             panels={s.panels}
             refinedArea={s.refinedArea}
+            rectAreas={s.rectAreas}
             uploadedImageData={s.uploadedImageData}
             imageSrc={s.imageSrc}
             railsComputing={railsComputing}
@@ -751,6 +772,7 @@ function App() {
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
+            beTrapezoidGroups={beTrapezoidGroups}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
             paramSchema={s.paramSchemaForRoof}
@@ -779,6 +801,7 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
+            rectAreas={s.rectAreas}
             project={s.currentProject}
             projectId={s.cloudProjectId}
             uploadedImageData={s.uploadedImageData}
@@ -792,6 +815,7 @@ function App() {
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
+            beTrapezoidGroups={beTrapezoidGroups}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
             products={s.products}
@@ -814,6 +838,13 @@ function App() {
           open={showFinishModal}
           onDone={() => { setShowFinishModal(false); s.handleStartOver() }}
         />
+
+        {showProjectInfo && s.currentProject && (
+          <ProjectInfoModal
+            project={s.currentProject}
+            onClose={() => setShowProjectInfo(false)}
+          />
+        )}
 
         {verifyBanner && (
           <div style={{

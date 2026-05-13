@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_SECONDARY, BORDER_FAINT, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
-import { buildBeRailLookup, buildGroupKeyToLabelMap, computeAllRowRailLayouts } from '../../../utils/railLayoutService'
+import { buildGroupKeyToBeArea, buildGroupKeyToLabelMap, computeAllRowRailLayouts } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import { getPanelsBoundingBox, expandBboxForImage, buildRowGroups } from './tabUtils'
@@ -34,6 +34,7 @@ export default function RailLayoutTab({
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
   railsComputing = false,
   beRailsData = null,
+  rectAreas = null,
 }) {
   const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      
@@ -65,7 +66,10 @@ export default function RailLayoutTab({
 
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
 
-  const beRailByKey = useMemo(() => buildBeRailLookup(beRailsData), [beRailsData])
+  const groupKeyToBeArea = useMemo(
+    () => buildGroupKeyToBeArea(rowKeys, beRailsData, rectAreas),
+    [rowKeys, beRailsData, rectAreas],
+  )
 
   const groupKeyToLabel = useMemo(
     () => buildGroupKeyToLabelMap(panels, rowKeys, beRailsData),
@@ -147,7 +151,7 @@ export default function RailLayoutTab({
   const activeCrossSectionRl = railLayouts[activeLayoutIdx] ?? railLayouts[0] ?? null
 
   const overlayProps = {
-    railLayouts, rowKeys: railLayoutKeys, rowGroups, beRailByKey, groupKeyToLabel,
+    railLayouts, rowKeys: railLayoutKeys, rowGroups, groupKeyToBeArea,
     sc, pixelToCmRatio, crossRailEdgeDistMm, railOverhangCm, trapSettingsMap,
   }
 

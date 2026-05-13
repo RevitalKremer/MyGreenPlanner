@@ -184,6 +184,9 @@ class ComputedTrapezoid(_StrictBase):
     """Server-computed structural details for one trapezoid."""
     trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
     isFullTrap: bool = True         # False for trimmed sub-trapezoids (have empty EV/EH lines)
+    # Index of the panelRow this trap lives in within its owning area — surfaced
+    # so the FE can fetch the correct per-row rails when rendering the trap.
+    panelRowIdx: int = 0
     geometry: dict = Field(default_factory=dict)
     # geometry keys:
     #   heightRear, heightFront          — structural leg heights (cm)
@@ -207,6 +210,17 @@ class ComputedTrapezoid(_StrictBase):
     # diagonals[]: spanIdx, topDistFromLegCm, botDistFromLegCm, punchSpanCm (server-computed), lengthCm, isDouble, disabled
 
 
+class TrapezoidGroup(_StrictBase):
+    """A set of trapezoids whose materialized shape is identical.
+
+    Built by `trapezoid_detail_service.group_identical_trapezoids` at the end
+    of the trap-generation flow. Consumed by the PDF generator to render one
+    page per distinct shape (e.g. groupIdx=0, trapIds=['A','B']).
+    """
+    groupIdx: int
+    trapIds: list[str]
+
+
 class Step3Data(_StrictBase):
     """Construction planning — mixed FE-owned settings + server-computed results."""
     # FE-owned (user settings)
@@ -217,6 +231,7 @@ class Step3Data(_StrictBase):
     # Server-computed (never sent by FE, preserved during merge)
     computedAreas: list[ComputedArea] = Field(default_factory=list)
     computedTrapezoids: list[ComputedTrapezoid] = Field(default_factory=list)
+    trapezoidGroups: list[TrapezoidGroup] = Field(default_factory=list)
 
 
 # ── Step 4: Plan approval (server-owned) ─────────────────────────────────────

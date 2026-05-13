@@ -2,9 +2,19 @@ import { useState, useEffect, useRef } from 'react'
 import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
+import ProjectForm from './ProjectForm'
 import { useLang } from '../i18n/LangContext'
 import LangToggle from '../i18n/LangToggle'
 import { getBackendVersion, getFrontendVersion } from '../services/projectsApi'
+
+// Maps the BE roof type discriminator to its i18n label key.
+const ROOF_TYPE_I18N: Record<string, string> = {
+  concrete: 'roofSpec.type.concrete',
+  tiles: 'roofSpec.type.tiles',
+  iskurit: 'roofSpec.type.iskurit',
+  insulated_panel: 'roofSpec.type.insulatedPanel',
+  mixed: 'roofSpec.type.mixed',
+}
 
 // Monochrome SVG icons
 const IconPlus = () => (
@@ -43,7 +53,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   }, [user?.full_name])
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [roofType, setRoofType] = useState('concrete')
+  const [roofType, setRoofType] = useState('mixed')
   const [distanceBetweenPurlins, setDistanceBetweenPurlins] = useState('')
   const [installationOrientation, setInstallationOrientation] = useState('perpendicular')
   const [editingId, setEditingId] = useState(null)
@@ -190,154 +200,20 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           </div>
 
           {mode === 'new' && (
-            <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                  {t('welcome.projectName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
-                </label>
-                <input
-                  autoFocus
-                  type="text"
-                  value={projectName}
-                  onChange={e => setProjectName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  placeholder={t('welcome.projectNamePlaceholder')}
-                  style={{
-                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${projectName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
-                    borderRadius: '8px', fontSize: '0.92rem', outline: 'none'
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                  {t('welcome.clientName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
-                </label>
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={e => { clientNameTouchedRef.current = true; setClientName(e.target.value) }}
-                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  placeholder={t('welcome.clientNamePlaceholder')}
-                  style={{
-                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${clientName.trim() ? TEXT_DARK : BORDER_LIGHT}`,
-                    borderRadius: '8px', fontSize: '0.92rem', outline: 'none'
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                  {t('welcome.location')}
-                </label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={e => setLocation(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  placeholder={t('welcome.locationPlaceholder')}
-                  style={{
-                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                  {t('welcome.date')}
-                </label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                  {t('welcome.roofType')}
-                </label>
-                <select
-                  value={roofType}
-                  onChange={e => setRoofType(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                    border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
-                    background: 'white', cursor: 'pointer'
-                  }}
-                >
-                  <option value="concrete">{t('roofSpec.type.concrete')}</option>
-                  <option value="tiles">{t('roofSpec.type.tiles')}</option>
-                  <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
-                  <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
-                  <option value="mixed">{t('roofSpec.type.mixed')}</option>
-                </select>
-              </div>
-              {/* Global purlin params are hidden for 'mixed' — they'll be set per-area in step 2. */}
-              {(roofType === 'iskurit' || roofType === 'insulated_panel') && (
-                <>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                      {t('roofSpec.distanceBetweenPurlins')}
-                    </label>
-                    <input
-                      type="number"
-                      value={distanceBetweenPurlins}
-                      onChange={e => setDistanceBetweenPurlins(e.target.value)}
-                      placeholder={t('roofSpec.distancePlaceholder')}
-                      style={{
-                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem'
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: '1.25rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
-                      {t('roofSpec.installationOrientation')}
-                    </label>
-                    <select
-                      value={installationOrientation}
-                      onChange={e => setInstallationOrientation(e.target.value)}
-                      style={{
-                        width: '100%', padding: '0.6rem 0.75rem', boxSizing: 'border-box',
-                        border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: '8px', fontSize: '0.92rem',
-                        background: 'white', cursor: 'pointer'
-                      }}
-                    >
-                      <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
-                      <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
-                    </select>
-                  </div>
-                </>
-              )}
-              <button
-                onClick={handleCreate}
-                disabled={!canCreate}
-                style={{
-                  width: '100%', padding: '0.75rem',
-                  background: canCreate ? PRIMARY : BORDER_LIGHT,
-                  color: canCreate ? TEXT : TEXT_VERY_LIGHT,
-                  border: 'none', borderRadius: '8px',
-                  cursor: canCreate ? 'pointer' : 'default',
-                  fontWeight: '700', fontSize: '0.95rem',
-                  transition: 'background 0.15s'
-                }}
-              >
-                {t('welcome.startPlanning')}
-              </button>
-              {!appConfigReady && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: TEXT_FAINT }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="31.4 31.4" strokeLinecap="round" />
-                  </svg>
-                  {t('welcome.loadingSettings')}
-                  <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-                </div>
-              )}
-            </div>
+            <ProjectForm
+              projectName={projectName} setProjectName={setProjectName}
+              clientName={clientName} setClientName={setClientName}
+              onClientNameInteract={() => { clientNameTouchedRef.current = true }}
+              location={location} setLocation={setLocation}
+              date={date} setDate={setDate}
+              roofType={roofType} setRoofType={setRoofType}
+              distanceBetweenPurlins={distanceBetweenPurlins} setDistanceBetweenPurlins={setDistanceBetweenPurlins}
+              installationOrientation={installationOrientation} setInstallationOrientation={setInstallationOrientation}
+              autoFocus
+              onSubmit={handleCreate}
+              canSubmit={canCreate}
+              appConfigReady={appConfigReady}
+            />
           )}
         </div>
 
@@ -499,6 +375,9 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                           <div style={{ fontSize: '0.75rem', color: TEXT_FAINT, marginTop: '2px' }}>
                             {p.client_name ? `${p.client_name} · ` : ''}
                             {p.location ? `${p.location} · ` : ''}
+                            {p.roof_spec?.type && ROOF_TYPE_I18N[p.roof_spec.type]
+                              ? `${t(ROOF_TYPE_I18N[p.roof_spec.type])} · `
+                              : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
                           </div>

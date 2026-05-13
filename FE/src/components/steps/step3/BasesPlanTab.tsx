@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, SUCCESS_DARK, WHITE } from '../../../styles/colors'
-import { consolidateAreaBases, buildTrapAreaMaps, buildBasePlanBeRailLookup, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
+import { consolidateAreaBases, buildTrapAreaMaps, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
 import { computeRowRailLayout, buildLineRailsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
 import { localToScreen } from '../../../utils/railLayoutService'
@@ -99,11 +99,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const { trapAreaMap, areaTrapsMap } = useMemo(
     () => buildTrapAreaMaps(trapIds, areas),
     [trapIds, areas],
-  )
-
-  const beRailByKey = useMemo(
-    () => buildBasePlanBeRailLookup(beBasesData, areaTrapsMap),
-    [beBasesData, areaTrapsMap],
   )
 
   const basePlansMap = useMemo(
@@ -281,12 +276,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
       {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 
-                {/* 1. Rails */}
+                {/* 1. Rails — only the line geometry is drawn here (material summary,
+                    dimensions and connectors are all disabled), so no beSegs lookup is needed. */}
                 <RailsOverlay
                   railLayouts={railLayouts}
                   rowKeys={expandedTrapIds}
                   rowGroups={trapGroups}
-                  beRailByKey={beRailByKey}
                   toSvg={toSvg}
                   sc={sc}
                   pixelToCmRatio={pixelToCmRatio}
@@ -303,7 +298,6 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     railLayouts={tileRailLayouts.map(t => t.rl)}
                     rowKeys={tileRailLayouts.map(t => t.areaLabel)}
                     rowGroups={{}}
-                    beRailByKey={{}}
                     toSvg={toSvg}
                     sc={sc}
                     pixelToCmRatio={pixelToCmRatio}

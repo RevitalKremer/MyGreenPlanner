@@ -145,23 +145,6 @@ export function buildTrapAreaMaps(trapIds: string[], areas: Step2Area[]): { trap
 
 
 /**
- * Build BE rail lookup keyed by trapId:railId (for RailsOverlay in bases tab).
- */
-export function buildBasePlanBeRailLookup(beBasesData: BeBasesAreaData[] | null, areaTrapsMap: Record<string | number, string[]>): Record<string, any> {
-  const m: Record<string, any> = {}
-  for (const areaData of (beBasesData ?? [])) {
-    const areaTrapIds = areaTrapsMap[areaData.areaId] ?? areaTrapsMap[areaData.areaLabel] ?? []
-    for (const r of (areaData.rails ?? [])) {
-      for (const tid of areaTrapIds) {
-        m[`${tid}:${r.railId}`] = r
-      }
-    }
-  }
-  return m
-}
-
-
-/**
  * Compute expanded base plans and rail layouts — one per (trapId, panelRowIdx).
  */
 export function computeExpandedBasePlans({

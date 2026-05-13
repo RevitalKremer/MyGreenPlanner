@@ -1093,3 +1093,95 @@ def trim_trapezoid(
     detail['diagonals'] = new_diags
 
     return detail
+
+
+# ── Trapezoid comparison ─────────────────────────────────────────────────────
+
+# 0.05 cm = half the 0.1-cm step used by round_to_1dp(). Tight enough to catch
+# real differences, loose enough to absorb FP noise across independent computes
+# that round to the same physical value.
+_TRAP_EQ_TOL_CM = 0.05
+
+
+def _close(a: float, b: float, tol: float = _TRAP_EQ_TOL_CM) -> bool:
+    return abs(a - b) <= tol
+
+
+def _value_equal(a, b) -> bool:
+    """Deep value equality with float tolerance and recursion into dicts/lists."""
+    if a is None or b is None:
+        return a is None and b is None
+    if isinstance(a, dict) and isinstance(b, dict):
+        return _dict_equal(a, b)
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return False
+        return all(_value_equal(x, y) for x, y in zip(a, b))
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return _close(float(a), float(b))
+    return a == b
+
+
+def _dict_equal(a: dict, b: dict) -> bool:
+    keys = set(a.keys()) | set(b.keys())
+    return all(_value_equal(a.get(k), b.get(k)) for k in keys)
+
+
+def computed_trapezoids_equal(a: dict, b: dict) -> bool:
+    """
+    Return True if two ComputedTrapezoid dicts describe the same materialized
+    trapezoid shape.
+
+    Compares only fields that define the physical shape:
+      geometry, isFullTrap, legs, blocks, diagonals.
+
+    Excluded:
+      - trapezoidId, panelRowIdx — context, not shape
+      - punches — derived from legs/blocks/diagonals/geometry; if those match,
+        punches match too
+      - diagSettings, effective* — input echoes / resolved config, already
+        reflected in the structural fields above
+
+    Numeric values match within 0.05 cm. Geometry is compared first — most
+    non-matching traps differ in angle / heights / beam lengths and fail there.
+    """
+    if not _dict_equal(a.get('geometry', {}), b.get('geometry', {})):
+        return False
+    if a.get('isFullTrap', True) != b.get('isFullTrap', True):
+        return False
+    if not _value_equal(a.get('legs', []), b.get('legs', [])):
+        return False
+    if not _value_equal(a.get('blocks', []), b.get('blocks', [])):
+        return False
+    if not _value_equal(a.get('diagonals', []), b.get('diagonals', [])):
+        return False
+    return True
+
+
+def group_identical_trapezoids(computed_trapezoids: list[dict]) -> list[dict]:
+    """
+    Partition computedTrapezoids by materialized shape.
+
+    Returns a list of groups, one per distinct shape:
+        [{'groupIdx': 0, 'trapIds': ['A', 'B']}, {'groupIdx': 1, 'trapIds': ['C']}]
+
+    Singleton traps get their own group. `trapIds` within each group are sorted;
+    groups are ordered by their first trapId so the output is stable across
+    recomputes (useful for the PDF generator to show one page per group).
+    """
+    groups: list[list[dict]] = []
+    for trap in computed_trapezoids:
+        for grp in groups:
+            if computed_trapezoids_equal(trap, grp[0]):
+                grp.append(trap)
+                break
+        else:
+            groups.append([trap])
+
+    sorted_ids = sorted(
+        (sorted(t['trapezoidId'] for t in grp) for grp in groups),
+        key=lambda ids: ids[0],
+    )
+    return [{'groupIdx': i, 'trapIds': ids} for i, ids in enumerate(sorted_ids)]

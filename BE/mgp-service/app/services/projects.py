@@ -15,7 +15,7 @@ from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
-from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid
+from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid, group_identical_trapezoids
 from app.services import settings_cache
 from app.utils.math_helpers import round_to_1dp
 from app.utils.panel_geometry import (
@@ -109,7 +109,7 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
 
 
 # ── Server-computed keys in step3 — never sent by FE, always preserved during merge ──
-_SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids'}
+_SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids', 'trapezoidGroups'}
 
 
 def _deep_merge_settings(existing: dict | None, incoming: dict | None) -> dict:
@@ -1526,13 +1526,18 @@ def _compute_all_trapezoid_details(
     stored_custom_diags: dict,
     tds,
     project_roof_spec: dict,
-) -> dict:
+) -> tuple[dict, dict[str, int]]:
     """
     Compute structural details for all trapezoids (first pass — full trap computation).
 
-    Returns dict of {trapId: detail_dict}.
+    Returns (result, trap_row_map):
+      result        — {trapId: detail_dict}
+      trap_row_map  — {trapId: owning panelRow index}; needed so block alignment
+                      can be restricted to traps that share physical base beams
+                      (i.e. live in the same row of the same area).
     """
     result = {}
+    trap_row_map: dict[str, int] = {}
     area_settings = step3.get('areaSettings', {})
     global_settings = step3.get('globalSettings', {})
 
@@ -1702,9 +1707,13 @@ def _compute_all_trapezoid_details(
         if detail:
             is_full = all(not is_empty_orientation(o) for o in line_orients)
             detail['isFullTrap'] = is_full
+            # Surface the owning panelRow so the FE can pull the right per-row
+            # rails when rendering this trap's detail view (DetailView, etc.).
+            detail['panelRowIdx'] = owning_row_idx
             result[trap_id] = detail
-    
-    return result
+            trap_row_map[trap_id] = owning_row_idx
+
+    return result, trap_row_map
 
 
 def _trim_non_full_trapezoids(
@@ -1824,21 +1833,31 @@ def _align_blocks_across_trapezoids(
     result: dict,
     areas: list,
     tds,
+    trap_row_map: dict[str, int] | None = None,
 ) -> dict[str, list[str]]:
     """
-    Align block positions across trapezoids in same area (shared physical base beams).
-    
-    Returns area_trap_map: {area_label: [trapId, ...]}
+    Align block positions across trapezoids that share physical base beams.
+
+    Traps share a base beam set only when they belong to the same (area, panel row);
+    traps in different rows of a multi-row area sit on entirely separate bases, so
+    aligning their block positions pulls phantom blocks under non-existent legs.
+
+    Returns area_trap_map: {area_label: [trapId, ...]}.
     """
-    area_trap_map = {}
+    trap_row_map = trap_row_map or {}
+    # Group by (area_label, row_idx) — bases are per-row, not per-area
+    row_trap_map: dict[tuple[str, int], list[str]] = {}
+    area_trap_map: dict[str, list[str]] = {}
     for a in areas:
         label = a.get('label', '')
         for tid in a.get('trapezoidIds', []):
             area_trap_map.setdefault(label, []).append(tid)
-    for label, trap_ids in area_trap_map.items():
-        area_traps = {tid: result[tid] for tid in trap_ids if tid in result}
-        tds.align_blocks(area_traps)
-        result.update(area_traps)
+            row_idx = trap_row_map.get(tid, 0)
+            row_trap_map.setdefault((label, row_idx), []).append(tid)
+    for (_label, _ri), trap_ids in row_trap_map.items():
+        row_traps = {tid: result[tid] for tid in trap_ids if tid in result}
+        tds.align_blocks(row_traps)
+        result.update(row_traps)
     return area_trap_map
 
 
@@ -1895,11 +1914,11 @@ async def compute_and_save_trapezoid_details(
     step3['customDiagonals'] = stored_custom_diags
 
     # ── Compute all trapezoids (first pass — full trap computation) ────────────
-    result = _compute_all_trapezoid_details(
+    result, trap_row_map = _compute_all_trapezoid_details(
         trapezoids, areas, step2, step3, data, app_defaults,
         trapezoid_configs, stored_custom_diags, tds, project_roof_spec,
     )
-    
+
     # Persist first pass results
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
@@ -1908,20 +1927,25 @@ async def compute_and_save_trapezoid_details(
     _trim_non_full_trapezoids(
         result, trapezoids, areas, step2, data, app_defaults, tds,
     )
-    
+
     # Persist trimmed results
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
 
-    # ── Align blocks across area trapezoids ─────────────────────────────────────
-    # (Legacy length-based base-trap reassignment removed — base trap IDs are
-    # now assigned authoritatively in compute_and_save_bases via the geometric
-    # column-signature method _reassign_row_base_traps_by_signature.)
-    _align_blocks_across_trapezoids(result, areas, tds)
+    # ── Align blocks across trapezoids sharing physical base beams ──────────────
+    # Restrict to (area, panel row) groups — traps in different rows of a
+    # multi-row area sit on separate base beams, so aligning across rows
+    # produces phantom blocks under non-existent legs.
+    _align_blocks_across_trapezoids(result, areas, tds, trap_row_map)
 
     # ── Persist aligned blocks ────────────────────────────────────────────────
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
+
+    # ── Group identical trapezoids by shape (for PDF consolidation) ───────────
+    step3['trapezoidGroups'] = group_identical_trapezoids(
+        step3.get('computedTrapezoids', [])
+    )
 
     project.data = data
     flag_modified(project, 'data')
