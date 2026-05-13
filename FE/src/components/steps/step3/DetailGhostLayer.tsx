@@ -1,15 +1,13 @@
-import { GHOST_FILL, GHOST_STROKE, GHOST_DASH } from '../../../styles/colors'
+import { GHOST_STROKE, GHOST_DASH } from '../../../styles/colors'
 import { calculateDiagonalPosition, computeTrapStructureGeometry } from '../../../utils/trapezoidGeometry'
+import TrapStructure, { type PositionedDiagonal } from './TrapStructure'
 
 /**
- * Ghost overlay: renders the full trap structural outline in ghost style
- * (dashed, semi-transparent) behind the trimmed trap.
+ * Ghost overlay: renders the full trap behind a trimmed trap, using the same
+ * TrapStructure component as DetailView so the two paths cannot diverge.
  *
- * Geometry comes from the same computeTrapStructureGeometry helper as DetailView,
- * so any change to the shared math automatically applies here too. The only
- * ghost-specific concern is the atTrapX anchor (offset by originDelta so the
- * full trap's first leg aligns with where it physically sits in the trimmed
- * trap's coordinate frame).
+ * The only ghost-specific concern is the atTrapX anchor — offset by originDelta
+ * so the full trap's coordinates align with the trimmed trap's frame.
  */
 export default function DetailGhostLayer({
   fullTrapGhost, originCm, legX0, baseY,
@@ -17,98 +15,62 @@ export default function DetailGhostLayer({
 }) {
   const gGeom = fullTrapGhost.beDetailData.geometry
   const gAngleRad = gGeom.angle * Math.PI / 180
-  const gBaseY = baseY
-  const gBlockTopY = gBaseY + BEAM_THICK_PX
   const gOriginCm = gGeom.originCm ?? 0
   const originDelta = (gOriginCm - originCm) * Math.cos(gAngleRad) * SC
+  const cosA = Math.cos(gAngleRad)
 
   const gLegs = fullTrapGhost.beDetailData.legs ?? []
-  const structGeo = computeTrapStructureGeometry({
+  const gBlocks = fullTrapGhost.beDetailData.blocks ?? []
+  const gPanelLines = fullTrapGhost.panelLines ?? []
+
+  const geometry = computeTrapStructureGeometry({
     beLegs: gLegs,
     baseBeamLengthCm: gGeom.baseBeamLength ?? 0,
-    atTrapX: (posCm) => legX0 + originDelta + posCm * Math.cos(gAngleRad) * SC,
-    baseY: gBaseY,
-    beamThickPx: BEAM_THICK_PX,
-    SC,
+    atTrapX: (posCm) => legX0 + originDelta + posCm * cosA * SC,
+    baseY, beamThickPx: BEAM_THICK_PX, SC,
   })
-  const {
-    legXs: gLegXPositions, legEndXs: gLegEndXPositions, legCenterXs: gLegCenterXs,
-    legHeights: gLegHeights,
-    beamYAt: gBeamY, beamAngleDeg: gBeamDeg,
-    legX0: gActualX0, legX1: gActualX1,
-    baseBeamX0: gBaseBeamX0, baseBeamW: gBaseBeamW,
-  } = structGeo
+  const atSlopeX = (dCm: number) => legX0 + originDelta + (dCm - gOriginCm) * cosA * SC
 
-  // Panel-relative depth → SVG x along the slope (shifted by originCm so dCm=0 = first panel edge).
-  const gAtSlope = (dCm: number) => legX0 + originDelta + (dCm - gOriginCm) * Math.cos(gAngleRad) * SC
+  const diagonals: PositionedDiagonal[] = (fullTrapGhost.beDetailData.diagonals ?? [])
+    .filter(d => !d.disabled)
+    .filter(d => d.spanIdx < gLegs.length - 1)
+    .map(d => {
+      const { topX, topY, botX, botY } = calculateDiagonalPosition({
+        spanIdx: d.spanIdx,
+        topDistFromLegCm: d.topDistFromLegCm,
+        botDistFromLegCm: d.botDistFromLegCm,
+        punchSpanCm: d.punchSpanCm,
+        legXs: geometry.legXs,
+        legEndXs: geometry.legEndXs,
+        legHeights: geometry.legHeights,
+        baseY, beamThickPx: BEAM_THICK_PX,
+      })
+      return { topX, topY, botX, botY, halfCap: BEAM_THICK_PX * 0.75 / 2 }
+    })
 
-  const GR = ({ key, ...props }) => <rect key={key} {...props} fill={GHOST_FILL} stroke={GHOST_STROKE} strokeWidth="1" strokeDasharray={GHOST_DASH} />
-  const GL = ({ key, x1: lx1, y1: ly1, x2: lx2, y2: ly2, sw }) => {
-    const dx = lx2 - lx1, dy = ly2 - ly1
-    const len = Math.sqrt(dx * dx + dy * dy)
-    const mx = (lx1 + lx2) / 2, my = (ly1 + ly2) / 2
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI
-    return GR({ key, x: -len / 2, y: -(sw || 1) / 2, width: len, height: sw || 1, transform: `translate(${mx},${my}) rotate(${ang})` })
-  }
-
-  const gDiags = (fullTrapGhost.beDetailData.diagonals ?? []).filter(d => !d.disabled)
+  const groundY = baseY + BEAM_THICK_PX + blockH
 
   return (
     <g pointerEvents="none">
-      {/* Ghost base beam — full length including front/rear extensions */}
-      {GR({ key: 'g-base', x: gBaseBeamX0, y: gBaseY, width: gBaseBeamW, height: BEAM_THICK_PX })}
-      {/* Ghost slope beam — endpoints evaluated via leg-center interpolation */}
-      {GL({ key: 'g-slope', x1: gActualX0, y1: gBeamY(gActualX0), x2: gActualX1, y2: gBeamY(gActualX1), sw: BEAM_THICK_PX })}
-      {/* Ghost legs — skip virtual legs (matches DetailView) */}
-      {gLegs.map((leg, li) => {
-        if (leg.virtual) return null
-        const lx = gLegXPositions[li], lxEnd = gLegEndXPositions[li]
-        const lw = lxEnd - lx
-        const slopeTopY = gBeamY(gLegCenterXs[li]) - BEAM_THICK_PX / 2
-        return GR({ key: `gl${li}`, x: lx, y: slopeTopY, width: lw, height: gBaseY + BEAM_THICK_PX - slopeTopY })
-      })}
-      {/* Ghost diagonals */}
-      {gDiags.map((d, di) => {
-        if (d.spanIdx >= gLegs.length - 1) return null
-        const { topX, topY, botX, botY } = calculateDiagonalPosition({
-          spanIdx: d.spanIdx,
-          topDistFromLegCm: d.topDistFromLegCm,
-          botDistFromLegCm: d.botDistFromLegCm,
-          punchSpanCm: d.punchSpanCm,
-          legXs: gLegXPositions,
-          legEndXs: gLegEndXPositions,
-          legHeights: gLegHeights,
-          baseY: gBaseY,
-          beamThickPx: BEAM_THICK_PX,
-        })
-        return GL({ key: `gd${di}`, x1: topX, y1: topY, x2: botX, y2: botY, sw: BEAM_THICK_PX * 0.75 })
-      })}
-      {/* Ghost blocks — physical scaling (1 cm = SC px), matches DetailView */}
-      {(() => {
-        const gbw = blockLengthCm * SC
-        return (fullTrapGhost.beDetailData.blocks ?? []).map((blk, bi) =>
-          GR({ key: `gb${bi}`, x: gBaseBeamX0 + blk.positionCm * SC, y: gBlockTopY, width: gbw, height: blockH })
-        )
-      })()}
-      {/* Ghost panels */}
-      {(() => {
-        let dCm = 0
-        return (fullTrapGhost.panelLines ?? []).map((seg, si) => {
-          dCm += (seg.gapBeforeCm ?? 0)
-          const sx = gAtSlope(dCm)
-          const ex = gAtSlope(dCm + (seg.depthCm ?? 0))
-          dCm += (seg.depthCm ?? 0)
-          const sy = gBeamY(sx), ey = gBeamY(ex)
-          const gBeamRad = gBeamDeg * Math.PI / 180
-          const cx = (sx + ex) / 2 + PANEL_OFFSET_PX * Math.sin(gBeamRad)
-          const cy = (sy + ey) / 2 - PANEL_OFFSET_PX * Math.cos(gBeamRad)
-          const dx = ex - sx, dy = ey - sy
-          const len = Math.sqrt(dx * dx + dy * dy)
-          return GR({ key: `gp${si}`, x: -len / 2, y: -PANEL_THICK_PX / 2, width: len, height: PANEL_THICK_PX, transform: `translate(${cx},${cy}) rotate(${gBeamDeg})` })
-        })
-      })()}
-      {/* Ghost ground line */}
-      <line x1={gActualX0 - 20} y1={gBlockTopY + blockH} x2={gActualX1 + 20} y2={gBlockTopY + blockH} stroke={GHOST_STROKE} strokeWidth="1.5" strokeDasharray={GHOST_DASH} />
+      <TrapStructure
+        variant="ghost"
+        geometry={geometry}
+        beLegs={gLegs}
+        blocks={gBlocks}
+        diagonals={diagonals}
+        panelLines={gPanelLines}
+        atSlopeX={atSlopeX}
+        baseY={baseY}
+        beamThickPx={BEAM_THICK_PX}
+        blockH={blockH}
+        blockLengthCm={blockLengthCm}
+        panelOffsetPx={PANEL_OFFSET_PX}
+        panelThickPx={PANEL_THICK_PX}
+        SC={SC}
+      />
+      {/* Ghost ground line (plain dashed; main uses DetailCorrugatedRoof) */}
+      <line x1={geometry.legX0 - 20} y1={groundY} x2={geometry.legX1 + 20} y2={groundY}
+        stroke={GHOST_STROKE} strokeWidth="1.5" strokeDasharray={GHOST_DASH} />
     </g>
   )
 }

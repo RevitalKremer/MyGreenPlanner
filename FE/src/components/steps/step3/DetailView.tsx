@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, TRAP_L_PROFILE_FILL, TRAP_L_PROFILE_STROKE, TRAP_BLOCK_FILL, TRAP_BLOCK_STROKE, PANEL_BAR_FILL, PANEL_BAR_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -8,6 +8,7 @@ import { buildRailItems, buildDetailDiagonals, buildPunchPoints, computeActiveDe
 import LayersPanel from './LayersPanel'
 import DetailCorrugatedRoof from './DetailCorrugatedRoof'
 import DetailGhostLayer from './DetailGhostLayer'
+import TrapStructure, { type PositionedDiagonal } from './TrapStructure'
 import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
@@ -146,19 +147,6 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
   const activeBeamR = hasActiveZone ? allLegEndXs[lastActiveLegIdx] : legX0
   const activeBoundL = activeBeamL
   const activeBoundR = activeBeamR
-
-  // Ghost style: all rendered as rects using centralized ghost colors
-  // Renders a thick line as a rotated rect so fill + stroke border work correctly with semi-transparent fill
-  const lProfileLine = ({ x1, y1, x2, y2, strokeWidth: sw, capExtend: cap = 0 }) => {
-    const dx = x2 - x1, dy = y2 - y1
-    const len = Math.sqrt(dx * dx + dy * dy)
-    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI
-    const h = sw || 1
-    return <rect x={-(len / 2 + cap)} y={-h / 2} width={len + 2 * cap} height={h}
-      fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1"
-      transform={`translate(${mx},${my}) rotate(${ang})`} />
-  }
 
   // Diagonals with both legs in the active zone (used for punch sketches + dimensions)
   const activeDiags          = diagonals
@@ -368,86 +356,80 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 <style>{`@keyframes hlPulse { 0%,100%{opacity:0.15} 50%{opacity:0.9} }`}</style>
               </defs>
 
-              {/* ── Blocks — positionCm is base-beam coords from server ── */}
-              {(() => {
-                const beBlocks = beDetailData?.blocks ?? []
+              {/* ── Structural primitives (shared with DetailGhostLayer via TrapStructure) ── */}
+              <TrapStructure
+                variant="main"
+                geometry={structGeo}
+                beLegs={beLegs}
+                blocks={beDetailData?.blocks ?? []}
+                diagonals={diagonals.map((d): PositionedDiagonal => ({
+                  topX: d.topX, topY: d.topY, botX: d.botX, botY: d.botY, halfCap: d.halfCap,
+                }))}
+                panelLines={segments}
+                atSlopeX={(dCm) => atSlope(dCm).x}
+                baseY={baseY}
+                beamThickPx={BEAM_THICK_PX}
+                blockH={blockH}
+                blockLengthCm={blockLengthCm}
+                panelOffsetPx={PANEL_OFFSET_PX}
+                panelThickPx={PANEL_THICK_PX}
+                SC={SC}
+              />
+
+              {/* ── Block punch labels (decoration on top of block rects) ── */}
+              {showPunches && (() => {
                 const blockPunches = (beDetailData?.punches ?? []).filter(p => p.origin === 'block')
-                const baseBeamLen = geom.baseBeamLength || 1
-                const baseBeamX0 = legX0 - firstLegPos * SC
-                const atBase = (posCm) => baseBeamX0 + (posCm / baseBeamLen) * (baseBeamLen * SC)
                 const bw = blockLengthCm * SC
-                return (<>
-                  {beBlocks.map((blk, bi) => {
-                    const bx = atBase(blk.positionCm)
-                    const blkPunch = blockPunches.find(p => p.blockIdx === bi)
-                    const label = blkPunch ? fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm) : ''
-                    return (
-                      <g key={bi}>
-                        <rect x={bx} y={blockTopY} width={bw} height={blockH} fill={TRAP_BLOCK_FILL} stroke={TRAP_BLOCK_STROKE} strokeWidth="1" />
-                        {showPunches && label && (
-                          <text x={bx + bw / 2} y={blockTopY + blockH / 2} textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
-                        )}
-                      </g>
-                    )
-                  })}
-                </>)
+                return (beDetailData?.blocks ?? []).map((blk, bi) => {
+                  const blkPunch = blockPunches.find(p => p.blockIdx === bi)
+                  if (!blkPunch) return null
+                  const label = fmt(reverseBlockPunches && blkPunch.reversedPositionCm != null ? blkPunch.reversedPositionCm : blkPunch.positionCm)
+                  const bx = structGeo.baseBeamX0 + blk.positionCm * SC
+                  return (
+                    <text key={`blbl-${bi}`} x={bx + bw / 2} y={blockTopY + blockH / 2}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                  )
+                })
               })()}
 
-              {/* ── Base beam — uses full baseBeamLength (includes extensions for purlin types) ── */}
-              {(() => {
-                const baseBeamW = (geom.baseBeamLength ?? (legBW / SC)) * SC
-                const firstLegPos = (beLegs[0]?.positionCm ?? 0) * SC
-                return <rect x={legX0 - firstLegPos} y={baseY} width={baseBeamW} height={BEAM_THICK_PX} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
-              })()}
-
-              {/* ── All legs — uniform: rect from positionCm to positionEndCm ── */}
+              {/* ── Double-leg ×2 markers (decoration on top of leg rects) ── */}
               {beLegs.map((leg, li) => {
-                const lx = allLegXs[li]
-                const lxEnd = allLegEndXs[li]
+                if (leg.virtual || !leg.isDouble) return null
+                const lx = allLegXs[li], lxEnd = allLegEndXs[li]
                 const lw = lxEnd - lx
-                // Top of slope beam at this leg's x position — the leg rect must touch the beam.
-                // Using allLegTopYs (beam center) rather than leg.heightCm keeps this consistent
-                // with the slope beam rendering even when geom.heightRear ≠ leg.heightCm.
                 const slopeTopY = beamYFromLegs(legCenterXs[li]) - BEAM_THICK_PX / 2
                 const legH = (baseY + BEAM_THICK_PX) - slopeTopY
-                if (legH <= 0 || leg.virtual) return null
+                if (legH <= 0) return null
                 return (
-                  <g key={`leg-${li}`}>
-                    <rect x={lx} y={slopeTopY} width={lw} height={legH} fill={TRAP_L_PROFILE_FILL} stroke={TRAP_L_PROFILE_STROKE} strokeWidth="1" />
-                    {leg.isDouble && (
-                      <DoubleProfileMarker
-                        x1={lx + lw / 2} y1={slopeTopY}
-                        x2={lx + lw / 2} y2={slopeTopY + legH}
-                        thickness={lw} />
-                    )}
-                  </g>
+                  <DoubleProfileMarker key={`lm-${li}`}
+                    x1={lx + lw / 2} y1={slopeTopY}
+                    x2={lx + lw / 2} y2={slopeTopY + legH}
+                    thickness={lw} />
                 )
               })}
 
-              {/* ── Slope beam — endpoints at legX0/legX1 with y from linear-through-leg-centers ── */}
-              {lProfileLine({ x1: legX0, y1: beamYFromLegs(legX0), x2: legX1, y2: beamYFromLegs(legX1), strokeWidth: BEAM_THICK_PX })}
-              {diagonals.map((d, di) => {
-                return (
-                  <g key={di}>
-                    {lProfileLine({ x1: d.topX, y1: d.topY, x2: d.botX, y2: d.botY, strokeWidth: BEAM_THICK_PX * 0.75, capExtend: d.halfCap })}
-                    {d.isDouble && (
-                      <DoubleProfileMarker
-                        x1={d.topX} y1={d.topY}
-                        x2={d.botX} y2={d.botY}
-                        thickness={BEAM_THICK_PX * 0.75} />
-                    )}
-                    {hl('diagonal') && (
-                      <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
-                        stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
-                        style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
-                    )}
-                    {showDimensions && <Dim
-                      ax1={d.topX - d.ux * d.halfCap} ay1={d.topY - d.uy * d.halfCap}
-                      ax2={d.botX + d.ux * d.halfCap} ay2={d.botY + d.uy * d.halfCap}
-                      label={fmt(d.lenCm)} off={-16} />}
-                  </g>
-                )
-              })}
+              {/* ── Diagonal decorations: ×2 markers, highlights, dimensions ── */}
+              {diagonals.map((d, di) => (
+                <g key={`ddec-${di}`}>
+                  {d.isDouble && (
+                    <DoubleProfileMarker
+                      x1={d.topX} y1={d.topY}
+                      x2={d.botX} y2={d.botY}
+                      thickness={BEAM_THICK_PX * 0.75} />
+                  )}
+                  {hl('diagonal') && (
+                    <line x1={d.topX} y1={d.topY} x2={d.botX} y2={d.botY}
+                      stroke={AMBER} strokeWidth={BEAM_THICK_PX * 2} strokeLinecap="round"
+                      style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+                  )}
+                  {showDimensions && <Dim
+                    ax1={d.topX - d.ux * d.halfCap} ay1={d.topY - d.uy * d.halfCap}
+                    ax2={d.botX + d.ux * d.halfCap} ay2={d.botY + d.uy * d.halfCap}
+                    label={fmt(d.lenCm)} off={-16} />}
+                </g>
+              ))}
+
               {/* Rail-clamp offset highlight */}
               {hl('rail-clamp') && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
@@ -457,9 +439,8 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                 </g>
               )}
 
-              {/* ── Panel bars (one per line, offset above beam+rails) ── */}
-              {(() => {
-                // Panel bars: vertical offset above beam (no horizontal shift in side view)
+              {/* ── Panel highlight pulses (decoration on top of panel rects) ── */}
+              {hl('panel') && (() => {
                 let dCm = 0
                 return segments.map((seg, idx) => {
                   dCm += seg.gapBeforeCm
@@ -473,25 +454,13 @@ export default function DetailView({ rc, trapId = null, panelLines = null, setti
                   const cy  = (sy + ey) / 2 - PANEL_OFFSET_PX * Math.cos(beamRad)
                   const len = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
                   return (
-                    <g key={idx}>
-                      <rect
-                        x={cx - len/2} y={cy - PANEL_THICK_PX/2}
-                        width={len} height={PANEL_THICK_PX}
-                        fill={PANEL_BAR_FILL}
-                        stroke={PANEL_BAR_STROKE}
-                        strokeWidth="1"
-                        transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
-                      />
-                      {hl('panel') && (
-                        <rect
-                          x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
-                          width={len + 10} height={PANEL_THICK_PX + 10}
-                          fill="none" stroke={AMBER} strokeWidth="2.5" rx="3"
-                          transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
-                          style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
-                        />
-                      )}
-                    </g>
+                    <rect key={`phl-${idx}`}
+                      x={cx - len/2 - 5} y={cy - PANEL_THICK_PX/2 - 5}
+                      width={len + 10} height={PANEL_THICK_PX + 10}
+                      fill="none" stroke={AMBER} strokeWidth="2.5" rx="3"
+                      transform={`rotate(${beamAngleDeg}, ${cx}, ${cy})`}
+                      style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}
+                    />
                   )
                 })
               })()}
