@@ -110,21 +110,32 @@ function splitIntoStockSegments(lengthMm: number, stockLengths: number[]) {
 }
 
 /**
- * Build a lookup map for BE rail data, keyed by multiple access patterns.
+ * Map each FE areaGroupKey to its BE rails-area entry.
+ *
+ * areaGroupKey is a rectArea index (FE-unique); we resolve it to the BE area
+ * by reading rectArea.areaGroupId (= BE areaId) and matching against
+ * beRailsData. This avoids the collision risk of a numeric string-keyed
+ * lookup (FE rectArea index ↔ BE areaId) and the assumption that areaLabel
+ * is unique.
  */
-export function buildBeRailLookup(beRailsData: BeRailsAreaData[] | null): Record<string, any> {
-  const m: Record<string, any> = {}
-  ;(beRailsData ?? []).forEach((area, idx) => {
-    for (const r of (area.rails ?? [])) {
-      const pri = r._panelRowIdx ?? 0
-      m[`${idx}:${pri}:${r.railId}`] = r
-      m[`${area.areaLabel}:${pri}:${r.railId}`] = r
-      if (area.areaId != null) m[`${area.areaId}:${pri}:${r.railId}`] = r
-      if (!m[`${idx}:${r.railId}`]) m[`${idx}:${r.railId}`] = r
-      if (!m[`${area.areaLabel}:${r.railId}`]) m[`${area.areaLabel}:${r.railId}`] = r
+export function buildGroupKeyToBeArea(
+  rowKeys: number[],
+  beRailsData: BeRailsAreaData[] | null,
+  rectAreas: { areaGroupId?: number | string | null }[] | null = null,
+): Record<number, BeRailsAreaData> {
+  const map: Record<number, BeRailsAreaData> = {}
+  if (!beRailsData || beRailsData.length === 0 || !rectAreas) return map
+  const beByAreaId: Record<number, BeRailsAreaData> = {}
+  for (const a of beRailsData) {
+    if (a.areaId != null) beByAreaId[a.areaId] = a
+  }
+  for (const gk of rowKeys) {
+    const beAreaId = rectAreas[gk]?.areaGroupId
+    if (typeof beAreaId === 'number' && beByAreaId[beAreaId]) {
+      map[gk] = beByAreaId[beAreaId]
     }
-  })
-  return m
+  }
+  return map
 }
 
 /**

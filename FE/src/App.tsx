@@ -732,6 +732,7 @@ function App() {
             key={step3ResetKey}
             panels={s.panels}
             refinedArea={s.refinedArea}
+            rectAreas={s.rectAreas}
             uploadedImageData={s.uploadedImageData}
             imageSrc={s.imageSrc}
             railsComputing={railsComputing}
@@ -779,6 +780,7 @@ function App() {
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
+            rectAreas={s.rectAreas}
             project={s.currentProject}
             projectId={s.cloudProjectId}
             uploadedImageData={s.uploadedImageData}
