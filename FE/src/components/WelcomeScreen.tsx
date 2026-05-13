@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { PRIMARY, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_FAINT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
+import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
 import { useLang } from '../i18n/LangContext'
@@ -142,7 +142,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
       {/* Logo + title */}
       <div style={{ textAlign: 'center', marginBottom: '1.5rem', marginTop: '1rem' }}>
         <img src="/mgp-logo.svg" alt="MyGreenPlanner" style={{ height: '70px', width: 'auto', marginBottom: '0.8rem' }} />
-        <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: TEXT_DARKEST }}>
+        <h1 style={{ margin: '0 0 0.35rem', fontSize: '2.2rem', fontWeight: '800', color: TEXT_FAINT }}>
           {t('app.title')}
         </h1>
         <p style={{ margin: 0, fontSize: '1rem', color: TEXT_FAINT, fontWeight: '400' }}>
@@ -184,15 +184,15 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
               <IconPlus />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_DARKEST }}>{t('welcome.newProject')}</div>
-              <div style={{ fontSize: '0.8rem', color: TEXT_LIGHT, marginTop: '2px' }}>{t('welcome.newProjectDesc')}</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_FAINT }}>{t('welcome.newProject')}</div>
+              <div style={{ fontSize: '0.8rem', color: TEXT_FAINT, marginTop: '2px' }}>{t('welcome.newProjectDesc')}</div>
             </div>
           </div>
 
           {mode === 'new' && (
             <div style={{ padding: '1.25rem 1.75rem 1.5rem' }}>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                   {t('welcome.projectName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
                 </label>
                 <input
@@ -210,7 +210,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                   {t('welcome.clientName')} <span style={{ color: '#e53935' }}>{t('welcome.required')}</span>
                 </label>
                 <input
@@ -227,7 +227,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                   {t('welcome.location')}
                 </label>
                 <input
@@ -243,7 +243,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                 />
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                   {t('welcome.date')}
                 </label>
                 <input
@@ -257,7 +257,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                   {t('welcome.roofType')}
                 </label>
                 <select
@@ -280,7 +280,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
               {(roofType === 'iskurit' || roofType === 'insulated_panel') && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                       {t('roofSpec.distanceBetweenPurlins')}
                     </label>
                     <input
@@ -295,7 +295,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                     />
                   </div>
                   <div style={{ marginBottom: '1.25rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_FAINT, marginBottom: '0.4rem' }}>
                       {t('roofSpec.installationOrientation')}
                     </label>
                     <select
@@ -329,7 +329,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                 {t('welcome.startPlanning')}
               </button>
               {!appConfigReady && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: TEXT_LIGHT }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: TEXT_FAINT }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
                     <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="31.4 31.4" strokeLinecap="round" />
                   </svg>
@@ -347,11 +347,11 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
       {user && (
         <div style={{ width: '100%', maxWidth: '780px', marginTop: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: TEXT_FAINT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {user.role === 'admin' ? t('welcome.allProjects') : t('welcome.savedProjects')}
             </div>
             {cloudProjects.length > 0 && (
-              <div style={{ fontSize: '0.75rem', color: TEXT_MUTED }}>
+              <div style={{ fontSize: '0.75rem', color: TEXT_FAINT }}>
                 {t('welcome.showingCount', { shown: cloudProjects.length, total: totalProjectsCount })}
               </div>
             )}
@@ -394,11 +394,11 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           )}
 
           {cloudProjectsLoading && cloudProjects.length === 0 ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_FAINT, padding: '0.75rem 0' }}>{t('welcome.loading')}</div>
           ) : cloudProjects.length === 0 && localSearch ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_FAINT, padding: '0.75rem 0' }}>{t('welcome.noMatchingProjects')}</div>
           ) : cloudProjects.length === 0 ? (
-            <div style={{ fontSize: '0.82rem', color: TEXT_LIGHT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_FAINT, padding: '0.75rem 0' }}>{t('welcome.noProjects')}</div>
           ) : (
             <div
               className="projects-scrollable"
@@ -493,10 +493,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                       // Display mode
                       <>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {p.name}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: TEXT_LIGHT, marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.75rem', color: TEXT_FAINT, marginTop: '2px' }}>
                             {p.client_name ? `${p.client_name} · ` : ''}
                             {p.location ? `${p.location} · ` : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -576,18 +576,18 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       {/* Sadot Energy branding */}
       <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
-        <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+        <span style={{ fontSize: '0.65rem', fontWeight: '600', color: TEXT_FAINT, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
           {t('welcome.poweredBy')}
         </span>
         <img src="/sadot-logo.png" alt="Sadot Energy" style={{ height: '32px', width: 'auto' }} />
       </div>
 
-      <p style={{ marginTop: '1rem', fontSize: '0.72rem', color: TEXT_FAINTEST }}>
+      <p style={{ marginTop: '1rem', fontSize: '0.72rem', color: TEXT_FAINT }}>
         {t('welcome.copyright')} {new Date().getFullYear()}
       </p>
 
       {/* Version information */}
-      <div style={{ marginTop: '0.5rem', marginBottom: '1rem', fontSize: '0.62rem', color: TEXT_FAINTEST, display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+      <div style={{ marginTop: '0.5rem', marginBottom: '1rem', fontSize: '0.62rem', color: TEXT_FAINT, display: 'flex', gap: '1rem', justifyContent: 'center' }}>
         <span>App: v{frontendVersion}</span>
         <span>•</span>
         <span>Srv: {backendVersion ? `v${backendVersion}` : '...'}</span>
