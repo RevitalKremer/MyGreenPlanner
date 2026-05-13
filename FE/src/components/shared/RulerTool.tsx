@@ -36,7 +36,7 @@ function RulerTool({ active, zoom, pxPerCm, containerRef }) {
     const distCm = screenDist / zoom / pxPerCm
     distLabel = distCm >= 100
       ? `${(distCm / 100).toFixed(2)} m`
-      : `${Math.round(distCm)} cm`
+      : `${distCm.toFixed(1)} cm`
   }
 
   if (!active && pts.length === 0) return null

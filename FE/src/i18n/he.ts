@@ -248,8 +248,9 @@ const he = {
   'step3.param.blockLengthCm':       'אורך בלוק (ס"מ)',
   'step3.param.blockWidthCm':        'רוחב בלוק (ס"מ)',
   'step3.param.blockPunchCm':        'מרחק ניקובי בלוק (ס"מ)',
-  'step3.param.diagTopPct':          'אלכסון עליון (%)',
-  'step3.param.diagBasePct':         'אלכסון תחתון (%)',
+  'step3.sidebar.clampedTo':          'מוגבל ל-',
+  'step3.param.diagDistFromLegCm':    'מרחק אלכסון מרגל (ס"מ)',
+  'step3.param.diagPreferredAngleDeg': 'זווית אלכסון (°)',
   'step3.param.panelGapCm':          'מרווח פנלים (ס"מ)',
   'step3.param.lineGapCm':           'מרווח שורות (ס"מ)',
   'step3.param.angleProfileSizeMm':  'גודל פרופיל זווית (מ"מ)',
@@ -402,6 +403,7 @@ const he = {
 
   // ── Step 3 – Layers panel ─────────────────────────────────────────────────
   'step3.layers.title':          'שכבות',
+  'step3.layers.all':            'הכל',
   'step3.layer.roofImage':       'תמונת גג',
   'step3.layer.rails':           'קושרות',
   'step3.layer.dimensions':      'מידות',
@@ -430,6 +432,8 @@ const he = {
   'step3.detail.topBeam':        'קורת עליון',
   'step3.detail.rearLeg':        'רגל אחורית',
   'step3.detail.frontLeg':       'רגל קדמית',
+  'step3.detail.adjusted':            'מותאם',
+  'step3.detail.shortFrontLegTooltip': 'רגל קצרה מדי — גובה הפנל הותאם כך שהרגל יושבת ברמת הקרקע',
   'step3.detail.diagonal':       'דיאגונל',
   'step3.detail.baseBeamPunches': 'קורת בסיס — מיקומי ניקובים',
   'step3.detail.slopeBeamPunches': 'קורת יתר — מיקומי ניקובים',

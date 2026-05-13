@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BG_FAINT, BG_MID, LAYER_ACCENT } from '../../../styles/colors'
 
@@ -11,6 +11,19 @@ import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, 
 export default function LayersPanel({ layers, summary = null, actions }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
+  const allRef = useRef(null)
+
+  const allChecked  = layers.every(l => l.checked)
+  const someChecked = layers.some(l => l.checked)
+
+  useEffect(() => {
+    if (!allRef.current) return
+    allRef.current.indeterminate = someChecked && !allChecked
+  }, [allChecked, someChecked])
+
+  function toggleAll(on: boolean) {
+    layers.forEach(l => l.setter(on))
+  }
 
   return (
     <div
@@ -27,6 +40,10 @@ export default function LayersPanel({ layers, summary = null, actions }) {
       {!collapsed && (
         <div style={{ padding: '0.6rem 0.75rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: summary ? '0.6rem' : 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: someChecked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '700', paddingBottom: '0.25rem', borderBottom: `1px solid ${BG_MID}`, marginBottom: '0.05rem' }}>
+              <input ref={allRef} type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
+              {t('step3.layers.all')}
+            </label>
             {layers.map(({ label, checked, setter }) => (
               <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '500' }}>
                 <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />

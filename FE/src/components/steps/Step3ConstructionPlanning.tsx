@@ -236,6 +236,8 @@ export default function Step3ConstructionPlanning({
         paramSchema={PARAM_SCHEMA}
         paramGroup={PARAM_GROUP}
         onApplyChanges={(tab) => onTabSave?.(tab === 'detail' ? 'trapezoids' : tab)}
+        effectiveDiagSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDiagSettings ?? null}
+        effectiveBasesSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveBasesSettings ?? null}
       />
 
       {/* ── Main content ── */}
@@ -289,6 +291,7 @@ export default function Step3ConstructionPlanning({
                       lineRails={rowData.trapLineRailsMap[effectiveSelectedTrapId] ?? geo.selectedLineRails}
                       highlightParam={highlightParam}
                       beDetailData={beTrapezoidsData?.[effectiveSelectedTrapId]}
+                      effectiveDetailSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDetailSettings ?? null}
                       fullTrapGhost={fullTrapGhost}
                       paramGroup={PARAM_GROUP}
                       reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}

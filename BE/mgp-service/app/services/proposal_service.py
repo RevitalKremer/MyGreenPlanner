@@ -178,7 +178,7 @@ _COLUMN_MAP = {
     'weight_kg':               'L',
 }
 
-_PLACEHOLDER_FIELDS = {'CUSTOMER_NAME', 'PROJECT_NAME', 'PROPOSAL_DATE'}
+_PLACEHOLDER_FIELDS = {'CUSTOMER_NAME', 'PROJECT_NAME', 'PROPOSAL_DATE', 'ALUMINIUM_WEIGHT', 'BLOCKS_WEIGHT'}
 
 
 # Cell reference pattern: optional $, A-Z letters, optional $, digits.
@@ -417,10 +417,31 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
     wb = load_workbook(TEMPLATE_PATH)
 
     today = datetime.now(timezone.utc).strftime('%-d/%-m/%Y')
+
+    aluminium_weight = 0.0
+    blocks_weight = 0.0
+    for item in effective_items:
+        if item.get('element') == 'depreciation_waste':
+            continue
+        product = products_by_type.get(item.get('element'))
+        if not product or not product.weight_kg:
+            continue
+        qty = item.get('qty') or 0
+        piece_len = item.get('pieceLengthM')
+        total_weight = (piece_len * qty * product.weight_kg) if piece_len is not None else (qty * product.weight_kg)
+        ptype = product.product_type or ''
+        element = item.get('element', '')
+        if ptype == 'aluminium':
+            aluminium_weight += total_weight
+        elif element == 'block_50x24x15':
+            blocks_weight += total_weight
+
     ctx = {
-        'CUSTOMER_NAME': getattr(project, 'client_name', '') or '',
-        'PROJECT_NAME':  project.name or '',
-        'PROPOSAL_DATE': today,
+        'CUSTOMER_NAME':    getattr(project, 'client_name', '') or '',
+        'PROJECT_NAME':     project.name or '',
+        'PROPOSAL_DATE':    today,
+        'ALUMINIUM_WEIGHT': round(aluminium_weight, 1),
+        'BLOCKS_WEIGHT':    round(blocks_weight, 1),
     }
 
     if 'quantities' in wb.sheetnames:

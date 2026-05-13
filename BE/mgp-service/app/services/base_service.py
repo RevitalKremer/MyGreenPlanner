@@ -258,6 +258,10 @@ def compute_area_bases(
     # Block positions are computed in trapezoid_detail_service (single source of truth).
     # The FE bases view reads blocks from computedTrapezoids[trapId].blocks.
 
+    max_edge_offset_mm = round(frame_length_mm / 2.0, 1)
+    effective_edge_for_spacing = min(edge_offset_mm, max_edge_offset_mm)
+    max_spacing_mm = round(max(0.0, frame_length_mm - 2.0 * effective_edge_for_spacing), 1)
+
     return {
         'trapezoidId': trapezoid_id,
         'bases': bases,
@@ -270,6 +274,12 @@ def compute_area_bases(
         'baseLengthCm': round_to_2dp(base_length_cm),
         'actualSpacingMm': actual_spacing_mm,
         'baseCount': len(bases),
+        'effectiveBasesSettings': {
+            'maxEdgeOffsetMm': max_edge_offset_mm,
+            'edgeOffsetClamped': edge_offset_mm > max_edge_offset_mm,
+            'maxSpacingMm': max_spacing_mm,
+            'spacingClamped': spacing_mm > max_spacing_mm,
+        },
     }
 
 

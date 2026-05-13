@@ -141,6 +141,8 @@ export default function Step3Sidebar({
   paramSchema: PARAM_SCHEMA = [],
   paramGroup: PARAM_GROUP = {},
   onApplyChanges,
+  effectiveDiagSettings = null,
+  effectiveBasesSettings = null,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -287,11 +289,20 @@ export default function Step3Sidebar({
       const trapSettings = getTrapBasesSettings?.(effectiveSelectedTrapId) ?? {}
       const val = trapSettings[key] ?? param.default
       const overridden = !!(effectiveSelectedTrapId && trapezoidConfigs[effectiveSelectedTrapId] && key in trapezoidConfigs[effectiveSelectedTrapId])
+      const effectiveTrapMax = (() => {
+        if (key === 'edgeOffsetMm' && effectiveBasesSettings?.maxEdgeOffsetMm != null) return effectiveBasesSettings.maxEdgeOffsetMm
+        if (key === 'spacingMm' && effectiveBasesSettings?.maxSpacingMm != null) return effectiveBasesSettings.maxSpacingMm
+        return max
+      })()
+      const isTrapClamped = (key === 'edgeOffsetMm' && !!effectiveBasesSettings?.edgeOffsetClamped)
+        || (key === 'spacingMm' && !!effectiveBasesSettings?.spacingClamped)
+      const clampedVal = key === 'edgeOffsetMm' ? effectiveBasesSettings?.maxEdgeOffsetMm
+        : key === 'spacingMm' ? effectiveBasesSettings?.maxSpacingMm : null
       return (
         <div key={key} style={{ marginBottom: '0.45rem' }}>
           {labelNode}
           <DebouncedNumberInput
-            value={val} min={min} max={max} step={step}
+            value={val} min={min} max={effectiveTrapMax} step={step}
             onCommit={v => updateTrapBaseSetting?.(effectiveSelectedTrapId, key, v)}
             onFocus={() => setHighlightParam(key)}
             onBlur={() => setHighlightParam(null)}
@@ -300,6 +311,11 @@ export default function Step3Sidebar({
               border: `1px solid ${isActive ? AMBER : overridden ? WARNING_LIGHT : BORDER}`,
               fontWeight: overridden ? '700' : '400',
             }} />
+          {isTrapClamped && clampedVal != null && (
+            <div style={{ fontSize: '0.6rem', color: WARNING, marginTop: '2px' }}>
+              {t('step3.sidebar.clampedTo')} {fmt(clampedVal)}
+            </div>
+          )}
         </div>
       )
     }
@@ -307,11 +323,18 @@ export default function Step3Sidebar({
     // ── number · area (default)
     const s          = getSettings(selectedRowIdx)
     const overridden = isOverride(key)
+
+    const effectiveMax = (() => {
+      if (key === 'diagDistFromLegCm' && effectiveDiagSettings?.maxDistFromLegCm != null) return effectiveDiagSettings.maxDistFromLegCm
+      return max
+    })()
+    const isClamped = (key === 'diagDistFromLegCm' && !!effectiveDiagSettings?.distClamped)
+
     return (
       <div key={key} style={{ marginBottom: '0.45rem' }}>
         {labelNode}
         <DebouncedNumberInput
-          value={s[key] ?? param.default} min={min} max={max} step={step}
+          value={s[key] ?? param.default} min={min} max={effectiveMax} step={step}
           onCommit={v => updateSetting(selectedRowIdx, key, v)}
           onFocus={() => setHighlightParam(key)}
           onBlur={() => setHighlightParam(null)}
@@ -320,6 +343,14 @@ export default function Step3Sidebar({
             border: `1px solid ${isActive ? AMBER : overridden ? WARNING_LIGHT : BORDER}`,
             fontWeight: overridden ? '700' : '400',
           }} />
+        {isClamped && (() => {
+          const clampedVal = key === 'diagDistFromLegCm' ? effectiveDiagSettings?.distFromLegCm : null
+          return clampedVal != null ? (
+            <div style={{ fontSize: '0.6rem', color: WARNING, marginTop: '2px' }}>
+              {t('step3.sidebar.clampedTo')} {fmt(clampedVal)}
+            </div>
+          ) : null
+        })()}
       </div>
     )
   }

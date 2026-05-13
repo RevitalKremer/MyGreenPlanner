@@ -680,6 +680,15 @@ export default function Step4PdfReport({
 
               {/* PDF checkboxes */}
               <div style={{ fontSize: '0.75rem', fontWeight: '600', color: TEXT_MUTED, marginBottom: '0.1rem' }}>PDF content</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none', fontWeight: '700', paddingBottom: '0.25rem', borderBottom: `1px solid ${BORDER_FAINT}`, marginBottom: '0.05rem' }}>
+                <input
+                  type="checkbox"
+                  checked={allPdfChecked}
+                  ref={el => { if (el) el.indeterminate = anyPdfChecked && !allPdfChecked }}
+                  onChange={e => setPdfContent({ pricing: e.target.checked, quantities: e.target.checked, plans: e.target.checked })}
+                />
+                All
+              </label>
               {(['pricing', 'quantities', 'plans'] as const).map(key => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
                   <input
@@ -690,15 +699,6 @@ export default function Step4PdfReport({
                   {key.charAt(0).toUpperCase() + key.slice(1)}
                 </label>
               ))}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
-                <input
-                  type="checkbox"
-                  checked={allPdfChecked}
-                  ref={el => { if (el) el.indeterminate = anyPdfChecked && !allPdfChecked }}
-                  onChange={e => setPdfContent({ pricing: e.target.checked, quantities: e.target.checked, plans: e.target.checked })}
-                />
-                All
-              </label>
 
               <button
                 onClick={handleGeneratePdf}

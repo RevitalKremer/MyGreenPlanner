@@ -258,7 +258,8 @@ def _derive_row_construction(
         cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
         cm += t_geom.get('topBeamLength') or 0
         for leg in t_legs:
-            cm += leg.get('heightCm', 0) or 0
+            if not leg.get('virtual'):
+                cm += leg.get('heightCm', 0) or 0
         for d in t_diags:
             if d.get('disabled'):
                 continue

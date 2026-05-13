@@ -1983,24 +1983,11 @@ async def save_tab(
                 trap_cfg['panelRowIdx'] = row_idx
         
         # Diagonal overrides → trapezoidConfigs[].customDiagonals
-        # New format: { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
-        # Legacy storage: { trapId: { "0": {topPct, botPct}, "1": {...} } }
+        # Format: { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
         if 'diagonals' in overrides and overrides['diagonals']:
             trapezoid_configs = trapezoid_configs or {}
             for trap_id, diag_obj in overrides['diagonals'].items():
-                # Convert simplified format to full object format for legacy storage
-                expanded_obj = {}
-                for span_id, value in diag_obj.items():
-                    if isinstance(value, list) and len(value) == 2:
-                        # Array format: [topPct, botPct]
-                        expanded_obj[str(span_id)] = {
-                            'topPct': value[0],
-                            'botPct': value[1]
-                        }
-                    elif isinstance(value, dict):
-                        # Object format: {disabled: true} or {topPct, botPct}
-                        expanded_obj[str(span_id)] = value
-                
+                expanded_obj = {str(span_id): value for span_id, value in diag_obj.items() if isinstance(value, dict)}
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
@@ -2060,6 +2047,10 @@ async def reset_tab(
                     area_settings.pop(key, None)
     elif tab == 'trapezoids':
         step3.pop('customDiagonals', None)
+        for area_settings in (step3.get('areaSettings') or {}).values():
+            if isinstance(area_settings, dict):
+                for key in ['diagDistFromLegCm', 'diagPreferredAngleDeg']:
+                    area_settings.pop(key, None)
 
     project.data = data
     flag_modified(project, 'data')

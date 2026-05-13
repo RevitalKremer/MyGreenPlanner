@@ -59,7 +59,7 @@ export function buildRailItems(
  */
 export function buildDetailDiagonals(
   beDetailData: ComputedTrapezoid | null,
-  diagOverrides: Record<number, Partial<Diagonal> & { disabled?: boolean }>,
+  diagOverrides: Record<number, { topDistFromLegCm?: number; botDistFromLegCm?: number; disabled?: boolean }>,
   allLegXs: number[],
   allLegEndXs: number[],
   allLegHeights: number[],
@@ -71,10 +71,10 @@ export function buildDetailDiagonals(
   const raw = beDiags.map(d => {
     if (d.spanIdx >= numSpans) return null
     const ov = diagOverrides[d.spanIdx] ?? {}
-    const topPct = ov.topPct ?? d.topPct
-    const botPct = ov.botPct ?? d.botPct
+    const topDist = ov.topDistFromLegCm ?? d.topDistFromLegCm
+    const botDist = ov.botDistFromLegCm ?? d.botDistFromLegCm
     const { xA, xB, spanW, topX, botX, topY, botY } = calculateDiagonalPosition({
-      spanIdx: d.spanIdx, topPct, botPct,
+      spanIdx: d.spanIdx, topDistFromLegCm: topDist, botDistFromLegCm: botDist, punchSpanCm: d.punchSpanCm,
       legXs: allLegXs, legEndXs: allLegEndXs, legHeights: allLegHeights,
       baseY, beamThickPx: BEAM_THICK_PX,
     })
@@ -93,6 +93,8 @@ export function buildDetailDiagonals(
 
 /**
  * Build sorted punch points array for DetailPunchSketch.
+ * When liveDiagPoints is provided, it replaces server diagonal punches so the
+ * bar reflects the current (potentially overridden) diagonal positions.
  */
 export function buildPunchPoints(
   punches: Punch[],
@@ -100,13 +102,42 @@ export function buildPunchPoints(
   excludeOrigin: string,
   atFn: (pos: number) => number,
   labelFor: (p: Punch) => string,
+  liveDiagPoints?: { x: number; label: string; origin: string }[],
 ) {
   const matches = (origin: (o: string) => boolean) => (p: Punch) =>
     p.beamType === beamType && p.origin !== excludeOrigin && origin(p.origin)
   const toPoint = (origin: string) => (p: Punch) => ({ x: atFn(p.positionCm), label: labelFor(p), origin })
   const nonDiag = punches.filter(matches(o => o !== 'diagonal')).map(p => toPoint(p.origin)(p))
-  const diag    = punches.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
+  const diag    = liveDiagPoints ?? punches.filter(matches(o => o === 'diagonal')).map(toPoint('diagonal'))
   return [...nonDiag, ...diag].sort((a, b) => a.x - b.x)
+}
+
+/**
+ * Compute diagonal punch positions in cm (for both beams) from pct values + leg geometry.
+ * Replicates server logic from _compute_structural_punches / _slope_to_base so punch
+ * labels update immediately when the user drags a handle (before server recomputes).
+ */
+export function computeLiveDiagPunchPositions(
+  beDiags: { spanIdx: number; topDistFromLegCm: number; botDistFromLegCm: number }[],
+  diagOverrides: Record<number, { topDistFromLegCm?: number; botDistFromLegCm?: number }>,
+  beLegs: { positionCm: number; positionEndCm: number }[],
+  beamThickCm: number,
+  angleRad: number,
+  legOffsetCm: number,
+) {
+  const ph = beamThickCm / 2
+  const cosA = Math.cos(angleRad)
+  return beDiags.map(d => {
+    if (!beLegs[d.spanIdx] || !beLegs[d.spanIdx + 1]) return null
+    const ov = diagOverrides[d.spanIdx] ?? {}
+    const ps = beLegs[d.spanIdx].positionCm + ph
+    const topSlope = ps + (ov.topDistFromLegCm ?? d.topDistFromLegCm)
+    const botSlope = ps + (ov.botDistFromLegCm ?? d.botDistFromLegCm)
+    // Mirror server: top = slope coords from beam start, bot = _slope_to_base
+    const topPosCm = topSlope - legOffsetCm
+    const botPosCm = legOffsetCm + ph + (botSlope - legOffsetCm - ph) * cosA
+    return { spanIndex: d.spanIdx, topPosCm, botPosCm }
+  }).filter((x): x is { spanIndex: number; topPosCm: number; botPosCm: number } => x !== null)
 }
 
 /**
@@ -126,32 +157,88 @@ export function computeActiveDepths(segments: PanelLineSegment[]) {
 }
 
 /**
- * Derive all leg pixel data from BE legs.
+ * Pure geometry for the side-view "structure" of a trapezoid (base beam, slope
+ * beam, legs, blocks, panels). Used by DetailView (main render) and
+ * DetailGhostLayer (ghost overlay) so both share one source of truth.
+ *
+ * - `atTrapX(posCm)` maps a BE slope position (rebased so first leg = 0) to SVG x.
+ *   DetailView passes its own atTrap; the ghost passes an anchored variant.
+ * - All y-side values are derived from `leg.heightCm * SC` (the slope beam
+ *   CENTER y at the leg CENTER): `legTopYs[i] = baseY + 3*beamThickPx/2 - h*SC`.
+ * - `beamYAt(x)` linearly interpolates between leg-CENTER anchors so the rendered
+ *   slope matches `geom.angle` exactly (anchoring at outer edges would flatten it).
  */
-export function buildLegData(
-  beLegs: Leg[],
-  atTrap: (posCm: number) => { x: number; y: number },
-  beamThickCm: number,
-  SC: number,
-  baseY: number,
-) {
+export interface TrapStructureGeometry {
+  legXs: number[]
+  legEndXs: number[]
+  legCenterXs: number[]
+  legHeights: number[]
+  legTopYs: number[]
+  slopeY0: number
+  slopeYN: number
+  slopeXC0: number
+  slopeXCN: number
+  slopeXSpan: number
+  beamYAt: (x: number) => number
+  beamAngleDeg: number
+  legX0: number
+  legX1: number
+  legBW: number
+  firstLegPos: number   // cm
+  baseBeamX0: number    // px — start of base beam (incl. front extension)
+  baseBeamW: number     // px — full base beam width (incl. extensions)
+}
+
+export function computeTrapStructureGeometry({
+  beLegs, baseBeamLengthCm, atTrapX, baseY, beamThickPx, SC,
+}: {
+  beLegs: Leg[]
+  baseBeamLengthCm: number
+  atTrapX: (posCm: number) => number
+  baseY: number
+  beamThickPx: number
+  SC: number
+}): TrapStructureGeometry {
   const firstLegPos = beLegs[0]?.positionCm ?? 0
-  const allLegXs = beLegs.map(leg => atTrap(leg.positionCm - firstLegPos).x)
-  const allLegEndXs = beLegs.map(leg => atTrap((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos).x)
-  const allLegHeights = beLegs.map(leg => leg.heightCm * SC)
-  const allLegTopYs = allLegHeights.map(h => baseY - h)
-  const legX0 = allLegXs[0] ?? 0
-  const legX1 = allLegEndXs[allLegEndXs.length - 1] ?? 0
+  const beamThickCm = beamThickPx / SC
+  const legXs = beLegs.map(leg => atTrapX(leg.positionCm - firstLegPos))
+  const legEndXs = beLegs.map(leg => atTrapX((leg.positionEndCm ?? (leg.positionCm + beamThickCm)) - firstLegPos))
+  const legCenterXs = beLegs.map((_, li) => (legXs[li] + legEndXs[li]) / 2)
+  const legHeights = beLegs.map(leg => leg.heightCm * SC)
+  const legTopYs = beLegs.map(leg => baseY + 3 * beamThickPx / 2 - leg.heightCm * SC)
+  const slopeY0 = legTopYs[0] ?? baseY
+  const slopeYN = legTopYs[legTopYs.length - 1] ?? slopeY0
+  const slopeXC0 = legCenterXs[0] ?? legXs[0] ?? 0
+  const slopeXCN = legCenterXs[legCenterXs.length - 1] ?? legEndXs[legEndXs.length - 1] ?? 0
+  const slopeXSpan = slopeXCN - slopeXC0
+  const beamYAt = (x: number) => slopeXSpan > 0
+    ? slopeY0 + (x - slopeXC0) / slopeXSpan * (slopeYN - slopeY0)
+    : slopeY0
+  const beamAngleDeg = slopeXSpan > 0
+    ? Math.atan2(slopeYN - slopeY0, slopeXSpan) * 180 / Math.PI
+    : 0
+  const legX0 = legXs[0] ?? 0
+  const legX1 = legEndXs[legEndXs.length - 1] ?? 0
   const legBW = legX1 - legX0
-  return { allLegXs, allLegEndXs, allLegHeights, allLegTopYs, legX0, legX1, legBW, firstLegPos }
+  const baseBeamX0 = legX0 - firstLegPos * SC
+  // Fall back to leg-to-leg span when baseBeamLengthCm is missing (matches DetailView's prior behavior).
+  const baseBeamW = baseBeamLengthCm > 0 ? baseBeamLengthCm * SC : legBW
+  return {
+    legXs, legEndXs, legCenterXs, legHeights, legTopYs,
+    slopeY0, slopeYN, slopeXC0, slopeXCN, slopeXSpan,
+    beamYAt, beamAngleDeg,
+    legX0, legX1, legBW, firstLegPos,
+    baseBeamX0, baseBeamW,
+  }
 }
 
 // ─── Diagonal rendering helpers ───────────────────────────────────────────────
 
 interface DiagonalPositionParams {
   spanIdx: number
-  topPct: number
-  botPct: number
+  topDistFromLegCm: number
+  botDistFromLegCm: number
+  punchSpanCm: number
   legXs: number[]
   legEndXs: number[]
   legHeights: number[]
@@ -160,21 +247,22 @@ interface DiagonalPositionParams {
 }
 
 export const calculateDiagonalPosition = ({
-  spanIdx, topPct, botPct, legXs, legEndXs, legHeights, baseY, beamThickPx,
+  spanIdx, topDistFromLegCm, botDistFromLegCm, punchSpanCm, legXs, legEndXs, legHeights, baseY, beamThickPx,
 }: DiagonalPositionParams) => {
-  // Punch-to-punch span: percentages apply between leg centers (punch points),
-  // matching the BE _compute_diagonal_bracing calculation.
   const halfThick = beamThickPx / 2
   const punchA = legXs[spanIdx] + halfThick
   const punchB = legEndXs[spanIdx + 1] - halfThick
   const xA = legXs[spanIdx]
   const xB = legEndXs[spanIdx + 1]
   const spanW = punchB - punchA
+  const topPct = punchSpanCm > 0 ? topDistFromLegCm / punchSpanCm : 0
+  const botPct = punchSpanCm > 0 ? botDistFromLegCm / punchSpanCm : 0
   const topX = punchA + topPct * spanW
   const botX = punchA + botPct * spanW
   const hA = legHeights[spanIdx] ?? 0
   const hB = legHeights[spanIdx + 1] ?? 0
-  const topY = baseY - (hA + topPct * (hB - hA))
+  // BE height = slope TOP to base BOTTOM; slope CENTER = baseY + 3*halfThick - h
+  const topY = baseY + halfThick + beamThickPx - (hA + topPct * (hB - hA))
   const botY = baseY + halfThick
   return { xA, xB, spanW, topX, botX, topY, botY }
 }

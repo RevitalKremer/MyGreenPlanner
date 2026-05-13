@@ -41,7 +41,7 @@ class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
     rails: Optional[dict] = None       # { areaLabel: { lineIdx: [positions] } }
     bases: Optional[dict] = None       # { trapId: [positions] }
-    diagonals: Optional[dict] = None   # { trapId: { spanId: [topPct, botPct] | {disabled: true} } }
+    diagonals: Optional[dict] = None   # { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
 
 class SaveTabRequest(BaseModel):
     """Unified save request for all tabs."""

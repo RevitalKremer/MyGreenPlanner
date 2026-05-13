@@ -35,6 +35,7 @@ function App() {
     5: t('step.5.name'),
   }
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
+  const [step3ResetKey, setStep3ResetKey] = useState(0)
   const [showAuthGate, setShowAuthGate] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
@@ -313,11 +314,11 @@ function App() {
 
           const diagObj = {}
           for (const [spanIdx, diag] of Object.entries(areaDiagOverrides) as [string, any][]) {
-            const { topPct, botPct, disabled } = diag
+            const { topDistFromLegCm, botDistFromLegCm, disabled } = diag
             if (disabled === true) {
               diagObj[spanIdx] = { disabled: true }
-            } else if (topPct != null && botPct != null) {
-              diagObj[spanIdx] = [topPct, botPct]
+            } else if (topDistFromLegCm != null && botDistFromLegCm != null) {
+              diagObj[spanIdx] = { topDistFromLegCm, botDistFromLegCm }
             }
           }
           if (Object.keys(diagObj).length > 0) {
@@ -728,6 +729,7 @@ function App() {
             No overflow:hidden here — that breaks position:fixed in CanvasNavigator. */}
         <div style={{ display: s.currentStep === 3 ? undefined : 'none', height: '100%' }}>
           <Step3ConstructionPlanning
+            key={step3ResetKey}
             panels={s.panels}
             refinedArea={s.refinedArea}
             uploadedImageData={s.uploadedImageData}
@@ -834,7 +836,10 @@ function App() {
           if (s.currentStep > 1 && s.cloudProjectId) {
             if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
             const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
-            if (result?.clearedSteps) s.resetStepData(result.clearedSteps)
+            if (result?.clearedSteps) {
+              s.resetStepData(result.clearedSteps)
+              if (result.clearedSteps.includes('step3')) setStep3ResetKey(k => k + 1)
+            }
           }
           s.handleBack()
         }} disabled={s.currentStep === 1}>
