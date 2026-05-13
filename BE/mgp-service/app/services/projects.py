@@ -1707,6 +1707,9 @@ def _compute_all_trapezoid_details(
         if detail:
             is_full = all(not is_empty_orientation(o) for o in line_orients)
             detail['isFullTrap'] = is_full
+            # Surface the owning panelRow so the FE can pull the right per-row
+            # rails when rendering this trap's detail view (DetailView, etc.).
+            detail['panelRowIdx'] = owning_row_idx
             result[trap_id] = detail
             trap_row_map[trap_id] = owning_row_idx
 
