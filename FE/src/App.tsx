@@ -104,6 +104,7 @@ function App() {
   const [beRailsData, setBeRailsData] = useState(null)
   const [beBasesData, setBeBasesData] = useState(null)
   const [beTrapezoidsData, setBeTrapezoidsData] = useState(null)
+  const [beTrapezoidGroups, setBeTrapezoidGroups] = useState([])
   const [savedActiveTab, setSavedActiveTab] = useState(null)
   const [railsComputing] = useState(false)
   const [basesComputing] = useState(false)
@@ -207,6 +208,11 @@ function App() {
       }
     })
     setBeTrapezoidsData(trapDetails)
+
+    // Groups of structurally identical traps — populated by the BE at the end
+    // of compute_and_save_trapezoid_details. Older projects without this field
+    // fall back to one group per trap on the consumer side.
+    setBeTrapezoidGroups(step3.trapezoidGroups ?? [])
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
@@ -752,6 +758,7 @@ function App() {
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
+            beTrapezoidGroups={beTrapezoidGroups}
             basesComputing={basesComputing}
             appDefaults={s.appDefaults}
             paramSchema={s.paramSchemaForRoof}
@@ -794,6 +801,7 @@ function App() {
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
+            beTrapezoidGroups={beTrapezoidGroups}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
             products={s.products}

@@ -15,7 +15,7 @@ from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
-from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid
+from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid, group_identical_trapezoids
 from app.services import settings_cache
 from app.utils.math_helpers import round_to_1dp
 from app.utils.panel_geometry import (
@@ -109,7 +109,7 @@ async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: Project
 
 
 # ── Server-computed keys in step3 — never sent by FE, always preserved during merge ──
-_SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids'}
+_SERVER_COMPUTED_STEP3_KEYS = {'computedAreas', 'computedTrapezoids', 'trapezoidGroups'}
 
 
 def _deep_merge_settings(existing: dict | None, incoming: dict | None) -> dict:
@@ -1941,6 +1941,11 @@ async def compute_and_save_trapezoid_details(
     # ── Persist aligned blocks ────────────────────────────────────────────────
     for tid, detail in result.items():
         _upsert_computed_trapezoid(step3, tid, detail)
+
+    # ── Group identical trapezoids by shape (for PDF consolidation) ───────────
+    step3['trapezoidGroups'] = group_identical_trapezoids(
+        step3.get('computedTrapezoids', [])
+    )
 
     project.data = data
     flag_modified(project, 'data')

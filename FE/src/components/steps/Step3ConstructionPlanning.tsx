@@ -21,7 +21,7 @@ export default function Step3ConstructionPlanning({
   rectAreas = [],
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
-  beRailsData = null, beBasesData = null, beTrapezoidsData = null,
+  beRailsData = null, beBasesData = null, beTrapezoidsData = null, beTrapezoidGroups = [],
   railsComputing = false, onTabSave, onTabReset, onActiveTabChange,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
   paramGroup: PARAM_GROUP = {}, panelSpec,
@@ -287,6 +287,7 @@ export default function Step3ConstructionPlanning({
                   return (
                     <DetailView
                       rc={geo.selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
+                      twinIds={(beTrapezoidGroups.find(g => g.trapIds.includes(effectiveSelectedTrapId))?.trapIds ?? []).filter(id => id !== effectiveSelectedTrapId)}
                       panelLines={rowData.trapPanelLinesMap[effectiveSelectedTrapId] ?? geo.selectedRowLineDepths}
                       settings={settings.getSettings(selectedRowIdx)}
                       lineRails={rowData.trapLineRailsMap[effectiveSelectedTrapId] ?? geo.selectedLineRails}

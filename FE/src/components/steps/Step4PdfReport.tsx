@@ -61,10 +61,14 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
         {/* ── Row 1 ─────────────────────────────────────────────────────── */}
         <tr style={{ height: '50%', borderBottom: B }}>
 
-          {/* col1 row1: template / page name */}
+          {/* col1 row1: template / page name (may be multiple IDs when consolidated) */}
           <Cell style={{ borderLeft: 'none' }}>
             {pageName
-              ? <LV label={t('step4.tb.template')} value={pageName} />
+              ? <LV
+                  label={t('step4.tb.template')}
+                  value={pageName}
+                  vStyle={pageName.includes(',') ? { fontSize: '7px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.15 } : undefined}
+                />
               : <LV label={t('step4.tb.template')} value="D3" />
             }
           </Cell>
@@ -250,6 +254,7 @@ export default function Step4PdfReport({
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {}, roofType = 'concrete',
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
+  beTrapezoidGroups = [],
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
 }) {
@@ -351,6 +356,17 @@ export default function Step4PdfReport({
   const panelType  = refinedArea?.panelType ?? null
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
+
+  // One PDF page per group of structurally identical traps (server-computed).
+  // Fall back to one page per trap for older projects that lack groups.
+  const pdfTrapGroups = useMemo(() => {
+    if (beTrapezoidGroups?.length) {
+      return beTrapezoidGroups
+        .map(g => ({ ...g, trapIds: g.trapIds.filter(id => trapIds.includes(id)) }))
+        .filter(g => g.trapIds.length > 0)
+    }
+    return trapIds.map((id, i) => ({ groupIdx: i, trapIds: [id] }))
+  }, [beTrapezoidGroups, trapIds])
 
   // Map trapId → all trapezoidIds in the same area (used for ghost + trap count)
   const areaGroupMap = useMemo(() => {
@@ -476,7 +492,7 @@ export default function Step4PdfReport({
   // Render mounted plan pages to PDF bytes. Returns null if no pages are mounted
   // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
   const buildPlansPdfBytes = async (): Promise<ArrayBuffer | null> => {
-    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...trapIds.map(id => trapPageRefs.current[id]).filter(Boolean)]
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     let firstPage = true
 
@@ -790,22 +806,34 @@ export default function Step4PdfReport({
             />
           </ScaledPage>
 
-          {trapIds.map(trapId => (
-            <ScaledPage key={trapId} scale={pageScale}>
-              <TrapDetailPage
-                pageRef={el => { trapPageRefs.current[trapId] = el }}
-                trapId={trapId}
-                rc={trapRCMap[trapId] ?? null}
-                settings={trapSettingsMap[trapId] ?? {}}
-                lineRails={trapLineRailsMap[trapId] ?? null}
-                panelLines={trapPanelLinesMap[trapId] ?? null}
-                beDetailData={beTrapezoidsData?.[trapId]}
-                fullTrapGhost={fullTrapGhostMap[trapId] ?? null}
-                count={(beBasesData ?? []).reduce((n, ad) => n + (ad.bases ?? []).filter(b => b.trapezoidId === trapId).length, 0) || null}
-                project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
-              />
-            </ScaledPage>
-          ))}
+          {pdfTrapGroups.map(group => {
+            // Render one page per group, using the first member as the
+            // visual representative — all members are structurally identical
+            // by definition (see BE group_identical_trapezoids).
+            const repId = group.trapIds[0]
+            const memberSet = new Set(group.trapIds)
+            const groupCount = (beBasesData ?? []).reduce(
+              (n, ad) => n + (ad.bases ?? []).filter(b => memberSet.has(b.trapezoidId)).length,
+              0,
+            ) || null
+            return (
+              <ScaledPage key={repId} scale={pageScale}>
+                <TrapDetailPage
+                  pageRef={el => { trapPageRefs.current[repId] = el }}
+                  trapId={repId}
+                  memberIds={group.trapIds}
+                  rc={trapRCMap[repId] ?? null}
+                  settings={trapSettingsMap[repId] ?? {}}
+                  lineRails={trapLineRailsMap[repId] ?? null}
+                  panelLines={trapPanelLinesMap[repId] ?? null}
+                  beDetailData={beTrapezoidsData?.[repId]}
+                  fullTrapGhost={fullTrapGhostMap[repId] ?? null}
+                  count={groupCount}
+                  project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+                />
+              </ScaledPage>
+            )
+          })}
 
         </div>
       )}
