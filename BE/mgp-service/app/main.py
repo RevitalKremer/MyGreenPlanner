@@ -10,6 +10,7 @@ logger = logging.getLogger("mgp")
 
 from sqlalchemy import select
 
+from app.__version__ import __version__
 from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.models.setting import AppSetting
@@ -53,7 +54,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MyGreenPlanner Service", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="MyGreenPlanner Service", version=__version__, lifespan=lifespan)
 
 
 @app.middleware("http")

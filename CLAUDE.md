@@ -117,7 +117,12 @@ Each step entry has:
 
 ## 6. Versioning
 
-**Rule:** Every merge to `master` must include a version bump in `FE/package.json`.
+**Rule:** Every merge to `dev` or `master` is a deployment and must include a version bump in **both**:
+
+- `FE/package.json` → `"version"` (surfaced as `App: vX.Y.Z` on the welcome screen, injected at build time via `vite.config.js → define.__APP_VERSION__`)
+- `BE/mgp-service/app/__version__.py` → `__version__` (surfaced as `Srv: vX.Y.Z`, served by `/version`, used as FastAPI app metadata)
+
+Keep both numbers in sync — bump both to the same value so the welcome footer reads consistently.
 
 Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
@@ -125,11 +130,13 @@ Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - `MINOR` — new features, non-breaking changes
 - `MAJOR` — breaking changes or major milestones
 
-**Steps when merging to master:**
+**Steps before any merge to `dev` or `master`:**
 
-1. On the branch being merged (or on `dev`), update `"version"` in `FE/package.json`.
+1. On the branch being merged, update `"version"` in `FE/package.json` AND `__version__` in `BE/mgp-service/app/__version__.py`.
 2. Commit the bump (`chore: bump version to X.Y.Z`).
-3. Merge to `master` and push.
+3. Merge.
+
+**Do not edit hardcoded version strings elsewhere** — `FE/src/services/projectsApi.ts` reads `__APP_VERSION__` (injected from `package.json`), and `BE/mgp-service/app/main.py` imports `__version__` from `__version__.py`. Those two files are the single sources of truth.
 
 ---
 

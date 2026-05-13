@@ -188,7 +188,8 @@ export async function getBackendVersion() {
 }
 
 export function getFrontendVersion() {
-  return '0.0.1' // Keep in sync with package.json
+  // Injected at build time from FE/package.json via vite.config.js `define`.
+  return __APP_VERSION__
 }
 
 // ── Images ──────────────────────────────────────────────────────────────────
