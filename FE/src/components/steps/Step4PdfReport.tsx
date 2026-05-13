@@ -246,6 +246,7 @@ export default function Step4PdfReport({
   user = null,
   panels = [], refinedArea, areas = [], project, projectId,
   uploadedImageData, imageSrc,
+  rectAreas = null,
   trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, customBasesMap = {},
   trapPanelLinesMap = {}, roofType = 'concrete',
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
@@ -784,6 +785,7 @@ export default function Step4PdfReport({
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               beRailsData={beRailsData}
+              rectAreas={rectAreas}
               project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
             />
           </ScaledPage>

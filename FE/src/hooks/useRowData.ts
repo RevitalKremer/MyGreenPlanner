@@ -247,12 +247,16 @@ export default function useRowData({
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => {
         const lineOrs = getLineOrientations(areaKey, trapId)
-        const rails = getLineRails(i, lineOrs)
+        // Use the trap's owning panel row (set by the BE) so each trap in a
+        // multi-row area pulls its OWN rails — defaulting to row 0 would feed
+        // every trap row-0's rails (A1's) regardless of which row it lives in.
+        const pri = beTrapezoidsData?.[trapId]?.panelRowIdx ?? 0
+        const rails = getLineRails(i, lineOrs, pri)
         map[trapId] = rails
       })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, getLineOrientations, getLineRails])
+  }, [rowKeys, areaTrapezoidMap, getLineOrientations, getLineRails, beTrapezoidsData])
 
   const trapSettingsMap = useMemo(() => {
     const map: Record<string, any> = {}

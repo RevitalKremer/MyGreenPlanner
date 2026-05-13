@@ -14,6 +14,7 @@ export default function RailsLayoutPage({
   uploadedImageData, imageSrc,
   trapSettingsMap = {}, trapLineRailsMap = {},
   beRailsData = null,
+  rectAreas = null,
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
   const { t } = useLang()
@@ -57,6 +58,7 @@ export default function RailsLayoutPage({
             trapSettingsMap={trapSettingsMap}
             trapLineRailsMap={trapLineRailsMap}
             beRailsData={beRailsData}
+            rectAreas={rectAreas}
             printMode
             printSc={sc}
             printBbox={panelBbox}

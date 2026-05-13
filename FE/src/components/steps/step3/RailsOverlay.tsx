@@ -11,8 +11,7 @@ export default function RailsOverlay({
   railLayouts,
   rowKeys,
   rowGroups,
-  beRailByKey = {} as Record<string, any>,
-  groupKeyToLabel = {},
+  groupKeyToBeArea = {} as Record<number, any>,
   toSvg,
   sc,
   pixelToCmRatio,
@@ -34,21 +33,22 @@ export default function RailsOverlay({
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   const beSegsFor = (i) => {
-    // Pre-resolve: find ALL BE rails for this layout's area + panelRowIdx
+    // Resolve BE rails for this layout's area via the FE-unique areaGroupKey →
+    // BE area mapping. Using areaGroupKey (a rectArea index) avoids both the
+    // numeric collision with BE areaId in a string-keyed lookup AND the
+    // assumption that areaLabel is unique.
     const rl = railLayouts[i]
     const pri = rl?._panelRowIdx ?? 0
     const areaKey = rowKeys[i]
-    const areaLabel = groupKeyToLabel[areaKey] ?? areaKey
-    // Collect all BE rails matching this area + row, keyed by railId
-    // Try both numeric areaKey and resolved label
+    const beArea = groupKeyToBeArea[areaKey]
     const rowBeRails: Record<string, any> = {}
-    for (const [k, v] of Object.entries(beRailByKey)) {
-      if (k === `${areaKey}:${pri}:${v.railId}` || k === `${areaLabel}:${pri}:${v.railId}`) rowBeRails[v.railId] = v
+    for (const r of (beArea?.rails ?? [])) {
+      if ((r._panelRowIdx ?? 0) === pri) rowBeRails[r.railId] = r
     }
-    // Also try legacy keys as fallback
+    // Fallback for legacy data without _panelRowIdx: take whatever rails exist
     if (Object.keys(rowBeRails).length === 0) {
-      for (const [k, v] of Object.entries(beRailByKey)) {
-        if (k === `${areaKey}:${v.railId}` || k === `${areaLabel}:${v.railId}`) rowBeRails[v.railId] = v
+      for (const r of (beArea?.rails ?? [])) {
+        if (!rowBeRails[r.railId]) rowBeRails[r.railId] = r
       }
     }
     // For multi-rail lines: all rails in the same lineIdx share stock segments,

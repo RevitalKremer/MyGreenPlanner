@@ -169,6 +169,7 @@ export interface ComputedArea {
 
 export interface ComputedTrapezoid {
   trapezoidId: string
+  panelRowIdx?: number
   geometry: TrapezoidGeometry
   legs: Leg[]
   blocks: Block[]

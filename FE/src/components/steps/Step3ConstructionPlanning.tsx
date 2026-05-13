@@ -18,6 +18,7 @@ import useSelectedGeometry from '../../hooks/useSelectedGeometry'
 export default function Step3ConstructionPlanning({
   panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs,
   uploadedImageData, imageSrc,
+  rectAreas = [],
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
   beRailsData = null, beBasesData = null, beTrapezoidsData = null,
@@ -325,6 +326,7 @@ export default function Step3ConstructionPlanning({
                 trapSettingsMap={rowData.trapSettingsMap}
                 railsComputing={railsComputing}
                 beRailsData={beRailsData}
+                rectAreas={rectAreas}
               />
             </div>
           )}
