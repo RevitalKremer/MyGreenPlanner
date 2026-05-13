@@ -6,6 +6,15 @@ import { useLang } from '../i18n/LangContext'
 import LangToggle from '../i18n/LangToggle'
 import { getBackendVersion, getFrontendVersion } from '../services/projectsApi'
 
+// Maps the BE roof type discriminator to its i18n label key.
+const ROOF_TYPE_I18N: Record<string, string> = {
+  concrete: 'roofSpec.type.concrete',
+  tiles: 'roofSpec.type.tiles',
+  iskurit: 'roofSpec.type.iskurit',
+  insulated_panel: 'roofSpec.type.insulatedPanel',
+  mixed: 'roofSpec.type.mixed',
+}
+
 // Monochrome SVG icons
 const IconPlus = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -43,7 +52,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   }, [user?.full_name])
   const [location, setLocation] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [roofType, setRoofType] = useState('concrete')
+  const [roofType, setRoofType] = useState('mixed')
   const [distanceBetweenPurlins, setDistanceBetweenPurlins] = useState('')
   const [installationOrientation, setInstallationOrientation] = useState('perpendicular')
   const [editingId, setEditingId] = useState(null)
@@ -499,6 +508,9 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                           <div style={{ fontSize: '0.75rem', color: TEXT_FAINT, marginTop: '2px' }}>
                             {p.client_name ? `${p.client_name} · ` : ''}
                             {p.location ? `${p.location} · ` : ''}
+                            {p.roof_spec?.type && ROOF_TYPE_I18N[p.roof_spec.type]
+                              ? `${t(ROOF_TYPE_I18N[p.roof_spec.type])} · `
+                              : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
                           </div>
