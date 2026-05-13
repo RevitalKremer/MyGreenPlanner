@@ -177,6 +177,11 @@ export interface ComputedTrapezoid {
   diagonals: Diagonal[]
 }
 
+export interface TrapezoidGroup {
+  groupIdx: number
+  trapIds: string[]
+}
+
 export interface Step3Data {
   globalSettings?: Record<string, unknown> | null
   areaSettings?: Record<string, unknown> | null
@@ -184,6 +189,7 @@ export interface Step3Data {
   customDiagonals?: Record<string, unknown> | null
   computedAreas: ComputedArea[]
   computedTrapezoids: ComputedTrapezoid[]
+  trapezoidGroups?: TrapezoidGroup[]
 }
 
 // ── Step 4: Plan approval (server-owned) ────────────────────────────────────

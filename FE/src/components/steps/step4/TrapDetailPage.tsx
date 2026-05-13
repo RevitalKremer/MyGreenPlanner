@@ -51,7 +51,7 @@ function computeNaturalSize(settings, lineRails, panelLines, beDetailData) {
 }
 
 export default function TrapDetailPage({
-  trapId, rc, settings = {}, lineRails = null, panelLines = null,
+  trapId, memberIds = null, rc, settings = {}, lineRails = null, panelLines = null,
   beDetailData = null, fullTrapGhost = null, count = null,
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
 }) {
@@ -60,10 +60,14 @@ export default function TrapDetailPage({
   const { w: naturalW, h: naturalH } = computeNaturalSize(settings, lineRails, panelLines, beDetailData)
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 
+  // Group of structurally identical traps share one page — show every member's
+  // ID in the title block so the reader knows the drawing applies to all of them.
+  const pageName = memberIds && memberIds.length > 1 ? memberIds.join(', ') : trapId
+
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={trapId}
+      pageName={pageName}
       project={project}
       projectId={projectId}
       panelType={panelType}
@@ -86,6 +90,7 @@ export default function TrapDetailPage({
           <DetailView
             rc={rc}
             trapId={trapId}
+            twinIds={memberIds ? memberIds.filter(id => id !== trapId) : []}
             panelLines={panelLines}
             settings={settings}
             lineRails={lineRails}

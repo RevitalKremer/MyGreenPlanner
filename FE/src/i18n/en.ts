@@ -53,6 +53,9 @@ const en = {
   'step5.reset':           'Reset Approval',
   'step5.blockMsg':        'Plan approval is required to proceed to the next step.',
 
+  // ── Project info (read-only modal opened from header) ───────────────────
+  'projectInfo.title':            'Project Details',
+
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':           'New Project',
   'welcome.newProjectDesc':       'Start a new solar planning session',
@@ -434,7 +437,7 @@ const en = {
   'step3.detail.rearLeg':        'Rear leg',
   'step3.detail.frontLeg':       'Front leg',
   'step3.detail.adjusted':            'adjusted',
-  'step3.detail.shortFrontLegTooltip': 'Rear leg too short — panel height adjusted so the rear leg sits at ground level',
+  'step3.detail.shortFrontLegTooltip': 'Leg too short — panel height adjusted so the leg sits at ground level',
   'step3.detail.diagonal':       'Diagonal',
   'step3.detail.baseBeamPunches': 'Base beam — punch positions',
   'step3.detail.slopeBeamPunches': 'Slope beam — punch positions',

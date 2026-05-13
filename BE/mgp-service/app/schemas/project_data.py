@@ -210,6 +210,17 @@ class ComputedTrapezoid(_StrictBase):
     # diagonals[]: spanIdx, topDistFromLegCm, botDistFromLegCm, punchSpanCm (server-computed), lengthCm, isDouble, disabled
 
 
+class TrapezoidGroup(_StrictBase):
+    """A set of trapezoids whose materialized shape is identical.
+
+    Built by `trapezoid_detail_service.group_identical_trapezoids` at the end
+    of the trap-generation flow. Consumed by the PDF generator to render one
+    page per distinct shape (e.g. groupIdx=0, trapIds=['A','B']).
+    """
+    groupIdx: int
+    trapIds: list[str]
+
+
 class Step3Data(_StrictBase):
     """Construction planning — mixed FE-owned settings + server-computed results."""
     # FE-owned (user settings)
@@ -220,6 +231,7 @@ class Step3Data(_StrictBase):
     # Server-computed (never sent by FE, preserved during merge)
     computedAreas: list[ComputedArea] = Field(default_factory=list)
     computedTrapezoids: list[ComputedTrapezoid] = Field(default_factory=list)
+    trapezoidGroups: list[TrapezoidGroup] = Field(default_factory=list)
 
 
 # ── Step 4: Plan approval (server-owned) ─────────────────────────────────────
