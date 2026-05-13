@@ -213,9 +213,19 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
       if (!didDrag) return
       const deltaCm = (me.clientX - startClientX) / zoom / SC
       const distCm  = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, initialDist + deltaCm))
-      const key     = which === 'top' ? 'topDistFromLegCm' : 'botDistFromLegCm'
       const existing = capturedOv[d.spanIndex] ?? {}
-      onUpdateSetting?.('diagOverrides', { ...capturedOv, [d.spanIndex]: { ...existing, [key]: distCm } })
+      // Persist BOTH endpoints. The BE override path requires top + bot
+      // together; a single-key override is dropped by the saveTab payload
+      // builder and the diagonal stays at its default position.
+      const dragKey  = which === 'top' ? 'topDistFromLegCm' : 'botDistFromLegCm'
+      const otherKey = which === 'top' ? 'botDistFromLegCm' : 'topDistFromLegCm'
+      const otherCurrent = existing[otherKey] ?? (which === 'top'
+        ? (d.spanW > 0 ? (d.botX - d.xA) / SC : 0.90 * span_cm)
+        : (d.spanW > 0 ? (d.topX - d.xA) / SC : 0.25 * span_cm))
+      onUpdateSetting?.('diagOverrides', {
+        ...capturedOv,
+        [d.spanIndex]: { ...existing, [dragKey]: distCm, [otherKey]: otherCurrent },
+      })
     }
     const onUp = () => {
       if (!didDrag) deleteDiagonal(d.spanIndex)
