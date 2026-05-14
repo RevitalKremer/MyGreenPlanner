@@ -4,15 +4,15 @@ import { jsPDF } from 'jspdf'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BORDER, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
-import TrapDetailPage from './step4/TrapDetailPage'
+import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { PDFDocument } from 'pdf-lib'
 import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail } from '../../services/projectsApi'
-import PanelsLayoutPage from './step4/PanelsLayoutPage'
-import AreasLayoutPage from './step4/AreasLayoutPage'
-import RailsLayoutPage from './step4/RailsLayoutPage'
-import BasesLayoutPage from './step4/BasesLayoutPage'
-import InstallMethodPage from './step4/InstallMethodPage'
+import PanelsLayoutPage from './step5/PanelsLayoutPage'
+import AreasLayoutPage from './step5/AreasLayoutPage'
+import RailsLayoutPage from './step5/RailsLayoutPage'
+import BasesLayoutPage from './step5/BasesLayoutPage'
+import InstallMethodPage from './step5/InstallMethodPage'
 
 // ─── Page dimensions (A4 landscape, mm) ──────────────────────────────────────
 const PAGE_W_MM  = 297
@@ -49,7 +49,7 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
   const kWstr       = totalKw ? `${totalKw.toFixed(2)}kW` : '—'
   const wpStr       = panelWp ? `${panelWp}W`             : '—'
   const qtyStr      = count != null ? String(count) : '—'
-  const approvalLines = t('step4.tb.approvalReq').split('\n')
+  const approvalLines = t('step5.tb.approvalReq').split('\n')
 
   return (
     <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', borderTop: B }}>
@@ -65,37 +65,37 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
           <Cell style={{ borderLeft: 'none' }}>
             {pageName
               ? <LV
-                  label={t('step4.tb.template')}
+                  label={t('step5.tb.template')}
                   value={pageName}
                   vStyle={pageName.includes(',') ? { fontSize: '7px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.15 } : undefined}
                 />
-              : <LV label={t('step4.tb.template')} value="D3" />
+              : <LV label={t('step5.tb.template')} value="D3" />
             }
           </Cell>
 
           {/* col2 row1: project number */}
           <Cell>
-            <LV label={t('step4.tb.projectNum')} value={projectId || '—'} vStyle={{ fontSize: '5px', wordBreak: 'break-all', lineHeight: 1.1 }} />
+            <LV label={t('step5.tb.projectNum')} value={projectId || '—'} vStyle={{ fontSize: '5px', wordBreak: 'break-all', lineHeight: 1.1 }} />
           </Cell>
 
           {/* col3 row1: created by name */}
           <Cell>
-            <LV label={t('step4.tb.createdBy')} value={user?.full_name || '—'} />
+            <LV label={t('step5.tb.createdBy')} value={user?.full_name || '—'} />
           </Cell>
 
           {/* col4 row1: total power */}
           <Cell>
-            <LV label={t('step4.tb.totalPower')} value={kWstr} />
+            <LV label={t('step5.tb.totalPower')} value={kWstr} />
           </Cell>
 
           {/* col5-6 row1: panel type (colspan=2) */}
           <td colSpan={2} style={{ ...cellBase }}>
-            <LV label={t('step4.tb.panelType')} value={panelType} />
+            <LV label={t('step5.tb.panelType')} value={panelType} />
           </td>
 
           {/* col7-8 row1: project name (colspan=2) */}
           <td colSpan={2} style={{ ...cellBase }}>
-            <LV label={t('step4.tb.projectName')} value={projectName} />
+            <LV label={t('step5.tb.projectName')} value={projectName} />
           </td>
 
           {/* col9: logo — rowspan=2 */}
@@ -110,7 +110,7 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
 
           {/* col1 row2: for approval */}
           <td style={{ ...cellBase, borderLeft: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
-            <div style={{ background: '#2563eb', color: '#fff', fontWeight: '800', fontSize: '9px', borderRadius: '2px', padding: '2px 6px', display: 'inline-block' }}>{t('step4.tb.forApproval')}</div>
+            <div style={{ background: '#2563eb', color: '#fff', fontWeight: '800', fontSize: '9px', borderRadius: '2px', padding: '2px 6px', display: 'inline-block' }}>{t('step5.tb.forApproval')}</div>
           </td>
 
           {/* col2 row2: approval required */}
@@ -133,22 +133,22 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
 
           {/* col5 row2: power */}
           <Cell>
-            <LV label={t('step4.tb.power')} value={wpStr} />
+            <LV label={t('step5.tb.power')} value={wpStr} />
           </Cell>
 
           {/* col6 row2: quantity */}
           <Cell>
-            <LV label={t('step4.tb.quantity')} value={qtyStr} />
+            <LV label={t('step5.tb.quantity')} value={qtyStr} />
           </Cell>
 
           {/* col7 row2: date */}
           <Cell>
-            <LV label={t('step4.tb.date')} value={dateStr} />
+            <LV label={t('step5.tb.date')} value={dateStr} />
           </Cell>
 
           {/* col8 row2: location */}
           <Cell>
-            <LV label={t('step4.tb.location')} value={location} />
+            <LV label={t('step5.tb.location')} value={location} />
           </Cell>
 
           {/* col9 spanned — skip */}
@@ -246,7 +246,7 @@ function ScaledPage({ scale, children }) {
 }
 
 // ─── Main Step 5 component ────────────────────────────────────────────────────
-export default function Step4PdfReport({
+export default function Step5PdfReport({
   user = null,
   panels = [], refinedArea, areas = [], project, projectId,
   uploadedImageData, imageSrc,

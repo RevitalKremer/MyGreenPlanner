@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { CadPage } from '../Step4PdfReport'
+import { CadPage } from '../Step5PdfReport'
 import BasesPlanTab from '../step3/BasesPlanTab'
 import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 
@@ -30,7 +30,7 @@ export default function BasesLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={t('step4.pdf.bases')}
+      pageName={t('step5.pdf.bases')}
       project={project}
       projectId={projectId}
       panelType={panelType}

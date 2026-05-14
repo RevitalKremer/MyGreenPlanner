@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { CadPage } from '../Step4PdfReport'
+import { CadPage } from '../Step5PdfReport'
 import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
 import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
@@ -39,7 +39,7 @@ export default function InstallMethodPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={t('step4.pdf.installMethod')}
+      pageName={t('step5.pdf.installMethod')}
       project={project}
       projectId={projectId}
       panelType={panelType}
