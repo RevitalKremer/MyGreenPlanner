@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { CadPage } from '../Step4PdfReport'
+import { CadPage } from '../Step5PdfReport'
 import AreasTab from '../step3/AreasTab'
 import { getPanelsBoundingBox, buildRowGroups, computePrintFit } from '../step3/tabUtils'
 
@@ -39,7 +39,7 @@ export default function AreasLayoutPage({
 
   const areaLabel = useCallback((areaKey, i) => {
     const g = areaByGroupKey[areaKey]?.label ?? (Array.isArray(areas) ? areas[areaKey] : undefined)?.label
-    return g ? `${g}` : t('step4.pdf.area', { n: i + 1 })
+    return g ? `${g}` : t('step5.pdf.area', { n: i + 1 })
   }, [areas, areaByGroupKey, t])
 
   const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
@@ -54,7 +54,7 @@ export default function AreasLayoutPage({
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={t('step4.pdf.areas')}
+      pageName={t('step5.pdf.areas')}
       project={project}
       projectId={projectId}
       panelType={panelType}

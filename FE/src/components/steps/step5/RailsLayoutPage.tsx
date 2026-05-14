@@ -1,22 +1,28 @@
 import { useMemo } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { CadPage } from '../Step4PdfReport'
-import AreasTab from '../step3/AreasTab'
+import { CadPage } from '../Step5PdfReport'
+import RailLayoutTab from '../step3/RailLayoutTab'
 import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
 
-const PAD = 12  // print mode — minimal padding
-const CONTENT_W = (297 - 2 * 8) * 3.2
-const CONTENT_H = (210 - 2 * 8 - 26) * 3.2
+const CONTENT_W = (297 - 2 * 8) * 3.2   // ≈ 899 px
+const CONTENT_H = (210 - 2 * 8 - 26) * 3.2  // ≈ 537 px
 
-export default function PanelsLayoutPage({ panels = [], uploadedImageData, imageSrc, project, projectId, panelType, panelWp, totalKw, date, pageRef, user }) {
+const PM_PAD = 12  // print mode — minimal padding
+
+export default function RailsLayoutPage({
+  panels = [], refinedArea,
+  uploadedImageData, imageSrc,
+  trapSettingsMap = {}, trapLineRailsMap = {},
+  beRailsData = null,
+  rectAreas = null,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
+}) {
   const { t } = useLang()
-
   const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
     if (!nonEmpty.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
     const panelBbox = getPanelsBoundingBox(nonEmpty)
-    // Fit to the panel extent only — never expand to full image size, so panels always fill the page.
-    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
+    const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PM_PAD)
     return { panelBbox, ...fit }
   }, [panels])
 
@@ -25,13 +31,13 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
   return (
     <CadPage
       pageRef={pageRef}
-      pageName={t('step4.pdf.panels')}
+      pageName={t('step5.pdf.rails')}
       project={project}
       projectId={projectId}
       panelType={panelType}
       panelWp={panelWp}
       totalKw={totalKw}
-      count={panels.filter(p => !p.isEmpty).length}
+      count={panels.length}
       date={date}
       user={user}
     >
@@ -44,15 +50,18 @@ export default function PanelsLayoutPage({ panels = [], uploadedImageData, image
           transform: `scale(${fitZoom})`,
           transformOrigin: 'top left',
         }}>
-          <AreasTab
+          <RailLayoutTab
             panels={panels}
+            refinedArea={refinedArea}
             uploadedImageData={uploadedImageData}
             imageSrc={imageSrc}
+            trapSettingsMap={trapSettingsMap}
+            trapLineRailsMap={trapLineRailsMap}
+            beRailsData={beRailsData}
+            rectAreas={rectAreas}
             printMode
             printSc={sc}
             printBbox={panelBbox}
-            printShowAreas={false}
-            printShowCounts
           />
         </div>
       </div>
