@@ -87,6 +87,8 @@ def compute_area_rails(
     panel_gap_cm: float,
     rail_spacing_v_cm: float,
     rail_spacing_h_cm: float,
+    long_rail_threshold_cm: float,
+    long_rail_extra_overhang_cm: float,
     rail_round_threshold_cm: float = 0,
 ) -> dict:
     """
@@ -120,12 +122,17 @@ def compute_area_rails(
         if not positions:
             continue
 
-        # Count large gaps (only meaningful when rowPositions is stored)
-        if stored:
-            threshold = panel_gap_cm + 0.5
-            for j in range(1, len(positions)):
-                if positions[j] - (positions[j - 1] + panel_along_cm) > threshold:
-                    num_large_gaps += 1
+        # Split positions into contiguous segments separated by large gaps (holes
+        # where panels were removed). Each segment becomes its own rail with its
+        # own overhang and long-rail extension — there is no rail across a hole.
+        large_gap_threshold = panel_gap_cm + 0.5
+        segments: list[list[float]] = [[positions[0]]]
+        for j in range(1, len(positions)):
+            if positions[j] - (positions[j - 1] + panel_along_cm) > large_gap_threshold:
+                segments.append([positions[j]])
+                num_large_gaps += 1
+            else:
+                segments[-1].append(positions[j])
 
         # Rail offsets within this line — from the line's FRONT (eave) edge.
         # Matches FE convention: lineRails stores offsetFromLineFrontCm values.
@@ -140,42 +147,50 @@ def compute_area_rails(
                 round(panel_depth_cm - front_offset, 4),
             ]
 
-        # Rail horizontal span
-        start_cm = round(positions[0] - overhang_cm, 4)
-        end_cm   = round(positions[-1] + panel_along_cm + overhang_cm, 4)
-        length_mm = round((end_cm - start_cm) * 10)
-        if length_mm <= 0:
-            continue
+        for segment in segments:
+            # Rail horizontal span for this segment
+            start_cm = round(segment[0] - overhang_cm, 4)
+            end_cm   = round(segment[-1] + panel_along_cm + overhang_cm, 4)
+            length_mm = round((end_cm - start_cm) * 10)
+            if length_mm <= 0:
+                continue
 
-        for offset_from_front in offsets_from_front:
-            offset_from_rear = round(panel_depth_cm - offset_from_front, 4)
-            # Round to 5cm intervals for aluminum profile cutting accuracy
-            rounded_length_mm = round_to_5cm(length_mm)
-            
-            # Calculate stock segments from rounded length
-            segs = _split_into_stock_segments(rounded_length_mm, stock_lengths)
-            leftover_cm = round(sum(s['leftover'] for s in segs) / 10, 1)
-            
-            rail = {
-                'railId':               f'R{rail_counter}',
-                'lineIdx':              line_idx,
-                'offsetFromLineFrontCm': round(offset_from_front, 4),
-                'offsetFromRearEdgeCm': offset_from_rear,
-                'startCm':              start_cm,
-                'lengthCm':             round(rounded_length_mm / 10, 1),
-                'stockSegmentsMm':      [s['used'] for s in segs],
-                'leftoverCm':           leftover_cm,
-            }
-            
-            # If leftover is small, round up to use full stock segments (no cutting)
-            if rail_round_threshold_cm > 0 and 0 < leftover_cm <= rail_round_threshold_cm:
-                rounded_mm = rounded_length_mm + round(leftover_cm * 10)
-                rail['roundedLengthCm'] = round(rounded_mm / 10, 1)
-                rail['stockSegmentsMm'] = _split_stock_for_rounded(rounded_mm, stock_lengths)
-                rail['leftoverCm'] = 0
-            
-            rails.append(rail)
-            rail_counter += 1
+            # Long rails: extend each side to absorb panel-placement drift accumulated
+            # over long install lines. Threshold compared against post-overhang length.
+            if length_mm / 10 > long_rail_threshold_cm:
+                start_cm = round(start_cm - long_rail_extra_overhang_cm, 4)
+                end_cm   = round(end_cm + long_rail_extra_overhang_cm, 4)
+                length_mm = round((end_cm - start_cm) * 10)
+
+            for offset_from_front in offsets_from_front:
+                offset_from_rear = round(panel_depth_cm - offset_from_front, 4)
+                # Round to 5cm intervals for aluminum profile cutting accuracy
+                rounded_length_mm = round_to_5cm(length_mm)
+
+                # Calculate stock segments from rounded length
+                segs = _split_into_stock_segments(rounded_length_mm, stock_lengths)
+                leftover_cm = round(sum(s['leftover'] for s in segs) / 10, 1)
+
+                rail = {
+                    'railId':               f'R{rail_counter}',
+                    'lineIdx':              line_idx,
+                    'offsetFromLineFrontCm': round(offset_from_front, 4),
+                    'offsetFromRearEdgeCm': offset_from_rear,
+                    'startCm':              start_cm,
+                    'lengthCm':             round(rounded_length_mm / 10, 1),
+                    'stockSegmentsMm':      [s['used'] for s in segs],
+                    'leftoverCm':           leftover_cm,
+                }
+
+                # If leftover is small, round up to use full stock segments (no cutting)
+                if rail_round_threshold_cm > 0 and 0 < leftover_cm <= rail_round_threshold_cm:
+                    rounded_mm = rounded_length_mm + round(leftover_cm * 10)
+                    rail['roundedLengthCm'] = round(rounded_mm / 10, 1)
+                    rail['stockSegmentsMm'] = _split_stock_for_rounded(rounded_mm, stock_lengths)
+                    rail['leftoverCm'] = 0
+
+                rails.append(rail)
+                rail_counter += 1
 
     return {'rails': rails, 'numLargeGaps': num_large_gaps}
 

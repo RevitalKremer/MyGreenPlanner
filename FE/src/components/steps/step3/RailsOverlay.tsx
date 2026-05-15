@@ -76,9 +76,13 @@ export default function RailsOverlay({
 
   const renderMaterialSummary = (rl, beSegsFn, railProfile, prefix) => {
     if (!rl.rails.length || !rl.panelLocalRects || !rl.frame) return null
-    const railByLine = {}
+    // Dedupe by (lineIdx, segment-start) — split segments share a lineIdx but
+    // each segment needs its own label at its own center; front+back rails of
+    // the same segment share stock and should render only once.
+    const railBySegment: Record<string, any> = {}
     for (const rail of rl.rails) {
-      if (!(rail.lineIdx in railByLine)) railByLine[rail.lineIdx] = rail
+      const key = `${rail.lineIdx}:${rail.localStart.x.toFixed(3)}`
+      if (!(key in railBySegment)) railBySegment[key] = rail
     }
     const { center, angleRad } = rl.frame
     const fontSize = Math.max(9, 11 / zoom)
@@ -87,10 +91,8 @@ export default function RailsOverlay({
       if (!lineRects[pr.line]) lineRects[pr.line] = []
       lineRects[pr.line].push(pr)
     }
-    return (Object.entries(lineRects) as [string, any[]][]).map(([li, rects]) => {
-      const lineRail = railByLine[li]
-      if (!lineRail) return null
-      const segs = beSegsFn(lineRail)
+    return Object.entries(railBySegment).map(([key, segRail]) => {
+      const segs = beSegsFn(segRail)
       if (!segs || !segs.length) return null
       const counts = {}
       for (const mm of segs) counts[mm] = (counts[mm] ?? 0) + 1
@@ -98,19 +100,24 @@ export default function RailsOverlay({
         .sort((a, b) => Number(b[0]) - Number(a[0]))
         .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
         .join(' +')
-      const midLX = (Math.min(...rects.map(r => r.localX)) + Math.max(...rects.map(r => r.localX + r.width))) / 2
-      const midLY = (Math.min(...rects.map(r => r.localY)) + Math.max(...rects.map(r => r.localY + r.height))) / 2
+      // X center: the rail's own local midpoint (so split rails sit on their
+      // own segment, not the line's centroid which would land in the gap).
+      const midLX = (segRail.localStart.x + segRail.localEnd.x) / 2
+      const rects = lineRects[segRail.lineIdx] ?? []
+      const midLY = rects.length > 0
+        ? (Math.min(...rects.map(r => r.localY)) + Math.max(...rects.map(r => r.localY + r.height))) / 2
+        : segRail.localStart.y
       const sx = center.x + midLX * Math.cos(angleRad) - midLY * Math.sin(angleRad)
       const sy = center.y + midLX * Math.sin(angleRad) + midLY * Math.cos(angleRad)
       const [cx, cy] = toSvg(sx, sy)
       // Calculate rail angle for text rotation
-      const [rx1, ry1] = toSvg(lineRail.screenStart.x, lineRail.screenStart.y)
-      const [rx2, ry2] = toSvg(lineRail.screenEnd.x, lineRail.screenEnd.y)
+      const [rx1, ry1] = toSvg(segRail.screenStart.x, segRail.screenStart.y)
+      const [rx2, ry2] = toSvg(segRail.screenEnd.x, segRail.screenEnd.y)
       const ang = Math.atan2(ry2 - ry1, rx2 - rx1) * 180 / Math.PI
       const bgW = text.length * fontSize * 0.65 + 10 / zoom
       const bgH = fontSize + 6 / zoom
       return (
-        <g key={`${prefix}-ms-${li}`} transform={`rotate(${ang}, ${cx}, ${cy})`} style={{ pointerEvents: 'none' }}>
+        <g key={`${prefix}-ms-${key}`} transform={`rotate(${ang}, ${cx}, ${cy})`} style={{ pointerEvents: 'none' }}>
           <rect x={cx - bgW / 2} y={cy - bgH / 2} width={bgW} height={bgH}
             fill="white" fillOpacity={0.7} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
@@ -166,10 +173,13 @@ export default function RailsOverlay({
     const smallestPanelW = rl.panelLocalRects.reduce((min, pr) => Math.min(min, pr.width), Infinity)
     const dimMaxFs = isFinite(smallestPanelW) ? (smallestPanelW * sc) / (4 * 0.6) : undefined
 
-    const seenLines = new Set()
+    // Dedupe per (lineIdx, segment-start): each segment needs its own dimensions,
+    // but front+back rails of the same segment should not double up.
+    const seenSegments = new Set<string>()
     return rl.rails.map(rail => {
-      if (seenLines.has(rail.lineIdx)) return null
-      seenLines.add(rail.lineIdx)
+      const segKey = `${rail.lineIdx}:${rail.localStart.x.toFixed(3)}`
+      if (seenSegments.has(segKey)) return null
+      seenSegments.add(segKey)
       const segs = beSegsFn(rail)
       if (!segs || segs.length < 1) return null
       const [x1, y1] = toSvg(rail.screenStart.x, rail.screenStart.y)

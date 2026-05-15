@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 # In-memory cache: key → value_json
 _SETTINGS_CACHE: dict[str, any] = {}
+# Parallel cache for admin-configured bounds: key → (min_val, max_val)
+_BOUNDS_CACHE: dict[str, tuple[float | None, float | None]] = {}
 
 
 async def load_settings_cache(db: AsyncSession) -> None:
@@ -20,19 +22,20 @@ async def load_settings_cache(db: AsyncSession) -> None:
     Load all app_settings into memory cache.
     Called at startup and after admin updates.
     """
-    global _SETTINGS_CACHE
-    
+    global _SETTINGS_CACHE, _BOUNDS_CACHE
+
     result = await db.execute(select(AppSetting))
     settings = result.scalars().all()
-    
+
     _SETTINGS_CACHE = {s.key: s.value_json for s in settings}
+    _BOUNDS_CACHE = {s.key: (s.min_val, s.max_val) for s in settings}
     logger.info(f"Settings cache loaded: {len(_SETTINGS_CACHE)} keys")
 
 
 def get_setting(key: str, default=None):
     """
     Get a setting from cache. Raises KeyError if key missing and no default.
-    
+
     Use default=None for optional settings.
     Omit default to enforce strict validation (raises KeyError if missing).
     """
@@ -44,6 +47,22 @@ def get_setting(key: str, default=None):
             )
         return default
     return _SETTINGS_CACHE[key]
+
+
+def get_min(key: str) -> float:
+    """Return the admin-configured min_val for a setting. Raises if missing."""
+    bounds = _BOUNDS_CACHE.get(key)
+    if bounds is None or bounds[0] is None:
+        raise KeyError(f"No min_val configured for setting '{key}'")
+    return bounds[0]
+
+
+def get_max(key: str) -> float:
+    """Return the admin-configured max_val for a setting. Raises if missing."""
+    bounds = _BOUNDS_CACHE.get(key)
+    if bounds is None or bounds[1] is None:
+        raise KeyError(f"No max_val configured for setting '{key}'")
+    return bounds[1]
 
 
 def get_all_settings() -> dict:

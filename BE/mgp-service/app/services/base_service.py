@@ -229,11 +229,18 @@ def compute_area_bases(
             positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
             if not positions:
                 continue
-            # Check if base falls within the line's overall panel extent
-            # (first panel start to last panel end), not requiring exact panel alignment
-            line_start = positions[0]
-            line_end = positions[-1] + panel_along_cm
-            if base_x >= line_start and base_x <= line_end:
+            # The base is "active" on this line only if there's a real panel at
+            # the base's column. Checking the line's overall extent (first-real
+            # to last-real) would incorrectly include EV gaps inside the line —
+            # a base at col-1 in cells [V, EV, V] would be marked active even
+            # though col-1 is empty. Tolerance = panel_gap_cm so bases sitting
+            # in the standard inter-panel gap still count for the adjacent panel.
+            tol = panel_gap_cm
+            panel_at_base = any(
+                p - tol <= base_x <= p + panel_along_cm + tol
+                for p in positions
+            )
+            if panel_at_base:
                 active_lines_for_base.append(li)
 
         if active_lines_for_base:
@@ -453,6 +460,7 @@ def compute_external_diagonals(
     bases_data_map: dict[str, dict],
     consolidated: dict[str, list[dict]],
     computed_trapezoids: list[dict],
+    row_bases: list[dict] | None = None,
 ) -> list[dict]:
     """
     Compute external diagonals for all trapezoids in one area.
@@ -461,10 +469,14 @@ def compute_external_diagonals(
 
     trap_ids             — ordered list of trapezoid IDs for this area
     bases_data_map       — { trapId: compute_area_bases() result } (for frame data)
-    consolidated         — { trapId: [base, ...] } post-consolidation bases
+    consolidated         — { trapId: [base, ...] } final per-trap bases (post-reassign + completion)
     computed_trapezoids  — list of ComputedTrapezoid dicts (with geometry.heightRear/Front)
+    row_bases            — the stored bases list for this row; when supplied, startBaseIdx /
+                           endBaseIdx are emitted as positions within this list (via baseId
+                           lookup) so they always line up with the storage. Falls back to
+                           the consolidated-concatenation index when omitted.
 
-    Returns flat list of diagonal dicts with area-wide baseIdxA/baseIdxB.
+    Returns flat list of diagonal dicts with startBaseIdx / endBaseIdx.
     """
     trap_geom = {}
     for ct in computed_trapezoids:
@@ -473,7 +485,18 @@ def compute_external_diagonals(
         if geom:
             trap_geom[tid] = geom
 
-    # Build area-wide offset per trap (matches how all_bases is built)
+    # Per-baseId index in row_bases — used when row_bases is supplied so the
+    # emitted indices reference the actual stored array, regardless of the
+    # consolidated grouping order.
+    base_idx_by_id: dict[str, int] = {}
+    if row_bases is not None:
+        for i, b in enumerate(row_bases):
+            bid = b.get('baseId')
+            if bid:
+                base_idx_by_id[bid] = i
+
+    # Fallback area-wide offset per trap (matches how all_bases is built when
+    # row_bases isn't supplied — kept for legacy callers).
     trap_area_offset = {}
     offset = 0
     for tid in trap_ids:
@@ -512,6 +535,13 @@ def compute_external_diagonals(
             horiz_mm = round(abs(base_offsets_cm[bi] - base_offsets_cm[ai]) * 10)
             base_a = trap_bases[ai]
             base_b = trap_bases[bi]
+            # Prefer row_bases-anchored indices; fall back to consolidated concat.
+            if base_idx_by_id:
+                start_idx = base_idx_by_id.get(base_a.get('baseId'), area_offset + ai)
+                end_idx = base_idx_by_id.get(base_b.get('baseId'), area_offset + bi)
+            else:
+                start_idx = area_offset + ai
+                end_idx = area_offset + bi
             for edge_depth_cm in [base_top_depth_cm, base_bottom_depth_cm]:
                 is_rear = edge_depth_cm == base_top_depth_cm
                 height_at_edge_cm = 0.0
@@ -522,8 +552,8 @@ def compute_external_diagonals(
                     height_at_edge_cm = height_rear + t * (height_front - height_rear)
                 vert_mm = round(height_at_edge_cm * 10)
                 result.append({
-                    'startBaseIdx': area_offset + ai,
-                    'endBaseIdx': area_offset + bi,
+                    'startBaseIdx': start_idx,
+                    'endBaseIdx': end_idx,
                     'startBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_a.get('lengthCm', 0)),
                     'startBaseHeightCm': round_to_2dp(height_at_edge_cm),
                     'endBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_b.get('lengthCm', 0)),
@@ -534,6 +564,110 @@ def compute_external_diagonals(
                 })
 
     return result
+
+
+def bases_completion_for_segmented_rails(
+    row_bases: list[dict],
+    rails: list[dict],
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+    edge_offset_mm: float,
+) -> None:
+    """Ensure every rail segment is supported by ≥ 2 bases (in place).
+
+    When a rail segment has only one base under it (typical for line-0 split
+    segments over a single panel column after the hole), this brings the
+    segment up to 2 bases. The two bases sit at the standard edge-offset from
+    each end of the segment's panel-column frame, which means the existing
+    single base may also be relocated to the closest std position.
+
+    Runs after `compute_area_bases` + `consolidate_area_bases` + signature
+    reassignment, so the base list reflects the final per-row layout. The
+    new base inherits trapezoidId / panelLineIdx / startCm / lengthCm from
+    the existing base in the segment (same column → same depth properties).
+
+    Segments with 0 or ≥ 2 bases are left alone.
+    """
+    if not rails or not row_bases:
+        return
+
+    rows_cells = panel_grid.get('rows') or []
+    row_positions = panel_grid.get('rowPositions') or {}
+    edge_offset_cm = edge_offset_mm / 10
+
+    # Dedupe rails by physical segment (same lineIdx + startCm + lengthCm).
+    # The BE emits one rail per Y-offset per segment; the segment-level rule
+    # should fire once per segment, not once per Y-offset.
+    seen_segments: set[tuple[int, float, float]] = set()
+
+    for rail in rails:
+        line_idx = rail.get('lineIdx', 0)
+        rail_start = rail.get('startCm', 0)
+        rail_length = rail.get('lengthCm', 0)
+        rail_end = rail_start + rail_length
+
+        seg_key = (line_idx, round(rail_start, 2), round(rail_length, 2))
+        if seg_key in seen_segments:
+            continue
+        seen_segments.add(seg_key)
+
+        # Bases under this segment: offset within the rail's x-extent.
+        supporting = [
+            b for b in row_bases
+            if rail_start <= b.get('offsetFromStartCm', 0) <= rail_end
+        ]
+        if len(supporting) != 1:
+            continue
+        existing = supporting[0]
+
+        # Find panels in this line covered by the segment → frame for std placement.
+        if line_idx >= len(rows_cells):
+            continue
+        cells = rows_cells[line_idx]
+        orient = infer_row_orientation(cells)
+        if not orient:
+            continue
+        panel_along_cm = panel_width_cm if orient == PANEL_V else panel_length_cm
+
+        stored = row_positions.get(str(line_idx))
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
+        if not positions:
+            continue
+
+        # A panel is "in" the segment if its full x-range fits within the rail's extent.
+        tol = 0.5
+        covered = [
+            p for p in positions
+            if p >= rail_start - tol and p + panel_along_cm <= rail_end + tol
+        ]
+        if not covered:
+            continue
+
+        frame_start = covered[0]
+        frame_end = covered[-1] + panel_along_cm
+        pos_left = frame_start + edge_offset_cm
+        pos_right = frame_end - edge_offset_cm
+        if pos_right - pos_left < 1:
+            # Frame too narrow for 2 distinct bases — leave as-is.
+            continue
+
+        # Move existing to the closer std position; new base at the other.
+        existing_pos = existing.get('offsetFromStartCm', 0)
+        if abs(existing_pos - pos_left) <= abs(existing_pos - pos_right):
+            existing['offsetFromStartCm'] = round_to_2dp(pos_left)
+            new_pos = pos_right
+        else:
+            existing['offsetFromStartCm'] = round_to_2dp(pos_right)
+            new_pos = pos_left
+
+        new_base = {
+            **existing,
+            'baseId': f'B{len(row_bases) + 1}',
+            'offsetFromStartCm': round_to_2dp(new_pos),
+        }
+        row_bases.append(new_base)
 
 
 # ── Consolidation ─────────────────────────────────────────────────────────────

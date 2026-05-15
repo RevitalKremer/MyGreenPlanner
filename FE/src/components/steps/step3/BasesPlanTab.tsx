@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, SUCCESS_DARK, WHITE } from '../../../styles/colors'
 import { consolidateAreaBases, buildTrapAreaMaps, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
-import { computeRowRailLayout, buildLineRailsFromBE } from '../../../utils/railLayoutService'
+import { computeRowRailLayout, buildLineRailsFromBE, buildLineSegmentsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
 import { localToScreen } from '../../../utils/railLayoutService'
 import CanvasNavigator from '../../shared/CanvasNavigator'
@@ -87,7 +87,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
       const area = areaByGroupKey[areaGroupKey]
       if (!area?.label) continue
       const lineRails = buildLineRailsFromBE(beRailsData, area.label, ri) ?? null
-      const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm, stockLengths })
+      const lineSegments = buildLineSegmentsFromBE(beRailsData, area.label, ri) ?? undefined
+      const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm, stockLengths, lineSegments })
       if (rl) out.push({ rl, areaLabel: area.label })
     }
     return out
@@ -333,7 +334,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const by = ty + lenPx
                     // Only render blocks that fit within this base's actual length
                     const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= sb.lengthCm + 1)
-                    const blockWSvg = (trapSettingsMap[sb.trapezoidId].blockWidthCm / pixelToCmRatio) * sc
+                    const blockWidthCm = trapSettingsMap[sb.trapezoidId]?.blockWidthCm
+                    if (blockWidthCm == null) return null
+                    const blockWSvg = (blockWidthCm / pixelToCmRatio) * sc
                     const slSvg = (slopeBlockLengthCm / pixelToCmRatio) * sc
                     return trapBlocks.map((blk, bki) => {
                       const blkOffsetPx = (blk.slopePositionCm + slopeBlockLengthCm / 2) / pixelToCmRatio
