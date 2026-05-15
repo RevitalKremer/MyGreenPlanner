@@ -536,6 +536,110 @@ def compute_external_diagonals(
     return result
 
 
+def bases_completion_for_segmented_rails(
+    row_bases: list[dict],
+    rails: list[dict],
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+    edge_offset_mm: float,
+) -> None:
+    """Ensure every rail segment is supported by ≥ 2 bases (in place).
+
+    When a rail segment has only one base under it (typical for line-0 split
+    segments over a single panel column after the hole), this brings the
+    segment up to 2 bases. The two bases sit at the standard edge-offset from
+    each end of the segment's panel-column frame, which means the existing
+    single base may also be relocated to the closest std position.
+
+    Runs after `compute_area_bases` + `consolidate_area_bases` + signature
+    reassignment, so the base list reflects the final per-row layout. The
+    new base inherits trapezoidId / panelLineIdx / startCm / lengthCm from
+    the existing base in the segment (same column → same depth properties).
+
+    Segments with 0 or ≥ 2 bases are left alone.
+    """
+    if not rails or not row_bases:
+        return
+
+    rows_cells = panel_grid.get('rows') or []
+    row_positions = panel_grid.get('rowPositions') or {}
+    edge_offset_cm = edge_offset_mm / 10
+
+    # Dedupe rails by physical segment (same lineIdx + startCm + lengthCm).
+    # The BE emits one rail per Y-offset per segment; the segment-level rule
+    # should fire once per segment, not once per Y-offset.
+    seen_segments: set[tuple[int, float, float]] = set()
+
+    for rail in rails:
+        line_idx = rail.get('lineIdx', 0)
+        rail_start = rail.get('startCm', 0)
+        rail_length = rail.get('lengthCm', 0)
+        rail_end = rail_start + rail_length
+
+        seg_key = (line_idx, round(rail_start, 2), round(rail_length, 2))
+        if seg_key in seen_segments:
+            continue
+        seen_segments.add(seg_key)
+
+        # Bases under this segment: offset within the rail's x-extent.
+        supporting = [
+            b for b in row_bases
+            if rail_start <= b.get('offsetFromStartCm', 0) <= rail_end
+        ]
+        if len(supporting) != 1:
+            continue
+        existing = supporting[0]
+
+        # Find panels in this line covered by the segment → frame for std placement.
+        if line_idx >= len(rows_cells):
+            continue
+        cells = rows_cells[line_idx]
+        orient = infer_row_orientation(cells)
+        if not orient:
+            continue
+        panel_along_cm = panel_width_cm if orient == PANEL_V else panel_length_cm
+
+        stored = row_positions.get(str(line_idx))
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
+        if not positions:
+            continue
+
+        # A panel is "in" the segment if its full x-range fits within the rail's extent.
+        tol = 0.5
+        covered = [
+            p for p in positions
+            if p >= rail_start - tol and p + panel_along_cm <= rail_end + tol
+        ]
+        if not covered:
+            continue
+
+        frame_start = covered[0]
+        frame_end = covered[-1] + panel_along_cm
+        pos_left = frame_start + edge_offset_cm
+        pos_right = frame_end - edge_offset_cm
+        if pos_right - pos_left < 1:
+            # Frame too narrow for 2 distinct bases — leave as-is.
+            continue
+
+        # Move existing to the closer std position; new base at the other.
+        existing_pos = existing.get('offsetFromStartCm', 0)
+        if abs(existing_pos - pos_left) <= abs(existing_pos - pos_right):
+            existing['offsetFromStartCm'] = round_to_2dp(pos_left)
+            new_pos = pos_right
+        else:
+            existing['offsetFromStartCm'] = round_to_2dp(pos_right)
+            new_pos = pos_left
+
+        new_base = {
+            **existing,
+            'baseId': f'B{len(row_bases) + 1}',
+            'offsetFromStartCm': round_to_2dp(new_pos),
+        }
+        row_bases.append(new_base)
+
+
 # ── Consolidation ─────────────────────────────────────────────────────────────
 
 def consolidate_area_bases(

@@ -1267,6 +1267,19 @@ async def compute_and_save_bases(
                 row_front_height_cm=row_fh,
             )
 
+            # Final pass: ensure every rail segment has ≥ 2 bases. After split-
+            # at-holes rails, each isolated-column segment may only carry 1 base
+            # from standard placement — add another (and relocate the existing
+            # one to a std edge-offset position if needed).
+            row_rails = (_get_computed_area(data, area_id) or {}).get('rails', {})
+            rails_for_row = row_rails.get(row_idx) or row_rails.get(str(row_idx)) or []
+            bs.bases_completion_for_segmented_rails(
+                row_bases, rails_for_row, pg,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
+                app_defaults['edgeOffsetMm'],
+            )
+
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
             'areaId': area_id,
