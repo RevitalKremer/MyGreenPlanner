@@ -27,6 +27,24 @@ export function buildLineRailsFromBE(beRailsData: BeRailsAreaData[] | null, area
   return Object.keys(map).length > 0 ? map : null
 }
 
+/**
+ * Build a per-line overhang map ({ lineIdx: overhangCm }) from BE-computed rails.
+ * The BE applies any overhang adjustments (e.g. long-rail extension) symmetrically
+ * around the panel span, so `-rail.startCm` is the effective per-side overhang.
+ */
+export function buildLineOverhangFromBE(beRailsData: BeRailsAreaData[] | null, areaLabel: string, panelRowIdx: number = 0): Record<number, number> | null {
+  if (!beRailsData) return null
+  const beArea = beRailsData.find(a => a.areaLabel === areaLabel)
+  if (!beArea) return null
+  const rails = (beArea.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === panelRowIdx)
+  if (!rails.length) return null
+  const map: Record<number, number> = {}
+  for (const r of rails) {
+    if (map[r.lineIdx] === undefined) map[r.lineIdx] = -r.startCm
+  }
+  return Object.keys(map).length > 0 ? map : null
+}
+
 // Derive rail offset from panel edge given spacing and panel depth
 export function railOffsetFromSpacing(panelDepthCm: number, spacingCm: number): number {
   return Math.max(0, (panelDepthCm - spacingCm) / 2)
@@ -185,10 +203,14 @@ export function buildRowRailConfig(rowPanels: PanelLayout[], ri: number, {
   }
   const ts = (trapId && trapSettingsMap[trapId]) ?? {}
   const stored = !isEditableRow
+  // Per-line overhang from BE is authoritative regardless of edit mode: it carries
+  // server-only adjustments (e.g. long-rail extension) that the FE shouldn't recompute.
+  const lineOverhangCm = buildLineOverhangFromBE(beRailsData, areaLabel, ri) ?? undefined
   return {
     lineRails: rowRails,
     overhangCm: stored ? (ts.railOverhangCm ?? railOverhangCm) : railOverhangCm,
     stockLengths: stored ? (ts.stockLengths ?? stockLengths) : stockLengths,
+    lineOverhangCm,
   }
 }
 
@@ -263,7 +285,7 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
   const lineRails      = railConfig.lineRails ?? null
   const railSpacingV   = railConfig.railSpacingV
   const railSpacingH   = railConfig.railSpacingH
-  const railOverhangPx = railOverhangCm / pixelToCmRatio
+  const lineOverhangCm = railConfig.lineOverhangCm
 
   const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
 
@@ -336,8 +358,10 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
       }
       if (xMin === Infinity) continue
 
-      xMin -= railOverhangPx
-      xMax += railOverhangPx
+      const overhangCm = lineOverhangCm?.[lineIdx] ?? railOverhangCm
+      const overhangPx = overhangCm / pixelToCmRatio
+      xMin -= overhangPx
+      xMax += overhangPx
 
       const lengthPx  = xMax - xMin
       const lengthCm  = lengthPx * pixelToCmRatio
