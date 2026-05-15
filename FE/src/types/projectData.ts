@@ -294,6 +294,12 @@ export interface RailConfig {
   stockLengths?: number[]
   railSpacingV?: number
   railSpacingH?: number
+  /**
+   * Per-line overhang in cm, derived from BE's `-rail.startCm`. Only set in stored mode.
+   * When present, takes precedence over `overhangCm` for that lineIdx — used to honor
+   * BE-computed extensions (e.g. long-rail extra overhang) without duplicating BE logic.
+   */
+  lineOverhangCm?: Record<number, number>
 }
 
 // ── FE layout geometry (computed by railLayoutService / basePlanService) ─────

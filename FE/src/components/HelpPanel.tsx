@@ -102,6 +102,10 @@ const HELP = {
         a: 'When two areas resolve to the same trapezoid cross-section they share the same trap ID and parameters — editing one updates both. The ⇄ badge next to the trap ID flags that.'
       },
       {
+        q: 'Why are very long rails a bit longer than expected?',
+        a: 'When a rail (including the area overhang) exceeds the long-rail threshold (default 12 m) the BE adds an extra 5 cm of overhang on each side to absorb panel-placement drift that accumulates over long install lines. Both the threshold and the extra overhang are system settings in the admin panel.'
+      },
+      {
         q: EXAMPLE_TAG,
         a: 'With one area "A" at 12° / 50 cm you\'ll see one trapezoid (A1) and one panel line. On Rails the spacing is auto-derived from panel depth and edge distance; on Bases the base count comes from rail length divided by base spacing, with overhang at each end. Trapezoid Details shows the full cross-section: front rail at 50 cm, back rail higher by panel × sin(12°), plus the block punches under each leg.'
       },

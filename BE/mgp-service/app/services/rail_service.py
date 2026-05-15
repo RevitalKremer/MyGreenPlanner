@@ -87,6 +87,8 @@ def compute_area_rails(
     panel_gap_cm: float,
     rail_spacing_v_cm: float,
     rail_spacing_h_cm: float,
+    long_rail_threshold_cm: float,
+    long_rail_extra_overhang_cm: float,
     rail_round_threshold_cm: float = 0,
 ) -> dict:
     """
@@ -146,6 +148,13 @@ def compute_area_rails(
         length_mm = round((end_cm - start_cm) * 10)
         if length_mm <= 0:
             continue
+
+        # Long rails: extend each side to absorb panel-placement drift accumulated
+        # over long install lines. Threshold compared against post-overhang length.
+        if length_mm / 10 > long_rail_threshold_cm:
+            start_cm = round(start_cm - long_rail_extra_overhang_cm, 4)
+            end_cm   = round(end_cm + long_rail_extra_overhang_cm, 4)
+            length_mm = round((end_cm - start_cm) * 10)
 
         for offset_from_front in offsets_from_front:
             offset_from_rear = round(panel_depth_cm - offset_from_front, 4)

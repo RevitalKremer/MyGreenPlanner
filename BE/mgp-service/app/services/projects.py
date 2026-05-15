@@ -505,6 +505,8 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
         'panel_gap_cm':      app_defaults['panelGapCm'],
         'rail_spacing_v_cm': area_settings.get('railSpacingV',    app_defaults['railSpacingV']),
         'rail_spacing_h_cm': area_settings.get('railSpacingH',    app_defaults['railSpacingH']),
+        'long_rail_threshold_cm':      app_defaults['longRailThresholdCm'],
+        'long_rail_extra_overhang_cm': app_defaults['longRailExtraOverhangCm'],
         'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults['railRoundThresholdCm']),
     }
 
