@@ -16,6 +16,7 @@ import math
 from app.utils.math_helpers import round_to_1dp as _r
 from app.utils.settings_helpers import get_setting_or_override as _s
 from app.utils.panel_geometry import is_empty_orientation, PANEL_EH
+from app.services import settings_cache
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +175,6 @@ def _compute_leg_positions(
     return legs, inner_legs
 
 
-_DIAG_MIN_DIST_CM  = 5.0   # DB minimum for diagDistFromLegCm
-_DIAG_MAX_ANGLE_DEG = 85.0  # hard ceiling for diagPreferredAngleDeg
-
-
 def _compute_diagonal_bracing(
     legs: list[dict],
     custom_diagonals: dict | None,
@@ -198,9 +195,9 @@ def _compute_diagonal_bracing(
     from horizontal. If the top lands within the effective dist of the far leg
     on the slope beam, it is clamped outward (angle steepens).
 
-    Server-side constraints enforced per span:
-      - effective_dist = min(dist, punch_span - 2 * _DIAG_MIN_DIST_CM)
-      - effective_angle = min(angle, _DIAG_MAX_ANGLE_DEG)
+    Server-side constraints enforced per span (sourced from admin app_settings):
+      - effective_dist = min(dist, punch_span - 2 * diagDistFromLegCm.min_val)
+      - effective_angle = min(angle, diagPreferredAngleDeg.max_val)
 
     User overrides (topDistFromLegCm/botDistFromLegCm in custom_diagonals) bypass this logic entirely.
     Returns (active_diagonals, effective_settings) where effective_settings reports
@@ -211,8 +208,10 @@ def _compute_diagonal_bracing(
     profile_half = beam_thick_cm / 2
     sin_a = math.sin(angle_rad)
     cos_a = math.cos(angle_rad)
+    diag_min_dist_cm = settings_cache.get_min('diagDistFromLegCm')
+    diag_max_angle_deg = settings_cache.get_max('diagPreferredAngleDeg')
     # Enforce angle ceiling
-    effective_angle = min(diag_preferred_angle_deg, _DIAG_MAX_ANGLE_DEG)
+    effective_angle = min(diag_preferred_angle_deg, diag_max_angle_deg)
     tan_pref = math.tan(math.radians(effective_angle))
     dist = diag_dist_from_leg_cm
     bolt_inset = 2.75
@@ -238,8 +237,8 @@ def _compute_diagonal_bracing(
         punch_span = punch_end - punch_start
         base_span = punch_span * cos_a  # horizontal punch-to-punch distance
 
-        # Per-span distance constraint: both ends must have at least _DIAG_MIN_DIST_CM
-        span_max_dist = max(_DIAG_MIN_DIST_CM, punch_span - 2 * _DIAG_MIN_DIST_CM)
+        # Per-span distance constraint: both ends must have at least diag_min_dist_cm
+        span_max_dist = max(diag_min_dist_cm, punch_span - 2 * diag_min_dist_cm)
         effective_dist = min(dist, span_max_dist)
         if min_max_dist is None or span_max_dist < min_max_dist:
             min_max_dist = span_max_dist
