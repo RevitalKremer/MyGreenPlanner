@@ -331,21 +331,35 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     lineGroups[li].push(pr)
   }
 
-  // Row-wide anchor for BE coord 0: BE's startCm is measured from the row's start
-  // (col 0 = 0 in row coords), NOT from the leftmost real panel of any given line.
-  // So the anchor must be the leftmost panel across ALL lines, applied uniformly
-  // to every line's segment positioning.
+  // Row-wide anchor for BE coord 0. BE's startCm/lengthCm have LTR semantics:
+  // BE coord 0 = cell[0]'s "LEFT edge" in BE measurement = the side facing the
+  // (hypothetical) negative-index cell. For BL/TL (LTR) areas, cell[0] is
+  // visually leftmost so this edge is the visually-leftmost edge of the row
+  // (= MIN of panel left edges in local). For BR/TR (RTL) areas, cell[0] is
+  // visually rightmost so this edge is the visually-RIGHTMOST edge of the row
+  // (= MAX of panel right edges in local). In RTL, BE coord positive maps to
+  // decreasing local x — so we subtract instead of adding when building spans.
   //
   // When anchorPanels is provided (bases tab per-trap layout with a panel subset),
   // transform them to this call's local frame; otherwise fall back to rowPanels
   // (which, for the rails tab, already contains the full row).
+  const isRtl = (rowPanels[0] as any)?.xDir === 'rtl'
   const anchorSet = (anchorPanels && anchorPanels.length > 0) ? anchorPanels : rowPanels
   let rowAnchorX: number | undefined = undefined
   for (const p of anchorSet) {
     const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
-    const left = lc.x - p.width / 2
-    if (rowAnchorX === undefined || left < rowAnchorX) {
-      rowAnchorX = left
+    if (isRtl) {
+      // RTL anchor = right-edge of the visually-rightmost panel (= cell[0]'s right edge)
+      const right = lc.x + p.width / 2
+      if (rowAnchorX === undefined || right > rowAnchorX) {
+        rowAnchorX = right
+      }
+    } else {
+      // LTR anchor = left-edge of the visually-leftmost panel (= cell[0]'s left edge)
+      const left = lc.x - p.width / 2
+      if (rowAnchorX === undefined || left < rowAnchorX) {
+        rowAnchorX = left
+      }
     }
   }
 
@@ -381,12 +395,18 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     // Build the X spans for this line: one per BE segment when present (handles
     // split-at-holes + per-segment long-rail extension); otherwise a single span
     // covering all panels with the global overhang (edit mode / no BE data).
+    // For RTL areas, BE coord positive goes leftward in local px, so we subtract.
     type Span = { xMin: number; xMax: number }
     const spans: Span[] = segmentsForLine && segmentsForLine.length > 0
-      ? segmentsForLine.map(seg => ({
-          xMin: lineMinX + seg.startCm / pixelToCmRatio,
-          xMax: lineMinX + (seg.startCm + seg.lengthCm) / pixelToCmRatio,
-        }))
+      ? segmentsForLine.map(seg => isRtl
+          ? {
+              xMin: lineMinX - (seg.startCm + seg.lengthCm) / pixelToCmRatio,
+              xMax: lineMinX - seg.startCm / pixelToCmRatio,
+            }
+          : {
+              xMin: lineMinX + seg.startCm / pixelToCmRatio,
+              xMax: lineMinX + (seg.startCm + seg.lengthCm) / pixelToCmRatio,
+            })
       : (() => {
           // Fallback (edit mode / no BE data): one rail spanning all panels that
           // overlap this line's Y range, inflated by the global overhang.
