@@ -1280,6 +1280,25 @@ async def compute_and_save_bases(
                 app_defaults['edgeOffsetMm'],
             )
 
+            # Rebuild `consolidated` from the final row_bases so downstream
+            # external-diagonal computation sees the post-signature-reassignment
+            # trap assignments AND the new bases added by the completion pass.
+            # Without this, diagonals are paired against stale (pre-reassign)
+            # trap groupings and miss any added bases entirely. Sort each trap's
+            # bases by offset so _diagonal_pairs picks geometrically-adjacent
+            # pairs (outer corners, etc.) rather than insertion-order pairs.
+            consolidated = {tid: [] for tid in trap_ids}
+            for b in row_bases:
+                tid = b.get('trapezoidId')
+                if tid in consolidated:
+                    consolidated[tid].append(b)
+            for tid in consolidated:
+                consolidated[tid].sort(key=lambda b: b.get('offsetFromStartCm', 0))
+            per_row_data[row_idx]['consolidated'] = consolidated
+            # Stash the final row_bases so diagonal calc can emit indices that
+            # reference the stored array directly (via baseId lookup).
+            per_row_data[row_idx]['rowBases'] = row_bases
+
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
             'areaId': area_id,
@@ -1327,9 +1346,10 @@ async def compute_and_save_external_diagonals(
             for row_idx, row_data in sorted(per_row_data.items()):
                 bdm = row_data.get('basesDataMap', {})
                 cons = row_data.get('consolidated', {})
+                row_bases = row_data.get('rowBases')
                 if not bdm:
                     continue
-                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids)
+                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids, row_bases=row_bases)
                 for d in row_diags:
                     d['panelRowIdx'] = row_idx
                 all_diagonals.extend(row_diags)
