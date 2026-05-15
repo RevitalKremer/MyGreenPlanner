@@ -334,7 +334,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const by = ty + lenPx
                     // Only render blocks that fit within this base's actual length
                     const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= sb.lengthCm + 1)
-                    const blockWSvg = (trapSettingsMap[sb.trapezoidId].blockWidthCm / pixelToCmRatio) * sc
+                    const blockWidthCm = trapSettingsMap[sb.trapezoidId]?.blockWidthCm
+                    if (blockWidthCm == null) return null
+                    const blockWSvg = (blockWidthCm / pixelToCmRatio) * sc
                     const slSvg = (slopeBlockLengthCm / pixelToCmRatio) * sc
                     return trapBlocks.map((blk, bki) => {
                       const blkOffsetPx = (blk.slopePositionCm + slopeBlockLengthCm / 2) / pixelToCmRatio
