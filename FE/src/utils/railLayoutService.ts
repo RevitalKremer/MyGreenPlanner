@@ -331,19 +331,21 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     lineGroups[li].push(pr)
   }
 
-  // Per-line anchor for BE coord 0: leftmost real panel of the line in the FULL row.
-  // When anchorPanels is provided (e.g. bases tab per-trap layout with a panel
-  // subset), transform them to this call's local frame so the anchor doesn't drift
-  // when the caller only has a trap-local view of the panels.
-  const anchorLineMinX: Record<number, number> = {}
-  if (anchorPanels && anchorPanels.length > 0) {
-    for (const p of anchorPanels) {
-      const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
-      const li = p.line ?? 0
-      const left = lc.x - p.width / 2
-      if (anchorLineMinX[li] === undefined || left < anchorLineMinX[li]) {
-        anchorLineMinX[li] = left
-      }
+  // Row-wide anchor for BE coord 0: BE's startCm is measured from the row's start
+  // (col 0 = 0 in row coords), NOT from the leftmost real panel of any given line.
+  // So the anchor must be the leftmost panel across ALL lines, applied uniformly
+  // to every line's segment positioning.
+  //
+  // When anchorPanels is provided (bases tab per-trap layout with a panel subset),
+  // transform them to this call's local frame; otherwise fall back to rowPanels
+  // (which, for the rails tab, already contains the full row).
+  const anchorSet = (anchorPanels && anchorPanels.length > 0) ? anchorPanels : rowPanels
+  let rowAnchorX: number | undefined = undefined
+  for (const p of anchorSet) {
+    const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
+    const left = lc.x - p.width / 2
+    if (rowAnchorX === undefined || left < rowAnchorX) {
+      rowAnchorX = left
     }
   }
 
@@ -371,10 +373,10 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     }
 
     const segmentsForLine = lineSegments?.[lineIdx]
-    // BE coord 0 corresponds to the leftmost real panel of this line in local px.
-    // Prefer the explicit anchor (full row's panels) when supplied — falls back to
-    // the row-local set if no anchor was given.
-    const lineMinX = anchorLineMinX[lineIdx] ?? (lineRects.length > 0 ? Math.min(...lineRects.map(r => r.localX)) : 0)
+    // BE coord 0 = row start (col 0 position). Use the row-wide leftmost panel
+    // as the anchor for every line, since BE's startCm is in row-coords. Fall back
+    // to this line's leftmost panel only if no panels exist (shouldn't happen).
+    const lineMinX = rowAnchorX ?? (lineRects.length > 0 ? Math.min(...lineRects.map(r => r.localX)) : 0)
 
     // Build the X spans for this line: one per BE segment when present (handles
     // split-at-holes + per-segment long-rail extension); otherwise a single span
