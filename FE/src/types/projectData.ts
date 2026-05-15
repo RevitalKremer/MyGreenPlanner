@@ -295,11 +295,20 @@ export interface RailConfig {
   railSpacingV?: number
   railSpacingH?: number
   /**
-   * Per-line overhang in cm, derived from BE's `-rail.startCm`. Only set in stored mode.
-   * When present, takes precedence over `overhangCm` for that lineIdx — used to honor
-   * BE-computed extensions (e.g. long-rail extra overhang) without duplicating BE logic.
+   * Per-line rail segments derived from BE rails. When present, the FE emits one rail
+   * per segment per Y-offset (positioned via startCm/lengthCm in BE coords, anchored at
+   * the leftmost real panel). Captures both per-segment overhang and split-at-holes —
+   * the FE shouldn't duplicate BE logic, it just renders what the BE computed.
    */
-  lineOverhangCm?: Record<number, number>
+  lineSegments?: Record<number, { startCm: number; lengthCm: number }[]>
+  /**
+   * Optional anchor panels for the lineMinX calc (BE coord 0). When the caller is
+   * working with a panel subset (e.g. bases tab per-trap layout), pass the FULL row's
+   * panels here so the rail anchor matches the BE's "leftmost real panel of the line
+   * in the full row". Without this, a trap whose panels don't include the row's
+   * leftmost panel renders its rails offset from the correct position.
+   */
+  anchorPanels?: PanelLayout[]
 }
 
 // ── FE layout geometry (computed by railLayoutService / basePlanService) ─────

@@ -451,10 +451,13 @@ def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
 
 
 def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[str, list[float]]:
-    """Group computed rails by lineIdx → sorted offsets.
+    """Group computed rails by lineIdx → sorted unique offsets.
 
     computed_area.rails is a dict[rowIndex → list[Rail]].
-    Extracts rails for the given row_index.
+    Extracts rails for the given row_index. When a line is split into multiple
+    segments (large gaps), each segment emits the same Y-offsets, so we dedupe
+    by offset value — the trapezoid cross-section is segment-invariant and only
+    needs one rail per (line, Y-offset).
     """
     if not computed_area:
         return {}
@@ -464,12 +467,12 @@ def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[s
         rails_list = rails_dict
     else:
         rails_list = rails_dict.get(row_index) or rails_dict.get(str(row_index)) or []
-    derived: dict[str, list] = {}
+    derived: dict[str, set[float]] = {}
     for r in rails_list:
         li = str(r.get('lineIdx', 0))
         off = r.get('offsetFromLineFrontCm')
         if off is not None:
-            derived.setdefault(li, []).append(off)
+            derived.setdefault(li, set()).add(off)
     return {li: sorted(offs) for li, offs in derived.items()}
 
 
@@ -1264,6 +1267,38 @@ async def compute_and_save_bases(
                 row_front_height_cm=row_fh,
             )
 
+            # Final pass: ensure every rail segment has ≥ 2 bases. After split-
+            # at-holes rails, each isolated-column segment may only carry 1 base
+            # from standard placement — add another (and relocate the existing
+            # one to a std edge-offset position if needed).
+            row_rails = (_get_computed_area(data, area_id) or {}).get('rails', {})
+            rails_for_row = row_rails.get(row_idx) or row_rails.get(str(row_idx)) or []
+            bs.bases_completion_for_segmented_rails(
+                row_bases, rails_for_row, pg,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
+                app_defaults['edgeOffsetMm'],
+            )
+
+            # Rebuild `consolidated` from the final row_bases so downstream
+            # external-diagonal computation sees the post-signature-reassignment
+            # trap assignments AND the new bases added by the completion pass.
+            # Without this, diagonals are paired against stale (pre-reassign)
+            # trap groupings and miss any added bases entirely. Sort each trap's
+            # bases by offset so _diagonal_pairs picks geometrically-adjacent
+            # pairs (outer corners, etc.) rather than insertion-order pairs.
+            consolidated = {tid: [] for tid in trap_ids}
+            for b in row_bases:
+                tid = b.get('trapezoidId')
+                if tid in consolidated:
+                    consolidated[tid].append(b)
+            for tid in consolidated:
+                consolidated[tid].sort(key=lambda b: b.get('offsetFromStartCm', 0))
+            per_row_data[row_idx]['consolidated'] = consolidated
+            # Stash the final row_bases so diagonal calc can emit indices that
+            # reference the stored array directly (via baseId lookup).
+            per_row_data[row_idx]['rowBases'] = row_bases
+
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
             'areaId': area_id,
@@ -1311,9 +1346,10 @@ async def compute_and_save_external_diagonals(
             for row_idx, row_data in sorted(per_row_data.items()):
                 bdm = row_data.get('basesDataMap', {})
                 cons = row_data.get('consolidated', {})
+                row_bases = row_data.get('rowBases')
                 if not bdm:
                     continue
-                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids)
+                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids, row_bases=row_bases)
                 for d in row_diags:
                     d['panelRowIdx'] = row_idx
                 all_diagonals.extend(row_diags)

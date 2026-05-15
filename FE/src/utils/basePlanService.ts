@@ -1,4 +1,4 @@
-import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE, buildLineOverhangFromBE } from './railLayoutService'
+import { computeRowRailLayout, computePanelFrame, localToScreen, screenToLocal, getPanelOrientation, buildLineRailsFromBE, buildLineSegmentsFromBE } from './railLayoutService'
 import type {
   Point, LineInfo, BasePlanBase, BasePlanFrame, RowBasePlan, BaseConfig,
   RowRailLayout, Step2Area, BeRailsAreaData, BeBasesAreaData, RailConfig, PanelLayout,
@@ -36,9 +36,28 @@ export function computeRowBasePlan(rowPanels: PanelLayout[], pixelToCmRatio: num
   }
   const lines = Object.values(lineMap).sort((a, b) => a.minY - b.minY)
 
-  // Frame spans panel edges (not rail ends)
-  const frameXMinPx   = localBounds.minX
-  const frameXMaxPx   = localBounds.maxX
+  // Frame spans panel edges (not rail ends). BE's offsetFromStartCm is measured
+  // from the FULL row's start (col 0 position in row-coords). When rowPanels is
+  // a trap subset (bases tab per-trap layout), anchorPanels carries the full row;
+  // use it so the frame doesn't drift to the trap's own leftmost panel.
+  const anchorPanels = railConfig.anchorPanels
+  let frameXMinPx = localBounds.minX
+  let frameXMaxPx = localBounds.maxX
+  if (anchorPanels && anchorPanels.length > 0) {
+    let rowMinX = Infinity
+    let rowMaxX = -Infinity
+    for (const p of anchorPanels) {
+      const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
+      const left = lc.x - p.width / 2
+      const right = lc.x + p.width / 2
+      if (left < rowMinX) rowMinX = left
+      if (right > rowMaxX) rowMaxX = right
+    }
+    if (rowMinX !== Infinity) {
+      frameXMinPx = rowMinX
+      frameXMaxPx = rowMaxX
+    }
+  }
   const frameLengthPx = frameXMaxPx - frameXMinPx
   const frameLengthMm = Math.round(frameLengthPx * pixelToCmRatio * 10)
 
@@ -167,6 +186,25 @@ export function computeExpandedBasePlans({
     return a?.label ?? tid.replace(/\d+$/, '')
   }
 
+  // Full-row anchor panels per (areaLabel, panelRowIdx): union of all panels belonging
+  // to every trap in the area. Used so per-trap rail rendering anchors to the row's
+  // leftmost panel (BE coord 0) rather than the trap's subset's leftmost panel.
+  const anchorByAreaRow: Record<string, Record<number, PanelLayout[]>> = {}
+  for (const area of (areas || [])) {
+    const label = area?.label
+    if (!label) continue
+    const areaTrapIds = area.trapezoidIds || []
+    const byRow: Record<number, PanelLayout[]> = {}
+    for (const tid of areaTrapIds) {
+      for (const p of (trapGroups[tid] ?? [])) {
+        const ri = p.panelRowIdx ?? 0
+        if (!byRow[ri]) byRow[ri] = []
+        byRow[ri].push(p)
+      }
+    }
+    anchorByAreaRow[label] = byRow
+  }
+
   for (const trapId of trapIds) {
     const allPanels = trapGroups[trapId] ?? []
     const s = trapSettingsMap[trapId] ?? {}
@@ -179,15 +217,17 @@ export function computeExpandedBasePlans({
     }
     const rowIdxKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b)
 
+    const label = trapLabel(trapId)
     for (const ri of rowIdxKeys) {
       const rowPanels = byRow[ri]
-      const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri) ?? null
-      const lineOverhangCm = buildLineOverhangFromBE(beRailsData, trapLabel(trapId), ri) ?? undefined
+      const lineRails = buildLineRailsFromBE(beRailsData, label, ri) ?? null
+      const lineSegments = buildLineSegmentsFromBE(beRailsData, label, ri) ?? undefined
+      const anchorPanels = anchorByAreaRow[label]?.[ri]
       const cfg: BaseConfig = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
-      bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails, lineOverhangCm }, cfg))
-      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineOverhangCm }))
+      bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails, lineSegments, anchorPanels }, cfg))
+      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineSegments, anchorPanels }))
       eTrapIds.push(trapId)
     }
   }
