@@ -97,9 +97,10 @@ def _derive_row_construction(
     # Per-row breakdowns used for panel-clamp counting. Aggregating rails +
     # panels at the area level loses the per-row × per-line structure (mixed
     # row shapes and varying line counts), so the clamp formulas need the
-    # raw per-row data:
-    #   inter_panel_positions = Σ over (row, line) of (real_panels − 1) × rails_on_that_line
-    #   grounding_panel_count  = Σ over rows of ⌈real_panels_in_row / 2⌉
+    # raw per-row data. Both totals are summed across contiguous segments of
+    # real panels (isolated panels with no adjacent neighbor don't contribute):
+    #   inter_panel_positions = Σ over (row, line, segment) of (panels − 1) × rails_per_segment
+    #   grounding_panel_count  = Σ over (row, line, segment) of ⌈panels / 2⌉   (only segments with ≥2 panels)
     rails_by_row = computed_area.get('rails') or {}
     inter_panel_positions = 0
     grounding_panel_count = 0
@@ -121,14 +122,32 @@ def _derive_row_construction(
             li = r.get('lineIdx', 0)
             rails_on_line[li] = rails_on_line.get(li, 0) + 1
 
-        row_real_panels = 0
         for line_idx, cells in enumerate(pg.get('rows') or []):
             real = sum(1 for c in cells if c in REAL_PANELS)
-            row_real_panels += real
-            if real > 1:
-                inter_panel_positions += (real - 1) * rails_on_line.get(line_idx, 0)
-        if row_real_panels > 0:
-            grounding_panel_count += math.ceil(row_real_panels / 2)
+            rails_in_line = rails_on_line.get(line_idx, 0)
+            if real <= 1 or rails_in_line == 0:
+                continue
+            # Count clamps per contiguous segment of real panels. Grounding clamps
+            # are mid-clamps that double as the electrical bond, so they only exist
+            # at inter-panel positions — isolated panels (segment of 1) contribute
+            # zero grounding. The BE splits rails at large gaps, so rails are
+            # evenly distributed across segments.
+            segment_panel_counts: list[int] = []
+            current = 0
+            for c in cells:
+                if c in REAL_PANELS:
+                    current += 1
+                elif current > 0:
+                    segment_panel_counts.append(current)
+                    current = 0
+            if current > 0:
+                segment_panel_counts.append(current)
+            num_segments = len(segment_panel_counts)
+            rails_per_segment = rails_in_line // num_segments if num_segments else 0
+            for n in segment_panel_counts:
+                if n > 1:
+                    inter_panel_positions += (n - 1) * rails_per_segment
+                    grounding_panel_count += math.ceil(n / 2)
     if max_num_lines == 0:
         max_num_lines = 1
 
@@ -231,10 +250,12 @@ def _derive_row_construction(
             trap_instance_counts[tid] = trap_instance_counts.get(tid, 0) + 1
     ct_by_id = {ct.get('trapezoidId'): ct for ct in computed_trapezoids}
     trap_types: list[dict] = []
-    # Each trapezoid instance sits on one block per leg. Sum across instances
-    # so multi-row areas with mixed trap shapes get the right total — the
-    # area-aggregate `(numRails − 2 + 2) × numTrapezoids` shortcut over-counts
-    # by treating every base as if it had the row-summed rail count.
+    # Each trapezoid instance sits on the blocks emitted in its `blocks` array.
+    # Sum across instances so multi-row areas with mixed trap shapes get the
+    # right total — the area-aggregate `(numRails − 2 + 2) × numTrapezoids`
+    # shortcut over-counts by treating every base as if it had the row-summed
+    # rail count. Counting via t_blocks (not t_legs) avoids over-counting from
+    # virtual legs or trap-consolidation leg duplicates that don't carry blocks.
     #
     # Also count punches per origin so the bolt BOM can match the rule
     #   block punches  → single_arrow_anchor_bolt + m12_nut + m12_washer
@@ -249,9 +270,10 @@ def _derive_row_construction(
             continue
         t_geom = ct.get('geometry') or {}
         t_legs = ct.get('legs') or []
+        t_blocks = ct.get('blocks') or []
         t_diags = ct.get('diagonals') or []
         t_punches = ct.get('punches') or []
-        num_blocks += count * len(t_legs)
+        num_blocks += count * len(t_blocks)
         block_p = sum(1 for p in t_punches if p.get('origin') == 'block')
         num_block_punches += count * block_p
         num_other_punches += count * (len(t_punches) - block_p)
@@ -422,35 +444,38 @@ def _compute_block_bom(rc: dict, area_label: str, products_by_type: dict) -> lis
 def _compute_panel_clamp_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
     """Compute all panel clamp types (end, grounding, mid) BOM.
 
+    End clamps: two per rail. Rails are physically split at large gaps by
+    rail_service, so each split segment is counted as its own rail (with its
+    own pair of ends).
+
     Mid + grounding clamps live at every adjacent-panel boundary on every
-    rail crossing that boundary. The total boundary-position count and the
-    grounding count are computed per panel row in `_derive_row_construction`
-    (see `interPanelClampPositions` / `groundingPanelCount`) — area-level
-    averages don't work for areas with mixed-shape rows.
+    rail crossing that boundary. The total boundary-position count is computed
+    per contiguous segment of real panels (so panels on either side of a hole
+    don't contribute) in `_derive_row_construction` — see
+    `interPanelClampPositions` / `groundingPanelCount`.
 
     Grounding clamps are mid-clamp positions reused as the electrical bond,
     so subtract them from the inter-panel total to get the plain mid count.
     """
     num_rails = rc.get('numRails', 2)
-    num_lines = rc.get('numLines', 1)
-    num_large_gaps = rc.get('numLargeGaps', 0)
     end_clamp_element      = _alt_group_default(products_by_type, _END_CLAMP_ANCHOR)
     grounding_clamp_element = _alt_group_default(products_by_type, _GROUNDING_CLAMP_ANCHOR)
     mid_clamp_element      = _alt_group_default(products_by_type, _MID_CLAMP_ANCHOR)
     rows = []
 
-    rails_per_line = num_rails / num_lines if num_lines else num_rails
-    end_clamp_qty = 2 * num_rails + 2 * num_large_gaps * rails_per_line
-    rows.append({'areaLabel': area_label, 'element': end_clamp_element, 'totalLengthM': None, 'qty': round(end_clamp_qty)})
+    # Two end-clamps per rail. Rails are already physically split at large gaps
+    # by rail_service, so `num_rails` includes the extra rails (and their ends)
+    # from the split — no separate gap augmentation needed.
+    end_clamp_qty = 2 * num_rails
+    rows.append({'areaLabel': area_label, 'element': end_clamp_element, 'totalLengthM': None, 'qty': end_clamp_qty})
 
     grounding_qty = rc.get('groundingPanelCount', 0)
     rows.append({'areaLabel': area_label, 'element': grounding_clamp_element, 'totalLengthM': None, 'qty': grounding_qty})
 
+    # `interPanelClampPositions` is counted per contiguous segment, so gap-adjacent
+    # panels already don't contribute a mid-clamp position.
     inter_panel_positions = rc.get('interPanelClampPositions', 0)
-    # Large-gap boundaries don't get a mid-clamp — the rail is split there
-    # and gets two end-clamps instead.
-    mid_positions = max(0, inter_panel_positions - num_large_gaps)
-    mid_clamp_qty = max(0, mid_positions - grounding_qty)
+    mid_clamp_qty = max(0, inter_panel_positions - grounding_qty)
     if mid_clamp_qty > 0:
         rows.append({'areaLabel': area_label, 'element': mid_clamp_element, 'totalLengthM': None, 'qty': mid_clamp_qty})
 

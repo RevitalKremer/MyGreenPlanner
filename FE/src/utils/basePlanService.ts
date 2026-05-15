@@ -1,4 +1,4 @@
-import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE, buildLineOverhangFromBE } from './railLayoutService'
+import { computeRowRailLayout, computePanelFrame, localToScreen, getPanelOrientation, buildLineRailsFromBE, buildLineSegmentsFromBE } from './railLayoutService'
 import type {
   Point, LineInfo, BasePlanBase, BasePlanFrame, RowBasePlan, BaseConfig,
   RowRailLayout, Step2Area, BeRailsAreaData, BeBasesAreaData, RailConfig, PanelLayout,
@@ -182,12 +182,12 @@ export function computeExpandedBasePlans({
     for (const ri of rowIdxKeys) {
       const rowPanels = byRow[ri]
       const lineRails = buildLineRailsFromBE(beRailsData, trapLabel(trapId), ri) ?? null
-      const lineOverhangCm = buildLineOverhangFromBE(beRailsData, trapLabel(trapId), ri) ?? undefined
+      const lineSegments = buildLineSegmentsFromBE(beRailsData, trapLabel(trapId), ri) ?? undefined
       const cfg: BaseConfig = { edgeOffsetMm: s.edgeOffsetMm, spacingMm: s.spacingMm }
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
-      bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails, lineOverhangCm }, cfg))
-      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineOverhangCm }))
+      bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails, lineSegments }, cfg))
+      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineSegments }))
       eTrapIds.push(trapId)
     }
   }

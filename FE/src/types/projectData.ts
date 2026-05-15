@@ -295,11 +295,12 @@ export interface RailConfig {
   railSpacingV?: number
   railSpacingH?: number
   /**
-   * Per-line overhang in cm, derived from BE's `-rail.startCm`. Only set in stored mode.
-   * When present, takes precedence over `overhangCm` for that lineIdx — used to honor
-   * BE-computed extensions (e.g. long-rail extra overhang) without duplicating BE logic.
+   * Per-line rail segments derived from BE rails. When present, the FE emits one rail
+   * per segment per Y-offset (positioned via startCm/lengthCm in BE coords, anchored at
+   * the leftmost real panel). Captures both per-segment overhang and split-at-holes —
+   * the FE shouldn't duplicate BE logic, it just renders what the BE computed.
    */
-  lineOverhangCm?: Record<number, number>
+  lineSegments?: Record<number, { startCm: number; lengthCm: number }[]>
 }
 
 // ── FE layout geometry (computed by railLayoutService / basePlanService) ─────

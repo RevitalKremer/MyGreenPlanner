@@ -451,10 +451,13 @@ def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
 
 
 def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[str, list[float]]:
-    """Group computed rails by lineIdx → sorted offsets.
+    """Group computed rails by lineIdx → sorted unique offsets.
 
     computed_area.rails is a dict[rowIndex → list[Rail]].
-    Extracts rails for the given row_index.
+    Extracts rails for the given row_index. When a line is split into multiple
+    segments (large gaps), each segment emits the same Y-offsets, so we dedupe
+    by offset value — the trapezoid cross-section is segment-invariant and only
+    needs one rail per (line, Y-offset).
     """
     if not computed_area:
         return {}
@@ -464,12 +467,12 @@ def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[s
         rails_list = rails_dict
     else:
         rails_list = rails_dict.get(row_index) or rails_dict.get(str(row_index)) or []
-    derived: dict[str, list] = {}
+    derived: dict[str, set[float]] = {}
     for r in rails_list:
         li = str(r.get('lineIdx', 0))
         off = r.get('offsetFromLineFrontCm')
         if off is not None:
-            derived.setdefault(li, []).append(off)
+            derived.setdefault(li, set()).add(off)
     return {li: sorted(offs) for li, offs in derived.items()}
 
 

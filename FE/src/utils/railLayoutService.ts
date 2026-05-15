@@ -28,20 +28,25 @@ export function buildLineRailsFromBE(beRailsData: BeRailsAreaData[] | null, area
 }
 
 /**
- * Build a per-line overhang map ({ lineIdx: overhangCm }) from BE-computed rails.
- * The BE applies any overhang adjustments (e.g. long-rail extension) symmetrically
- * around the panel span, so `-rail.startCm` is the effective per-side overhang.
+ * Build a per-line segment map ({ lineIdx: [{startCm, lengthCm}, ...] }) from BE rails.
+ * Multiple segments per line happen when the BE split a line at large gaps (holes from
+ * removed panels). Each segment's startCm/lengthCm encodes overhang and any long-rail
+ * extension. Deduped per (lineIdx, startCm) since the BE emits one rail per Y-offset.
  */
-export function buildLineOverhangFromBE(beRailsData: BeRailsAreaData[] | null, areaLabel: string, panelRowIdx: number = 0): Record<number, number> | null {
+export function buildLineSegmentsFromBE(beRailsData: BeRailsAreaData[] | null, areaLabel: string, panelRowIdx: number = 0): Record<number, { startCm: number; lengthCm: number }[]> | null {
   if (!beRailsData) return null
   const beArea = beRailsData.find(a => a.areaLabel === areaLabel)
   if (!beArea) return null
   const rails = (beArea.rails ?? []).filter(r => (r._panelRowIdx ?? 0) === panelRowIdx)
   if (!rails.length) return null
-  const map: Record<number, number> = {}
+  const map: Record<number, { startCm: number; lengthCm: number }[]> = {}
   for (const r of rails) {
-    if (map[r.lineIdx] === undefined) map[r.lineIdx] = -r.startCm
+    if (!map[r.lineIdx]) map[r.lineIdx] = []
+    if (!map[r.lineIdx].some(s => Math.abs(s.startCm - r.startCm) < 0.01)) {
+      map[r.lineIdx].push({ startCm: r.startCm, lengthCm: r.lengthCm })
+    }
   }
+  for (const li of Object.keys(map)) map[Number(li)].sort((a, b) => a.startCm - b.startCm)
   return Object.keys(map).length > 0 ? map : null
 }
 
@@ -203,14 +208,15 @@ export function buildRowRailConfig(rowPanels: PanelLayout[], ri: number, {
   }
   const ts = (trapId && trapSettingsMap[trapId]) ?? {}
   const stored = !isEditableRow
-  // Per-line overhang from BE is authoritative regardless of edit mode: it carries
-  // server-only adjustments (e.g. long-rail extension) that the FE shouldn't recompute.
-  const lineOverhangCm = buildLineOverhangFromBE(beRailsData, areaLabel, ri) ?? undefined
+  // Per-line segments from BE are authoritative regardless of edit mode: they carry
+  // server-only adjustments (long-rail extension, split-at-holes) that the FE shouldn't
+  // recompute. When set, the FE emits one rail per segment using BE-anchored positions.
+  const lineSegments = buildLineSegmentsFromBE(beRailsData, areaLabel, ri) ?? undefined
   return {
     lineRails: rowRails,
     overhangCm: stored ? (ts.railOverhangCm ?? railOverhangCm) : railOverhangCm,
     stockLengths: stored ? (ts.stockLengths ?? stockLengths) : stockLengths,
-    lineOverhangCm,
+    lineSegments,
   }
 }
 
@@ -285,7 +291,7 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
   const lineRails      = railConfig.lineRails ?? null
   const railSpacingV   = railConfig.railSpacingV
   const railSpacingH   = railConfig.railSpacingH
-  const lineOverhangCm = railConfig.lineOverhangCm
+  const lineSegments   = railConfig.lineSegments
 
   const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
 
@@ -347,40 +353,58 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
       railYPositions = [lineMinY + offsetPx, lineMaxY - offsetPx]
     }
 
-    for (const railY of railYPositions) {
-      // x-extent: all panels across ALL lines that span this y
-      let xMin = Infinity, xMax = -Infinity
-      for (const pr of panelLocalRects) {
-        if (railY >= pr.localY - 0.5 && railY <= pr.localY + pr.height + 0.5) {
-          xMin = Math.min(xMin, pr.localX)
-          xMax = Math.max(xMax, pr.localX + pr.width)
-        }
+    const segmentsForLine = lineSegments?.[lineIdx]
+    // BE coord 0 corresponds to the leftmost real panel of this line in local px.
+    const lineMinX = lineRects.length > 0 ? Math.min(...lineRects.map(r => r.localX)) : 0
+
+    // Build the X spans for this line: one per BE segment when present (handles
+    // split-at-holes + per-segment long-rail extension); otherwise a single span
+    // covering all panels with the global overhang (edit mode / no BE data).
+    type Span = { xMin: number; xMax: number }
+    const spans: Span[] = segmentsForLine && segmentsForLine.length > 0
+      ? segmentsForLine.map(seg => ({
+          xMin: lineMinX + seg.startCm / pixelToCmRatio,
+          xMax: lineMinX + (seg.startCm + seg.lengthCm) / pixelToCmRatio,
+        }))
+      : (() => {
+          // Fallback (edit mode / no BE data): one rail spanning all panels that
+          // overlap this line's Y range, inflated by the global overhang.
+          let xMin = Infinity, xMax = -Infinity
+          const midY = (lineMinY + lineMaxY) / 2
+          for (const pr of panelLocalRects) {
+            if (midY >= pr.localY - 0.5 && midY <= pr.localY + pr.height + 0.5) {
+              xMin = Math.min(xMin, pr.localX)
+              xMax = Math.max(xMax, pr.localX + pr.width)
+            }
+          }
+          if (xMin === Infinity) return []
+          const overhangPx = railOverhangCm / pixelToCmRatio
+          return [{ xMin: xMin - overhangPx, xMax: xMax + overhangPx }]
+        })()
+
+    // Iterate segment → Y-offset to match BE rail ID order (line → segment → offset).
+    // This makes FE railId match BE railId for the stockSegmentsMm lookup.
+    for (const { xMin, xMax } of spans) {
+      for (const railY of railYPositions) {
+        const lengthPx  = xMax - xMin
+        const lengthCm  = lengthPx * pixelToCmRatio
+
+        const localStart  = { x: xMin, y: railY }
+        const localEnd    = { x: xMax, y: railY }
+        const screenStart = localToScreen(localStart, center, angleRad)
+        const screenEnd   = localToScreen(localEnd,   center, angleRad)
+
+        rails.push({
+          railId: `R${railCounter++}`,
+          lineIdx,
+          orientation,
+          localStart,
+          localEnd,
+          screenStart,
+          screenEnd,
+          lengthCm: Math.round(lengthCm * 10) / 10,
+        })
       }
-      if (xMin === Infinity) continue
-
-      const overhangCm = lineOverhangCm?.[lineIdx] ?? railOverhangCm
-      const overhangPx = overhangCm / pixelToCmRatio
-      xMin -= overhangPx
-      xMax += overhangPx
-
-      const lengthPx  = xMax - xMin
-      const lengthCm  = lengthPx * pixelToCmRatio
-
-      const localStart  = { x: xMin, y: railY }
-      const localEnd    = { x: xMax, y: railY }
-      const screenStart = localToScreen(localStart, center, angleRad)
-      const screenEnd   = localToScreen(localEnd,   center, angleRad)
-
-      rails.push({
-        railId: `R${railCounter++}`,
-        lineIdx,
-        orientation,
-        localStart,
-        localEnd,
-        screenStart,
-        screenEnd,
-        lengthCm: Math.round(lengthCm * 10) / 10,
-      })
     }
   }
 
