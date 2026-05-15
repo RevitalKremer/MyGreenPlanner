@@ -301,6 +301,14 @@ export interface RailConfig {
    * the FE shouldn't duplicate BE logic, it just renders what the BE computed.
    */
   lineSegments?: Record<number, { startCm: number; lengthCm: number }[]>
+  /**
+   * Optional anchor panels for the lineMinX calc (BE coord 0). When the caller is
+   * working with a panel subset (e.g. bases tab per-trap layout), pass the FULL row's
+   * panels here so the rail anchor matches the BE's "leftmost real panel of the line
+   * in the full row". Without this, a trap whose panels don't include the row's
+   * leftmost panel renders its rails offset from the correct position.
+   */
+  anchorPanels?: PanelLayout[]
 }
 
 // ── FE layout geometry (computed by railLayoutService / basePlanService) ─────

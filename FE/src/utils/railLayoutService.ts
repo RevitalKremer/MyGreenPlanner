@@ -292,6 +292,7 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
   const railSpacingV   = railConfig.railSpacingV
   const railSpacingH   = railConfig.railSpacingH
   const lineSegments   = railConfig.lineSegments
+  const anchorPanels   = railConfig.anchorPanels
 
   const angleRad = (rowPanels[0].rotation || 0) * Math.PI / 180
 
@@ -330,6 +331,22 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     lineGroups[li].push(pr)
   }
 
+  // Per-line anchor for BE coord 0: leftmost real panel of the line in the FULL row.
+  // When anchorPanels is provided (e.g. bases tab per-trap layout with a panel
+  // subset), transform them to this call's local frame so the anchor doesn't drift
+  // when the caller only has a trap-local view of the panels.
+  const anchorLineMinX: Record<number, number> = {}
+  if (anchorPanels && anchorPanels.length > 0) {
+    for (const p of anchorPanels) {
+      const lc = screenToLocal({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, center, angleRad)
+      const li = p.line ?? 0
+      const left = lc.x - p.width / 2
+      if (anchorLineMinX[li] === undefined || left < anchorLineMinX[li]) {
+        anchorLineMinX[li] = left
+      }
+    }
+  }
+
   const rails: FERail[] = []
   let railCounter = 1
 
@@ -355,7 +372,9 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
 
     const segmentsForLine = lineSegments?.[lineIdx]
     // BE coord 0 corresponds to the leftmost real panel of this line in local px.
-    const lineMinX = lineRects.length > 0 ? Math.min(...lineRects.map(r => r.localX)) : 0
+    // Prefer the explicit anchor (full row's panels) when supplied — falls back to
+    // the row-local set if no anchor was given.
+    const lineMinX = anchorLineMinX[lineIdx] ?? (lineRects.length > 0 ? Math.min(...lineRects.map(r => r.localX)) : 0)
 
     // Build the X spans for this line: one per BE segment when present (handles
     // split-at-holes + per-segment long-rail extension); otherwise a single span
