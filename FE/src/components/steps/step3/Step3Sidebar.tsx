@@ -533,20 +533,14 @@ export default function Step3Sidebar({
               <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
                 {/* Per-area params */}
                 {areaParams.map(p => renderParam(p))}
-                {/* Apply-to-all button */}
-                {applyBtn(
-                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
-                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
-                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) },
-                  sec.tabKey,
-                )}
-                {/* Global params — rendered after the apply button */}
+                {/* Global params — directly under area params so user sees
+                    the full set before reaching the action buttons. */}
                 {globalParams.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
                     {globalParams.map(p => renderParam(p))}
                   </div>
                 )}
-                {/* Apply Changes — save to server and recalculate. Highlights
+                {/* Apply Changes first — primary save action. Highlights
                     when this tab has unsaved edits so the user knows where
                     the staged changes will land. */}
                 {onApplyChanges && (() => {
@@ -568,6 +562,14 @@ export default function Step3Sidebar({
                     </button>
                   )
                 })()}
+                {/* Apply-to-all — secondary action; click also triggers the
+                    standard Apply Changes save so global edits ride along. */}
+                {applyBtn(
+                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
+                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
+                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) },
+                  sec.tabKey,
+                )}
               </div>
             )}
           </div>

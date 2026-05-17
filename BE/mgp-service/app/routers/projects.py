@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, Uplo
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image
 import io
 
@@ -31,11 +31,14 @@ from app.routers.deps import get_current_user, require_admin
 
 class TabSettings(BaseModel):
     """Settings (parameters) for a tab - global and per-area."""
-    global_: Optional[dict] = None  # Use alias to avoid Python keyword
+    # Pydantic v2: alias 'global' (a Python keyword) onto the attribute global_.
+    # The v1 `class Config: fields = {...}` form is silently ignored on v2 and
+    # would cause the FE's `settings.global` payload to be dropped at parse
+    # time — turning every global-scope tab save into a no-op.
+    global_: Optional[dict] = Field(default=None, alias='global')
     areas: Optional[dict] = None
-    
-    class Config:
-        fields = {'global_': 'global'}
+
+    model_config = ConfigDict(populate_by_name=True)
 
 class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
