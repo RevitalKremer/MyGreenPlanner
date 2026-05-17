@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, WARNING_BG, WARNING_DARK, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { isEmptyOrientation } from '../../../utils/trapezoidGeometry'
 import { PANEL_H } from '../../../utils/panelCodes.js'
 import { useLang } from '../../../i18n/LangContext'
@@ -143,11 +143,29 @@ export default function Step3Sidebar({
   onApplyChanges,
   effectiveDiagSettings = null,
   effectiveBasesSettings = null,
+  dirty = { rails: false, bases: false, detail: false } as { rails: boolean; bases: boolean; detail: boolean },
+  isOverride: isOverrideProp = null as null | ((path: any) => boolean),
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
-  const isOverride = (key) => !!(areaSettings[selectedRowIdx] && key in areaSettings[selectedRowIdx])
+  // Orange border = the stored value differs from the next-level fallback.
+  // Prefer the canonical isOverride from useStep3Settings (single source of
+  // truth) and fall back to a local implementation for back-compat.
+  const sameValue = (a, b) => {
+    if (a === b) return true
+    if (a == null || b == null) return false
+    if (typeof a !== 'object' || typeof b !== 'object') return false
+    try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
+  }
+  const schemaDefaultOf = (key) => (PARAM_SCHEMA || []).find(p => p.key === key)?.default
+  const isOverride = (key) => {
+    if (isOverrideProp) return isOverrideProp({ scope: 'area', anchor: selectedRowIdx, key })
+    const stored = areaSettings[selectedRowIdx]?.[key]
+    if (stored === undefined) return false
+    const fallback = globalSettings?.[key] ?? schemaDefaultOf(key)
+    return !sameValue(stored, fallback)
+  }
 
   // ── renderParam: schema-driven input renderer ─────────────────────────────
   const renderParam = (param) => {
@@ -288,7 +306,16 @@ export default function Step3Sidebar({
     if (scope === 'trapezoid') {
       const trapSettings = getTrapBasesSettings?.(effectiveSelectedTrapId) ?? {}
       const val = trapSettings[key] ?? param.default
-      const overridden = !!(effectiveSelectedTrapId && trapezoidConfigs[effectiveSelectedTrapId] && key in trapezoidConfigs[effectiveSelectedTrapId])
+      // Override = stored value differs from the schema default. Routes
+      // through the canonical isOverride when available so trap-scope and
+      // area-scope share the same rule.
+      const overridden = (() => {
+        if (!effectiveSelectedTrapId) return false
+        if (isOverrideProp) return isOverrideProp({ scope: 'trap', anchor: effectiveSelectedTrapId, key })
+        const stored = trapezoidConfigs?.[effectiveSelectedTrapId]?.[key]
+        if (stored === undefined) return false
+        return !sameValue(stored, param.default)
+      })()
       const effectiveTrapMax = (() => {
         if (key === 'edgeOffsetMm' && effectiveBasesSettings?.maxEdgeOffsetMm != null) return effectiveBasesSettings.maxEdgeOffsetMm
         if (key === 'spacingMm' && effectiveBasesSettings?.maxSpacingMm != null) return effectiveBasesSettings.maxSpacingMm
@@ -355,18 +382,29 @@ export default function Step3Sidebar({
     )
   }
 
-  // ── Apply button ───────────────────────────────────────────────────────────
-  const applyBtn = (onClick) => (
-    <button onClick={onClick}
-      style={{
-        width: '100%', marginTop: '0.35rem', padding: '0.2rem',
-        fontSize: '0.65rem', fontWeight: '600', color: TEXT_PLACEHOLDER,
-        background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`,
-        borderRadius: '4px', cursor: 'pointer',
-      }}>
-      {t('step3.sidebar.applyToAll')}
-    </button>
-  )
+  // ── Apply-to-all button ────────────────────────────────────────────────
+  // Mirrors the Apply Changes styling: when this tab has unsaved edits the
+  // button turns orange + bolded + halo + `●` so the user sees both Apply
+  // options as actionable at the same time.
+  const applyBtn = (onClick, tabKey) => {
+    const isDirty = !!dirty[tabKey]
+    return (
+      <button onClick={onClick}
+        style={{
+          width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+          fontSize: '0.65rem', fontWeight: isDirty ? 700 : 600,
+          color: isDirty ? '#fff' : TEXT_PLACEHOLDER,
+          background: isDirty ? WARNING_DARK : BG_SUBTLE,
+          border: `1px solid ${isDirty ? WARNING_DARK : BORDER_LIGHT}`,
+          borderRadius: '4px', cursor: 'pointer',
+          boxShadow: isDirty ? `0 0 0 3px ${WARNING_BG}` : undefined,
+        }}>
+        {isDirty
+          ? `● ${t('step3.sidebar.applyToAll')}`
+          : t('step3.sidebar.applyToAll')}
+      </button>
+    )
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -495,29 +533,42 @@ export default function Step3Sidebar({
               <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
                 {/* Per-area params */}
                 {areaParams.map(p => renderParam(p))}
-                {/* Apply button */}
-                {applyBtn(
-                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
-                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
-                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) }
-                )}
-                {/* Global params — rendered after the apply button */}
+                {/* Global params — directly under area params so user sees
+                    the full set before reaching the action buttons. */}
                 {globalParams.length > 0 && (
                   <div style={{ marginTop: '0.5rem' }}>
                     {globalParams.map(p => renderParam(p))}
                   </div>
                 )}
-                {/* Apply Changes — save to server and recalculate */}
-                {onApplyChanges && (
-                  <button onClick={() => onApplyChanges(sec.tabKey)}
-                    style={{
-                      width: '100%', marginTop: '0.35rem', padding: '0.2rem',
-                      fontSize: '0.65rem', fontWeight: '600', color: PRIMARY_DARK,
-                      background: PRIMARY_BG_ALT, border: `1px solid ${PRIMARY}`,
-                      borderRadius: '4px', cursor: 'pointer',
-                    }}>
-                    {t('step3.sidebar.applyChanges')}
-                  </button>
+                {/* Apply Changes first — primary save action. Highlights
+                    when this tab has unsaved edits so the user knows where
+                    the staged changes will land. */}
+                {onApplyChanges && (() => {
+                  const isDirty = !!dirty[sec.tabKey]
+                  return (
+                    <button onClick={() => onApplyChanges(sec.tabKey)}
+                      style={{
+                        width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+                        fontSize: '0.65rem', fontWeight: isDirty ? 700 : 600,
+                        color: isDirty ? '#fff' : PRIMARY_DARK,
+                        background: isDirty ? WARNING_DARK : PRIMARY_BG_ALT,
+                        border: `1px solid ${isDirty ? WARNING_DARK : PRIMARY}`,
+                        borderRadius: '4px', cursor: 'pointer',
+                        boxShadow: isDirty ? `0 0 0 3px ${WARNING_BG}` : undefined,
+                      }}>
+                      {isDirty
+                        ? `● ${t('step3.sidebar.applyChanges')}`
+                        : t('step3.sidebar.applyChanges')}
+                    </button>
+                  )
+                })()}
+                {/* Apply-to-all — secondary action; click also triggers the
+                    standard Apply Changes save so global edits ride along. */}
+                {applyBtn(
+                  sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
+                  sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
+                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) },
+                  sec.tabKey,
                 )}
               </div>
             )}

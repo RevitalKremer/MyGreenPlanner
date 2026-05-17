@@ -25,6 +25,9 @@ interface UseRowDataParams {
   globalSettings: Record<string, any>
   PARAM_SCHEMA: ParamSchemaEntry[]
   roofType?: string
+  // Optional: when provided, applyBasesToAll routes through this so per-key
+  // dirty tracking sees the writes (needed for the partial saveTab payload).
+  setParam?: (path: { scope: 'global' | 'area' | 'trap'; anchor?: any; key: string }, value: any) => void
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -60,6 +63,7 @@ export default function useRowData({
   beRailsData, beTrapezoidsData, panelSpec, appDefaults,
   getSettings, getTrapBasesSettings, getLineOrientations,
   areaSettings, globalSettings, PARAM_SCHEMA, roofType = 'concrete',
+  setParam,
 }: UseRowDataParams) {
   const panelLengthCm = panelSpec.lengthCm
   const panelWidthCm  = panelSpec.widthCm
@@ -128,14 +132,26 @@ export default function useRowData({
     return map
   }, [beRailsData, areas, rowKeys])
 
+  // Resolution order: per-area lineRails override (future rails-edit mode) →
+  // per-area railSpacingV/H derivation (typed spacing — what live preview
+  // uses) → BE-computed rails → global default spacing.
   const getLineRails = useCallback((areaIdx: number, lineOrientations: string[], panelRowIdx: number = 0): LineRailsMap => {
-    const stored = areaSettings[areaIdx]?.lineRails
+    const areaCfg: any = areaSettings[areaIdx] || {}
+    const stored = areaCfg.lineRails
     if (stored && Object.keys(stored).length === lineOrientations.length) return stored
+    if (areaCfg.railSpacingV != null || areaCfg.railSpacingH != null) {
+      const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
+      return initDefaultLineRails(
+        lineOrientations, depths,
+        areaCfg.railSpacingV ?? railSpacingV,
+        areaCfg.railSpacingH ?? railSpacingH,
+      )
+    }
     const fromBE = getLineRailsFromBE(areaIdx, lineOrientations, panelRowIdx)
     if (fromBE) return fromBE
     const depths = lineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
     return initDefaultLineRails(lineOrientations, depths, railSpacingV, railSpacingH)
-  }, [areaSettings, getLineRailsFromBE, railSpacingV, railSpacingH])
+  }, [areaSettings, getLineRailsFromBE, railSpacingV, railSpacingH, panelLengthCm, panelWidthCm])
 
   // ── Trapezoid map ──────────────────────────────────────────────────────
   const areaTrapezoidMap = useMemo(() => {
@@ -157,18 +173,30 @@ export default function useRowData({
   }, [panels, rowKeys, areas])
 
   // ── Apply bases to all traps ───────────────────────────────────────────
+  // Route every write through setParam so per-key dirty tracking includes
+  // every target trap — otherwise the next saveTab payload would carry only
+  // the source trap and silently drop the rest.
   const applyBasesToAll = useCallback((effectiveSelectedTrapId: string) => {
-    if (!setTrapezoidConfigs || !effectiveSelectedTrapId) return
+    if (!effectiveSelectedTrapId) return
     const trapBases = getTrapBasesSettings(effectiveSelectedTrapId)
     const allTrapIds = Object.values(areaTrapezoidMap).flat()
-    setTrapezoidConfigs(prev => {
-      const next = { ...prev }
+    if (setParam) {
       allTrapIds.forEach(trapId => {
-        next[trapId] = { ...(prev[trapId] || {}), ...trapBases }
+        Object.entries(trapBases).forEach(([key, value]) => {
+          setParam({ scope: 'trap', anchor: trapId, key }, value)
+        })
       })
-      return next
-    })
-  }, [getTrapBasesSettings, areaTrapezoidMap, setTrapezoidConfigs])
+    } else if (setTrapezoidConfigs) {
+      // Fallback for callers that didn't wire setParam: legacy bulk write.
+      setTrapezoidConfigs(prev => {
+        const next = { ...prev }
+        allTrapIds.forEach(trapId => {
+          next[trapId] = { ...(prev[trapId] || {}), ...trapBases }
+        })
+        return next
+      })
+    }
+  }, [getTrapBasesSettings, areaTrapezoidMap, setTrapezoidConfigs, setParam])
 
   // ── Construction calculations (from BE geometry) ───────────────────────
   const rowConstructions = useMemo(() => {

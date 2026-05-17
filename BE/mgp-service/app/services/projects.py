@@ -26,6 +26,137 @@ from app.utils.settings_helpers import resolve_roof_spec
 from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
 
 
+class StepTransitionInvalidError(Exception):
+    """Raised when a step transition fails its server-side validation.
+
+    Generic across all transitions so each (old_step, new_step) pair can
+    add its own validator without inventing a new exception class. The
+    router maps this to a 400 with a structured body the FE translates.
+    """
+    def __init__(self, from_step: int, to_step: int, errors: list[dict]):
+        super().__init__(f'step_transition_invalid ({from_step}->{to_step})')
+        self.from_step = from_step
+        self.to_step = to_step
+        self.errors = errors
+
+
+def _validate_step_transition(project: Project, old_step: int, new_step: int) -> list[dict]:
+    """Run all server-side validations for a specific step transition.
+
+    Generic entry point — add new (old_step, new_step) branches below as
+    other transitions get rules. Returns an empty list when the transition
+    is valid.
+    """
+    if old_step == 2 and new_step == 3:
+        return _validate_step2_for_advance(project.data or {}, project.roof_spec)
+    # Future transitions: add branches here.
+    return []
+
+
+def _validate_step2_for_advance(data: dict, project_roof_spec: dict | None) -> list[dict]:
+    """Validate step2 before allowing a 2→3 transition.
+
+    Mirrors the FE `canProceedToNextStep` rules so the BE acts as a
+    safety net with the same semantics. Returns a list of structured
+    errors (empty list = valid). Each entry has:
+        code   — i18n key the FE looks up (e.g. 'area.angle.outOfRange')
+        field  — JSON-Pointer-ish path the FE can use to scroll/highlight
+        params — values to interpolate into the translated message
+    """
+    errors: list[dict] = []
+    project_type = (project_roof_spec or {}).get('type', 'concrete')
+    step2 = (data or {}).get('step2', {})
+    areas = step2.get('areas', []) or []
+
+    if not areas:
+        errors.append({'code': 'noAreas', 'field': 'areas', 'params': {}})
+        return errors
+
+    # Same bounds the FE reads via the paramSchema (app_settings table).
+    ang_min = settings_cache.get_min('mountingAngleDeg')
+    ang_max = settings_cache.get_max('mountingAngleDeg')
+    fh_min  = settings_cache.get_min('frontHeightCm')
+    fh_max  = settings_cache.get_max('frontHeightCm')
+
+    default_ang = step2.get('defaultAngleDeg')
+    default_fh  = step2.get('defaultFrontHeightCm')
+
+    def in_range(v, lo, hi):
+        return isinstance(v, (int, float)) and lo <= v <= hi
+
+    for area_idx, area in enumerate(areas):
+        spec = resolve_roof_spec(project_roof_spec, area)
+        area_type = spec.get('type', 'concrete')
+        area_label = area.get('label') or str(area_idx)
+
+        if area_type == 'tiles':
+            continue  # tiles areas have no construction frame → a/h irrelevant
+
+        eff_ang = area.get('angleDeg') if area.get('angleDeg') is not None else default_ang
+        eff_fh  = area.get('frontHeightCm') if area.get('frontHeightCm') is not None else default_fh
+
+        if eff_ang is None:
+            errors.append({
+                'code': 'area.angle.missing',
+                'field': f'areas[{area_idx}].angleDeg',
+                'params': {'areaLabel': area_label},
+            })
+        elif not in_range(eff_ang, ang_min, ang_max):
+            errors.append({
+                'code': 'area.angle.outOfRange',
+                'field': f'areas[{area_idx}].angleDeg',
+                'params': {'areaLabel': area_label, 'min': ang_min, 'max': ang_max, 'value': eff_ang},
+            })
+
+        if eff_fh is None:
+            errors.append({
+                'code': 'area.frontHeight.missing',
+                'field': f'areas[{area_idx}].frontHeightCm',
+                'params': {'areaLabel': area_label},
+            })
+        elif not in_range(eff_fh, fh_min, fh_max):
+            errors.append({
+                'code': 'area.frontHeight.outOfRange',
+                'field': f'areas[{area_idx}].frontHeightCm',
+                'params': {'areaLabel': area_label, 'min': fh_min, 'max': fh_max, 'value': eff_fh},
+            })
+
+        # Per-row a/h overrides — bounds only, missing = inherit from area
+        for ri, pr in enumerate(area.get('panelRows') or []):
+            if pr is None:
+                continue
+            row_ang = pr.get('angleDeg')
+            row_fh  = pr.get('frontHeightCm')
+            if row_ang is not None and not in_range(row_ang, ang_min, ang_max):
+                errors.append({
+                    'code': 'row.angle.outOfRange',
+                    'field': f'areas[{area_idx}].panelRows[{ri}].angleDeg',
+                    'params': {'areaLabel': area_label, 'rowIdx': ri,
+                               'min': ang_min, 'max': ang_max, 'value': row_ang},
+                })
+            if row_fh is not None and not in_range(row_fh, fh_min, fh_max):
+                errors.append({
+                    'code': 'row.frontHeight.outOfRange',
+                    'field': f'areas[{area_idx}].panelRows[{ri}].frontHeightCm',
+                    'params': {'areaLabel': area_label, 'rowIdx': ri,
+                               'min': fh_min, 'max': fh_max, 'value': row_fh},
+                })
+
+        # Purlin distance is per-area only for mixed projects with purlin types.
+        # For non-mixed iskurit/insulated_panel the distance lives on the
+        # project's roof_spec and is enforced upstream (project setup).
+        if project_type == 'mixed' and area_type in ('iskurit', 'insulated_panel'):
+            dist = (area.get('roofSpec') or {}).get('distanceBetweenPurlinsCm')
+            if not (isinstance(dist, (int, float)) and dist > 0):
+                errors.append({
+                    'code': 'area.purlinDistance.missing',
+                    'field': f'areas[{area_idx}].roofSpec.distanceBetweenPurlinsCm',
+                    'params': {'areaLabel': area_label},
+                })
+
+    return errors
+
+
 async def list_projects(
     db: AsyncSession,
     owner_id: uuid.UUID,
@@ -511,6 +642,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
         'long_rail_threshold_cm':      app_defaults['longRailThresholdCm'],
         'long_rail_extra_overhang_cm': app_defaults['longRailExtraOverhangCm'],
         'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults['railRoundThresholdCm']),
+        'rail_min_cut_cm':         global_settings.get('railMinCutCm',         app_defaults['railMinCutCm']),
     }
 
 
@@ -681,7 +813,15 @@ def _build_base_inputs(
     computed_area = _get_computed_area(data, area_id)
     line_rails = _derive_line_rails(computed_area, row_index=row_index)
 
-    trap_cfg = (trapezoid_configs or {}).get(trapezoid_id, {})
+    # Merge incoming trap-cfg over the persisted schema params (step3.trapezoidConfigs).
+    # Incoming wins, so a partial update from the FE still works; the persisted
+    # store ensures values survive across reloads / requests that don't carry
+    # the full trap config.
+    persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+    trap_cfg = {
+        **(persisted_traps.get(trapezoid_id) or {}),
+        **((trapezoid_configs or {}).get(trapezoid_id, {})),
+    }
     custom_offsets = trap_cfg.get('customOffsets')
 
     effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
@@ -719,6 +859,49 @@ def _merge_step3_data(data: dict, step3_data: dict) -> None:
         step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
     existing_step3.update(step3_data)
     data['step3'] = existing_step3
+
+
+# Trap-scope schema params that the FE edits via the sidebar. Persisted under
+# `data.step3.trapezoidConfigs[trapId]` so they survive project reload —
+# without this, the compute pipeline accepted them per-request but never wrote
+# them back. Drag-edit keys (customOffsets / customDiagonals / panelRowIdx)
+# live in their own step3 paths (customBasesOffsets, customDiagonals) and are
+# intentionally excluded here.
+TRAP_SCHEMA_PARAM_KEYS = (
+    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',  # bases tab
+    'extendFront', 'extendRear',                    # detail tab
+)
+
+
+async def _persist_trap_schema_configs(db: AsyncSession, project: Project, trapezoid_configs: dict) -> None:
+    """Merge incoming trap-scope schema params into project.data.step3.trapezoidConfigs.
+
+    Must commit before the downstream compute chain — compute_and_save_rails
+    refreshes the project from the DB, which would discard an uncommitted
+    in-memory mutation.
+    """
+    data = copy.deepcopy(project.data or {})
+    step3 = data.setdefault('step3', {})
+    stored = step3.setdefault('trapezoidConfigs', {})
+    if not isinstance(stored, dict):
+        stored = {}
+    dirty = False
+    for trap_id, cfg in trapezoid_configs.items():
+        if not isinstance(cfg, dict):
+            continue
+        schema_only = {k: v for k, v in cfg.items() if k in TRAP_SCHEMA_PARAM_KEYS}
+        if not schema_only:
+            continue
+        existing = stored.get(trap_id) or {}
+        merged = {**existing, **schema_only}
+        if merged != existing:
+            stored[trap_id] = merged
+            dirty = True
+    if dirty:
+        step3['trapezoidConfigs'] = stored
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
 
 
 def _sync_custom_offsets(
@@ -1388,6 +1571,13 @@ async def update_project_step(
     if new_step < 1 or new_step > 5:
         raise ValueError(f"Invalid step: {new_step}")
 
+    # Per-transition validation runs BEFORE any mutation so the FE can stay
+    # on the current step with data intact when the BE rejects. The router
+    # maps the raised StepTransitionInvalidError to HTTP 400.
+    transition_errors = _validate_step_transition(project, old_step, new_step)
+    if transition_errors:
+        raise StepTransitionInvalidError(old_step, new_step, transition_errors)
+
     data = copy.deepcopy(project.data or {})
     cleared = []
     rails_result = None
@@ -1405,6 +1595,17 @@ async def update_project_step(
             cleared.append(f'step{s}')
 
     project.data = data
+    # Leaving step 2 backward also wipes the step-2 portion of the layout
+    # (rectAreas / panels / deletedPanelKeys) so re-entering step 2 is fresh.
+    # Step-1 layout fields (roofPolygon, referenceLine, baseline, roofAxis,
+    # uploadedImageData, pixelToCmRatio) are preserved.
+    if 'step2' in cleared and new_step < old_step:
+        layout = dict(project.layout or {})
+        layout['rectAreas'] = []
+        layout['panels'] = []
+        layout['deletedPanelKeys'] = {}
+        project.layout = layout
+        flag_modified(project, 'layout')
     nav = dict(project.navigation or {})
     nav['step'] = new_step
     nav['tab'] = None
@@ -1684,7 +1885,13 @@ def _compute_all_trapezoid_details(
         # Use remapped line_rails (keys match filtered panel_lines indices)
         line_rails = remapped_line_rails
 
-        t_cfg = (trapezoid_configs or {}).get(trap_id, {})
+        # Merge persisted trap-scope schema params under the incoming cfg so
+        # request-only updates win but persisted values survive reloads.
+        persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+        t_cfg = {
+            **(persisted_traps.get(trap_id) or {}),
+            **((trapezoid_configs or {}).get(trap_id, {})),
+        }
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
         base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
@@ -2053,6 +2260,12 @@ async def save_tab(
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
+    # Persist trap-scope schema params into step3.trapezoidConfigs so they
+    # survive project reload. Drag-edit keys (customOffsets, customDiagonals,
+    # panelRowIdx) live in their own step3 paths and are excluded here.
+    if trapezoid_configs:
+        await _persist_trap_schema_configs(db, project, trapezoid_configs)
+
     # Any tab change recomputes the full chain: rails → bases → trapezoid details → external diagonals
     rails_result = await compute_and_save_rails(db, project, rs, step3_data)
     bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
@@ -2107,12 +2320,22 @@ async def reset_tab(
             if isinstance(area_settings, dict):
                 for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
                     area_settings.pop(key, None)
+        # Trap-scope bases params live in step3.trapezoidConfigs (new
+        # persistence). Strip them so reset truly returns to defaults.
+        for trap_cfg in (step3.get('trapezoidConfigs') or {}).values():
+            if isinstance(trap_cfg, dict):
+                for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
+                    trap_cfg.pop(key, None)
     elif tab == 'trapezoids':
         step3.pop('customDiagonals', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
                 for key in ['diagDistFromLegCm', 'diagPreferredAngleDeg']:
                     area_settings.pop(key, None)
+        for trap_cfg in (step3.get('trapezoidConfigs') or {}).values():
+            if isinstance(trap_cfg, dict):
+                for key in ['extendFront', 'extendRear']:
+                    trap_cfg.pop(key, None)
 
     project.data = data
     flag_modified(project, 'data')

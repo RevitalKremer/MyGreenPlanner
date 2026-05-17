@@ -15,6 +15,7 @@ UPDATE app_settings SET visible = false WHERE key IN (
 
 UPDATE app_settings SET visible = true WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
+    'railMinCutCm',
     'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
     'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
     'diagDistFromLegCm', 'diagPreferredAngleDeg',
@@ -26,7 +27,7 @@ UPDATE app_settings SET highlight_group = 'railSpacingV'  WHERE key = 'railSpaci
 UPDATE app_settings SET highlight_group = 'railSpacingH'  WHERE key = 'railSpacingH';
 UPDATE app_settings SET highlight_group = 'rail-ends'     WHERE key = 'railOverhangCm';
 UPDATE app_settings SET highlight_group = 'cross-rails'   WHERE key = 'crossRailEdgeDistMm';
-UPDATE app_settings SET highlight_group = 'rail-cuts'     WHERE key = 'stockLengths';
+UPDATE app_settings SET highlight_group = 'rail-cuts'     WHERE key IN ('stockLengths', 'railMinCutCm');
 UPDATE app_settings SET highlight_group = 'base-edges'    WHERE key = 'edgeOffsetMm';
 UPDATE app_settings SET highlight_group = 'base-spacing'  WHERE key = 'spacingMm';
 UPDATE app_settings SET highlight_group = 'base-overhang' WHERE key = 'baseOverhangCm';
@@ -40,7 +41,7 @@ UPDATE app_settings SET highlight_group = 'extension'     WHERE key IN ('purlinB
 -- NULL = all roof types
 UPDATE app_settings SET roof_types = NULL WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
-    'crossRailEdgeDistMm', 'stockLengths',
+    'crossRailEdgeDistMm', 'stockLengths', 'railMinCutCm',
     'panelGapCm', 'panelThickCm', 'lineGapCm',
     'railRoundThresholdCm', 'railRoundPrecisionCm'
 );

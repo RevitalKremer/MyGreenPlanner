@@ -19,6 +19,22 @@ const en = {
   'app.loadProjectError':     'Could not load project: {msg}',
   'app.deleteProjectConfirm': 'Delete this cloud project? This cannot be undone.',
   'app.deleteProjectError':   'Could not delete project: {msg}',
+  'app.stepTransitionError':  'Cannot continue — please fix the following:',
+  'app.stepTransitionGeneric':'Could not advance to the next step. Please try again.',
+
+  // ── Common ───────────────────────────────────────────────────────────────
+  'common.confirm': 'Confirm',
+  'common.cancel':  'Cancel',
+
+  // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
+  'step2.error.noAreas':                 'Add at least one area before continuing.',
+  'step2.error.area.angle.missing':      'Area {areaLabel}: angle is required.',
+  'step2.error.area.angle.outOfRange':   'Area {areaLabel}: angle {value}° is outside {min}–{max}°.',
+  'step2.error.area.frontHeight.missing':    'Area {areaLabel}: front height is required.',
+  'step2.error.area.frontHeight.outOfRange': 'Area {areaLabel}: front height {value} cm is outside {min}–{max} cm.',
+  'step2.error.row.angle.outOfRange':         'Area {areaLabel}, row {rowIdx}: angle {value}° is outside {min}–{max}°.',
+  'step2.error.row.frontHeight.outOfRange':   'Area {areaLabel}, row {rowIdx}: front height {value} cm is outside {min}–{max} cm.',
+  'step2.error.area.purlinDistance.missing':  'Area {areaLabel}: distance between purlins is required.',
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← Back',
@@ -238,6 +254,14 @@ const en = {
   'step3.sidebar.applyToAll':     'Apply to all areas',
   'step3.sidebar.applyChanges':   'Apply Changes',
 
+  // Unsaved-changes UX (banner above canvas, tab-switch confirm, dirty dot)
+  'step3.unsaved.bannerMessage':   'Unsaved changes.',
+  'step3.unsaved.applyNow':        'Apply Changes',
+  'step3.unsaved.confirmSwitch':   'You have unsaved changes in the {tab} tab. Apply them before switching?',
+  'step3.unsaved.applyAndSwitch':  'Apply & switch',
+  'step3.unsaved.discardAndSwitch':'Discard & switch',
+  'step3.unsaved.dotTooltip':      'This tab has unsaved changes',
+
   // ── Step 3 – Parameter names (translated labels) ──────────────────────────
   'step3.param.railSpacingV':        'Spacing Vertical (cm)',
   'step3.param.railSpacingH':        'Spacing Horizontal (cm)',
@@ -261,6 +285,7 @@ const en = {
   'step3.param.panelThickCm':        'Panel Thickness (cm)',
   'step3.param.reverseBlockPunches': 'Reverse Block Punches',
   'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
+  'step3.param.railMinCutCm':        'Rail Min Cut (cm)',
   'step3.param.crossRailOffsetCm':   'Cross Rail Offset (cm)',
   'step3.param.diagSkipBelowCm':     'Skip Diagonal Below (cm)',
   'step3.param.diagDoubleAboveCm':   'Double Diagonal Above (cm)',

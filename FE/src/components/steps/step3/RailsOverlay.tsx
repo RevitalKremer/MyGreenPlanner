@@ -157,6 +157,36 @@ export default function RailsOverlay({
     })
   }
 
+  // ── Connector highlights (amber halos for the 'rail-cuts' highlight) ──
+  // Drawn under the connector rect; mirrors the position math above so the
+  // halo lines up exactly with each segment boundary.
+  const renderConnectorHighlights = (rl, beSegsFn, railProfile, prefix) => {
+    return rl.rails.map(rail => {
+      const segs = beSegsFn(rail)
+      if (!segs || segs.length < 2) return null
+      const [x1, y1] = toSvg(rail.screenStart.x, rail.screenStart.y)
+      const [x2, y2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
+      const dx = x2 - x1, dy = y2 - y1, railLen = Math.sqrt(dx * dx + dy * dy)
+      if (railLen < 2) return null
+      const ux = dx / railLen, uy = dy / railLen
+      const totalMm = segs.reduce((s, v) => s + v, 0)
+      const ang = Math.atan2(dy, dx) * 180 / Math.PI
+      const haloW = Math.max(10, 14 / zoom)
+      const haloH = Math.max(14, railProfile + 14 / zoom)
+      let cumMm = 0
+      return segs.slice(0, -1).map((segMm, si) => {
+        cumMm += segMm
+        const frac = cumMm / totalMm
+        const cx = x1 + ux * frac * railLen, cy = y1 + uy * frac * railLen
+        return <rect key={`${prefix}-conn-hl-${rail.railId}-${si}`}
+          x={cx - haloW / 2} y={cy - haloH / 2}
+          width={haloW} height={haloH} fill={AMBER} rx={2}
+          transform={`rotate(${ang}, ${cx}, ${cy})`}
+          style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
+      })
+    })
+  }
+
   // ── Segment labels (length in mm, first rail per line) ───────────────
 
   const renderSegmentLabels = (rl, beSegsFn, railProfile, prefix) => {
@@ -290,11 +320,11 @@ export default function RailsOverlay({
                 <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                 <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
               </>}
-              {hlCuts && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
               {hlProfile && showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />}
             </g>
           )
         })}
+        {hlCuts && showRails && renderConnectorHighlights(rl, beSegs, railProfile, prefix)}
         {showConnectors && showRails && renderConnectors(rl, beSegs, railProfile, prefix)}
         {showDimensions && showRails && renderSegmentLabels(rl, beSegs, railProfile, prefix)}
       </g>

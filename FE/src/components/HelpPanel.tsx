@@ -106,6 +106,10 @@ const HELP = {
         a: 'When a rail (including the area overhang) exceeds the long-rail threshold (default 12 m) the BE adds an extra 5 cm of overhang on each side to absorb panel-placement drift that accumulates over long install lines. Both the threshold and the extra overhang are system settings in the admin panel.'
       },
       {
+        q: 'Why was a rail split into two equal cuts instead of one full + one sliver?',
+        a: 'When the last stock cut would be tiny (default: under 50 cm — controlled by Rail Min Cut), the BE merges it with the preceding cut and splits the pair into two equal halves rounded up to the 5 cm cutting grid. Example: a 6.05 m rail becomes two 3.05 m pieces instead of 6.00 m + 0.05 m. Set Rail Min Cut to 0 to disable.'
+      },
+      {
         q: EXAMPLE_TAG,
         a: 'With one area "A" at 12° / 50 cm you\'ll see one trapezoid (A1) and one panel line. On Rails the spacing is auto-derived from panel depth and edge distance; on Bases the base count comes from rail length divided by base spacing, with overhang at each end. Trapezoid Details shows the full cross-section: front rail at 50 cm, back rail higher by panel × sin(12°), plus the block punches under each leg.'
       },

@@ -6,6 +6,7 @@ project data (cm measurements, no pixel coordinates).
 """
 
 from __future__ import annotations
+import math
 from typing import Optional
 
 from app.utils.math_helpers import round_to_5cm
@@ -47,7 +48,7 @@ def _split_into_stock_segments(length_mm: int, stock_lengths: list[int]) -> list
     Optimal stock splitting:
     - Use largest stocks first to minimize number of pieces
     - For the final/remaining piece, use smallest stock that fits to minimize waste
-    
+
     Example: 7000mm with [6000, 5000, 2300, 1150] → 6000 + 1150 (not 5000 + 2000)
     Example: 4800mm with [6000, 5000, 4800] → 5000 (not 6000)
     """
@@ -55,24 +56,62 @@ def _split_into_stock_segments(length_mm: int, stock_lengths: list[int]) -> list
     segments = []
     sorted_largest = sorted(stock_lengths, reverse=True)  # Largest first
     sorted_smallest = sorted(stock_lengths)  # Smallest first
-    
+
     while remaining > 0:
         # Check if remaining can fit in one stock
         can_fit_in_one = any(s >= remaining for s in stock_lengths)
-        
+
         if can_fit_in_one:
             # Final piece: use smallest stock that fits to minimize waste
             chosen = next((s for s in sorted_smallest if s >= remaining), max(stock_lengths))
         else:
             # Not final: use largest stock to minimize number of pieces
             chosen = sorted_largest[0]
-        
+
         segments.append({'used': remaining if chosen >= remaining else chosen,
                          'leftover': max(0, chosen - remaining)})
         remaining -= chosen
         if remaining > 0 and chosen <= 0:  # prevent infinite loop on invalid stock
             break
     return segments
+
+
+def _redistribute_small_last_cut(
+    segments: list[dict],
+    stock_lengths: list[int],
+    min_cut_mm: int,
+) -> list[dict]:
+    """
+    Merge a tiny final cut into the preceding cut and split the pair into two
+    equal halves (each ceiled up to the 5cm cutting grid). Installers prefer
+    handling two medium pieces over one full + one sliver.
+
+    Returns a new segment list, or the original when no change applies.
+
+    Why ceiling-round and not nearest-round: two halves must cover the combined
+    used length so the rail isn't shortened. With combined=6050 → half=3025 →
+    ceil to 5cm = 3050 → 2 × 3050 = 6100 (covers 6050, adds 50mm slack absorbed
+    by the next stock leftover, matching the existing round_to_5cm semantics).
+    """
+    if min_cut_mm <= 0 or len(segments) < 2:
+        return segments
+    last = segments[-1]
+    if last['used'] >= min_cut_mm:
+        return segments
+
+    prev = segments[-2]
+    combined = prev['used'] + last['used']
+    half_mm = math.ceil(combined / 2 / 50) * 50  # ceiling onto 5cm cutting grid
+    # Halves must fit one stock; smaller than min_cut_mm would defeat the point.
+    chosen = next((s for s in sorted(stock_lengths) if s >= half_mm), None)
+    if chosen is None or half_mm < min_cut_mm:
+        return segments
+
+    new_pair = [
+        {'used': half_mm, 'leftover': chosen - half_mm},
+        {'used': half_mm, 'leftover': chosen - half_mm},
+    ]
+    return segments[:-2] + new_pair
 
 
 # ── Main computation ──────────────────────────────────────────────────────────
@@ -90,6 +129,7 @@ def compute_area_rails(
     long_rail_threshold_cm: float,
     long_rail_extra_overhang_cm: float,
     rail_round_threshold_cm: float = 0,
+    rail_min_cut_cm: float = 0,
 ) -> dict:
     """
     Compute rails for one area.
@@ -188,6 +228,17 @@ def compute_area_rails(
                     rail['roundedLengthCm'] = round(rounded_mm / 10, 1)
                     rail['stockSegmentsMm'] = _split_stock_for_rounded(rounded_mm, stock_lengths)
                     rail['leftoverCm'] = 0
+                elif rail_min_cut_cm > 0:
+                    # Final piece too small for installers? Merge it into the
+                    # previous cut and split that pair into two equal halves.
+                    redistributed = _redistribute_small_last_cut(
+                        segs, stock_lengths, round(rail_min_cut_cm * 10),
+                    )
+                    if redistributed is not segs:
+                        rail['stockSegmentsMm'] = [s['used'] for s in redistributed]
+                        rail['leftoverCm'] = round(
+                            sum(s['leftover'] for s in redistributed) / 10, 1,
+                        )
 
                 rails.append(rail)
                 rail_counter += 1
