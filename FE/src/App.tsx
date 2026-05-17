@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { PRIMARY, AREA_PALETTE } from './styles/colors'
+import { PRIMARY, AREA_PALETTE, ERROR_DARK, ERROR_BG, ERROR } from './styles/colors'
 import { PANEL_V } from './utils/panelCodes'
 import { useLang } from './i18n/LangContext'
 import LangToggle from './i18n/LangToggle'
@@ -11,12 +11,14 @@ import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import FinishCelebration from './components/FinishCelebration'
+import ConfirmDialog from './components/ConfirmDialog'
+import { useConfirm } from './hooks/useConfirm'
 import ProjectInfoModal from './components/ProjectInfoModal'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -48,6 +50,11 @@ function App() {
   const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+  const confirmDialog = useConfirm()
+  // Server-side step-transition validation errors (set when updateStep returns 400)
+  const [stepTransitionErrors, setStepTransitionErrors] = useState<
+    null | { fromStep: number; toStep: number; errors: Array<{ code: string; field: string; params?: Record<string, any> }> }
+  >(null)
   // One-shot signal: logout sets this to true so the welcome screen opens the
   // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
   // don't auto-open on normal app load — only after explicit logout.
@@ -116,6 +123,13 @@ function App() {
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
+  // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
+  const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
+  // Mirrors `settings.isAnyDirty` from useStep3Settings. Used by Start Over
+  // to skip the confirm prompt when there's nothing to lose. Default `true`
+  // so before step 3 has mounted (or on a fresh project), Start Over still
+  // warns — only step 3 explicitly reporting "clean" suppresses the prompt.
+  const step3IsAnyDirtyRef = useRef<boolean>(true)
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
@@ -215,59 +229,116 @@ function App() {
     // of compute_and_save_trapezoid_details. Older projects without this field
     // fall back to one group per trap on the consumer side.
     setBeTrapezoidGroups(step3.trapezoidGroups ?? [])
+
+    // ── Defensive sync of user-editable settings ────────────────────────
+    // The BE persists / normalises these; without syncing, a server-side
+    // mutation (e.g. reset_tab stripping keys, future clamping) would stay
+    // invisible until project reload. Skipping when the field is absent so
+    // partial responses don't wipe FE state we still want.
+    if (step3.globalSettings !== undefined) {
+      s.setStep3GlobalSettings(step3.globalSettings ?? {})
+      step3SettingsRef.current = {
+        ...step3SettingsRef.current,
+        globalSettings: step3.globalSettings ?? {},
+      }
+    }
+    if (step3.areaSettings !== undefined) {
+      s.setStep3AreaSettings(step3.areaSettings ?? {})
+      step3SettingsRef.current = {
+        ...step3SettingsRef.current,
+        areaSettings: step3.areaSettings ?? {},
+      }
+    }
+    // Trap-scope schema params are now persisted under step3.trapezoidConfigs
+    // (new in this version of the BE). Merge them into FE trapezoidConfigs,
+    // preserving FE-only fields (angle / frontHeight / lineOrientations come
+    // through step2.areas[].trapezoids[], not this map).
+    const persistedTraps = step3.trapezoidConfigs
+    if (persistedTraps && typeof persistedTraps === 'object') {
+      s.setTrapezoidConfigs(prev => {
+        const next: Record<string, any> = { ...(prev || {}) }
+        for (const [trapId, cfg] of Object.entries(persistedTraps as Record<string, any>)) {
+          next[trapId] = { ...(next[trapId] || {}), ...(cfg || {}) }
+        }
+        return next
+      })
+    }
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
-  const buildTabPayload = (tabName) => {
-    const { globalSettings, areaSettings } = step3SettingsRef.current
-    
+  const buildTabPayload = (tabName, dirtyParams = null, liveSettings = null) => {
+    // Prefer the live snapshot (sync from useStep3Settings refs) when given —
+    // it includes apply-to-all writes from this same event tick that
+    // step3SettingsRef hasn't seen yet (it updates via post-render useEffect).
+    const { globalSettings, areaSettings } = liveSettings ?? step3SettingsRef.current
+    const trapezoidConfigs = liveSettings?.trapezoidConfigs ?? trapConfigsRef.current ?? {}
+
     // Get parameter keys for this section from paramSchema
     const tabSection = tabName === 'trapezoids' ? 'detail' : tabName
     const sectionParams = (s.paramSchema || []).filter(p => p.section === tabSection)
-    
-    // Filter globalSettings to only include params for this section
+
+    // When dirtyParams is provided, send ONLY keys the user changed this
+    // session. Otherwise (legacy callers, no per-key info) fall back to the
+    // section-wide filter so the BE still gets a coherent payload.
+    const dirtyGlobalKeys: Set<string> | null = dirtyParams?.global ?? null
+    const dirtyAreaByIdx: Record<number, Set<string>> | null = dirtyParams?.area ?? null
+    const dirtyTrapByTrap: Record<string, Set<string>> | null = dirtyParams?.trap ?? null
+
     const filteredGlobal = {}
     sectionParams.filter(p => p.scope === 'global').forEach(p => {
-      if (globalSettings?.[p.key] != null) {
-        filteredGlobal[p.key] = globalSettings[p.key]
-      }
+      if (dirtyGlobalKeys && !dirtyGlobalKeys.has(p.key)) return
+      if (globalSettings?.[p.key] != null) filteredGlobal[p.key] = globalSettings[p.key]
     })
 
-    // Filter areaSettings to only include params for this section (excluding overrides)
     const filteredArea = {}
     const areaParamKeys = sectionParams.filter(p => p.scope === 'area').map(p => p.key)
-
     Object.keys(areaSettings || {}).forEach(areaIdx => {
       const area = areaSettings[areaIdx] || {}
+      const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
       const filtered = {}
       areaParamKeys.forEach(key => {
-        if (area[key] != null) {
-          filtered[key] = area[key]
-        }
+        if (dirtyKeysForArea && !dirtyKeysForArea.has(key)) return
+        if (area[key] != null) filtered[key] = area[key]
       })
-      if (Object.keys(filtered).length > 0) {
-        filteredArea[areaIdx] = filtered
-      }
+      if (Object.keys(filtered).length > 0) filteredArea[areaIdx] = filtered
     })
 
-    // Build overrides structure
+    // Trap-scope params (edgeOffsetMm, spacingMm, baseOverhangCm for bases;
+    // extendFront/Rear for detail). These live in trapezoidConfigs and ride
+    // the legacy top-level `trapezoidConfigs` field on the request — the BE
+    // merges those into project.data.step3.trapezoidConfigs as overrides.
+    const filteredTraps: Record<string, Record<string, any>> = {}
+    const trapParamKeys = sectionParams.filter(p => p.scope === 'trapezoid').map(p => p.key)
+    if (trapParamKeys.length > 0) {
+      Object.keys(trapezoidConfigs || {}).forEach(trapId => {
+        const cfg = trapezoidConfigs[trapId] || {}
+        const dirtyKeysForTrap = dirtyTrapByTrap?.[trapId] ?? null
+        const filtered: Record<string, any> = {}
+        trapParamKeys.forEach(key => {
+          if (dirtyKeysForTrap && !dirtyKeysForTrap.has(key)) return
+          if (cfg[key] != null) filtered[key] = cfg[key]
+        })
+        if (Object.keys(filtered).length > 0) filteredTraps[trapId] = filtered
+      })
+    }
+
+    // Overrides only carry edit-mode artefacts (future rails-edit mode +
+    // bases drag). The spacing input now flows through settings.areas as a
+    // regular railSpacingV/H param, so no overrides.rails branch is needed.
     const overrides: Record<string, any> = {}
-    
+
     if (tabName === 'rails') {
-      // Rails overrides: lineRails per area
       const railOverrides = {}
       Object.keys(areaSettings || {}).forEach(areaIdx => {
         const lineRails = areaSettings[areaIdx]?.lineRails
-        if (lineRails) {
-          // Convert areaIdx to areaLabel
-          const areaKey = parseInt(areaIdx)
-          const areaLabel = s.areas[areaKey]?.label || s.areas[areaKey]?.id || String(areaIdx)
-          railOverrides[areaLabel] = lineRails
-        }
+        if (!lineRails) return
+        const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
+        if (dirtyKeysForArea && !dirtyKeysForArea.has('lineRails')) return
+        const areaKey = parseInt(areaIdx)
+        const areaLabel = s.areas[areaKey]?.label || s.areas[areaKey]?.id || String(areaIdx)
+        railOverrides[areaLabel] = lineRails
       })
-      if (Object.keys(railOverrides).length > 0) {
-        overrides.rails = railOverrides
-      }
+      if (Object.keys(railOverrides).length > 0) overrides.rails = railOverrides
     }
 
     return {
@@ -275,6 +346,9 @@ function App() {
         global: Object.keys(filteredGlobal).length > 0 ? filteredGlobal : undefined,
         areas: Object.keys(filteredArea).length > 0 ? filteredArea : undefined,
       },
+      // BE accepts trap-scope params via the top-level `trapezoidConfigs`
+      // field (it merges them as overrides on project.data.step3.trapezoidConfigs).
+      trapezoidConfigs: Object.keys(filteredTraps).length > 0 ? filteredTraps : undefined,
       overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     }
   }
@@ -286,16 +360,24 @@ function App() {
     if (tabName === 'areas') return
     
     try {
-      const payload: Record<string, any> = buildTabPayload(tabName)
+      // opts.dirtyParams (when set by applyTab) limits the payload to keys the
+      // user actually changed this session. Resets and other legacy callers
+      // pass nothing and fall back to the section-wide payload.
+      // opts.liveSettings (when set) is a sync snapshot from the step3 hook's
+      // mirror refs — necessary when applyTab fires right after a same-tick
+      // apply-to-all fan-out so the destination areas/traps are visible.
+      const payload: Record<string, any> = buildTabPayload(
+        tabName, opts?.dirtyParams ?? null, opts?.liveSettings ?? null,
+      )
 
       // Add tab-specific overrides
       if (tabName === 'bases') {
         const customBases = { ...customBasesRef.current }
         if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
-        
+
         payload.overrides = payload.overrides || {}
         payload.overrides.bases = customBases
-        
+
       } else if (tabName === 'trapezoids') {
         // Trapezoids tab overrides: diagonal positions from areaSettings
         const diagOverrides = {}
@@ -424,7 +506,7 @@ function App() {
   }
 
   const handleDeleteCloudProject = async (projectId) => {
-    if (!confirm(t('app.deleteProjectConfirm'))) return
+    if (!await confirmDialog.ask({ message: t('app.deleteProjectConfirm'), variant: 'danger' })) return
     try {
       await deleteProject(projectId)
       setCloudProjects(prev => prev.filter(p => p.id !== projectId))
@@ -445,7 +527,13 @@ function App() {
   }
 
   const handleStartOver = async () => {
-    if (!confirm(t('app.startOverConfirm'))) return
+    // Skip the prompt only when the user is on step 3 AND every step-3 tab
+    // is clean (project in sync with BE, nothing to lose). On any other step
+    // we don't have a robust "is this dirty" signal, so we always warn.
+    const skipConfirm = s.currentStep === 3 && !step3IsAnyDirtyRef.current
+    if (!skipConfirm) {
+      if (!await confirmDialog.ask({ message: t('app.startOverConfirm'), variant: 'warning' })) return
+    }
     s.handleStartOver()
     setProjectsSearch('')
     if (auth.user) {
@@ -479,34 +567,52 @@ function App() {
     setProjectsSearch(query)
   }, [])
 
+  // ConfirmDialog is rendered in both branches so dialogs raised from the
+  // welcome screen (e.g. delete project) actually appear.
+  const confirmDialogElement = (
+    <ConfirmDialog
+      open={!!confirmDialog.pending}
+      message={confirmDialog.pending?.message ?? ''}
+      title={confirmDialog.pending?.title}
+      variant={confirmDialog.pending?.variant}
+      confirmLabel={confirmDialog.pending?.confirmLabel || t('common.confirm')}
+      cancelLabel={confirmDialog.pending?.cancelLabel || t('common.cancel')}
+      onConfirm={confirmDialog.handleConfirm}
+      onCancel={confirmDialog.handleCancel}
+    />
+  )
+
   if (s.appScreen === 'welcome') {
     return (
-      <WelcomeScreen
-        onCreateProject={s.handleCreateProject}
-        user={auth.user}
-        onLogin={auth.login}
-        onRegister={auth.register}
-        onLogout={handleLogout}
-        onUpdateProfile={auth.updateProfile}
-        authLoading={auth.authLoading}
-        cloudProjects={cloudProjects}
-        cloudProjectsLoading={cloudProjectsLoading}
-        totalProjectsCount={totalProjectsCount}
-        hasMoreProjects={hasMoreProjects}
-        onLoadCloudProject={handleLoadCloudProject}
-        onUpdateCloudProject={handleUpdateCloudProject}
-        onDeleteCloudProject={handleDeleteCloudProject}
-        onLoadMoreProjects={handleLoadMoreProjects}
-        onProjectsSearch={handleProjectsSearch}
-        projectsSearch={projectsSearch}
-        onForgotPassword={auth.forgotPassword}
-        onResetPassword={auth.resetPassword}
-        appConfigReady={s.appConfigReady}
-        resetToken={urlResetToken}
-        onClearResetToken={() => setUrlResetToken(null)}
-        openLoginOnMount={openLoginOnWelcome}
-        onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
-      />
+      <>
+        <WelcomeScreen
+          onCreateProject={s.handleCreateProject}
+          user={auth.user}
+          onLogin={auth.login}
+          onRegister={auth.register}
+          onLogout={handleLogout}
+          onUpdateProfile={auth.updateProfile}
+          authLoading={auth.authLoading}
+          cloudProjects={cloudProjects}
+          cloudProjectsLoading={cloudProjectsLoading}
+          totalProjectsCount={totalProjectsCount}
+          hasMoreProjects={hasMoreProjects}
+          onLoadCloudProject={handleLoadCloudProject}
+          onUpdateCloudProject={handleUpdateCloudProject}
+          onDeleteCloudProject={handleDeleteCloudProject}
+          onLoadMoreProjects={handleLoadMoreProjects}
+          onProjectsSearch={handleProjectsSearch}
+          projectsSearch={projectsSearch}
+          onForgotPassword={auth.forgotPassword}
+          onResetPassword={auth.resetPassword}
+          appConfigReady={s.appConfigReady}
+          resetToken={urlResetToken}
+          onClearResetToken={() => setUrlResetToken(null)}
+          openLoginOnMount={openLoginOnWelcome}
+          onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
+        />
+        {confirmDialogElement}
+      </>
     )
   }
 
@@ -759,6 +865,8 @@ function App() {
             onTabSave={handleTabSave}
             onTabReset={handleTabReset}
             onActiveTabChange={(tab) => { step3ActiveTabRef.current = tab }}
+            flushDirtyTabsRef={step3FlushDirtyRef}
+            isAnyDirtyRef={step3IsAnyDirtyRef}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
@@ -859,13 +967,40 @@ function App() {
             <button onClick={() => setVerifyBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
           </div>
         )}
+
+        {stepTransitionErrors && (
+          <div style={{
+            position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
+            background: ERROR_BG, color: ERROR_DARK,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
+            border: `1px solid ${ERROR}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
+                <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
+                  {stepTransitionErrors.errors.map((err, i) => (
+                    <li key={i} style={{ marginBottom: '0.2rem' }}>
+                      {t(`step2.error.${err.code}` as any, err.params || {})}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
-            if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
+            if (!await confirmDialog.ask({
+              message: t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }),
+              variant: 'warning',
+            })) return
             const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
             if (result?.clearedSteps) {
               s.resetStepData(result.clearedSteps)
@@ -904,28 +1039,39 @@ function App() {
               return
             }
             const stepBeforeNext = s.currentStep
-            s.handleNext(TOTAL_STEPS)
-            // Wait for React to flush state updates from handleNext
-            // (refreshAreaTrapezoids + rebuildPanelGrid update panels/configs/grid)
+            // Run pre-transition prep (e.g. refresh trapezoids for 2→3) WITHOUT
+            // advancing currentStep yet — the visual advance must wait for the
+            // server's 200 OK so a BE rejection keeps the user on this step.
+            s.handleNext(TOTAL_STEPS, { advance: false })
+            // Let React flush the prep's state updates before save reads them.
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+            setStepTransitionErrors(null)
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
-              if (savedId) {
-                // Save current tab first to persist any pending edits (e.g., custom base offsets)
-                if (stepBeforeNext === 3) {
-                  const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-                  const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
-                  if (currentTab && currentTab !== 'areas') {
-                    try { await handleTabSave(currentTab, {}) } catch (e) { console.error(e) }
-                  }
-                }
-                // Tell the BE about the step transition — it resets dependent data
-                // and computes rails+bases on 2→3 (returned in response)
-                try {
-                  const stepResult = await updateStep(savedId, stepBeforeNext + 1)
-                  applyBeResult(stepResult)
-                } catch (e) { console.error(e) }
+              if (!savedId) return  // save failed — handleCloudSave already surfaced it
+              // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
+              // the transition. The Step3 component fills step3FlushDirtyRef
+              // with a function that awaits saveTab for every dirty tab and
+              // clears its dirty flag.
+              if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
+                try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
               }
+              try {
+                const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+                applyBeResult(stepResult)
+                s.advanceToNextStep()
+              } catch (e) {
+                if (e instanceof StepTransitionError) {
+                  setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
+                } else {
+                  console.error(e)
+                  setSaveState('error')
+                  setTimeout(() => setSaveState(null), 3000)
+                }
+              }
+            } else {
+              // Anonymous flow — no BE round-trip yet, just advance locally.
+              s.advanceToNextStep()
             }
           }}
           disabled={!s.canProceedToNextStep()}
@@ -933,6 +1079,8 @@ function App() {
           {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
         </button>
       </footer>
+
+      {confirmDialogElement}
     </div>
   )
 }

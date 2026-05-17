@@ -71,9 +71,33 @@ export async function resetTab(id, tabName) {
   return res.json()
 }
 
+// Error thrown when the BE rejects a step transition with a structured
+// validation payload. The caller can read `.fromStep`, `.toStep`, and
+// `.errors` to surface translated messages and highlight offending fields.
+export class StepTransitionError extends Error {
+  fromStep: number
+  toStep: number
+  errors: Array<{ code: string; field: string; params?: Record<string, any> }>
+  constructor(fromStep: number, toStep: number, errors: any[]) {
+    super(`step_transition_invalid (${fromStep}->${toStep})`)
+    this.name = 'StepTransitionError'
+    this.fromStep = fromStep
+    this.toStep = toStep
+    this.errors = errors || []
+  }
+}
+
 export async function updateStep(id, newStep) {
   const res = await mgpRequest(`/projects/${id}/step?new_step=${newStep}`, { method: 'PUT' })
-  if (!res.ok) throw new Error('Failed to update step')
+  if (!res.ok) {
+    let body: any = null
+    try { body = await res.json() } catch {}
+    const detail = body?.detail
+    if (detail && typeof detail === 'object' && detail.code === 'step_transition_invalid') {
+      throw new StepTransitionError(detail.fromStep, detail.toStep, detail.errors)
+    }
+    throw new Error('Failed to update step')
+  }
   return res.json()
 }
 

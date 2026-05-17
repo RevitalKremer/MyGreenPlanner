@@ -805,8 +805,9 @@ export function useProjectState() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults, rowMounting])
 
-  const handleNext = (totalSteps) => {
+  const handleNext = (totalSteps, opts: { advance?: boolean } = {}) => {
     if (currentStep >= totalSteps) return
+    const advance = opts.advance !== false  // default true (back-compat)
 
     // refinedArea is now a useMemo — no manual update needed on step transition
 
@@ -844,12 +845,26 @@ export function useProjectState() {
       rebuildPanelGrid(currentPanels)
     }
 
-    setCurrentStep(nextStep)
+    if (advance) setCurrentStep(nextStep)
+  }
+
+  // Visually advance to the next step. Use after the BE has accepted the
+  // transition (200 OK), so a validation rejection keeps the user on the
+  // current step with their data intact.
+  const advanceToNextStep = () => {
+    setCurrentStep(currentStep + 1)
   }
 
   const resetStepData = (clearedSteps) => {
     if (!clearedSteps?.length) return
     for (const key of clearedSteps) {
+      if (key === 'step2') {
+        // Step-2 layout artefacts (areas drawn on canvas + generated panels)
+        // must clear too, so re-entering step 2 starts blank.
+        pDispatch({ type: A.SET_LAYOUT, payload: { rectAreas: [], panels: [], deletedPanelKeys: {} } })
+        setAreas([]); setTrapezoidConfigs({}); setPanelGrid({}); setRowMounting({})
+        setSelectedPanels([])
+      }
       if (key === 'step3') { setStep3GlobalSettings({}); setStep3AreaSettings({}) }
       if (key === 'step4') { setStep4PlanApproval(null) }
       if (key === 'step5') { setStep5BomDeltas(null) }
@@ -878,14 +893,32 @@ export function useProjectState() {
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
-        return rectAreas.every(a => {
-          // Tiles areas have no construction frame → a/h is irrelevant
+        const inFh  = (v) => v != null && v >= fhLim.min  && v <= fhLim.max
+        const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
+        // Per-area a/h (with global fallback) + per-area purlin distance for mixed
+        const areasOk = rectAreas.every(a => {
           if (isAreaTiles(roofType, a)) return true
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
-          return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&
-            ang !== '' && parseFloat(ang) >= angLim.min && parseFloat(ang) <= angLim.max
+          if (!(fh !== '' && inFh(parseFloat(fh)) && ang !== '' && inAng(parseFloat(ang)))) return false
+          if (roofType === 'mixed') {
+            const t = a.roofSpec?.type
+            if (t === 'iskurit' || t === 'insulated_panel') {
+              if (!(a.roofSpec?.distanceBetweenPurlinsCm > 0)) return false
+            }
+          }
+          return true
         })
+        if (!areasOk) return false
+        // Per-row a/h overrides: any explicit row override must stay within bounds
+        for (const rows of Object.values(rowMounting || {}) as any[][]) {
+          for (const r of (rows || [])) {
+            if (!r) continue
+            if (r.angleDeg != null && !inAng(r.angleDeg)) return false
+            if (r.frontHeightCm != null && !inFh(r.frontHeightCm)) return false
+          }
+        }
+        return true
       }
       case 3: return true
       case 4: return !!(step4PlanApproval?.strictConsent)
@@ -1012,6 +1045,7 @@ export function useProjectState() {
     handleWhiteboardStart,
     computePanels,
     handleNext,
+    advanceToNextStep,
     handleBack,
     resetStepData,
     canProceedToNextStep,

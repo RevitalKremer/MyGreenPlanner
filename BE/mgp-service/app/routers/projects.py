@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, Uplo
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image
 import io
 
@@ -31,11 +31,14 @@ from app.routers.deps import get_current_user, require_admin
 
 class TabSettings(BaseModel):
     """Settings (parameters) for a tab - global and per-area."""
-    global_: Optional[dict] = None  # Use alias to avoid Python keyword
+    # Pydantic v2: alias 'global' (a Python keyword) onto the attribute global_.
+    # The v1 `class Config: fields = {...}` form is silently ignored on v2 and
+    # would cause the FE's `settings.global` payload to be dropped at parse
+    # time — turning every global-scope tab save into a no-op.
+    global_: Optional[dict] = Field(default=None, alias='global')
     areas: Optional[dict] = None
-    
-    class Config:
-        fields = {'global_': 'global'}
+
+    model_config = ConfigDict(populate_by_name=True)
 
 class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
@@ -170,6 +173,18 @@ async def update_step(
             db, project, new_step,
             rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
         )
+    except project_service.StepTransitionInvalidError as e:
+        # Structured detail so the FE can translate per-error and highlight
+        # the offending fields. See _validate_step_transition.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'code': 'step_transition_invalid',
+                'fromStep': e.from_step,
+                'toStep': e.to_step,
+                'errors': e.errors,
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return result
@@ -189,7 +204,7 @@ async def save_tab_rails(
 
     # Convert new format to legacy or use legacy directly
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'rails', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -209,7 +224,7 @@ async def save_tab_bases(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'bases', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -229,7 +244,7 @@ async def save_tab_trapezoids(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'trapezoids', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -240,18 +255,18 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
     """Extract step3_data, trapezoid_configs, and overrides from unified or legacy payload."""
     if not payload:
         return None, None, None
-    
+
     # New format
     if payload.settings or payload.overrides:
         step3_data = {}
         trapezoid_configs = None
-        
+
         if payload.settings:
             if payload.settings.global_:
                 step3_data['globalSettings'] = payload.settings.global_
             if payload.settings.areas:
                 step3_data['areaSettings'] = payload.settings.areas
-        
+
         overrides = {}
         if payload.overrides:
             if payload.overrides.rails:
@@ -260,13 +275,13 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
                 overrides['bases'] = payload.overrides.bases
             if payload.overrides.diagonals:
                 overrides['diagonals'] = payload.overrides.diagonals
-        
+
         # Legacy trapezoidConfigs (only for backward compatibility)
         if payload.trapezoidConfigs:
             trapezoid_configs = payload.trapezoidConfigs
-        
+
         return step3_data, trapezoid_configs, overrides if overrides else None
-    
+
     # Legacy format
     return payload.step3, payload.trapezoidConfigs, None
 
