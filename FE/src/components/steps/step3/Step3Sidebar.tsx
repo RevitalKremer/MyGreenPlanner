@@ -144,13 +144,14 @@ export default function Step3Sidebar({
   effectiveDiagSettings = null,
   effectiveBasesSettings = null,
   dirty = { rails: false, bases: false, detail: false } as { rails: boolean; bases: boolean; detail: boolean },
+  isOverride: isOverrideProp = null as null | ((path: any) => boolean),
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
-  // Orange border = the stored value actually differs from the next-level
-  // fallback (global override → schema default). Key-presence alone isn't
-  // enough — a key explicitly stored as its default still equals the default.
+  // Orange border = the stored value differs from the next-level fallback.
+  // Prefer the canonical isOverride from useStep3Settings (single source of
+  // truth) and fall back to a local implementation for back-compat.
   const sameValue = (a, b) => {
     if (a === b) return true
     if (a == null || b == null) return false
@@ -159,6 +160,7 @@ export default function Step3Sidebar({
   }
   const schemaDefaultOf = (key) => (PARAM_SCHEMA || []).find(p => p.key === key)?.default
   const isOverride = (key) => {
+    if (isOverrideProp) return isOverrideProp({ scope: 'area', anchor: selectedRowIdx, key })
     const stored = areaSettings[selectedRowIdx]?.[key]
     if (stored === undefined) return false
     const fallback = globalSettings?.[key] ?? schemaDefaultOf(key)
@@ -304,11 +306,13 @@ export default function Step3Sidebar({
     if (scope === 'trapezoid') {
       const trapSettings = getTrapBasesSettings?.(effectiveSelectedTrapId) ?? {}
       const val = trapSettings[key] ?? param.default
-      // Override = stored value differs from the schema default. Just having
-      // the key present doesn't count (the FE may store equal-to-default on
-      // commit even when nothing semantically changed).
+      // Override = stored value differs from the schema default. Routes
+      // through the canonical isOverride when available so trap-scope and
+      // area-scope share the same rule.
       const overridden = (() => {
-        const stored = effectiveSelectedTrapId ? trapezoidConfigs?.[effectiveSelectedTrapId]?.[key] : undefined
+        if (!effectiveSelectedTrapId) return false
+        if (isOverrideProp) return isOverrideProp({ scope: 'trap', anchor: effectiveSelectedTrapId, key })
+        const stored = trapezoidConfigs?.[effectiveSelectedTrapId]?.[key]
         if (stored === undefined) return false
         return !sameValue(stored, param.default)
       })()

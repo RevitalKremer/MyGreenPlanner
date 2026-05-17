@@ -258,6 +258,7 @@ export default function Step3ConstructionPlanning({
         trapezoidConfigs={trapezoidConfigs} panels={panels}
         activeTab={activeTab} setActiveTab={requestTabSwitch}
         dirty={settings.dirty}
+        isOverride={settings.isOverride}
         selectedRC={selectedRC} getSettings={settings.getSettings}
         updateSetting={settings.updateSetting} applySection={settings.applySection}
         highlightParam={highlightParam} setHighlightParam={setHighlightParam}
