@@ -260,6 +260,7 @@ const he = {
   'step3.param.panelThickCm':        'עובי פנל (ס"מ)',
   'step3.param.reverseBlockPunches': 'הפוך ניקובי בלוק',
   'step3.param.railRoundThresholdCm':'סף עיגול קושרת (ס"מ)',
+  'step3.param.railMinCutCm':        'חיתוך קושרת מינימלי (ס"מ)',
   'step3.param.crossRailOffsetCm':   'היסט קושרת רוחב (ס"מ)',
   'step3.param.diagSkipBelowCm':     'דלג על אלכסון מתחת (ס"מ)',
   'step3.param.diagDoubleAboveCm':   'אלכסון כפול מעל (ס"מ)',

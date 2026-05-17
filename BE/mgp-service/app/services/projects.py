@@ -511,6 +511,7 @@ def _build_rail_inputs(data: dict, area: dict, area_idx: int, app_defaults: dict
         'long_rail_threshold_cm':      app_defaults['longRailThresholdCm'],
         'long_rail_extra_overhang_cm': app_defaults['longRailExtraOverhangCm'],
         'rail_round_threshold_cm': global_settings.get('railRoundThresholdCm', app_defaults['railRoundThresholdCm']),
+        'rail_min_cut_cm':         global_settings.get('railMinCutCm',         app_defaults['railMinCutCm']),
     }
 
 

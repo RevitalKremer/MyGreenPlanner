@@ -261,6 +261,7 @@ const en = {
   'step3.param.panelThickCm':        'Panel Thickness (cm)',
   'step3.param.reverseBlockPunches': 'Reverse Block Punches',
   'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
+  'step3.param.railMinCutCm':        'Rail Min Cut (cm)',
   'step3.param.crossRailOffsetCm':   'Cross Rail Offset (cm)',
   'step3.param.diagSkipBelowCm':     'Skip Diagonal Below (cm)',
   'step3.param.diagDoubleAboveCm':   'Double Diagonal Above (cm)',
