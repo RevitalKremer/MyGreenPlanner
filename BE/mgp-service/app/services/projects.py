@@ -26,6 +26,137 @@ from app.utils.settings_helpers import resolve_roof_spec
 from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
 
 
+class StepTransitionInvalidError(Exception):
+    """Raised when a step transition fails its server-side validation.
+
+    Generic across all transitions so each (old_step, new_step) pair can
+    add its own validator without inventing a new exception class. The
+    router maps this to a 400 with a structured body the FE translates.
+    """
+    def __init__(self, from_step: int, to_step: int, errors: list[dict]):
+        super().__init__(f'step_transition_invalid ({from_step}->{to_step})')
+        self.from_step = from_step
+        self.to_step = to_step
+        self.errors = errors
+
+
+def _validate_step_transition(project: Project, old_step: int, new_step: int) -> list[dict]:
+    """Run all server-side validations for a specific step transition.
+
+    Generic entry point — add new (old_step, new_step) branches below as
+    other transitions get rules. Returns an empty list when the transition
+    is valid.
+    """
+    if old_step == 2 and new_step == 3:
+        return _validate_step2_for_advance(project.data or {}, project.roof_spec)
+    # Future transitions: add branches here.
+    return []
+
+
+def _validate_step2_for_advance(data: dict, project_roof_spec: dict | None) -> list[dict]:
+    """Validate step2 before allowing a 2→3 transition.
+
+    Mirrors the FE `canProceedToNextStep` rules so the BE acts as a
+    safety net with the same semantics. Returns a list of structured
+    errors (empty list = valid). Each entry has:
+        code   — i18n key the FE looks up (e.g. 'area.angle.outOfRange')
+        field  — JSON-Pointer-ish path the FE can use to scroll/highlight
+        params — values to interpolate into the translated message
+    """
+    errors: list[dict] = []
+    project_type = (project_roof_spec or {}).get('type', 'concrete')
+    step2 = (data or {}).get('step2', {})
+    areas = step2.get('areas', []) or []
+
+    if not areas:
+        errors.append({'code': 'noAreas', 'field': 'areas', 'params': {}})
+        return errors
+
+    # Same bounds the FE reads via the paramSchema (app_settings table).
+    ang_min = settings_cache.get_min('mountingAngleDeg')
+    ang_max = settings_cache.get_max('mountingAngleDeg')
+    fh_min  = settings_cache.get_min('frontHeightCm')
+    fh_max  = settings_cache.get_max('frontHeightCm')
+
+    default_ang = step2.get('defaultAngleDeg')
+    default_fh  = step2.get('defaultFrontHeightCm')
+
+    def in_range(v, lo, hi):
+        return isinstance(v, (int, float)) and lo <= v <= hi
+
+    for area_idx, area in enumerate(areas):
+        spec = resolve_roof_spec(project_roof_spec, area)
+        area_type = spec.get('type', 'concrete')
+        area_label = area.get('label') or str(area_idx)
+
+        if area_type == 'tiles':
+            continue  # tiles areas have no construction frame → a/h irrelevant
+
+        eff_ang = area.get('angleDeg') if area.get('angleDeg') is not None else default_ang
+        eff_fh  = area.get('frontHeightCm') if area.get('frontHeightCm') is not None else default_fh
+
+        if eff_ang is None:
+            errors.append({
+                'code': 'area.angle.missing',
+                'field': f'areas[{area_idx}].angleDeg',
+                'params': {'areaLabel': area_label},
+            })
+        elif not in_range(eff_ang, ang_min, ang_max):
+            errors.append({
+                'code': 'area.angle.outOfRange',
+                'field': f'areas[{area_idx}].angleDeg',
+                'params': {'areaLabel': area_label, 'min': ang_min, 'max': ang_max, 'value': eff_ang},
+            })
+
+        if eff_fh is None:
+            errors.append({
+                'code': 'area.frontHeight.missing',
+                'field': f'areas[{area_idx}].frontHeightCm',
+                'params': {'areaLabel': area_label},
+            })
+        elif not in_range(eff_fh, fh_min, fh_max):
+            errors.append({
+                'code': 'area.frontHeight.outOfRange',
+                'field': f'areas[{area_idx}].frontHeightCm',
+                'params': {'areaLabel': area_label, 'min': fh_min, 'max': fh_max, 'value': eff_fh},
+            })
+
+        # Per-row a/h overrides — bounds only, missing = inherit from area
+        for ri, pr in enumerate(area.get('panelRows') or []):
+            if pr is None:
+                continue
+            row_ang = pr.get('angleDeg')
+            row_fh  = pr.get('frontHeightCm')
+            if row_ang is not None and not in_range(row_ang, ang_min, ang_max):
+                errors.append({
+                    'code': 'row.angle.outOfRange',
+                    'field': f'areas[{area_idx}].panelRows[{ri}].angleDeg',
+                    'params': {'areaLabel': area_label, 'rowIdx': ri,
+                               'min': ang_min, 'max': ang_max, 'value': row_ang},
+                })
+            if row_fh is not None and not in_range(row_fh, fh_min, fh_max):
+                errors.append({
+                    'code': 'row.frontHeight.outOfRange',
+                    'field': f'areas[{area_idx}].panelRows[{ri}].frontHeightCm',
+                    'params': {'areaLabel': area_label, 'rowIdx': ri,
+                               'min': fh_min, 'max': fh_max, 'value': row_fh},
+                })
+
+        # Purlin distance is per-area only for mixed projects with purlin types.
+        # For non-mixed iskurit/insulated_panel the distance lives on the
+        # project's roof_spec and is enforced upstream (project setup).
+        if project_type == 'mixed' and area_type in ('iskurit', 'insulated_panel'):
+            dist = (area.get('roofSpec') or {}).get('distanceBetweenPurlinsCm')
+            if not (isinstance(dist, (int, float)) and dist > 0):
+                errors.append({
+                    'code': 'area.purlinDistance.missing',
+                    'field': f'areas[{area_idx}].roofSpec.distanceBetweenPurlinsCm',
+                    'params': {'areaLabel': area_label},
+                })
+
+    return errors
+
+
 async def list_projects(
     db: AsyncSession,
     owner_id: uuid.UUID,
@@ -1388,6 +1519,13 @@ async def update_project_step(
         return {'currentStep': old_step, 'clearedSteps': []}
     if new_step < 1 or new_step > 5:
         raise ValueError(f"Invalid step: {new_step}")
+
+    # Per-transition validation runs BEFORE any mutation so the FE can stay
+    # on the current step with data intact when the BE rejects. The router
+    # maps the raised StepTransitionInvalidError to HTTP 400.
+    transition_errors = _validate_step_transition(project, old_step, new_step)
+    if transition_errors:
+        raise StepTransitionInvalidError(old_step, new_step, transition_errors)
 
     data = copy.deepcopy(project.data or {})
     cleared = []

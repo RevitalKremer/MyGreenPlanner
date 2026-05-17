@@ -19,6 +19,18 @@ const he = {
   'app.loadProjectError':     'לא ניתן לטעון את הפרויקט: {msg}',
   'app.deleteProjectConfirm': 'למחוק את הפרויקט? פעולה זו אינה ניתנת לביטול.',
   'app.deleteProjectError':   'לא ניתן למחוק את הפרויקט: {msg}',
+  'app.stepTransitionError':  'לא ניתן להמשיך — נא לתקן את הבעיות הבאות:',
+  'app.stepTransitionGeneric':'לא ניתן לעבור לשלב הבא. נא לנסות שוב.',
+
+  // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
+  'step2.error.noAreas':                       'יש להוסיף לפחות שטח אחד לפני המעבר לשלב הבא.',
+  'step2.error.area.angle.missing':            'שטח {areaLabel}: יש להזין זווית.',
+  'step2.error.area.angle.outOfRange':         'שטח {areaLabel}: זווית {value}° מחוץ לטווח {min}–{max}°.',
+  'step2.error.area.frontHeight.missing':      'שטח {areaLabel}: יש להזין גובה קדמי.',
+  'step2.error.area.frontHeight.outOfRange':   'שטח {areaLabel}: גובה קדמי {value} ס"מ מחוץ לטווח {min}–{max} ס"מ.',
+  'step2.error.row.angle.outOfRange':           'שטח {areaLabel}, שורה {rowIdx}: זווית {value}° מחוץ לטווח {min}–{max}°.',
+  'step2.error.row.frontHeight.outOfRange':     'שטח {areaLabel}, שורה {rowIdx}: גובה קדמי {value} ס"מ מחוץ לטווח {min}–{max} ס"מ.',
+  'step2.error.area.purlinDistance.missing':    'שטח {areaLabel}: יש להזין מרחק בין פטות.',
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← חזרה',

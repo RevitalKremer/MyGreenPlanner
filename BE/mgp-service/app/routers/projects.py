@@ -170,6 +170,18 @@ async def update_step(
             db, project, new_step,
             rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
         )
+    except project_service.StepTransitionInvalidError as e:
+        # Structured detail so the FE can translate per-error and highlight
+        # the offending fields. See _validate_step_transition.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'code': 'step_transition_invalid',
+                'fromStep': e.from_step,
+                'toStep': e.to_step,
+                'errors': e.errors,
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return result

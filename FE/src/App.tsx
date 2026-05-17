@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { PRIMARY, AREA_PALETTE } from './styles/colors'
+import { PRIMARY, AREA_PALETTE, ERROR_DARK, ERROR_BG, ERROR } from './styles/colors'
 import { PANEL_V } from './utils/panelCodes'
 import { useLang } from './i18n/LangContext'
 import LangToggle from './i18n/LangToggle'
@@ -16,7 +16,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
-import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab } from './services/projectsApi'
+import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -48,6 +48,10 @@ function App() {
   const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+  // Server-side step-transition validation errors (set when updateStep returns 400)
+  const [stepTransitionErrors, setStepTransitionErrors] = useState<
+    null | { fromStep: number; toStep: number; errors: Array<{ code: string; field: string; params?: Record<string, any> }> }
+  >(null)
   // One-shot signal: logout sets this to true so the welcome screen opens the
   // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
   // don't auto-open on normal app load — only after explicit logout.
@@ -859,6 +863,30 @@ function App() {
             <button onClick={() => setVerifyBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
           </div>
         )}
+
+        {stepTransitionErrors && (
+          <div style={{
+            position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
+            background: ERROR_BG, color: ERROR_DARK,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
+            border: `1px solid ${ERROR}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
+                <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
+                  {stepTransitionErrors.errors.map((err, i) => (
+                    <li key={i} style={{ marginBottom: '0.2rem' }}>
+                      {t(`step2.error.${err.code}` as any, err.params || {})}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Wizard Toolbar */}
@@ -904,28 +932,40 @@ function App() {
               return
             }
             const stepBeforeNext = s.currentStep
-            s.handleNext(TOTAL_STEPS)
-            // Wait for React to flush state updates from handleNext
-            // (refreshAreaTrapezoids + rebuildPanelGrid update panels/configs/grid)
+            // Run pre-transition prep (e.g. refresh trapezoids for 2→3) WITHOUT
+            // advancing currentStep yet — the visual advance must wait for the
+            // server's 200 OK so a BE rejection keeps the user on this step.
+            s.handleNext(TOTAL_STEPS, { advance: false })
+            // Let React flush the prep's state updates before save reads them.
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+            setStepTransitionErrors(null)
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
-              if (savedId) {
-                // Save current tab first to persist any pending edits (e.g., custom base offsets)
-                if (stepBeforeNext === 3) {
-                  const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-                  const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
-                  if (currentTab && currentTab !== 'areas') {
-                    try { await handleTabSave(currentTab, {}) } catch (e) { console.error(e) }
-                  }
+              if (!savedId) return  // save failed — handleCloudSave already surfaced it
+              // Save current tab first to persist any pending edits (e.g., custom base offsets)
+              if (stepBeforeNext === 3) {
+                const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
+                const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
+                if (currentTab && currentTab !== 'areas') {
+                  try { await handleTabSave(currentTab, {}) } catch (e) { console.error(e) }
                 }
-                // Tell the BE about the step transition — it resets dependent data
-                // and computes rails+bases on 2→3 (returned in response)
-                try {
-                  const stepResult = await updateStep(savedId, stepBeforeNext + 1)
-                  applyBeResult(stepResult)
-                } catch (e) { console.error(e) }
               }
+              try {
+                const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+                applyBeResult(stepResult)
+                s.advanceToNextStep()
+              } catch (e) {
+                if (e instanceof StepTransitionError) {
+                  setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
+                } else {
+                  console.error(e)
+                  setSaveState('error')
+                  setTimeout(() => setSaveState(null), 3000)
+                }
+              }
+            } else {
+              // Anonymous flow — no BE round-trip yet, just advance locally.
+              s.advanceToNextStep()
             }
           }}
           disabled={!s.canProceedToNextStep()}

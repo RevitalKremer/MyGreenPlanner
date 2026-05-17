@@ -19,6 +19,18 @@ const en = {
   'app.loadProjectError':     'Could not load project: {msg}',
   'app.deleteProjectConfirm': 'Delete this cloud project? This cannot be undone.',
   'app.deleteProjectError':   'Could not delete project: {msg}',
+  'app.stepTransitionError':  'Cannot continue — please fix the following:',
+  'app.stepTransitionGeneric':'Could not advance to the next step. Please try again.',
+
+  // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
+  'step2.error.noAreas':                 'Add at least one area before continuing.',
+  'step2.error.area.angle.missing':      'Area {areaLabel}: angle is required.',
+  'step2.error.area.angle.outOfRange':   'Area {areaLabel}: angle {value}° is outside {min}–{max}°.',
+  'step2.error.area.frontHeight.missing':    'Area {areaLabel}: front height is required.',
+  'step2.error.area.frontHeight.outOfRange': 'Area {areaLabel}: front height {value} cm is outside {min}–{max} cm.',
+  'step2.error.row.angle.outOfRange':         'Area {areaLabel}, row {rowIdx}: angle {value}° is outside {min}–{max}°.',
+  'step2.error.row.frontHeight.outOfRange':   'Area {areaLabel}, row {rowIdx}: front height {value} cm is outside {min}–{max} cm.',
+  'step2.error.area.purlinDistance.missing':  'Area {areaLabel}: distance between purlins is required.',
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← Back',

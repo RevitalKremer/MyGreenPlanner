@@ -805,8 +805,9 @@ export function useProjectState() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rectAreas, panelAngle, panelFrontHeight, panelType, panelTypes, appDefaults, rowMounting])
 
-  const handleNext = (totalSteps) => {
+  const handleNext = (totalSteps, opts: { advance?: boolean } = {}) => {
     if (currentStep >= totalSteps) return
+    const advance = opts.advance !== false  // default true (back-compat)
 
     // refinedArea is now a useMemo — no manual update needed on step transition
 
@@ -844,7 +845,14 @@ export function useProjectState() {
       rebuildPanelGrid(currentPanels)
     }
 
-    setCurrentStep(nextStep)
+    if (advance) setCurrentStep(nextStep)
+  }
+
+  // Visually advance to the next step. Use after the BE has accepted the
+  // transition (200 OK), so a validation rejection keeps the user on the
+  // current step with their data intact.
+  const advanceToNextStep = () => {
+    setCurrentStep(currentStep + 1)
   }
 
   const resetStepData = (clearedSteps) => {
@@ -1037,6 +1045,7 @@ export function useProjectState() {
     handleWhiteboardStart,
     computePanels,
     handleNext,
+    advanceToNextStep,
     handleBack,
     resetStepData,
     canProceedToNextStep,
