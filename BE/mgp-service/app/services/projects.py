@@ -813,7 +813,15 @@ def _build_base_inputs(
     computed_area = _get_computed_area(data, area_id)
     line_rails = _derive_line_rails(computed_area, row_index=row_index)
 
-    trap_cfg = (trapezoid_configs or {}).get(trapezoid_id, {})
+    # Merge incoming trap-cfg over the persisted schema params (step3.trapezoidConfigs).
+    # Incoming wins, so a partial update from the FE still works; the persisted
+    # store ensures values survive across reloads / requests that don't carry
+    # the full trap config.
+    persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+    trap_cfg = {
+        **(persisted_traps.get(trapezoid_id) or {}),
+        **((trapezoid_configs or {}).get(trapezoid_id, {})),
+    }
     custom_offsets = trap_cfg.get('customOffsets')
 
     effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
@@ -851,6 +859,49 @@ def _merge_step3_data(data: dict, step3_data: dict) -> None:
         step3_data['areaSettings'] = _deep_merge_settings(existing_area, step3_data['areaSettings'])
     existing_step3.update(step3_data)
     data['step3'] = existing_step3
+
+
+# Trap-scope schema params that the FE edits via the sidebar. Persisted under
+# `data.step3.trapezoidConfigs[trapId]` so they survive project reload —
+# without this, the compute pipeline accepted them per-request but never wrote
+# them back. Drag-edit keys (customOffsets / customDiagonals / panelRowIdx)
+# live in their own step3 paths (customBasesOffsets, customDiagonals) and are
+# intentionally excluded here.
+TRAP_SCHEMA_PARAM_KEYS = (
+    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',  # bases tab
+    'extendFront', 'extendRear',                    # detail tab
+)
+
+
+async def _persist_trap_schema_configs(db: AsyncSession, project: Project, trapezoid_configs: dict) -> None:
+    """Merge incoming trap-scope schema params into project.data.step3.trapezoidConfigs.
+
+    Must commit before the downstream compute chain — compute_and_save_rails
+    refreshes the project from the DB, which would discard an uncommitted
+    in-memory mutation.
+    """
+    data = copy.deepcopy(project.data or {})
+    step3 = data.setdefault('step3', {})
+    stored = step3.setdefault('trapezoidConfigs', {})
+    if not isinstance(stored, dict):
+        stored = {}
+    dirty = False
+    for trap_id, cfg in trapezoid_configs.items():
+        if not isinstance(cfg, dict):
+            continue
+        schema_only = {k: v for k, v in cfg.items() if k in TRAP_SCHEMA_PARAM_KEYS}
+        if not schema_only:
+            continue
+        existing = stored.get(trap_id) or {}
+        merged = {**existing, **schema_only}
+        if merged != existing:
+            stored[trap_id] = merged
+            dirty = True
+    if dirty:
+        step3['trapezoidConfigs'] = stored
+        project.data = data
+        flag_modified(project, 'data')
+        await db.commit()
 
 
 def _sync_custom_offsets(
@@ -1834,7 +1885,13 @@ def _compute_all_trapezoid_details(
         # Use remapped line_rails (keys match filtered panel_lines indices)
         line_rails = remapped_line_rails
 
-        t_cfg = (trapezoid_configs or {}).get(trap_id, {})
+        # Merge persisted trap-scope schema params under the incoming cfg so
+        # request-only updates win but persisted values survive reloads.
+        persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+        t_cfg = {
+            **(persisted_traps.get(trap_id) or {}),
+            **((trapezoid_configs or {}).get(trap_id, {})),
+        }
         angle = trap_cfg.get('angleDeg', 0)
         front_height = trap_cfg.get('frontHeightCm', 0)
         base_overhang = t_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
@@ -2203,6 +2260,12 @@ async def save_tab(
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
+    # Persist trap-scope schema params into step3.trapezoidConfigs so they
+    # survive project reload. Drag-edit keys (customOffsets, customDiagonals,
+    # panelRowIdx) live in their own step3 paths and are excluded here.
+    if trapezoid_configs:
+        await _persist_trap_schema_configs(db, project, trapezoid_configs)
+
     # Any tab change recomputes the full chain: rails → bases → trapezoid details → external diagonals
     rails_result = await compute_and_save_rails(db, project, rs, step3_data)
     bases_result = await compute_and_save_bases(db, project, bs, step3_data, trapezoid_configs)
@@ -2257,12 +2320,22 @@ async def reset_tab(
             if isinstance(area_settings, dict):
                 for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
                     area_settings.pop(key, None)
+        # Trap-scope bases params live in step3.trapezoidConfigs (new
+        # persistence). Strip them so reset truly returns to defaults.
+        for trap_cfg in (step3.get('trapezoidConfigs') or {}).values():
+            if isinstance(trap_cfg, dict):
+                for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
+                    trap_cfg.pop(key, None)
     elif tab == 'trapezoids':
         step3.pop('customDiagonals', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
                 for key in ['diagDistFromLegCm', 'diagPreferredAngleDeg']:
                     area_settings.pop(key, None)
+        for trap_cfg in (step3.get('trapezoidConfigs') or {}).values():
+            if isinstance(trap_cfg, dict):
+                for key in ['extendFront', 'extendRear']:
+                    trap_cfg.pop(key, None)
 
     project.data = data
     flag_modified(project, 'data')

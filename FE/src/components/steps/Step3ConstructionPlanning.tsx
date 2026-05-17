@@ -449,10 +449,10 @@ export default function Step3ConstructionPlanning({
                 settings.markDirty('bases')
               }}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
-                clearTrap: (tid) => {
-                  setCustomBasesMap(prev => { const c = { ...prev }; delete c[tid]; return c })
-                  setUserEditedBases(prev => { const s = new Set(prev); s.delete(tid); return s })
-                }
+                clearAll: () => {
+                  setCustomBasesMap({})
+                  setUserEditedBases(new Set())
+                },
               })}
               roofType={roofType}
               purlinDistCm={purlinDistCm}

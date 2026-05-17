@@ -229,6 +229,40 @@ function App() {
     // of compute_and_save_trapezoid_details. Older projects without this field
     // fall back to one group per trap on the consumer side.
     setBeTrapezoidGroups(step3.trapezoidGroups ?? [])
+
+    // ── Defensive sync of user-editable settings ────────────────────────
+    // The BE persists / normalises these; without syncing, a server-side
+    // mutation (e.g. reset_tab stripping keys, future clamping) would stay
+    // invisible until project reload. Skipping when the field is absent so
+    // partial responses don't wipe FE state we still want.
+    if (step3.globalSettings !== undefined) {
+      s.setStep3GlobalSettings(step3.globalSettings ?? {})
+      step3SettingsRef.current = {
+        ...step3SettingsRef.current,
+        globalSettings: step3.globalSettings ?? {},
+      }
+    }
+    if (step3.areaSettings !== undefined) {
+      s.setStep3AreaSettings(step3.areaSettings ?? {})
+      step3SettingsRef.current = {
+        ...step3SettingsRef.current,
+        areaSettings: step3.areaSettings ?? {},
+      }
+    }
+    // Trap-scope schema params are now persisted under step3.trapezoidConfigs
+    // (new in this version of the BE). Merge them into FE trapezoidConfigs,
+    // preserving FE-only fields (angle / frontHeight / lineOrientations come
+    // through step2.areas[].trapezoids[], not this map).
+    const persistedTraps = step3.trapezoidConfigs
+    if (persistedTraps && typeof persistedTraps === 'object') {
+      s.setTrapezoidConfigs(prev => {
+        const next: Record<string, any> = { ...(prev || {}) }
+        for (const [trapId, cfg] of Object.entries(persistedTraps as Record<string, any>)) {
+          next[trapId] = { ...(next[trapId] || {}), ...(cfg || {}) }
+        }
+        return next
+      })
+    }
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
@@ -340,10 +374,10 @@ function App() {
       if (tabName === 'bases') {
         const customBases = { ...customBasesRef.current }
         if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
-        
+
         payload.overrides = payload.overrides || {}
         payload.overrides.bases = customBases
-        
+
       } else if (tabName === 'trapezoids') {
         // Trapezoids tab overrides: diagonal positions from areaSettings
         const diagOverrides = {}

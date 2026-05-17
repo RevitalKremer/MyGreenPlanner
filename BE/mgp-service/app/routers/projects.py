@@ -201,7 +201,7 @@ async def save_tab_rails(
 
     # Convert new format to legacy or use legacy directly
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'rails', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -221,7 +221,7 @@ async def save_tab_bases(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'bases', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -241,7 +241,7 @@ async def save_tab_trapezoids(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 3+")
 
     step3_data, trapezoid_configs, overrides = _extract_payload_data(payload)
-    
+
     return await project_service.save_tab(
         db, project, 'trapezoids', rail_service, base_service, trapezoid_detail_service,
         step3_data=step3_data, trapezoid_configs=trapezoid_configs, overrides=overrides,
@@ -252,18 +252,18 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
     """Extract step3_data, trapezoid_configs, and overrides from unified or legacy payload."""
     if not payload:
         return None, None, None
-    
+
     # New format
     if payload.settings or payload.overrides:
         step3_data = {}
         trapezoid_configs = None
-        
+
         if payload.settings:
             if payload.settings.global_:
                 step3_data['globalSettings'] = payload.settings.global_
             if payload.settings.areas:
                 step3_data['areaSettings'] = payload.settings.areas
-        
+
         overrides = {}
         if payload.overrides:
             if payload.overrides.rails:
@@ -272,13 +272,13 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
                 overrides['bases'] = payload.overrides.bases
             if payload.overrides.diagonals:
                 overrides['diagonals'] = payload.overrides.diagonals
-        
+
         # Legacy trapezoidConfigs (only for backward compatibility)
         if payload.trapezoidConfigs:
             trapezoid_configs = payload.trapezoidConfigs
-        
+
         return step3_data, trapezoid_configs, overrides if overrides else None
-    
+
     # Legacy format
     return payload.step3, payload.trapezoidConfigs, None
 

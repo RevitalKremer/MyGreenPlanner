@@ -355,17 +355,37 @@ export default function useStep3Settings({
     d.trap = Object.fromEntries(Object.entries(d.trap).map(([k, v]) => [k, filterByTab(v)]))
   }, [keyBelongsToTab])
 
-  const resetTrapBases = useCallback((trapId, customBasesHandlers) => {
-    customBasesHandlers?.clearTrap(trapId)
-    if (!setTrapezoidConfigs) return
-    setTrapezoidConfigs(prev => {
-      const copy = { ...(prev[trapId] || {}) }
-      TRAP_BASES_KEYS.forEach(k => delete copy[k])
-      return { ...prev, [trapId]: copy }
-    })
-    onTabSave?.('bases', { resetTrapId: trapId })
+  // Tab-wide reset — mirrors resetLineRails / resetDetailSettings. The
+  // _trapId arg is ignored (kept for the existing callsite signature). The
+  // BE's reset_tab('bases') strips schema keys from areaSettings + the new
+  // step3.trapezoidConfigs AND clears customBasesOffsets, so the round-trip
+  // is sufficient. customBasesHandlers.clearAll() clears the FE-only
+  // customBasesMap held in App.tsx.
+  const resetTrapBases = useCallback((_trapId, customBasesHandlers) => {
+    customBasesHandlers?.clearAll?.()
+    if (setTrapezoidConfigs) {
+      setTrapezoidConfigs(prev => {
+        const next: Record<string, any> = { ...(prev || {}) }
+        for (const tid of Object.keys(next)) {
+          const cfg = { ...(next[tid] || {}) }
+          TRAP_BASES_KEYS.forEach(k => delete cfg[k])
+          next[tid] = cfg
+        }
+        return next
+      })
+      // Mirror ref sync (state setter is async; next reader needs the live value).
+      const cur = trapezoidConfigsRef.current || {}
+      const nextRef: Record<string, any> = { ...cur }
+      for (const tid of Object.keys(nextRef)) {
+        const cfg = { ...(nextRef[tid] || {}) }
+        TRAP_BASES_KEYS.forEach(k => delete cfg[k])
+        nextRef[tid] = cfg
+      }
+      trapezoidConfigsRef.current = nextRef
+    }
+    onTabReset?.('bases')
     markClean('bases')
-  }, [setTrapezoidConfigs, onTabSave, markClean]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setTrapezoidConfigs, onTabReset, markClean])
 
   return {
     globalSettings, setGlobalSettings,
