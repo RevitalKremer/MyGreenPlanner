@@ -108,36 +108,20 @@ export default function useStep3Settings({
   }, [paramTab, markDirty, globalSettings, PARAM_SCHEMA])
 
   // ── LineRails helpers ───────────────────────────────────────────────────
-  // Edits from the rail-spacing widget land in `lineRailsDraft` so the canvas
-  // keeps showing the last applied rails. `commitLineRailsDrafts` is called by
-  // the Apply path to promote drafts → `lineRails` right before saveTab runs.
+  // Rail spacing writes commit immediately into `lineRails`. The FE rails
+  // overlay reads this directly, giving live preview — the same UX the bases
+  // tab already has via computeExpandedBasePlans. Dirty + banner still apply
+  // so the BE knows it's out of sync until Apply.
   const updateLineRails = useCallback((areaIdx, newLineRails) => {
     const cur: any = areaSettings[areaIdx] || {}
-    const baseline = cur.lineRailsDraft ?? cur.lineRails
-    if (isSameValue(baseline, newLineRails)) return
+    if (isSameValue(cur.lineRails, newLineRails)) return
     setAreaSettings(prev => ({
       ...prev,
-      [areaIdx]: { ...(prev[areaIdx] || {}), lineRailsDraft: newLineRails }
+      [areaIdx]: { ...(prev[areaIdx] || {}), lineRails: newLineRails }
     }))
     markDirty('rails')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markDirty, areaSettings])
-
-  const commitLineRailsDrafts = useCallback(() => {
-    setAreaSettings(prev => {
-      let changed = false
-      const next: any = { ...prev }
-      for (const k of Object.keys(prev)) {
-        const a: any = prev[k]
-        if (a?.lineRailsDraft) {
-          const { lineRailsDraft, ...rest } = a
-          next[k] = { ...rest, lineRails: lineRailsDraft }
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [])
 
   const resetDetailSettings = useCallback((areaIdx) => {
     const detailParams = PARAM_SCHEMA.filter(p => p.section === 'detail')
@@ -147,10 +131,11 @@ export default function useStep3Settings({
       delete copy.diagOverrides
       return { ...prev, [areaIdx]: copy }
     })
-    // Reset is treated as a save: the caller pairs us with onTabReset which
-    // round-trips to the BE, so FE state will be in sync — clear dirty.
+    // Round-trip to BE (was previously the caller's job — now uniform with
+    // resetLineRails / resetTrapBases). After BE responds, FE + BE are in sync.
+    onTabReset?.('trapezoids')
     markClean('detail')
-  }, [PARAM_SCHEMA, markClean])
+  }, [PARAM_SCHEMA, markClean, onTabReset])
 
   const resetLineRails = useCallback(async () => {
     const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')
@@ -160,7 +145,6 @@ export default function useStep3Settings({
       for (const key of Object.keys(updated)) {
         const copy = { ...(updated[key] || {}) }
         delete copy.lineRails
-        delete copy.lineRailsDraft
         railAreaParams.forEach(p => { copy[p.key] = p.default })
         updated[key] = copy
       }
@@ -220,7 +204,7 @@ export default function useStep3Settings({
     areaSettings, setAreaSettings,
     getSettings, areaLabel,
     updateSetting, applySection,
-    updateGlobalSetting, updateLineRails, commitLineRailsDrafts,
+    updateGlobalSetting, updateLineRails,
     resetDetailSettings, resetLineRails,
     getTrapBasesSettings, updateTrapBaseSetting, resetTrapBases,
     dirty, markDirty, markClean,

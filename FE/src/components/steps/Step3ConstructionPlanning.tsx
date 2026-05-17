@@ -118,13 +118,10 @@ export default function Step3ConstructionPlanning({
     onActiveTabChange?.(tabMap[activeTab] || activeTab)
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Apply Changes handler: promote any tab-scoped drafts into FE state, then
-  // await the BE save and clear the tab's dirty flag.
+  // Apply Changes handler: await the BE save, then clear the tab's dirty flag.
+  // No staging step — FE-computable params already preview live on the canvas.
   const confirmDialog = useConfirm()
   const applyTab = useCallback(async (tab: 'rails' | 'bases' | 'detail') => {
-    if (tab === 'rails') settings.commitLineRailsDrafts()
-    // Wait one frame so the commit's setState flushes before saveTab reads it.
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
     const beTab = tab === 'detail' ? 'trapezoids' : tab
     try { await onTabSave?.(beTab) } catch (e) { console.error(e) }
     settings.markClean(tab)
@@ -372,7 +369,7 @@ export default function Step3ConstructionPlanning({
                       fullTrapGhost={fullTrapGhost}
                       paramGroup={PARAM_GROUP}
                       reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
-                      onReset={() => { settings.resetDetailSettings(selectedRowIdx); onTabReset?.('trapezoids') }}
+                      onReset={() => settings.resetDetailSettings(selectedRowIdx)}
                       onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
                       roofType={detailRoofType}
                       purlinDistCm={detailPurlinDistCm}
