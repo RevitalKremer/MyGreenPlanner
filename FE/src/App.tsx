@@ -123,6 +123,8 @@ function App() {
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
+  // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
+  const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
@@ -784,6 +786,7 @@ function App() {
             onTabSave={handleTabSave}
             onTabReset={handleTabReset}
             onActiveTabChange={(tab) => { step3ActiveTabRef.current = tab }}
+            flushDirtyTabsRef={step3FlushDirtyRef}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}
@@ -966,13 +969,12 @@ function App() {
             if (auth.user) {
               const savedId = await handleCloudSave(stepBeforeNext)
               if (!savedId) return  // save failed — handleCloudSave already surfaced it
-              // Save current tab first to persist any pending edits (e.g., custom base offsets)
-              if (stepBeforeNext === 3) {
-                const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-                const currentTab = tabMap[step3ActiveTabRef.current] || step3ActiveTabRef.current
-                if (currentTab && currentTab !== 'areas') {
-                  try { await handleTabSave(currentTab, {}) } catch (e) { console.error(e) }
-                }
+              // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
+              // the transition. The Step3 component fills step3FlushDirtyRef
+              // with a function that awaits saveTab for every dirty tab and
+              // clears its dirty flag.
+              if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
+                try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
               }
               try {
                 const stepResult = await updateStep(savedId, stepBeforeNext + 1)

@@ -128,8 +128,12 @@ export default function useRowData({
     return map
   }, [beRailsData, areas, rowKeys])
 
-  const getLineRails = useCallback((areaIdx: number, lineOrientations: string[], panelRowIdx: number = 0): LineRailsMap => {
-    const stored = areaSettings[areaIdx]?.lineRails
+  // preferDraft=true is used by the rail-spacing widget so the input reflects
+  // what the user just typed; the canvas keeps using committed rails until
+  // Apply promotes the draft.
+  const getLineRails = useCallback((areaIdx: number, lineOrientations: string[], panelRowIdx: number = 0, preferDraft: boolean = false): LineRailsMap => {
+    const settings = areaSettings[areaIdx] as any
+    const stored = preferDraft ? (settings?.lineRailsDraft ?? settings?.lineRails) : settings?.lineRails
     if (stored && Object.keys(stored).length === lineOrientations.length) return stored
     const fromBE = getLineRailsFromBE(areaIdx, lineOrientations, panelRowIdx)
     if (fromBE) return fromBE

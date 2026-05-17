@@ -20,6 +20,34 @@ export default function useStep3Settings({
   )
   const [areaSettings, setAreaSettings] = useState(() => initialAreaSettings ?? {})
 
+  // ── Dirty tracking per tab ──────────────────────────────────────────────
+  // Every sidebar input + drag mutation marks its tab dirty so the canvas can
+  // signal "preview is stale until Apply." Cleared on a successful saveTab.
+  const [dirty, setDirty] = useState<{ rails: boolean; bases: boolean; detail: boolean }>({
+    rails: false, bases: false, detail: false,
+  })
+  const markDirty = useCallback((tab: 'rails' | 'bases' | 'detail') => {
+    setDirty(prev => prev[tab] ? prev : { ...prev, [tab]: true })
+  }, [])
+  const markClean = useCallback((tab: 'rails' | 'bases' | 'detail') => {
+    setDirty(prev => prev[tab] ? { ...prev, [tab]: false } : prev)
+  }, [])
+  const paramTab = useCallback((key: string): 'rails' | 'bases' | 'detail' | null => {
+    const p = (PARAM_SCHEMA || []).find((x: any) => x.key === key)
+    const sec = p?.section
+    return sec === 'rails' || sec === 'bases' || sec === 'detail' ? sec : null
+  }, [PARAM_SCHEMA])
+
+  // No-op guard: blur from an input that wasn't actually edited fires commit
+  // with the same value, which would otherwise mark the tab dirty. Compare
+  // structurally so { lineRails: {...} } payloads are recognised as equal.
+  const isSameValue = (a: any, b: any): boolean => {
+    if (a === b) return true
+    if (a == null || b == null) return a === b
+    if (typeof a !== 'object' || typeof b !== 'object') return false
+    try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
+  }
+
   // ── Merged settings for a given area ────────────────────────────────────
   const getSettings = (areaIdx) => ({ panelLengthCm, panelWidthCm, ...globalSettings, ...(areaSettings[areaIdx] || {}) })
 
@@ -31,10 +59,23 @@ export default function useStep3Settings({
 
   // ── Area-level setting update ───────────────────────────────────────────
   const updateSetting = (areaIdx, key, value) => {
+    // Compare against the EFFECTIVE current value (area override → global →
+    // schema default). The input shows that resolved value, so a blur without
+    // a typed change commits the same number we'd compare against.
+    const schemaDefault = (PARAM_SCHEMA || []).find((p: any) => p.key === key)?.default
+    const effectiveCurrent = areaSettings[areaIdx]?.[key] ?? globalSettings[key] ?? schemaDefault
+    if (isSameValue(effectiveCurrent, value)) return
     setAreaSettings(prev => ({
       ...prev,
       [areaIdx]: { ...(prev[areaIdx] || {}), [key]: value }
     }))
+    // Drag-edit keys live outside PARAM_SCHEMA (they're staging buckets, not
+    // user-facing params), so map them to their owning tab here.
+    const dragEditTab: Record<string, 'rails' | 'bases' | 'detail'> = {
+      diagOverrides: 'detail',
+    }
+    const tab = dragEditTab[key] ?? paramTab(key)
+    if (tab) markDirty(tab)
   }
 
   // ── Apply section params from one area to global ────────────────────────
@@ -52,19 +93,50 @@ export default function useStep3Settings({
       }
       return next
     })
+    const tabs = new Set(keys.map((k: string) => paramTab(k)).filter(Boolean))
+    tabs.forEach(t => markDirty(t as any))
   }
 
   // ── Global setting update ───────────────────────────────────────────────
   const updateGlobalSetting = useCallback((key, value) => {
+    const schemaDefault = (PARAM_SCHEMA || []).find((p: any) => p.key === key)?.default
+    const effectiveCurrent = globalSettings[key] ?? schemaDefault
+    if (isSameValue(effectiveCurrent, value)) return
     setGlobalSettings(prev => ({ ...prev, [key]: value }))
-  }, [])
+    const tab = paramTab(key); if (tab) markDirty(tab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramTab, markDirty, globalSettings, PARAM_SCHEMA])
 
   // ── LineRails helpers ───────────────────────────────────────────────────
+  // Edits from the rail-spacing widget land in `lineRailsDraft` so the canvas
+  // keeps showing the last applied rails. `commitLineRailsDrafts` is called by
+  // the Apply path to promote drafts → `lineRails` right before saveTab runs.
   const updateLineRails = useCallback((areaIdx, newLineRails) => {
+    const cur: any = areaSettings[areaIdx] || {}
+    const baseline = cur.lineRailsDraft ?? cur.lineRails
+    if (isSameValue(baseline, newLineRails)) return
     setAreaSettings(prev => ({
       ...prev,
-      [areaIdx]: { ...(prev[areaIdx] || {}), lineRails: newLineRails }
+      [areaIdx]: { ...(prev[areaIdx] || {}), lineRailsDraft: newLineRails }
     }))
+    markDirty('rails')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markDirty, areaSettings])
+
+  const commitLineRailsDrafts = useCallback(() => {
+    setAreaSettings(prev => {
+      let changed = false
+      const next: any = { ...prev }
+      for (const k of Object.keys(prev)) {
+        const a: any = prev[k]
+        if (a?.lineRailsDraft) {
+          const { lineRailsDraft, ...rest } = a
+          next[k] = { ...rest, lineRails: lineRailsDraft }
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
   }, [])
 
   const resetDetailSettings = useCallback((areaIdx) => {
@@ -75,7 +147,10 @@ export default function useStep3Settings({
       delete copy.diagOverrides
       return { ...prev, [areaIdx]: copy }
     })
-  }, [PARAM_SCHEMA])
+    // Reset is treated as a save: the caller pairs us with onTabReset which
+    // round-trips to the BE, so FE state will be in sync — clear dirty.
+    markClean('detail')
+  }, [PARAM_SCHEMA, markClean])
 
   const resetLineRails = useCallback(async () => {
     const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')
@@ -85,6 +160,7 @@ export default function useStep3Settings({
       for (const key of Object.keys(updated)) {
         const copy = { ...(updated[key] || {}) }
         delete copy.lineRails
+        delete copy.lineRailsDraft
         railAreaParams.forEach(p => { copy[p.key] = p.default })
         updated[key] = copy
       }
@@ -96,7 +172,8 @@ export default function useStep3Settings({
       return copy
     })
     onTabReset?.('rails')
-  }, [onTabReset, PARAM_SCHEMA]) // eslint-disable-line react-hooks/exhaustive-deps
+    markClean('rails')
+  }, [onTabReset, PARAM_SCHEMA, markClean]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Per-trapezoid base settings ─────────────────────────────────────────
   const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
@@ -112,11 +189,19 @@ export default function useStep3Settings({
 
   const updateTrapBaseSetting = useCallback((trapId, key, value) => {
     if (!setTrapezoidConfigs) return
+    // Trap-base inputs fall through to appDefaults when the trap-level value
+    // is undefined, so the no-op guard must compare against the same chain.
+    const effectiveCurrent = trapezoidConfigs?.[trapId]?.[key] ?? appDefaults?.[key]
+    if (isSameValue(effectiveCurrent, value)) return
     setTrapezoidConfigs(prev => ({
       ...prev,
       [trapId]: { ...(prev[trapId] || {}), [key]: value }
     }))
-  }, [setTrapezoidConfigs])
+    // Trapezoid params split: 'extendFront'/'extendRear' belong to the detail
+    // tab; offset/spacing/overhang belong to the bases tab.
+    const tab = paramTab(key); if (tab) markDirty(tab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setTrapezoidConfigs, paramTab, markDirty, trapezoidConfigs, appDefaults])
 
   const resetTrapBases = useCallback((trapId, customBasesHandlers) => {
     customBasesHandlers?.clearTrap(trapId)
@@ -127,16 +212,19 @@ export default function useStep3Settings({
       return { ...prev, [trapId]: copy }
     })
     onTabSave?.('bases', { resetTrapId: trapId })
-  }, [setTrapezoidConfigs, onTabSave]) // eslint-disable-line react-hooks/exhaustive-deps
+    markClean('bases')
+  }, [setTrapezoidConfigs, onTabSave, markClean]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     globalSettings, setGlobalSettings,
     areaSettings, setAreaSettings,
     getSettings, areaLabel,
     updateSetting, applySection,
-    updateGlobalSetting, updateLineRails,
+    updateGlobalSetting, updateLineRails, commitLineRailsDrafts,
     resetDetailSettings, resetLineRails,
     getTrapBasesSettings, updateTrapBaseSetting, resetTrapBases,
+    dirty, markDirty, markClean,
+    isAnyDirty: dirty.rails || dirty.bases || dirty.detail,
     onSettingsChange,
   }
 }

@@ -21,7 +21,7 @@ interface UseSelectedGeometryParams {
   getSettings: (areaIdx: number) => Record<string, any>
   getTrapBasesSettings: (trapId: string) => Record<string, any>
   getLineOrientations: (areaKey: number, trapId: string) => string[]
-  getLineRails: (areaIdx: number, lineOrientations: string[], panelRowIdx?: number) => LineRailsMap
+  getLineRails: (areaIdx: number, lineOrientations: string[], panelRowIdx?: number, preferDraft?: boolean) => LineRailsMap
   updateLineRails: (areaIdx: number | null, rails: LineRailsMap) => void
   areaSettings: Record<number, any>
   globalSettings: Record<string, any>
@@ -93,8 +93,10 @@ export default function useSelectedGeometry({
   }, [selectedRowIdx, rowKeys, effectiveSelectedTrapId, getLineOrientations])
 
   // ── Selected line rails (remapped to active lines only) ────────────────
-  const selectedLineRails = useMemo((): LineRailsMap => {
-    const allRails = getLineRails(selectedRowIdx!, selectedLineOrientations, selectedPanelRowIdx ?? 0)
+  // `selectedLineRails` returns COMMITTED rails — what the overlay must show.
+  // `selectedLineRailsForInput` prefers the draft so the spacing widget shows
+  // what the user just typed before Apply commits it.
+  const remapToActive = (allRails: LineRailsMap): LineRailsMap => {
     const remapped: LineRailsMap = {}
     let activeIdx = 0
     for (let li = 0; li < selectedLineOrientations.length; li++) {
@@ -103,7 +105,15 @@ export default function useSelectedGeometry({
       activeIdx++
     }
     return remapped
-  }, [selectedRowIdx, selectedPanelRowIdx, selectedLineOrientations, getLineRails])
+  }
+  const selectedLineRails = useMemo((): LineRailsMap =>
+    remapToActive(getLineRails(selectedRowIdx!, selectedLineOrientations, selectedPanelRowIdx ?? 0)),
+    [selectedRowIdx, selectedPanelRowIdx, selectedLineOrientations, getLineRails]
+  )
+  const selectedLineRailsForInput = useMemo((): LineRailsMap =>
+    remapToActive(getLineRails(selectedRowIdx!, selectedLineOrientations, selectedPanelRowIdx ?? 0, true)),
+    [selectedRowIdx, selectedPanelRowIdx, selectedLineOrientations, getLineRails]
+  )
 
   const selectedLinePanelDepths = useMemo((): number[] =>
     selectedLineOrientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm)),
@@ -184,27 +194,47 @@ export default function useSelectedGeometry({
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, getTrapBasesSettings])
 
   // ── Rail spacing derived from lineRails ────────────────────────────────
+  // Read ONLY user-set rails (draft or committed). BE-fallback rails would
+  // make the widget stick at a stale value after a reset, since BE data lags
+  // behind the local reset until the round-trip completes.
   const derivedRailSpacings = useMemo(() => {
+    const userRails: LineRailsMap | null = (
+      areaSettings[selectedRowIdx!]?.lineRailsDraft
+      ?? areaSettings[selectedRowIdx!]?.lineRails
+      ?? null
+    )
+    const remapped = userRails ? remapToActive(userRails) : null
     let vertical: number | null = null, horizontal: number | null = null
-    selectedLineOrientations.forEach((o, li) => {
-      const rails = selectedLineRails[li] ?? []
-      if (rails.length >= 2) {
-        const spacing = Math.round((rails[rails.length - 1] - rails[0]) * 10) / 10
-        if (isHorizontalOrientation(o)) { if (horizontal == null) horizontal = spacing }
-        else                            { if (vertical   == null) vertical   = spacing }
-      }
-    })
+    if (remapped) {
+      selectedLineOrientations.forEach((o, li) => {
+        const rails = remapped[li] ?? []
+        if (rails.length >= 2) {
+          const spacing = Math.round((rails[rails.length - 1] - rails[0]) * 10) / 10
+          if (isHorizontalOrientation(o)) { if (horizontal == null) horizontal = spacing }
+          else                            { if (vertical   == null) vertical   = spacing }
+        }
+      })
+    }
     return {
       vertical:   vertical   ?? railSpacingV,
       horizontal: horizontal ?? railSpacingH,
     }
-  }, [selectedLineRails, selectedLineOrientations])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaSettings, selectedRowIdx, selectedLineOrientations, railSpacingV, railSpacingH])
 
   // ── Rail spacing change handler ────────────────────────────────────────
+  // Base the new rails on the DRAFT (not the committed value) so consecutive
+  // edits stack correctly while the canvas still shows the last applied state.
   const onRailSpacingChange = useCallback((orientation: string, newSpacingCm: number) => {
     const isH = orientation === PANEL_H
+    // First blur on an input whose rails come from initDefaultLineRails / BE
+    // has no stored draft to compare against, so the no-op guard in
+    // updateLineRails fails. Short-circuit when the requested spacing already
+    // matches what the widget was showing.
+    const currentSpacing = isH ? derivedRailSpacings.horizontal : derivedRailSpacings.vertical
+    if (currentSpacing != null && Math.abs(currentSpacing - newSpacingCm) < 0.01) return
     const minSpacing = isH ? minRailSpacingH : minRailSpacingV
-    const newRails: LineRailsMap = { ...selectedLineRails }
+    const newRails: LineRailsMap = { ...selectedLineRailsForInput }
     selectedLineOrientations.forEach((o, li) => {
       if (isHorizontalOrientation(o) !== isH) return
       const depth   = selectedLinePanelDepths[li]
@@ -213,7 +243,7 @@ export default function useSelectedGeometry({
       newRails[li]  = [Math.round(offset * 10) / 10, Math.round((depth - offset) * 10) / 10]
     })
     updateLineRails(selectedRowIdx, newRails)
-  }, [selectedLineRails, selectedLineOrientations, selectedLinePanelDepths, selectedRowIdx, updateLineRails])
+  }, [derivedRailSpacings, selectedLineRailsForInput, selectedLineOrientations, selectedLinePanelDepths, selectedRowIdx, updateLineRails])
 
   // ── Apply rails to all areas ───────────────────────────────────────────
   const applyRailsToAllAreas = useCallback((

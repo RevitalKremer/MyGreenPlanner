@@ -173,7 +173,7 @@ const he = {
   'step2.sidebar.frontHPlaceholder': 'לדוגמה: 35',
   'step2.sidebar.angle':             'שיפוע (°)',
   'step2.sidebar.angleRange':        '0–30',
-  'step2.sidebar.applyToAll':        'החל על כל השורות',
+  'step2.sidebar.applyToAll':        'שמור לכל השורות',
   'step2.sidebar.drawHint':          'בחר את כלי השרטוט וגרור על הקנבס ליצירת אזור פנלים.',
   'step2.sidebar.areas':             'אזורים',
   'step2.sidebar.addToArea':         'הוסף לאזור\u2026',
@@ -250,8 +250,15 @@ const he = {
   'step3.sidebar.trapezoids':              'טרפזים',
   'step3.sidebar.areas':                   'אזורים',
   'step3.sidebar.stockLengthsPlaceholder': 'לדוגמה: 5000, 6000',
-  'step3.sidebar.applyToAll':              'החל על כל האזורים',
-  'step3.sidebar.applyChanges':            'החל שינויים',
+  'step3.sidebar.applyToAll':              'שמור עבור כל האזורים',
+  'step3.sidebar.applyChanges':            'שמור שינויים',
+
+  // Unsaved-changes UX (banner above canvas, tab-switch confirm, dirty dot)
+  'step3.unsaved.bannerMessage':   'יש שינויים שלא נשמרו.',
+  'step3.unsaved.applyNow':        'שמור שינויים',
+  'step3.unsaved.confirmSwitch':   'יש שינויים שלא נשמרו במסך {tab}. להחיל לפני המעבר?',
+  'step3.unsaved.applyAndSwitch':  'שמור ועבור',
+  'step3.unsaved.dotTooltip':      'מסך זה מכיל שינויים שלא נשמרו',
 
   // ── Step 3 – Parameter names (translated labels) ──────────────────────────
   'step3.param.railSpacingV':        'ריווח פאנל אנכי (ס"מ)',
@@ -283,7 +290,7 @@ const he = {
   'step3.param.punchOverlapMarginCm':'שולי חפיפת ניקוב (ס"מ)',
   'step3.param.punchInnerOffsetCm':  'היסט ניקוב פנימי (ס"מ)',
   'step3.param.railRoundPrecisionCm':'דיוק עיגול קושרת (ס"מ)',
-  'step3.param.purlinBufferCm':     'חיץ פורלין (ס"מ)',
+  'step3.param.purlinBufferCm':     'חיץ פטות (ס"מ)',
   'step3.param.extendFront':        'הארכת קורת בסיס קדמית',
   'step3.param.extendRear':         'הארכת קורת בסיס אחורית',
 
@@ -432,7 +439,7 @@ const he = {
   'step3.layer.punches':         'ניקובים',
   'step3.layer.editBar':         'סרגל עריכה',
   'step3.layer.ghost':           'צל',
-  'step3.layer.applyToAll':      'החל על כל האזורים',
+  'step3.layer.applyToAll':      'שמור לכל האזורים',
   'step3.layer.resetDefaults':   'אפס לברירת מחדל',  
   'step3.layer.resetHandles':    'איפוס ידיות',  
   'step3.layer.ruler':           '📏 סרגל',

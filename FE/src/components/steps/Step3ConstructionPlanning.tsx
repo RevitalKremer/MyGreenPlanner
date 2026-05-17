@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLang } from '../../i18n/LangContext'
-import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY } from '../../styles/colors'
+import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY, WARNING_BG, WARNING_DARK, WARNING } from '../../styles/colors'
+import ConfirmDialog from '../ConfirmDialog'
+import { useConfirm } from '../../hooks/useConfirm'
 import { PANEL_V } from '../../utils/panelCodes'
 import { allAreasTiles, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
 import RailLayoutTab from './step3/RailLayoutTab'
@@ -29,6 +31,9 @@ export default function Step3ConstructionPlanning({
   purlinDistCm = 0,
   installationOrientation = null,
   basesComputing = false,
+  // Optional ref the host fills with a function that applies every dirty tab
+  // — used by the Next button to silently flush before transitioning to step 4.
+  flushDirtyTabsRef = null,
 }) {
   const { t } = useLang()
 
@@ -107,19 +112,54 @@ export default function Step3ConstructionPlanning({
     panels,
   })
 
-  // ── Tab save on switch ─────────────────────────────────────────────────
-  const prevTabRef = useRef(activeTab)
+  // ── Notify host of active tab (no implicit save — Apply is explicit now) ──
   useEffect(() => {
     const tabMap = { 'areas': 'areas', 'rails': 'rails', 'bases': 'bases', 'detail': 'trapezoids' }
-    const currentMapped = tabMap[activeTab] || activeTab
-    onActiveTabChange?.(currentMapped)
-    if (prevTabRef.current !== activeTab) {
-      // Save the PREVIOUS tab first (to persist any edits like custom base offsets)
-      const prevTab = tabMap[prevTabRef.current] || prevTabRef.current
-      onTabSave?.(prevTab)
-    }
-    prevTabRef.current = activeTab
+    onActiveTabChange?.(tabMap[activeTab] || activeTab)
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply Changes handler: promote any tab-scoped drafts into FE state, then
+  // await the BE save and clear the tab's dirty flag.
+  const confirmDialog = useConfirm()
+  const applyTab = useCallback(async (tab: 'rails' | 'bases' | 'detail') => {
+    if (tab === 'rails') settings.commitLineRailsDrafts()
+    // Wait one frame so the commit's setState flushes before saveTab reads it.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const beTab = tab === 'detail' ? 'trapezoids' : tab
+    try { await onTabSave?.(beTab) } catch (e) { console.error(e) }
+    settings.markClean(tab)
+  }, [onTabSave, settings])
+
+  // Expose a "flush all dirty tabs" callback to the host (Next button uses it
+  // to apply pending edits silently before stepping to 4).
+  useEffect(() => {
+    if (!flushDirtyTabsRef) return
+    flushDirtyTabsRef.current = async () => {
+      if (settings.dirty.rails)  await applyTab('rails')
+      if (settings.dirty.bases)  await applyTab('bases')
+      if (settings.dirty.detail) await applyTab('detail')
+    }
+    return () => { if (flushDirtyTabsRef) flushDirtyTabsRef.current = null }
+  }, [flushDirtyTabsRef, settings.dirty, applyTab])
+
+  // Gate tab switches: if the current tab has unsaved edits, ask first.
+  const tabFromKey = (key: string) =>
+    (key === 'detail' || key === 'rails' || key === 'bases') ? key : null
+  const requestTabSwitch = useCallback(async (next: string) => {
+    if (next === activeTab) return
+    const cur = tabFromKey(activeTab)
+    if (cur && settings.dirty[cur]) {
+      const apply = await confirmDialog.ask({
+        message: t('step3.unsaved.confirmSwitch', { tab: t(`step3.tabs.${activeTab}`) }),
+        confirmLabel: t('step3.unsaved.applyAndSwitch'),
+        cancelLabel: t('common.cancel'),
+        variant: 'warning',
+      })
+      if (!apply) return
+      await applyTab(cur)
+    }
+    setActiveTab(next)
+  }, [activeTab, settings.dirty, confirmDialog, t, applyTab])
   
   // Save initial tab to backend if it was defaulted to 'areas'
   const initialSaveRef = useRef(false)
@@ -219,7 +259,8 @@ export default function Step3ConstructionPlanning({
         selectedTrapezoidId={selectedTrapezoidId} setSelectedTrapezoidId={setSelectedTrapezoidId}
         effectiveSelectedTrapId={effectiveSelectedTrapId}
         trapezoidConfigs={trapezoidConfigs} panels={panels}
-        activeTab={activeTab} setActiveTab={setActiveTab}
+        activeTab={activeTab} setActiveTab={requestTabSwitch}
+        dirty={settings.dirty}
         selectedRC={selectedRC} getSettings={settings.getSettings}
         updateSetting={settings.updateSetting} applySection={settings.applySection}
         highlightParam={highlightParam} setHighlightParam={setHighlightParam}
@@ -236,7 +277,7 @@ export default function Step3ConstructionPlanning({
         applyBasesToAll={() => rowData.applyBasesToAll(effectiveSelectedTrapId)}
         paramSchema={PARAM_SCHEMA}
         paramGroup={PARAM_GROUP}
-        onApplyChanges={(tab) => onTabSave?.(tab === 'detail' ? 'trapezoids' : tab)}
+        onApplyChanges={(tab) => applyTab(tab)}
         effectiveDiagSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDiagSettings ?? null}
         effectiveBasesSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveBasesSettings ?? null}
       />
@@ -249,21 +290,55 @@ export default function Step3ConstructionPlanning({
           display: 'flex', borderBottom: `2px solid ${BORDER_FAINT}`,
           background: BG_LIGHT, padding: '0 1rem', gap: '0.25rem'
         }}>
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: '0.55rem 1rem', border: 'none', cursor: 'pointer',
-                fontSize: '0.8rem', fontWeight: '600',
-                background: activeTab === tab.key ? 'white' : 'transparent',
-                color: activeTab === tab.key ? TEXT : TEXT_PLACEHOLDER,
-                borderBottom: activeTab === tab.key ? `2px solid ${PRIMARY}` : '2px solid transparent',
-                marginBottom: '-2px', transition: 'all 0.15s'
-              }}
-            >{tab.label}</button>
-          ))}
+          {tabs.map(tab => {
+            const tabDirty = (tab.key === 'rails' || tab.key === 'bases' || tab.key === 'detail') && settings.dirty[tab.key]
+            return (
+              <button
+                key={tab.key}
+                onClick={() => requestTabSwitch(tab.key)}
+                style={{
+                  padding: '0.55rem 1rem', border: 'none', cursor: 'pointer',
+                  fontSize: '0.8rem', fontWeight: '600',
+                  background: activeTab === tab.key ? 'white' : 'transparent',
+                  color: activeTab === tab.key ? TEXT : TEXT_PLACEHOLDER,
+                  borderBottom: activeTab === tab.key ? `2px solid ${PRIMARY}` : '2px solid transparent',
+                  marginBottom: '-2px', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: '0.35rem',
+                }}
+              >
+                {tab.label}
+                {tabDirty && (
+                  <span title={t('step3.unsaved.dotTooltip')} style={{
+                    display: 'inline-block', width: '7px', height: '7px',
+                    borderRadius: '50%', background: WARNING,
+                  }} />
+                )}
+              </button>
+            )
+          })}
         </div>
+
+        {/* Unsaved-changes banner — shown when the currently-visible tab has
+            pending edits. The canvas below shows the LAST APPLIED state, so
+            this banner makes the gap explicit. */}
+        {(activeTab === 'rails' || activeTab === 'bases' || activeTab === 'detail') && settings.dirty[activeTab] && (
+          <div style={{
+            padding: '0.55rem 1rem', background: WARNING_BG, color: WARNING_DARK,
+            borderBottom: `1px solid ${WARNING}`,
+            fontSize: '0.82rem', fontWeight: 600,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+          }}>
+            <span>{t('step3.unsaved.bannerMessage')}</span>
+            <button
+              onClick={() => applyTab(activeTab)}
+              style={{
+                padding: '0.3rem 0.8rem', borderRadius: '6px',
+                border: `1px solid ${WARNING_DARK}`, background: WARNING_DARK, color: '#fff',
+                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+              }}
+            >{t('step3.unsaved.applyNow')}</button>
+          </div>
+        )}
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -351,6 +426,9 @@ export default function Step3ConstructionPlanning({
                 const key = `${trapId}:${panelRowIdx ?? selectedPanelRowIdx}`
                 setCustomBasesMap(prev => ({ ...prev, [key]: offsets }))
                 setUserEditedBases(prev => new Set([...prev, key]))
+                // Drag-edits don't go through useStep3Settings setters; mark
+                // the bases tab dirty explicitly so the Apply UX kicks in.
+                settings.markDirty('bases')
               }}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
                 clearTrap: (tid) => {
@@ -371,6 +449,17 @@ export default function Step3ConstructionPlanning({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDialog.pending}
+        message={confirmDialog.pending?.message ?? ''}
+        title={confirmDialog.pending?.title}
+        variant={confirmDialog.pending?.variant}
+        confirmLabel={confirmDialog.pending?.confirmLabel || t('common.confirm')}
+        cancelLabel={confirmDialog.pending?.cancelLabel || t('common.cancel')}
+        onConfirm={confirmDialog.handleConfirm}
+        onCancel={confirmDialog.handleCancel}
+      />
     </div>
   )
 }
