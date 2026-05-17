@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useLang } from '../i18n/LangContext'
 
 /**
@@ -20,6 +20,21 @@ export default function useStep3Settings({
   )
   const [areaSettings, setAreaSettings] = useState(() => initialAreaSettings ?? {})
 
+  // ── Synchronous mirror refs ─────────────────────────────────────────────
+  // setParam writes to BOTH state (async, drives re-render) and these refs
+  // (sync). Reads inside setParam and downstream apply-to-all helpers go
+  // through the refs so a series of writes within one event tick see each
+  // other's values — without this, applying to all areas right after a typed
+  // blur reads stale state and silently no-ops every destination.
+  const globalSettingsRef = useRef(globalSettings)
+  const areaSettingsRef = useRef(areaSettings)
+  const trapezoidConfigsRef = useRef(trapezoidConfigs)
+  // Keep refs in sync with state when changes come from outside setParam
+  // (project load, reset, applyBeResult, etc.).
+  useEffect(() => { globalSettingsRef.current = globalSettings }, [globalSettings])
+  useEffect(() => { areaSettingsRef.current = areaSettings }, [areaSettings])
+  useEffect(() => { trapezoidConfigsRef.current = trapezoidConfigs }, [trapezoidConfigs])
+
   // ── Dirty tracking per tab ──────────────────────────────────────────────
   // Every sidebar input + drag mutation marks its tab dirty so the canvas can
   // signal "preview is stale until Apply." Cleared on a successful saveTab.
@@ -31,6 +46,31 @@ export default function useStep3Settings({
   }, [])
   const markClean = useCallback((tab: 'rails' | 'bases' | 'detail') => {
     setDirty(prev => prev[tab] ? { ...prev, [tab]: false } : prev)
+  }, [])
+
+  // ── Per-key dirty tracking ──────────────────────────────────────────────
+  // Records which params were touched this session, scoped by (scope, anchor).
+  // Used by saveTab to send a minimal payload — only the keys the user
+  // actually changed — so the BE doesn't receive unrelated defaults.
+  // A revert-to-default still goes through setParam, so the key remains in
+  // the set and the BE learns about the revert via the partial payload.
+  type DirtyParamsState = {
+    global: Record<string, true>
+    area: Record<number, Record<string, true>>
+    trap: Record<string, Record<string, true>>
+  }
+  const dirtyParamsRef = useRef<DirtyParamsState>({ global: {}, area: {}, trap: {} })
+  const recordDirtyParam = useCallback((path: { scope: 'global' | 'area' | 'trap'; anchor?: any; key: string }) => {
+    const cur = dirtyParamsRef.current
+    if (path.scope === 'global') {
+      if (!cur.global[path.key]) cur.global = { ...cur.global, [path.key]: true }
+    } else if (path.scope === 'area') {
+      const a = cur.area[path.anchor] || {}
+      if (!a[path.key]) cur.area = { ...cur.area, [path.anchor]: { ...a, [path.key]: true } }
+    } else {
+      const t = cur.trap[path.anchor] || {}
+      if (!t[path.key]) cur.trap = { ...cur.trap, [path.anchor]: { ...t, [path.key]: true } }
+    }
   }, [])
   const paramTab = useCallback((key: string): 'rails' | 'bases' | 'detail' | null => {
     const p = (PARAM_SCHEMA || []).find((x: any) => x.key === key)
@@ -65,32 +105,30 @@ export default function useStep3Settings({
   const schemaDefaultOf = (key: string) =>
     (PARAM_SCHEMA || []).find((p: any) => p.key === key)?.default
 
-  // Raw stored value — no fallback chain. Used by the "override" border so
-  // an explicitly-stored equal-to-default value still counts as "not stored
-  // as an override".
+  // Raw stored value — no fallback chain. Reads through the mirror refs so
+  // a series of writes inside one event tick see each other.
   const getRawParam = useCallback((path: ParamPath): any => {
-    if (path.scope === 'global') return globalSettings[path.key]
-    if (path.scope === 'area')   return areaSettings[path.anchor]?.[path.key]
-    return trapezoidConfigs?.[path.anchor]?.[path.key]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalSettings, areaSettings, trapezoidConfigs])
+    if (path.scope === 'global') return globalSettingsRef.current[path.key]
+    if (path.scope === 'area')   return areaSettingsRef.current[path.anchor]?.[path.key]
+    return trapezoidConfigsRef.current?.[path.anchor]?.[path.key]
+  }, [])
 
   // Effective value — stored → next-level fallback → schema/appDefaults.
-  // What inputs display and what the no-op guard compares against.
+  // Also reads through the mirror refs.
   const getParam = useCallback((path: ParamPath): any => {
     if (path.scope === 'global') {
-      return globalSettings[path.key] ?? schemaDefaultOf(path.key)
+      return globalSettingsRef.current[path.key] ?? schemaDefaultOf(path.key)
     }
     if (path.scope === 'area') {
-      return areaSettings[path.anchor]?.[path.key]
-        ?? globalSettings[path.key]
+      return areaSettingsRef.current[path.anchor]?.[path.key]
+        ?? globalSettingsRef.current[path.key]
         ?? schemaDefaultOf(path.key)
     }
-    return trapezoidConfigs?.[path.anchor]?.[path.key]
+    return trapezoidConfigsRef.current?.[path.anchor]?.[path.key]
       ?? appDefaults?.[path.key]
       ?? schemaDefaultOf(path.key)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalSettings, areaSettings, trapezoidConfigs, appDefaults, PARAM_SCHEMA])
+  }, [appDefaults, PARAM_SCHEMA])
 
   // True when the stored value is a real customization (differs from the
   // next-level fallback). Drives the orange override border in the sidebar.
@@ -108,26 +146,47 @@ export default function useStep3Settings({
   const setParam = useCallback((path: ParamPath, value: any) => {
     if (isSameValue(getParam(path), value)) return
     if (path.scope === 'global') {
+      // Mirror ref update is synchronous; setState is queued for re-render.
+      // The next setParam in the same tick reads the live value from the ref.
+      globalSettingsRef.current = { ...globalSettingsRef.current, [path.key]: value }
       setGlobalSettings(prev => ({ ...prev, [path.key]: value }))
     } else if (path.scope === 'area') {
+      const curArea = areaSettingsRef.current[path.anchor] || {}
+      areaSettingsRef.current = {
+        ...areaSettingsRef.current,
+        [path.anchor]: { ...curArea, [path.key]: value },
+      }
       setAreaSettings(prev => ({
         ...prev,
         [path.anchor]: { ...(prev[path.anchor] || {}), [path.key]: value },
       }))
     } else {
       if (!setTrapezoidConfigs) return
+      const curTrap = trapezoidConfigsRef.current?.[path.anchor] || {}
+      trapezoidConfigsRef.current = {
+        ...(trapezoidConfigsRef.current || {}),
+        [path.anchor]: { ...curTrap, [path.key]: value },
+      }
       setTrapezoidConfigs(prev => ({
         ...prev,
         [path.anchor]: { ...(prev[path.anchor] || {}), [path.key]: value },
       }))
     }
+    recordDirtyParam(path)
     const tab = SYNTHETIC_TAB[path.key] ?? paramTab(path.key)
     if (tab) markDirty(tab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getParam, paramTab, markDirty, setTrapezoidConfigs])
+  }, [getParam, paramTab, markDirty, setTrapezoidConfigs, recordDirtyParam])
 
   // ── Merged settings for a given area ────────────────────────────────────
-  const getSettings = (areaIdx) => ({ panelLengthCm, panelWidthCm, ...globalSettings, ...(areaSettings[areaIdx] || {}) })
+  // Reads through the mirror refs so a write made earlier in the same event
+  // tick (e.g. an input blur immediately before an apply-to-all button click)
+  // is visible to the next reader without waiting for React to re-render.
+  const getSettings = (areaIdx) => ({
+    panelLengthCm, panelWidthCm,
+    ...globalSettingsRef.current,
+    ...(areaSettingsRef.current[areaIdx] || {}),
+  })
 
   const areaLabel = useCallback((areaKey, i) => {
     // areaByGroupKey maps areaGroupKey → areas entry (handles multi-row areas)
@@ -172,28 +231,58 @@ export default function useStep3Settings({
     [setParam])
 
   const resetDetailSettings = useCallback((areaIdx) => {
+    // Sweep every detail-section param across all scopes so reset truly clears
+    // the user's customizations. Previously this only touched area-scope which
+    // left global params (e.g. purlinBufferCm) and trap-scope params
+    // (extendFront/Rear) showing stale values until a reload.
     const detailParams = PARAM_SCHEMA.filter(p => p.section === 'detail')
+    const areaKeys   = detailParams.filter(p => p.scope === 'area').map(p => p.key)
+    const globalKeys = detailParams.filter(p => p.scope === 'global').map(p => p.key)
+    const trapKeys   = detailParams.filter(p => p.scope === 'trapezoid').map(p => p.key)
     setAreaSettings(prev => {
       const copy = { ...(prev[areaIdx] || {}) }
-      detailParams.forEach(p => delete copy[p.key])
+      areaKeys.forEach(k => delete copy[k])
       delete copy.diagOverrides
       return { ...prev, [areaIdx]: copy }
     })
+    if (globalKeys.length > 0) {
+      setGlobalSettings(prev => {
+        const copy = { ...prev }
+        globalKeys.forEach(k => delete copy[k])
+        return copy
+      })
+    }
+    if (trapKeys.length > 0 && setTrapezoidConfigs) {
+      setTrapezoidConfigs(prev => {
+        const next = { ...prev }
+        for (const trapId of Object.keys(next)) {
+          const cfg = { ...(next[trapId] || {}) }
+          trapKeys.forEach(k => delete cfg[k])
+          next[trapId] = cfg
+        }
+        return next
+      })
+    }
     // Round-trip to BE (was previously the caller's job — now uniform with
     // resetLineRails / resetTrapBases). After BE responds, FE + BE are in sync.
     onTabReset?.('trapezoids')
     markClean('detail')
-  }, [PARAM_SCHEMA, markClean, onTabReset])
+  }, [PARAM_SCHEMA, markClean, onTabReset, setTrapezoidConfigs])
 
   const resetLineRails = useCallback(async () => {
-    const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')
+    // Reset ALL rails-section area params, including rail-spacing types
+    // (railSpacingV/H). Pre-refactor those were derived from lineRails so the
+    // old filter skipped them — now spacing IS stored directly, so the
+    // reset must clear the per-area override or the input keeps showing the
+    // user's last value until a project reload.
+    const railAreaParams   = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'area')
     const railGlobalParams = PARAM_SCHEMA.filter(p => p.section === 'rails' && p.scope === 'global')
     setAreaSettings(prev => {
       const updated = { ...prev }
       for (const key of Object.keys(updated)) {
         const copy = { ...(updated[key] || {}) }
         delete copy.lineRails
-        railAreaParams.forEach(p => { copy[p.key] = p.default })
+        railAreaParams.forEach(p => { delete copy[p.key] })
         updated[key] = copy
       }
       return updated
@@ -210,18 +299,61 @@ export default function useStep3Settings({
   // ── Per-trapezoid base settings ─────────────────────────────────────────
   const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
 
+  // Reads through trapezoidConfigsRef so apply-bases-to-all sees the source
+  // trap's just-typed value (the blur right before the button click writes
+  // it into the ref synchronously; React state hasn't flushed yet).
   const getTrapBasesSettings = useCallback((trapId) => {
-    const cfg = trapezoidConfigs[trapId] || {}
+    const cfg = trapezoidConfigsRef.current?.[trapId] || {}
     return {
       edgeOffsetMm:   cfg.edgeOffsetMm   ?? appDefaults?.edgeOffsetMm,
       spacingMm:      cfg.spacingMm      ?? appDefaults?.spacingMm,
       baseOverhangCm: cfg.baseOverhangCm ?? appDefaults?.baseOverhangCm,
     }
-  }, [trapezoidConfigs, appDefaults])
+    // Deps intentionally exclude trapezoidConfigs — the ref is the source of
+    // truth; we still depend on appDefaults so callers see schema changes.
+  }, [appDefaults])
 
   const updateTrapBaseSetting = useCallback((trapId, key, value) =>
     setParam({ scope: 'trap', anchor: trapId, key }, value),
     [setParam])
+
+  // ── Dirty-params filter + clear (saveTab payload trimming) ─────────────
+  // Tab → param key membership: schema section or synthetic mapping.
+  const keyBelongsToTab = useCallback((key: string, tab: 'rails' | 'bases' | 'detail') =>
+    (SYNTHETIC_TAB[key] ?? paramTab(key)) === tab,
+    [paramTab])
+
+  // Returns the set of keys (by scope) that were touched this session AND
+  // belong to the given tab. saveTab uses this to send only those keys.
+  const getDirtyParamsForTab = useCallback((tab: 'rails' | 'bases' | 'detail') => {
+    const d = dirtyParamsRef.current
+    const out = {
+      global: new Set<string>(),
+      area: {} as Record<number, Set<string>>,
+      trap: {} as Record<string, Set<string>>,
+    }
+    Object.keys(d.global).forEach(k => { if (keyBelongsToTab(k, tab)) out.global.add(k) })
+    for (const [idx, keys] of Object.entries(d.area)) {
+      const filtered = new Set(Object.keys(keys).filter(k => keyBelongsToTab(k, tab)))
+      if (filtered.size > 0) out.area[Number(idx)] = filtered
+    }
+    for (const [tid, keys] of Object.entries(d.trap)) {
+      const filtered = new Set(Object.keys(keys).filter(k => keyBelongsToTab(k, tab)))
+      if (filtered.size > 0) out.trap[tid] = filtered
+    }
+    return out
+  }, [keyBelongsToTab])
+
+  // Drops every dirty key that belongs to the given tab. Called after a
+  // successful saveTab so the next save's payload stays minimal.
+  const clearDirtyParamsForTab = useCallback((tab: 'rails' | 'bases' | 'detail') => {
+    const d = dirtyParamsRef.current
+    const filterByTab = (rec: Record<string, true>) =>
+      Object.fromEntries(Object.entries(rec).filter(([k]) => !keyBelongsToTab(k, tab)))
+    d.global = filterByTab(d.global)
+    d.area = Object.fromEntries(Object.entries(d.area).map(([k, v]) => [k, filterByTab(v)]))
+    d.trap = Object.fromEntries(Object.entries(d.trap).map(([k, v]) => [k, filterByTab(v)]))
+  }, [keyBelongsToTab])
 
   const resetTrapBases = useCallback((trapId, customBasesHandlers) => {
     customBasesHandlers?.clearTrap(trapId)
@@ -248,6 +380,16 @@ export default function useStep3Settings({
     getTrapBasesSettings, updateTrapBaseSetting, resetTrapBases,
     dirty, markDirty, markClean,
     isAnyDirty: dirty.rails || dirty.bases || dirty.detail,
+    // Per-key dirty filter for saveTab — send only what changed.
+    getDirtyParamsForTab, clearDirtyParamsForTab,
+    // Synchronous snapshot from the mirror refs. Use this when the caller
+    // needs the very latest writes inside the same event tick (e.g. building
+    // a saveTab payload right after an apply-to-all fan-out).
+    getLiveSnapshot: () => ({
+      globalSettings:   globalSettingsRef.current,
+      areaSettings:     areaSettingsRef.current,
+      trapezoidConfigs: trapezoidConfigsRef.current,
+    }),
     onSettingsChange,
   }
 }

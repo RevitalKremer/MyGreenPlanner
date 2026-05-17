@@ -23,6 +23,7 @@ interface UseSelectedGeometryParams {
   getLineOrientations: (areaKey: number, trapId: string) => string[]
   getLineRails: (areaIdx: number, lineOrientations: string[], panelRowIdx?: number) => LineRailsMap
   updateLineRails: (areaIdx: number | null, rails: LineRailsMap) => void
+  setParam?: (path: { scope: 'global' | 'area' | 'trap'; anchor?: any; key: string }, value: any) => void
   areaSettings: Record<number, any>
   globalSettings: Record<string, any>
   panelSpec: { lengthCm: number; widthCm: number }
@@ -50,7 +51,7 @@ export default function useSelectedGeometry({
   rowKeys, areas, refinedArea, trapezoidConfigs, areaTrapezoidMap,
   beRailsData, beTrapezoidsData,
   getSettings, getTrapBasesSettings, getLineOrientations, getLineRails,
-  updateLineRails, areaSettings, globalSettings,
+  updateLineRails, setParam, areaSettings, globalSettings,
   panelSpec, appDefaults, PARAM_SCHEMA,
   panels = [],
 }: UseSelectedGeometryParams) {
@@ -189,23 +190,24 @@ export default function useSelectedGeometry({
     }
   }, [effectiveSelectedTrapId, selectedRowIdx, rowKeys, refinedArea, trapezoidConfigs, areaSettings, globalSettings, beRailsData, beTrapezoidsData, areas, getTrapBasesSettings])
 
-  // ── Rail spacing derived from lineRails ────────────────────────────────
-  // Read only FE-stored rails. Skipping the BE fallback keeps the widget in
-  // sync with Reset (which clears lineRails locally before the BE round-trip
-  // completes) — it falls through to the global default instead of showing
-  // the stale BE value for a frame.
+  // ── Rail spacing derived from per-area override or global default ──────
+  // The user's typed spacing now lives directly in areaSettings.railSpacingV/H
+  // as a normal area override (persists through save/reload). If a future
+  // rails-edit mode writes raw `lineRails` instead, we still derive the
+  // spacing from those positions so the widget reflects the latest state.
   const derivedRailSpacings = useMemo(() => {
-    const userRails: LineRailsMap | null = areaSettings[selectedRowIdx!]?.lineRails ?? null
-    const remapped = userRails ? remapToActive(userRails) : null
-    let vertical: number | null = null, horizontal: number | null = null
-    if (remapped) {
+    const cur = areaSettings[selectedRowIdx!] || {}
+    let vertical: number | null = cur.railSpacingV ?? null
+    let horizontal: number | null = cur.railSpacingH ?? null
+    // Rails-edit-mode fallback: derive from raw lineRails if present.
+    if ((vertical == null || horizontal == null) && cur.lineRails) {
+      const remapped = remapToActive(cur.lineRails)
       selectedLineOrientations.forEach((o, li) => {
         const rails = remapped[li] ?? []
-        if (rails.length >= 2) {
-          const spacing = Math.round((rails[rails.length - 1] - rails[0]) * 10) / 10
-          if (isHorizontalOrientation(o)) { if (horizontal == null) horizontal = spacing }
-          else                            { if (vertical   == null) vertical   = spacing }
-        }
+        if (rails.length < 2) return
+        const spacing = Math.round((rails[rails.length - 1] - rails[0]) * 10) / 10
+        if (isHorizontalOrientation(o)) { if (horizontal == null) horizontal = spacing }
+        else                            { if (vertical   == null) vertical   = spacing }
       })
     }
     return {
@@ -216,64 +218,68 @@ export default function useSelectedGeometry({
   }, [areaSettings, selectedRowIdx, selectedLineOrientations, railSpacingV, railSpacingH])
 
   // ── Rail spacing change handler ────────────────────────────────────────
-  // Edits commit immediately into `lineRails`; the FE rails overlay re-renders
-  // from the same source so the canvas previews the change live.
+  // Persist the spacing as a per-area override (`railSpacingV` / `railSpacingH`).
+  // Both the FE rails overlay and the BE rail computation derive line rails
+  // from this spacing, so it's the canonical source of truth.
+  // `lineRails` overrides remain reserved for the future rails edit mode where
+  // the user drags individual rails by hand.
   const onRailSpacingChange = useCallback((orientation: string, newSpacingCm: number) => {
+    if (selectedRowIdx == null) return
     const isH = orientation === PANEL_H
-    // Short-circuit when the requested spacing equals what the widget already
-    // shows — covers the first blur on an input that hadn't been touched yet,
-    // where the stored value is undefined and the strict no-op guard fails.
     const currentSpacing = isH ? derivedRailSpacings.horizontal : derivedRailSpacings.vertical
     if (currentSpacing != null && Math.abs(currentSpacing - newSpacingCm) < 0.01) return
     const minSpacing = isH ? minRailSpacingH : minRailSpacingV
-    const newRails: LineRailsMap = { ...selectedLineRails }
-    selectedLineOrientations.forEach((o, li) => {
-      if (isHorizontalOrientation(o) !== isH) return
-      const depth   = selectedLinePanelDepths[li]
-      const spacing = Math.min(Math.max(newSpacingCm, minSpacing), depth * 0.9)
-      const offset  = railOffsetFromSpacing(depth, spacing)
-      newRails[li]  = [Math.round(offset * 10) / 10, Math.round((depth - offset) * 10) / 10]
-    })
-    updateLineRails(selectedRowIdx, newRails)
-  }, [derivedRailSpacings, selectedLineRails, selectedLineOrientations, selectedLinePanelDepths, selectedRowIdx, updateLineRails])
+    // Clamp against the smallest panel depth of the relevant orientation so a
+    // user-typed huge number doesn't break the recompute.
+    const matchingDepths = selectedLineOrientations
+      .map((o, li) => isHorizontalOrientation(o) === isH ? selectedLinePanelDepths[li] : null)
+      .filter((d): d is number => d != null)
+    const maxSpacing = matchingDepths.length > 0 ? Math.min(...matchingDepths) * 0.9 : newSpacingCm
+    const clamped = Math.min(Math.max(newSpacingCm, minSpacing), maxSpacing)
+    setParam?.({ scope: 'area', anchor: selectedRowIdx, key: isH ? 'railSpacingH' : 'railSpacingV' }, clamped)
+  }, [derivedRailSpacings, selectedLineOrientations, selectedLinePanelDepths, selectedRowIdx, setParam])
 
   // ── Apply rails to all areas ───────────────────────────────────────────
+  // Route every per-area write through setParam so the per-key dirty tracker
+  // sees the destinations — otherwise the next saveTab payload would carry
+  // only the source area and silently drop the rest.
   const applyRailsToAllAreas = useCallback((
     rowKeys: number[],
-    areaTrapezoidMap: Record<number, string[]>,
+    _areaTrapezoidMap: Record<number, string[]>,
     setAreaSettings: (fn: (prev: Record<number, any>) => Record<number, any>) => void,
     getSettings: (areaIdx: number) => Record<string, any>,
   ) => {
-    const s    = getSettings(selectedRowIdx!)
-    const snap = (v: number) => Math.round(v * 10) / 10
-    const spacings = derivedRailSpacings
-    setAreaSettings(prev => {
-      const next = { ...prev }
-      rowKeys.forEach((areaKey, areaIdx) => {
-        if (areaIdx === selectedRowIdx) return
-        const trapId = areaTrapezoidMap[areaKey]?.[0] ?? `${String.fromCharCode(65 + areaKey)}1`
-        const orientations = getLineOrientations(areaKey, trapId)
-        const depths = orientations.map(o => lineSlopeDepth(o, panelLengthCm, panelWidthCm))
-        const newRails: LineRailsMap = {}
-        orientations.forEach((o, li) => {
-          const isH = isHorizontalOrientation(o)
-          const spacing = isH ? spacings.horizontal : spacings.vertical
-          const depth = depths[li]
-          const minSp = isH ? minRailSpacingH : minRailSpacingV
-          const clamped = Math.min(Math.max(spacing, minSp), depth * 0.9)
-          const offset = railOffsetFromSpacing(depth, clamped)
-          newRails[li] = [snap(offset), snap(depth - offset)]
+    const s = getSettings(selectedRowIdx!)
+    const { vertical, horizontal } = derivedRailSpacings
+    const otherRailKeys = PARAM_SCHEMA
+      .filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')
+      .map(p => p.key)
+    rowKeys.forEach((_areaKey, areaIdx) => {
+      if (areaIdx === selectedRowIdx) return
+      if (setParam) {
+        setParam({ scope: 'area', anchor: areaIdx, key: 'railSpacingV' }, vertical)
+        setParam({ scope: 'area', anchor: areaIdx, key: 'railSpacingH' }, horizontal)
+        otherRailKeys.forEach(k => {
+          const v = s[k]
+          if (v != null) setParam({ scope: 'area', anchor: areaIdx, key: k }, v)
         })
-        const areaOverrides = Object.fromEntries(
-          PARAM_SCHEMA
-            .filter(p => p.section === 'rails' && p.scope === 'area' && p.type !== 'rail-spacing')
-            .map(p => [p.key, s[p.key] ?? p.default])
+      } else {
+        // Fallback for callers without setParam wired: legacy bulk write.
+        const otherRailParams = Object.fromEntries(
+          otherRailKeys.map(k => [k, s[k]]).filter(([, v]) => v != null)
         )
-        next[areaIdx] = { ...(prev[areaIdx] || {}), ...areaOverrides, lineRails: newRails }
-      })
-      return next
+        setAreaSettings(prev => ({
+          ...prev,
+          [areaIdx]: {
+            ...(prev[areaIdx] || {}),
+            ...otherRailParams,
+            railSpacingV: vertical,
+            railSpacingH: horizontal,
+          },
+        }))
+      }
     })
-  }, [derivedRailSpacings, selectedRowIdx, getLineOrientations])
+  }, [derivedRailSpacings, selectedRowIdx, getSettings, PARAM_SCHEMA, setParam])
 
   return {
     selectedRowLineDepths,

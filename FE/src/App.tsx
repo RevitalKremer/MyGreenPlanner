@@ -125,6 +125,11 @@ function App() {
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
+  // Mirrors `settings.isAnyDirty` from useStep3Settings. Used by Start Over
+  // to skip the confirm prompt when there's nothing to lose. Default `true`
+  // so before step 3 has mounted (or on a fresh project), Start Over still
+  // warns — only step 3 explicitly reporting "clean" suppresses the prompt.
+  const step3IsAnyDirtyRef = useRef<boolean>(true)
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
@@ -227,56 +232,79 @@ function App() {
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
-  const buildTabPayload = (tabName) => {
-    const { globalSettings, areaSettings } = step3SettingsRef.current
-    
+  const buildTabPayload = (tabName, dirtyParams = null, liveSettings = null) => {
+    // Prefer the live snapshot (sync from useStep3Settings refs) when given —
+    // it includes apply-to-all writes from this same event tick that
+    // step3SettingsRef hasn't seen yet (it updates via post-render useEffect).
+    const { globalSettings, areaSettings } = liveSettings ?? step3SettingsRef.current
+    const trapezoidConfigs = liveSettings?.trapezoidConfigs ?? trapConfigsRef.current ?? {}
+
     // Get parameter keys for this section from paramSchema
     const tabSection = tabName === 'trapezoids' ? 'detail' : tabName
     const sectionParams = (s.paramSchema || []).filter(p => p.section === tabSection)
-    
-    // Filter globalSettings to only include params for this section
+
+    // When dirtyParams is provided, send ONLY keys the user changed this
+    // session. Otherwise (legacy callers, no per-key info) fall back to the
+    // section-wide filter so the BE still gets a coherent payload.
+    const dirtyGlobalKeys: Set<string> | null = dirtyParams?.global ?? null
+    const dirtyAreaByIdx: Record<number, Set<string>> | null = dirtyParams?.area ?? null
+    const dirtyTrapByTrap: Record<string, Set<string>> | null = dirtyParams?.trap ?? null
+
     const filteredGlobal = {}
     sectionParams.filter(p => p.scope === 'global').forEach(p => {
-      if (globalSettings?.[p.key] != null) {
-        filteredGlobal[p.key] = globalSettings[p.key]
-      }
+      if (dirtyGlobalKeys && !dirtyGlobalKeys.has(p.key)) return
+      if (globalSettings?.[p.key] != null) filteredGlobal[p.key] = globalSettings[p.key]
     })
 
-    // Filter areaSettings to only include params for this section (excluding overrides)
     const filteredArea = {}
     const areaParamKeys = sectionParams.filter(p => p.scope === 'area').map(p => p.key)
-
     Object.keys(areaSettings || {}).forEach(areaIdx => {
       const area = areaSettings[areaIdx] || {}
+      const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
       const filtered = {}
       areaParamKeys.forEach(key => {
-        if (area[key] != null) {
-          filtered[key] = area[key]
-        }
+        if (dirtyKeysForArea && !dirtyKeysForArea.has(key)) return
+        if (area[key] != null) filtered[key] = area[key]
       })
-      if (Object.keys(filtered).length > 0) {
-        filteredArea[areaIdx] = filtered
-      }
+      if (Object.keys(filtered).length > 0) filteredArea[areaIdx] = filtered
     })
 
-    // Build overrides structure
+    // Trap-scope params (edgeOffsetMm, spacingMm, baseOverhangCm for bases;
+    // extendFront/Rear for detail). These live in trapezoidConfigs and ride
+    // the legacy top-level `trapezoidConfigs` field on the request — the BE
+    // merges those into project.data.step3.trapezoidConfigs as overrides.
+    const filteredTraps: Record<string, Record<string, any>> = {}
+    const trapParamKeys = sectionParams.filter(p => p.scope === 'trapezoid').map(p => p.key)
+    if (trapParamKeys.length > 0) {
+      Object.keys(trapezoidConfigs || {}).forEach(trapId => {
+        const cfg = trapezoidConfigs[trapId] || {}
+        const dirtyKeysForTrap = dirtyTrapByTrap?.[trapId] ?? null
+        const filtered: Record<string, any> = {}
+        trapParamKeys.forEach(key => {
+          if (dirtyKeysForTrap && !dirtyKeysForTrap.has(key)) return
+          if (cfg[key] != null) filtered[key] = cfg[key]
+        })
+        if (Object.keys(filtered).length > 0) filteredTraps[trapId] = filtered
+      })
+    }
+
+    // Overrides only carry edit-mode artefacts (future rails-edit mode +
+    // bases drag). The spacing input now flows through settings.areas as a
+    // regular railSpacingV/H param, so no overrides.rails branch is needed.
     const overrides: Record<string, any> = {}
-    
+
     if (tabName === 'rails') {
-      // Rails overrides: lineRails per area
       const railOverrides = {}
       Object.keys(areaSettings || {}).forEach(areaIdx => {
         const lineRails = areaSettings[areaIdx]?.lineRails
-        if (lineRails) {
-          // Convert areaIdx to areaLabel
-          const areaKey = parseInt(areaIdx)
-          const areaLabel = s.areas[areaKey]?.label || s.areas[areaKey]?.id || String(areaIdx)
-          railOverrides[areaLabel] = lineRails
-        }
+        if (!lineRails) return
+        const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
+        if (dirtyKeysForArea && !dirtyKeysForArea.has('lineRails')) return
+        const areaKey = parseInt(areaIdx)
+        const areaLabel = s.areas[areaKey]?.label || s.areas[areaKey]?.id || String(areaIdx)
+        railOverrides[areaLabel] = lineRails
       })
-      if (Object.keys(railOverrides).length > 0) {
-        overrides.rails = railOverrides
-      }
+      if (Object.keys(railOverrides).length > 0) overrides.rails = railOverrides
     }
 
     return {
@@ -284,6 +312,9 @@ function App() {
         global: Object.keys(filteredGlobal).length > 0 ? filteredGlobal : undefined,
         areas: Object.keys(filteredArea).length > 0 ? filteredArea : undefined,
       },
+      // BE accepts trap-scope params via the top-level `trapezoidConfigs`
+      // field (it merges them as overrides on project.data.step3.trapezoidConfigs).
+      trapezoidConfigs: Object.keys(filteredTraps).length > 0 ? filteredTraps : undefined,
       overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     }
   }
@@ -295,7 +326,15 @@ function App() {
     if (tabName === 'areas') return
     
     try {
-      const payload: Record<string, any> = buildTabPayload(tabName)
+      // opts.dirtyParams (when set by applyTab) limits the payload to keys the
+      // user actually changed this session. Resets and other legacy callers
+      // pass nothing and fall back to the section-wide payload.
+      // opts.liveSettings (when set) is a sync snapshot from the step3 hook's
+      // mirror refs — necessary when applyTab fires right after a same-tick
+      // apply-to-all fan-out so the destination areas/traps are visible.
+      const payload: Record<string, any> = buildTabPayload(
+        tabName, opts?.dirtyParams ?? null, opts?.liveSettings ?? null,
+      )
 
       // Add tab-specific overrides
       if (tabName === 'bases') {
@@ -454,7 +493,13 @@ function App() {
   }
 
   const handleStartOver = async () => {
-    if (!await confirmDialog.ask({ message: t('app.startOverConfirm'), variant: 'warning' })) return
+    // Skip the prompt only when the user is on step 3 AND every step-3 tab
+    // is clean (project in sync with BE, nothing to lose). On any other step
+    // we don't have a robust "is this dirty" signal, so we always warn.
+    const skipConfirm = s.currentStep === 3 && !step3IsAnyDirtyRef.current
+    if (!skipConfirm) {
+      if (!await confirmDialog.ask({ message: t('app.startOverConfirm'), variant: 'warning' })) return
+    }
     s.handleStartOver()
     setProjectsSearch('')
     if (auth.user) {
@@ -787,6 +832,7 @@ function App() {
             onTabReset={handleTabReset}
             onActiveTabChange={(tab) => { step3ActiveTabRef.current = tab }}
             flushDirtyTabsRef={step3FlushDirtyRef}
+            isAnyDirtyRef={step3IsAnyDirtyRef}
             trapezoidConfigs={s.trapezoidConfigs}
             setTrapezoidConfigs={s.setTrapezoidConfigs}
             areas={s.areas}

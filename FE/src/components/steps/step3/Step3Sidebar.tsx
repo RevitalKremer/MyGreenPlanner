@@ -382,18 +382,29 @@ export default function Step3Sidebar({
     )
   }
 
-  // ── Apply button ───────────────────────────────────────────────────────────
-  const applyBtn = (onClick) => (
-    <button onClick={onClick}
-      style={{
-        width: '100%', marginTop: '0.35rem', padding: '0.2rem',
-        fontSize: '0.65rem', fontWeight: '600', color: TEXT_PLACEHOLDER,
-        background: BG_SUBTLE, border: `1px solid ${BORDER_LIGHT}`,
-        borderRadius: '4px', cursor: 'pointer',
-      }}>
-      {t('step3.sidebar.applyToAll')}
-    </button>
-  )
+  // ── Apply-to-all button ────────────────────────────────────────────────
+  // Mirrors the Apply Changes styling: when this tab has unsaved edits the
+  // button turns orange + bolded + halo + `●` so the user sees both Apply
+  // options as actionable at the same time.
+  const applyBtn = (onClick, tabKey) => {
+    const isDirty = !!dirty[tabKey]
+    return (
+      <button onClick={onClick}
+        style={{
+          width: '100%', marginTop: '0.35rem', padding: '0.2rem',
+          fontSize: '0.65rem', fontWeight: isDirty ? 700 : 600,
+          color: isDirty ? '#fff' : TEXT_PLACEHOLDER,
+          background: isDirty ? WARNING_DARK : BG_SUBTLE,
+          border: `1px solid ${isDirty ? WARNING_DARK : BORDER_LIGHT}`,
+          borderRadius: '4px', cursor: 'pointer',
+          boxShadow: isDirty ? `0 0 0 3px ${WARNING_BG}` : undefined,
+        }}>
+        {isDirty
+          ? `● ${t('step3.sidebar.applyToAll')}`
+          : t('step3.sidebar.applyToAll')}
+      </button>
+    )
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -522,11 +533,12 @@ export default function Step3Sidebar({
               <div style={{ padding: '0.6rem 1rem 0.75rem' }}>
                 {/* Per-area params */}
                 {areaParams.map(p => renderParam(p))}
-                {/* Apply button */}
+                {/* Apply-to-all button */}
                 {applyBtn(
                   sec.tabKey === 'rails'  ? () => { onApplyRailsToAllAreas(); onApplyChanges?.(sec.tabKey) } :
                   sec.tabKey === 'bases'  ? () => { applyBasesToAll(); onApplyChanges?.(sec.tabKey) } :
-                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) }
+                  () => { applySection(selectedRowIdx, areaKeys); onApplyChanges?.(sec.tabKey) },
+                  sec.tabKey,
                 )}
                 {/* Global params — rendered after the apply button */}
                 {globalParams.length > 0 && (

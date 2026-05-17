@@ -34,6 +34,9 @@ export default function Step3ConstructionPlanning({
   // Optional ref the host fills with a function that applies every dirty tab
   // — used by the Next button to silently flush before transitioning to step 4.
   flushDirtyTabsRef = null,
+  // Optional ref the host reads to check whether any step-3 tab is dirty —
+  // lets Start Over skip its confirm dialog when there's nothing to lose.
+  isAnyDirtyRef = null,
 }) {
   const { t } = useLang()
 
@@ -90,6 +93,7 @@ export default function Step3ConstructionPlanning({
     getLineOrientations,
     areaSettings: settings.areaSettings, globalSettings: settings.globalSettings,
     PARAM_SCHEMA, roofType,
+    setParam: settings.setParam,
   })
 
   const { rowKeys, areaTrapezoidMap, rowConstructions } = rowData
@@ -107,6 +111,7 @@ export default function Step3ConstructionPlanning({
     getSettings: settings.getSettings, getTrapBasesSettings: settings.getTrapBasesSettings,
     getLineOrientations, getLineRails: rowData.getLineRails,
     updateLineRails: settings.updateLineRails,
+    setParam: settings.setParam,
     areaSettings: settings.areaSettings, globalSettings: settings.globalSettings,
     panelSpec, appDefaults, PARAM_SCHEMA,
     panels,
@@ -123,7 +128,16 @@ export default function Step3ConstructionPlanning({
   const confirmDialog = useConfirm()
   const applyTab = useCallback(async (tab: 'rails' | 'bases' | 'detail') => {
     const beTab = tab === 'detail' ? 'trapezoids' : tab
-    try { await onTabSave?.(beTab) } catch (e) { console.error(e) }
+    // Snapshot which keys the user touched this session, then hand them to
+    // saveTab so the payload carries only those keys. Cleared on success so
+    // the next save's payload stays minimal.
+    const dirtyParams = settings.getDirtyParamsForTab(tab)
+    // Live snapshot from the mirror refs — propagates writes made earlier in
+    // this same event tick (e.g. apply-to-all fan-out) that React state /
+    // step3SettingsRef in the host haven't seen yet.
+    const liveSettings = settings.getLiveSnapshot()
+    try { await onTabSave?.(beTab, { dirtyParams, liveSettings }) } catch (e) { console.error(e) }
+    settings.clearDirtyParamsForTab(tab)
     settings.markClean(tab)
   }, [onTabSave, settings])
 
@@ -138,6 +152,12 @@ export default function Step3ConstructionPlanning({
     }
     return () => { if (flushDirtyTabsRef) flushDirtyTabsRef.current = null }
   }, [flushDirtyTabsRef, settings.dirty, applyTab])
+
+  // Mirror isAnyDirty to the host's ref so Start Over can decide whether to
+  // show its confirm prompt without a heavier prop dance.
+  useEffect(() => {
+    if (isAnyDirtyRef) isAnyDirtyRef.current = !!settings.isAnyDirty
+  }, [isAnyDirtyRef, settings.isAnyDirty])
 
   // Gate tab switches: if the current tab has unsaved edits, ask first.
   const tabFromKey = (key: string) =>
