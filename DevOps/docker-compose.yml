@@ -48,15 +48,15 @@ services:
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  sam-service:
-    build:
-      context: ..
-      dockerfile: DevOps/Dockerfile.sam-service
-    restart: unless-stopped
-    volumes:
-      - sam_checkpoints:/app/checkpoints
-    environment:
-      - PYTHONUNBUFFERED=1
+  # sam-service:
+  #   build:
+  #     context: ..
+  #     dockerfile: DevOps/Dockerfile.sam-service
+  #   restart: unless-stopped
+  #   volumes:
+  #     - sam_checkpoints:/app/checkpoints
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
 
   mgp-webapp:
     build:
@@ -65,10 +65,10 @@ services:
     restart: unless-stopped
     depends_on:
       - mgp-service
-      - sam-service
+      # - sam-service
     ports:
       - "80:80"
 
 volumes:
   pg_data:
-  sam_checkpoints:
+  # sam_checkpoints:
