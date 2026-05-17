@@ -22,6 +22,10 @@ const en = {
   'app.stepTransitionError':  'Cannot continue — please fix the following:',
   'app.stepTransitionGeneric':'Could not advance to the next step. Please try again.',
 
+  // ── Common ───────────────────────────────────────────────────────────────
+  'common.confirm': 'Confirm',
+  'common.cancel':  'Cancel',
+
   // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
   'step2.error.noAreas':                 'Add at least one area before continuing.',
   'step2.error.area.angle.missing':      'Area {areaLabel}: angle is required.',

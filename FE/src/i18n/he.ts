@@ -22,6 +22,10 @@ const he = {
   'app.stepTransitionError':  'לא ניתן להמשיך — נא לתקן את הבעיות הבאות:',
   'app.stepTransitionGeneric':'לא ניתן לעבור לשלב הבא. נא לנסות שוב.',
 
+  // ── Common ───────────────────────────────────────────────────────────────
+  'common.confirm': 'אישור',
+  'common.cancel':  'ביטול',
+
   // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
   'step2.error.noAreas':                       'יש להוסיף לפחות שטח אחד לפני המעבר לשלב הבא.',
   'step2.error.area.angle.missing':            'שטח {areaLabel}: יש להזין זווית.',

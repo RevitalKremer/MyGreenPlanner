@@ -11,6 +11,8 @@ import Step5PdfReport from './components/steps/Step5PdfReport'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import FinishCelebration from './components/FinishCelebration'
+import ConfirmDialog from './components/ConfirmDialog'
+import { useConfirm } from './hooks/useConfirm'
 import ProjectInfoModal from './components/ProjectInfoModal'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
@@ -48,6 +50,7 @@ function App() {
   const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+  const confirmDialog = useConfirm()
   // Server-side step-transition validation errors (set when updateStep returns 400)
   const [stepTransitionErrors, setStepTransitionErrors] = useState<
     null | { fromStep: number; toStep: number; errors: Array<{ code: string; field: string; params?: Record<string, any> }> }
@@ -428,7 +431,7 @@ function App() {
   }
 
   const handleDeleteCloudProject = async (projectId) => {
-    if (!confirm(t('app.deleteProjectConfirm'))) return
+    if (!await confirmDialog.ask({ message: t('app.deleteProjectConfirm'), variant: 'danger' })) return
     try {
       await deleteProject(projectId)
       setCloudProjects(prev => prev.filter(p => p.id !== projectId))
@@ -449,7 +452,7 @@ function App() {
   }
 
   const handleStartOver = async () => {
-    if (!confirm(t('app.startOverConfirm'))) return
+    if (!await confirmDialog.ask({ message: t('app.startOverConfirm'), variant: 'warning' })) return
     s.handleStartOver()
     setProjectsSearch('')
     if (auth.user) {
@@ -483,34 +486,52 @@ function App() {
     setProjectsSearch(query)
   }, [])
 
+  // ConfirmDialog is rendered in both branches so dialogs raised from the
+  // welcome screen (e.g. delete project) actually appear.
+  const confirmDialogElement = (
+    <ConfirmDialog
+      open={!!confirmDialog.pending}
+      message={confirmDialog.pending?.message ?? ''}
+      title={confirmDialog.pending?.title}
+      variant={confirmDialog.pending?.variant}
+      confirmLabel={confirmDialog.pending?.confirmLabel || t('common.confirm')}
+      cancelLabel={confirmDialog.pending?.cancelLabel || t('common.cancel')}
+      onConfirm={confirmDialog.handleConfirm}
+      onCancel={confirmDialog.handleCancel}
+    />
+  )
+
   if (s.appScreen === 'welcome') {
     return (
-      <WelcomeScreen
-        onCreateProject={s.handleCreateProject}
-        user={auth.user}
-        onLogin={auth.login}
-        onRegister={auth.register}
-        onLogout={handleLogout}
-        onUpdateProfile={auth.updateProfile}
-        authLoading={auth.authLoading}
-        cloudProjects={cloudProjects}
-        cloudProjectsLoading={cloudProjectsLoading}
-        totalProjectsCount={totalProjectsCount}
-        hasMoreProjects={hasMoreProjects}
-        onLoadCloudProject={handleLoadCloudProject}
-        onUpdateCloudProject={handleUpdateCloudProject}
-        onDeleteCloudProject={handleDeleteCloudProject}
-        onLoadMoreProjects={handleLoadMoreProjects}
-        onProjectsSearch={handleProjectsSearch}
-        projectsSearch={projectsSearch}
-        onForgotPassword={auth.forgotPassword}
-        onResetPassword={auth.resetPassword}
-        appConfigReady={s.appConfigReady}
-        resetToken={urlResetToken}
-        onClearResetToken={() => setUrlResetToken(null)}
-        openLoginOnMount={openLoginOnWelcome}
-        onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
-      />
+      <>
+        <WelcomeScreen
+          onCreateProject={s.handleCreateProject}
+          user={auth.user}
+          onLogin={auth.login}
+          onRegister={auth.register}
+          onLogout={handleLogout}
+          onUpdateProfile={auth.updateProfile}
+          authLoading={auth.authLoading}
+          cloudProjects={cloudProjects}
+          cloudProjectsLoading={cloudProjectsLoading}
+          totalProjectsCount={totalProjectsCount}
+          hasMoreProjects={hasMoreProjects}
+          onLoadCloudProject={handleLoadCloudProject}
+          onUpdateCloudProject={handleUpdateCloudProject}
+          onDeleteCloudProject={handleDeleteCloudProject}
+          onLoadMoreProjects={handleLoadMoreProjects}
+          onProjectsSearch={handleProjectsSearch}
+          projectsSearch={projectsSearch}
+          onForgotPassword={auth.forgotPassword}
+          onResetPassword={auth.resetPassword}
+          appConfigReady={s.appConfigReady}
+          resetToken={urlResetToken}
+          onClearResetToken={() => setUrlResetToken(null)}
+          openLoginOnMount={openLoginOnWelcome}
+          onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
+        />
+        {confirmDialogElement}
+      </>
     )
   }
 
@@ -893,7 +914,10 @@ function App() {
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
-            if (!confirm(t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }))) return
+            if (!await confirmDialog.ask({
+              message: t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }),
+              variant: 'warning',
+            })) return
             const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
             if (result?.clearedSteps) {
               s.resetStepData(result.clearedSteps)
@@ -973,6 +997,8 @@ function App() {
           {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
         </button>
       </footer>
+
+      {confirmDialogElement}
     </div>
   )
 }
