@@ -620,7 +620,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   const slopeTopY = beamYFromLegs(legCenterXs[0]) - BEAM_THICK_PX / 2
                   const legHCm = ((baseY + BEAM_THICK_PX) - slopeTopY) / SC
                   return <Dim ax1={activeBeamL} ay1={slopeTopY} ax2={activeBeamL} ay2={baseY + BEAM_THICK_PX}
-                    label={fmt(legHCm)} off={-18} />
+                    label={fmt(legHCm)} off={18} />
                 })()}
 
                 <Dim ax1={activePanelStartBot.x} ay1={blockBotY}
@@ -634,7 +634,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   const slopeTopY = beamYFromLegs(legCenterXs[lastIdx]) - BEAM_THICK_PX / 2
                   const legHCm = ((baseY + BEAM_THICK_PX) - slopeTopY) / SC
                   return <Dim ax1={activeBeamR} ay1={slopeTopY} ax2={activeBeamR} ay2={baseY + BEAM_THICK_PX}
-                    label={fmt(legHCm)} off={18} />
+                    label={fmt(legHCm)} off={-18} />
                 })()}
 
                 <Dim ax1={activePanelEndBot.x} ay1={blockBotY}
