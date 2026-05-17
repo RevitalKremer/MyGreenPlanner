@@ -850,6 +850,13 @@ export function useProjectState() {
   const resetStepData = (clearedSteps) => {
     if (!clearedSteps?.length) return
     for (const key of clearedSteps) {
+      if (key === 'step2') {
+        // Step-2 layout artefacts (areas drawn on canvas + generated panels)
+        // must clear too, so re-entering step 2 starts blank.
+        pDispatch({ type: A.SET_LAYOUT, payload: { rectAreas: [], panels: [], deletedPanelKeys: {} } })
+        setAreas([]); setTrapezoidConfigs({}); setPanelGrid({}); setRowMounting({})
+        setSelectedPanels([])
+      }
       if (key === 'step3') { setStep3GlobalSettings({}); setStep3AreaSettings({}) }
       if (key === 'step4') { setStep4PlanApproval(null) }
       if (key === 'step5') { setStep5BomDeltas(null) }

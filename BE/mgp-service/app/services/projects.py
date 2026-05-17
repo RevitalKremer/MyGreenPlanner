@@ -1406,6 +1406,17 @@ async def update_project_step(
             cleared.append(f'step{s}')
 
     project.data = data
+    # Leaving step 2 backward also wipes the step-2 portion of the layout
+    # (rectAreas / panels / deletedPanelKeys) so re-entering step 2 is fresh.
+    # Step-1 layout fields (roofPolygon, referenceLine, baseline, roofAxis,
+    # uploadedImageData, pixelToCmRatio) are preserved.
+    if 'step2' in cleared and new_step < old_step:
+        layout = dict(project.layout or {})
+        layout['rectAreas'] = []
+        layout['panels'] = []
+        layout['deletedPanelKeys'] = {}
+        project.layout = layout
+        flag_modified(project, 'layout')
     nav = dict(project.navigation or {})
     nav['step'] = new_step
     nav['tab'] = None
