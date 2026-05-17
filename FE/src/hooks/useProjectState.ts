@@ -885,14 +885,32 @@ export function useProjectState() {
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
-        return rectAreas.every(a => {
-          // Tiles areas have no construction frame → a/h is irrelevant
+        const inFh  = (v) => v != null && v >= fhLim.min  && v <= fhLim.max
+        const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
+        // Per-area a/h (with global fallback) + per-area purlin distance for mixed
+        const areasOk = rectAreas.every(a => {
           if (isAreaTiles(roofType, a)) return true
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
-          return fh !== '' && parseFloat(fh) >= fhLim.min && parseFloat(fh) <= fhLim.max &&
-            ang !== '' && parseFloat(ang) >= angLim.min && parseFloat(ang) <= angLim.max
+          if (!(fh !== '' && inFh(parseFloat(fh)) && ang !== '' && inAng(parseFloat(ang)))) return false
+          if (roofType === 'mixed') {
+            const t = a.roofSpec?.type
+            if (t === 'iskurit' || t === 'insulated_panel') {
+              if (!(a.roofSpec?.distanceBetweenPurlinsCm > 0)) return false
+            }
+          }
+          return true
         })
+        if (!areasOk) return false
+        // Per-row a/h overrides: any explicit row override must stay within bounds
+        for (const rows of Object.values(rowMounting || {}) as any[][]) {
+          for (const r of (rows || [])) {
+            if (!r) continue
+            if (r.angleDeg != null && !inAng(r.angleDeg)) return false
+            if (r.frontHeightCm != null && !inFh(r.frontHeightCm)) return false
+          }
+        }
+        return true
       }
       case 3: return true
       case 4: return !!(step4PlanApproval?.strictConsent)
