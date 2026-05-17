@@ -258,6 +258,7 @@ const he = {
   'step3.unsaved.applyNow':        'שמור שינויים',
   'step3.unsaved.confirmSwitch':   'יש שינויים שלא נשמרו במסך {tab}. להחיל לפני המעבר?',
   'step3.unsaved.applyAndSwitch':  'שמור ועבור',
+  'step3.unsaved.discardAndSwitch':'בטל ועבור',
   'step3.unsaved.dotTooltip':      'מסך זה מכיל שינויים שלא נשמרו',
 
   // ── Step 3 – Parameter names (translated labels) ──────────────────────────

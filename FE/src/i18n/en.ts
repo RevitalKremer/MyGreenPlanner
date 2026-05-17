@@ -259,6 +259,7 @@ const en = {
   'step3.unsaved.applyNow':        'Apply Changes',
   'step3.unsaved.confirmSwitch':   'You have unsaved changes in the {tab} tab. Apply them before switching?',
   'step3.unsaved.applyAndSwitch':  'Apply & switch',
+  'step3.unsaved.discardAndSwitch':'Discard & switch',
   'step3.unsaved.dotTooltip':      'This tab has unsaved changes',
 
   // ── Step 3 – Parameter names (translated labels) ──────────────────────────

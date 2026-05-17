@@ -60,16 +60,34 @@ export default function useStep3Settings({
     trap: Record<string, Record<string, true>>
   }
   const dirtyParamsRef = useRef<DirtyParamsState>({ global: {}, area: {}, trap: {} })
-  const recordDirtyParam = useCallback((path: { scope: 'global' | 'area' | 'trap'; anchor?: any; key: string }) => {
+
+  // Baselines: the raw value each dirty key had BEFORE the first edit in the
+  // session. Used by discardDirtyParamsForTab to revert. `undefined` is a
+  // legitimate baseline (means "no stored value"), so we use `key in obj`
+  // semantics rather than truthy checks.
+  type DirtyBaselineState = {
+    global: Record<string, any>
+    area: Record<number, Record<string, any>>
+    trap: Record<string, Record<string, any>>
+  }
+  const dirtyBaselineRef = useRef<DirtyBaselineState>({ global: {}, area: {}, trap: {} })
+
+  const recordDirtyParam = useCallback((path: { scope: 'global' | 'area' | 'trap'; anchor?: any; key: string }, prevRaw: any) => {
     const cur = dirtyParamsRef.current
+    const base = dirtyBaselineRef.current
     if (path.scope === 'global') {
       if (!cur.global[path.key]) cur.global = { ...cur.global, [path.key]: true }
+      if (!(path.key in base.global)) base.global = { ...base.global, [path.key]: prevRaw }
     } else if (path.scope === 'area') {
       const a = cur.area[path.anchor] || {}
       if (!a[path.key]) cur.area = { ...cur.area, [path.anchor]: { ...a, [path.key]: true } }
+      const ba = base.area[path.anchor] || {}
+      if (!(path.key in ba)) base.area = { ...base.area, [path.anchor]: { ...ba, [path.key]: prevRaw } }
     } else {
       const t = cur.trap[path.anchor] || {}
       if (!t[path.key]) cur.trap = { ...cur.trap, [path.anchor]: { ...t, [path.key]: true } }
+      const bt = base.trap[path.anchor] || {}
+      if (!(path.key in bt)) base.trap = { ...base.trap, [path.anchor]: { ...bt, [path.key]: prevRaw } }
     }
   }, [])
   const paramTab = useCallback((key: string): 'rails' | 'bases' | 'detail' | null => {
@@ -145,6 +163,9 @@ export default function useStep3Settings({
 
   const setParam = useCallback((path: ParamPath, value: any) => {
     if (isSameValue(getParam(path), value)) return
+    // Capture the previous raw value BEFORE writing so discard can restore.
+    // `undefined` here is a meaningful baseline (means "no override stored").
+    const prevRaw = getRawParam(path)
     if (path.scope === 'global') {
       // Mirror ref update is synchronous; setState is queued for re-render.
       // The next setParam in the same tick reads the live value from the ref.
@@ -172,7 +193,7 @@ export default function useStep3Settings({
         [path.anchor]: { ...(prev[path.anchor] || {}), [path.key]: value },
       }))
     }
-    recordDirtyParam(path)
+    recordDirtyParam(path, prevRaw)
     const tab = SYNTHETIC_TAB[path.key] ?? paramTab(path.key)
     if (tab) markDirty(tab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,15 +366,97 @@ export default function useStep3Settings({
   }, [keyBelongsToTab])
 
   // Drops every dirty key that belongs to the given tab. Called after a
-  // successful saveTab so the next save's payload stays minimal.
+  // successful saveTab so the next save's payload stays minimal. Also drops
+  // the matching baselines — after a successful save the new "clean" value is
+  // whatever the BE persisted, so the prior pre-edit baseline is moot.
   const clearDirtyParamsForTab = useCallback((tab: 'rails' | 'bases' | 'detail') => {
     const d = dirtyParamsRef.current
-    const filterByTab = (rec: Record<string, true>) =>
-      Object.fromEntries(Object.entries(rec).filter(([k]) => !keyBelongsToTab(k, tab)))
+    const b = dirtyBaselineRef.current
+    const filterByTab = <V,>(rec: Record<string, V>) =>
+      Object.fromEntries(Object.entries(rec).filter(([k]) => !keyBelongsToTab(k, tab))) as Record<string, V>
     d.global = filterByTab(d.global)
     d.area = Object.fromEntries(Object.entries(d.area).map(([k, v]) => [k, filterByTab(v)]))
     d.trap = Object.fromEntries(Object.entries(d.trap).map(([k, v]) => [k, filterByTab(v)]))
+    b.global = filterByTab(b.global)
+    b.area = Object.fromEntries(Object.entries(b.area).map(([k, v]) => [k, filterByTab(v)]))
+    b.trap = Object.fromEntries(Object.entries(b.trap).map(([k, v]) => [k, filterByTab(v)]))
   }, [keyBelongsToTab])
+
+  // Discard the user's in-progress edits for `tab` by restoring each dirty
+  // key to the baseline captured the first time it was touched this session.
+  // `undefined` baseline means the key wasn't stored before — restore by
+  // removing it from state so the effective value falls back to global /
+  // schema default (same shape resetTab leaves things in, just no BE round
+  // trip).
+  const discardDirtyParamsForTab = useCallback((tab: 'rails' | 'bases' | 'detail') => {
+    const d = dirtyParamsRef.current
+    const b = dirtyBaselineRef.current
+
+    // ── globalSettings ────────────────────────────────────────────────────
+    const globalKeysToRestore = Object.keys(d.global).filter(k => keyBelongsToTab(k, tab))
+    if (globalKeysToRestore.length > 0) {
+      const nextRef = { ...globalSettingsRef.current }
+      globalKeysToRestore.forEach(k => {
+        if (k in b.global) {
+          const v = b.global[k]
+          if (v === undefined) delete nextRef[k]
+          else nextRef[k] = v
+        }
+      })
+      globalSettingsRef.current = nextRef
+      setGlobalSettings(nextRef)
+    }
+
+    // ── areaSettings ──────────────────────────────────────────────────────
+    const areaEntries = Object.entries(d.area).map(([idx, keys]) => {
+      const filtered = Object.keys(keys).filter(k => keyBelongsToTab(k, tab))
+      return [idx, filtered] as const
+    }).filter(([, keys]) => keys.length > 0)
+    if (areaEntries.length > 0) {
+      const nextRef: Record<number, any> = { ...areaSettingsRef.current }
+      areaEntries.forEach(([idx, keys]) => {
+        const baseArea = b.area[Number(idx)] || {}
+        const cur = { ...(nextRef[Number(idx)] || {}) }
+        keys.forEach(k => {
+          if (k in baseArea) {
+            const v = baseArea[k]
+            if (v === undefined) delete cur[k]
+            else cur[k] = v
+          }
+        })
+        nextRef[Number(idx)] = cur
+      })
+      areaSettingsRef.current = nextRef
+      setAreaSettings(nextRef)
+    }
+
+    // ── trapezoidConfigs ──────────────────────────────────────────────────
+    const trapEntries = Object.entries(d.trap).map(([tid, keys]) => {
+      const filtered = Object.keys(keys).filter(k => keyBelongsToTab(k, tab))
+      return [tid, filtered] as const
+    }).filter(([, keys]) => keys.length > 0)
+    if (trapEntries.length > 0 && setTrapezoidConfigs) {
+      const nextRef: Record<string, any> = { ...(trapezoidConfigsRef.current || {}) }
+      trapEntries.forEach(([tid, keys]) => {
+        const baseTrap = b.trap[tid] || {}
+        const cur = { ...(nextRef[tid] || {}) }
+        keys.forEach(k => {
+          if (k in baseTrap) {
+            const v = baseTrap[k]
+            if (v === undefined) delete cur[k]
+            else cur[k] = v
+          }
+        })
+        nextRef[tid] = cur
+      })
+      trapezoidConfigsRef.current = nextRef
+      setTrapezoidConfigs(nextRef)
+    }
+
+    // Drop tracked keys + baselines for the tab and clear the dirty flag.
+    clearDirtyParamsForTab(tab)
+    markClean(tab)
+  }, [keyBelongsToTab, clearDirtyParamsForTab, markClean, setTrapezoidConfigs])
 
   // Tab-wide reset — mirrors resetLineRails / resetDetailSettings. The
   // _trapId arg is ignored (kept for the existing callsite signature). The
@@ -402,6 +505,8 @@ export default function useStep3Settings({
     isAnyDirty: dirty.rails || dirty.bases || dirty.detail,
     // Per-key dirty filter for saveTab — send only what changed.
     getDirtyParamsForTab, clearDirtyParamsForTab,
+    // Revert per-key dirty changes for a tab back to their pre-edit baseline.
+    discardDirtyParamsForTab,
     // Synchronous snapshot from the mirror refs. Use this when the caller
     // needs the very latest writes inside the same event tick (e.g. building
     // a saveTab payload right after an apply-to-all fan-out).

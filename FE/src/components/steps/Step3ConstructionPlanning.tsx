@@ -160,23 +160,27 @@ export default function Step3ConstructionPlanning({
   }, [isAnyDirtyRef, settings.isAnyDirty])
 
   // Gate tab switches: if the current tab has unsaved edits, ask first.
+  // The dialog offers three choices — Apply (save then switch), Discard
+  // (revert in-progress edits then switch), or Cancel (stay put).
   const tabFromKey = (key: string) =>
     (key === 'detail' || key === 'rails' || key === 'bases') ? key : null
   const requestTabSwitch = useCallback(async (next: string) => {
     if (next === activeTab) return
     const cur = tabFromKey(activeTab)
     if (cur && settings.dirty[cur]) {
-      const apply = await confirmDialog.ask({
+      const choice = await confirmDialog.ask({
         message: t('step3.unsaved.confirmSwitch', { tab: t(`step3.tabs.${activeTab}`) }),
         confirmLabel: t('step3.unsaved.applyAndSwitch'),
+        discardLabel: t('step3.unsaved.discardAndSwitch'),
         cancelLabel: t('common.cancel'),
         variant: 'warning',
       })
-      if (!apply) return
-      await applyTab(cur)
+      if (choice === false) return
+      if (choice === 'discard') settings.discardDirtyParamsForTab(cur)
+      else await applyTab(cur)
     }
     setActiveTab(next)
-  }, [activeTab, settings.dirty, confirmDialog, t, applyTab])
+  }, [activeTab, settings, confirmDialog, t, applyTab])
   
   // Save initial tab to backend if it was defaulted to 'areas'
   const initialSaveRef = useRef(false)
@@ -475,8 +479,10 @@ export default function Step3ConstructionPlanning({
         variant={confirmDialog.pending?.variant}
         confirmLabel={confirmDialog.pending?.confirmLabel || t('common.confirm')}
         cancelLabel={confirmDialog.pending?.cancelLabel || t('common.cancel')}
+        discardLabel={confirmDialog.pending?.discardLabel}
         onConfirm={confirmDialog.handleConfirm}
         onCancel={confirmDialog.handleCancel}
+        onDiscard={confirmDialog.handleDiscard}
       />
     </div>
   )

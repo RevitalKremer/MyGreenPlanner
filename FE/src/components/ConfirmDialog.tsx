@@ -10,18 +10,20 @@ const ACCENT: Record<Variant, { fg: string; bg: string }> = {
 
 export default function ConfirmDialog({
   open, title, message,
-  confirmLabel, cancelLabel,
+  confirmLabel, cancelLabel, discardLabel,
   variant = 'default',
-  onConfirm, onCancel,
+  onConfirm, onCancel, onDiscard,
 }: {
   open: boolean
   title?: string
   message: string
   confirmLabel: string
   cancelLabel: string
+  discardLabel?: string
   variant?: Variant
   onConfirm: () => void
   onCancel: () => void
+  onDiscard?: () => void
 }) {
   if (!open) return null
   const a = ACCENT[variant]
@@ -62,6 +64,7 @@ export default function ConfirmDialog({
         </div>
         <div style={{
           padding: '0.75rem 1.1rem 1rem', display: 'flex', justifyContent: 'center', gap: '0.5rem',
+          flexWrap: 'wrap',
         }}>
           <button
             onClick={onCancel}
@@ -72,6 +75,17 @@ export default function ConfirmDialog({
               fontSize: '0.85rem', fontWeight: 600,
             }}
           >{cancelLabel}</button>
+          {discardLabel && onDiscard && (
+            <button
+              onClick={onDiscard}
+              style={{
+                padding: '0.45rem 0.95rem', borderRadius: '7px',
+                background: '#fff', color: ERROR_DARK,
+                border: `1px solid ${ERROR}`, cursor: 'pointer',
+                fontSize: '0.85rem', fontWeight: 600,
+              }}
+            >{discardLabel}</button>
+          )}
           <button
             onClick={onConfirm}
             autoFocus
