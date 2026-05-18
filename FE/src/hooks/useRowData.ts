@@ -2,7 +2,7 @@ import { useMemo, useCallback } from 'react'
 import { isHorizontalOrientation, isEmptyOrientation, lineSlopeDepth } from '../utils/trapezoidGeometry'
 import { initDefaultLineRails } from '../utils/railLayoutService'
 import { REAL_PANELS, PANEL_V } from '../utils/panelCodes.js'
-import { isAreaTiles } from '../utils/roofSpecUtils'
+import { isAreaFrameless } from '../utils/roofSpecUtils'
 import type {
   ComputedTrapezoid, Step2Area, BeRailsAreaData, PanelLayout, PanelLineSegment,
   LineRailsMap, PanelSpec, ParamSchemaEntry, RefinedArea,
@@ -71,10 +71,10 @@ export default function useRowData({
   const railSpacingV  = (PARAM_SCHEMA.find(p => p.key === 'railSpacingV') || {} as any).default
   const railSpacingH  = (PARAM_SCHEMA.find(p => p.key === 'railSpacingH') || {} as any).default
 
-  // Tiles areas have no construction frame → skip trap-detail / construction
-  // geometry computation. Uses the shared resolver from roofSpecUtils.
-  const _isAreaTiles = useCallback(
-    (areaObj: any) => isAreaTiles(roofType, areaObj),
+  // Frameless areas (tiles, flat_installation) have no construction frame →
+  // skip trap-detail / construction geometry computation.
+  const _isAreaFrameless = useCallback(
+    (areaObj: any) => isAreaFrameless(roofType, areaObj),
     [roofType],
   )
 
@@ -289,7 +289,7 @@ export default function useRowData({
   const trapSettingsMap = useMemo(() => {
     const map: Record<string, any> = {}
     rowKeys.forEach((areaKey, i) => {
-      if (_isAreaTiles(areaByGroupKey[areaKey])) return
+      if (_isAreaFrameless(areaByGroupKey[areaKey])) return
       const s = getSettings(i)
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => {
@@ -297,23 +297,23 @@ export default function useRowData({
       })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings, _isAreaTiles]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings, _isAreaFrameless]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const trapRCMap = useMemo(() => {
     const map: Record<string, any> = {}
     rowKeys.forEach((areaKey, i) => {
-      if (_isAreaTiles(areaByGroupKey[areaKey])) return
+      if (_isAreaFrameless(areaByGroupKey[areaKey])) return
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => { map[trapId] = rowConstructions[i] })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, rowConstructions, _isAreaTiles])
+  }, [rowKeys, areaTrapezoidMap, rowConstructions, _isAreaFrameless])
 
   const trapPanelLinesMap = useMemo(() => {
     const map: Record<string, PanelLineSegment[]> = {}
     const globalCfg = refinedArea?.panelConfig || {}
     rowKeys.forEach((areaKey) => {
-      if (_isAreaTiles(areaByGroupKey[areaKey])) return
+      if (_isAreaFrameless(areaByGroupKey[areaKey])) return
       const trapIdsList = areaTrapezoidMap[areaKey] || []
       const areaGroup   = areaByGroupKey[areaKey] || {} as any
       trapIdsList.forEach(trapId => {
@@ -328,7 +328,7 @@ export default function useRowData({
       })
     })
     return map
-  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings, _isAreaTiles]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings, _isAreaFrameless]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     rowPanelCounts, rowKeys, areaByGroupKey,

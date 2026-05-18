@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLACK, ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
+import { TEXT_VERY_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLACK, ROOF_CONCRETE, ROOF_TILES, ROOF_FLAT_INSTALLATION, ROOF_CORRUGATED } from '../../../styles/colors'
 import RulerTool from '../../shared/RulerTool'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from './LayersPanel'
@@ -74,6 +74,7 @@ function areaPolygonPoints(areaPanels, bbox, sc, PAD) {
 const ROOF_COLOR_MAP = {
   concrete: ROOF_CONCRETE,
   tiles: ROOF_TILES,
+  flat_installation: ROOF_FLAT_INSTALLATION,
   iskurit: ROOF_CORRUGATED,
   insulated_panel: ROOF_CORRUGATED,
 }
@@ -81,6 +82,7 @@ const ROOF_COLOR_MAP = {
 const ROOF_TYPE_I18N = {
   concrete: 'roofSpec.type.concrete',
   tiles: 'roofSpec.type.tiles',
+  flat_installation: 'roofSpec.type.flatInstallation',
   iskurit: 'roofSpec.type.iskurit',
   insulated_panel: 'roofSpec.type.insulatedPanel',
 }

@@ -73,7 +73,7 @@ export function buildRowGroups(panels) {
 }
 
 /** Group panels by trapezoidId, return { map, keys } (keys sorted alphabetically).
- *  Panels without a trapezoidId (tile-roof areas — no construction frame)
+ *  Panels without a trapezoidId (frameless areas: tiles, flat_installation — no construction frame)
  *  bucket under the explicit 'NOTRAP' sentinel rather than a guessed label,
  *  so consumers can recognize and special-case the no-trap case if needed.
  */

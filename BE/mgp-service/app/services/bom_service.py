@@ -156,9 +156,10 @@ def _derive_row_construction(
     all_bases = _flatten_row_dict(computed_area.get('bases') or {})
     trap_ids = _get_area_field(area, 'trapezoidIds') or []
 
-    # Tiles roofs have no frame/trapezoids by design — they still need rails,
-    # clamps and hooks, so don't bail on missing trap_ids in that case.
-    if roof_type != 'tiles' and not trap_ids:
+    # Frameless roofs (tiles, flat_installation) have no frame/trapezoids by
+    # design — they still need rails, clamps and anchor accessories, so don't
+    # bail on missing trap_ids in that case.
+    if roof_type not in ('tiles', 'flat_installation') and not trap_ids:
         return None
 
     # Rails (needed for all roof types)
@@ -188,10 +189,11 @@ def _derive_row_construction(
                 rail_pieces.append({'qty': 1, 'lenCm': ln})
     num_large_gaps = computed_area.get('numLargeGaps', 0)
 
-    # Tiles: no frame geometry needed — only rails + clamps + hooks.
-    # Hook count is the total number of rail × virtual-base intersections
-    # computed by base_service.fill_hook_offsets and stored on each base.
-    if roof_type == 'tiles':
+    # Frameless roofs (tiles, flat_installation): no frame geometry needed —
+    # only rails + clamps + anchor accessories. Anchor count is the total
+    # number of rail × virtual-base intersections computed by
+    # base_service.fill_frameless_anchors_offsets and stored on each base.
+    if roof_type in ('tiles', 'flat_installation'):
         num_hooks = sum(len(b.get('hookOffsets') or []) for b in all_bases)
         return {
             'rowLength': row_length,
@@ -510,6 +512,7 @@ _ISKURIT_SCREW_ANCHOR        = 'self_drilling_screw_7_5_drill_1_4_1_4_1_with_sea
 _INSULATED_SCREW_ANCHOR      = 'self_drilling_screw_12_5_5_drill_with_seal'
 _CONNECTOR_SCREW_ANCHOR      = 'self_drilling_screw_3_5_drill_1_4_1_4_1_with_seal'
 _HOOK_ANCHOR                 = 'hooks'
+_SANDWICH_ROOF_ANCHOR        = 'sandwich_roof_accessory'
 
 
 def _compute_bolt_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
@@ -551,7 +554,7 @@ def _compute_hook_bom(rc: dict, area_label: str, products_by_type: dict) -> list
     the resolved hook type is 'hooks' (not hook_5cm_with_3_holes_gallery).
 
     Quantity = total rail × virtual-base intersections, computed upstream by
-    base_service.fill_hook_offsets and rolled up into rc['numHooks'].
+    base_service.fill_frameless_anchors_offsets and rolled up into rc['numHooks'].
     """
     hook_count = rc.get('numHooks', 0)
     if hook_count <= 0:
@@ -559,8 +562,33 @@ def _compute_hook_bom(rc: dict, area_label: str, products_by_type: dict) -> list
     element = _alt_group_default(products_by_type, _HOOK_ANCHOR)
     bolt_element = _alt_group_default(products_by_type, _OTHER_PUNCH_BOLT_ANCHOR)
     return [
+        # roof attachment: hook slips under tile (no fastener to roof)
         {'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': hook_count},
+        # rail attachment: 1 bolt per hook (+ flange nut via expand_bundles)
         {'areaLabel': area_label, 'element': bolt_element, 'totalLengthM': None, 'qty': hook_count},
+    ]
+
+
+def _compute_sandwich_accessory_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
+    """Per anchor point: 1 sandwich_roof_accessory (omega) + 2 self-drilling
+    screws + 1 hex_head_bolt_m8x20 (rail attachment, identical to tiles —
+    flange nut companion comes via expand_bundles).
+
+    Anchor count = total rail × virtual-base intersections, computed upstream by
+    base_service.fill_frameless_anchors_offsets and rolled up into rc['numHooks'].
+    """
+    anchor_count = rc.get('numHooks', 0)
+    if anchor_count <= 0:
+        return []
+    element = _alt_group_default(products_by_type, _SANDWICH_ROOF_ANCHOR)
+    screw_element = _alt_group_default(products_by_type, _ISKURIT_SCREW_ANCHOR)
+    bolt_element = _alt_group_default(products_by_type, _OTHER_PUNCH_BOLT_ANCHOR)
+    return [
+        # roof attachment: omega screwed to sandwich panel via 2 self-drilling screws per foot
+        {'areaLabel': area_label, 'element': element, 'totalLengthM': None, 'qty': anchor_count},
+        {'areaLabel': area_label, 'element': screw_element, 'totalLengthM': None, 'qty': 2 * anchor_count},
+        # rail attachment: 1 bolt per omega (+ flange nut via expand_bundles)
+        {'areaLabel': area_label, 'element': bolt_element, 'totalLengthM': None, 'qty': anchor_count},
     ]
 
 
@@ -708,6 +736,11 @@ def build_bom(
             rows += _compute_rail_bom(rc, area_label, p)
             rows += _compute_panel_clamp_bom(rc, area_label, p)
             rows += _compute_hook_bom(rc, area_label, p)
+        elif roof_type == 'flat_installation':
+            # Flat installation: rails + clamps + omegas (no frame, no blocks)
+            rows += _compute_rail_bom(rc, area_label, p)
+            rows += _compute_panel_clamp_bom(rc, area_label, p)
+            rows += _compute_sandwich_accessory_bom(rc, area_label, p)
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
             rows += _compute_trapezoid_bom(rc, area_label, p)

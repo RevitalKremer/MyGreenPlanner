@@ -485,7 +485,7 @@ export interface ProjectLayout {
 
 // ── Project (top-level API object) ─────────────────────────────────────────
 
-export type RoofType = 'concrete' | 'tiles' | 'iskurit' | 'insulated_panel' | 'mixed'
+export type RoofType = 'concrete' | 'tiles' | 'flat_installation' | 'iskurit' | 'insulated_panel' | 'mixed'
 
 export interface ProjectRoofSpec {
   type: RoofType

@@ -9,6 +9,6 @@ class RoofSpec(BaseModel):
     each step2 area then carries its own RoofSpec via `Step2Area.roofSpec`.
     When `type != 'mixed'`, the project-level spec applies to all areas.
     """
-    type: Literal['concrete', 'tiles', 'iskurit', 'insulated_panel', 'mixed']
+    type: Literal['concrete', 'tiles', 'flat_installation', 'iskurit', 'insulated_panel', 'mixed']
     distanceBetweenPurlinsCm: float | None = None
     installationOrientation: Literal['perpendicular', 'parallel'] | None = None

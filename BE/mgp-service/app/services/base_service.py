@@ -290,7 +290,7 @@ def compute_area_bases(
     }
 
 
-# ── Tile-roof hooks ──────────────────────────────────────────────────────────
+# ── Frameless-roof anchor points (tiles, flat_installation) ─────────────────
 
 def _line_rear_edges_cm(
     panel_grid: dict,
@@ -317,7 +317,7 @@ def _line_rear_edges_cm(
     return out
 
 
-def fill_hook_offsets(
+def fill_frameless_anchors_offsets(
     bases: list[dict],
     rails: list[dict],
     panel_grid: dict,
@@ -340,8 +340,9 @@ def fill_hook_offsets(
       • the base's X position lies within the rail's X span
         (`startCm .. startCm + lengthCm`).
 
-    Called only on tile-roof rows. Non-tile rows do not invoke this, so
-    concrete / iskurit / insulated bases keep an empty `hookOffsets`.
+    Called only on frameless-roof rows (tiles, flat_installation). Non-frameless
+    rows do not invoke this, so concrete / iskurit / insulated bases keep an
+    empty `hookOffsets`.
     """
     line_rears = _line_rear_edges_cm(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
     for b in bases:
