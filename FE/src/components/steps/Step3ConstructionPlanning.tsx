@@ -4,7 +4,7 @@ import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMAR
 import ConfirmDialog from '../ConfirmDialog'
 import { useConfirm } from '../../hooks/useConfirm'
 import { PANEL_V } from '../../utils/panelCodes'
-import { allAreasTiles, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
+import { allAreasFrameless, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -253,9 +253,12 @@ export default function Step3ConstructionPlanning({
     { key: 'bases',  label: t('step3.tabs.bases') },
     { key: 'detail', label: t('step3.tabs.detail') },
   ]
-  const allTiles = allAreasTiles(roofType, areas)
-  const tabs = allTiles
-    ? allTabs.filter(t => t.key === 'areas' || t.key === 'rails')
+  const allFrameless = allAreasFrameless(roofType, areas)
+  // Frameless roofs (tiles, flat_installation) have no construction frame →
+  // hide the Detail (trapezoid) tab but keep Bases so anchor points
+  // (hooks / sandwich_roof_accessory omegas) remain inspectable.
+  const tabs = allFrameless
+    ? allTabs.filter(t => t.key !== 'detail')
     : allTabs
 
   if (rowKeys.length === 0) {

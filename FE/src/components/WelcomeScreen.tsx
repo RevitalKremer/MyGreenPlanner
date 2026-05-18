@@ -11,6 +11,7 @@ import { getBackendVersion, getFrontendVersion } from '../services/projectsApi'
 const ROOF_TYPE_I18N: Record<string, string> = {
   concrete: 'roofSpec.type.concrete',
   tiles: 'roofSpec.type.tiles',
+  flat_installation: 'roofSpec.type.flatInstallation',
   iskurit: 'roofSpec.type.iskurit',
   insulated_panel: 'roofSpec.type.insulatedPanel',
   mixed: 'roofSpec.type.mixed',

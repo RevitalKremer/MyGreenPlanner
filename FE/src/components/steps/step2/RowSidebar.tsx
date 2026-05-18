@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
 import { PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_LIGHT, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, WARNING_BG, WARNING_DARK, WARNING_LIGHT } from '../../../styles/colors'
 import TrapezoidConfigEditor from './TrapezoidConfigEditor'
-import { isAreaTiles } from '../../../utils/roofSpecUtils'
+import { isAreaFrameless } from '../../../utils/roofSpecUtils'
 import { PANEL_V, PANEL_H, isHorizontalOrientation } from '../../../utils/panelCodes'
 
 // Seed project defaults (a, h) from the first row value the user types, so
@@ -358,7 +358,7 @@ export default function RowSidebar({
                 const allGroupPanels = group.rows.flatMap(r => r.row)
                 const isGroupSelected = allGroupPanels.some(p => selectedPanels.includes(p.id))
                 const firstAreaKey = group.areaIndices[0]
-                const areaIsTilesTyped = isAreaTiles(roofType, rectAreas[firstAreaKey])
+                const areaIsFrameless = isAreaFrameless(roofType, rectAreas[firstAreaKey])
 
                 const totalPanels = allGroupPanels.length
                 const trapIds = [...new Set(group.areaIndices.flatMap(ai => areaTrapezoidMap[ai] || []))] as string[]
@@ -414,6 +414,7 @@ export default function RowSidebar({
                           >
                             <option value="concrete">{t('roofSpec.type.concrete')}</option>
                             <option value="tiles">{t('roofSpec.type.tiles')}</option>
+                            <option value="flat_installation">{t('roofSpec.type.flatInstallation')}</option>
                             <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
                             <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
                           </select>
@@ -498,7 +499,7 @@ export default function RowSidebar({
                                 <span style={{ fontSize: '0.68rem', color: isSubSelected ? TEXT_DARK : TEXT_VERY_LIGHT, flex: 1 }}>
                                   Row {ri + 1} — {r.row.length}p
                                 </span>
-                                {showMounting && !areaIsTilesTyped && (
+                                {showMounting && !areaIsFrameless && (
                                   <span style={{ fontSize: '0.6rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>
                                     {rowAng.toFixed(1).replace(/\.0$/, '')}° · {rowFh.toFixed(1).replace(/\.0$/, '')}cm
                                   </span>
@@ -593,8 +594,8 @@ export default function RowSidebar({
       )}
 
       {/* Detail window — one of two views based on selection.
-          Hidden for tiles areas (no construction frame → no a/h or trap details). */}
-      {selectedRow && !isAreaTiles(roofType, rectAreas[getAreaKey(selectedRow[0])]) && (() => {
+          Hidden for frameless areas (no construction frame → no a/h or trap details). */}
+      {selectedRow && !isAreaFrameless(roofType, rectAreas[getAreaKey(selectedRow[0])]) && (() => {
         const areaKey = getAreaKey(selectedRow[0])
         const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
         // Key for rowMounting lookups must tolerate missing/empty labels:

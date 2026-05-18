@@ -103,6 +103,7 @@ export const ADD_GREEN_BG  = '#f0fdf4'    // light green tint for added rows
 // ── Roof type / installation method overlay ──────────────────────────────
 export const ROOF_CONCRETE         = '#3e3e3e'   // gray — concrete roof
 export const ROOF_TILES            = '#c0392b'   // tile red — tiles roof
+export const ROOF_FLAT_INSTALLATION = '#d4a017'  // amber — flat installation (sandwich_roof_accessory)
 export const ROOF_CORRUGATED       = '#bdbdbd'   // light gray — iskurit / insulated panel
 
 // ── Area overlay palette (AreasTab polygons) ─────────────────────────────

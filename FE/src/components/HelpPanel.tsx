@@ -82,7 +82,7 @@ const HELP = {
           'Rails Layout — cross-rail spacing per panel line and stock-length splitting per area',
           'Bases Layout — base / block placement along each rail, with per-base offset overrides',
           'Trapezoid Details — full cross-section of the selected trapezoid (legs, panels, rails, blocks, dimensions)',
-          'Bases and Trapezoid tabs are hidden when every area is on tile roofing (no construction frame)',
+          'Bases and Trapezoid tabs are hidden when every area is frameless (tiles / flat installation — no construction frame)',
         ].join(' | ')
       },
       {

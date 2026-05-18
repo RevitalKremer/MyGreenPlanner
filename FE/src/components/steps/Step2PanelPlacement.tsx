@@ -5,7 +5,7 @@ import {
 import { panelInsideRoof } from '../../utils/panelUtils'
 import { computePolygonPanels } from '../../utils/rectPanelService'
 import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
-import { allAreasTiles } from '../../utils/roofSpecUtils'
+import { allAreasFrameless } from '../../utils/roofSpecUtils'
 // panelSpec fallback: panelTypes is always provided by useProjectState (server-loaded),
 // so this null sentinel should never actually be used at render time.
 const _FALLBACK_PANEL_TYPE = null
@@ -68,9 +68,9 @@ export default function Step2PanelPlacement({
 }) {
   const angLim = paramLimits.mountingAngleDeg
   const fhLim  = paramLimits.frontHeightCm
-  // Mounting section hidden only for fully-tiles projects (no construction frame).
-  // Mixed projects show mounting — per-area tiles hiding is handled in the sidebar.
-  const showMounting = !allAreasTiles(roofType, [])
+  // Mounting section hidden only for fully-frameless projects (no construction frame).
+  // Mixed projects show mounting — per-area frameless hiding is handled in the sidebar.
+  const showMounting = !allAreasFrameless(roofType, [])
   const panelSpec = panelTypes.find(t => t.id === panelType) ?? panelTypes[0] ?? _FALLBACK_PANEL_TYPE
   const [activeTool, setActiveTool] = useState('area')
   const activeToolRef = useRef(activeTool)

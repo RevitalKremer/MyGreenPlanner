@@ -9,9 +9,9 @@
 /**
  * Resolve the effective roof type string for one area.
  *
- * @param {string} projectRoofType - project.roofSpec.type ('concrete'|'tiles'|'iskurit'|'insulated_panel'|'mixed')
+ * @param {string} projectRoofType - project.roofSpec.type ('concrete'|'tiles'|'flat_installation'|'iskurit'|'insulated_panel'|'mixed')
  * @param {object} [areaOrSpec]    - step2 area object (has .roofSpec) OR a roofSpec dict directly
- * @returns {string} e.g. 'concrete', 'tiles', 'iskurit', 'insulated_panel'
+ * @returns {string} e.g. 'concrete', 'tiles', 'flat_installation', 'iskurit', 'insulated_panel'
  */
 export function resolveAreaRoofType(projectRoofType, areaOrSpec) {
   const prt = projectRoofType || 'concrete'
@@ -42,25 +42,27 @@ export function resolveAreaRoofSpec(projectRoofType, area) {
 }
 
 /**
- * Check whether a specific area is tiles-typed.
+ * Check whether a specific area is frameless — i.e. has no construction frame,
+ * trapezoids, or blocks. Currently covers tiles and flat_installation roofs.
  *
  * @param {string} projectRoofType
  * @param {object} [area]
  * @returns {boolean}
  */
-export function isAreaTiles(projectRoofType, area) {
-  return resolveAreaRoofType(projectRoofType, area) === 'tiles'
+export function isAreaFrameless(projectRoofType, area) {
+  const t = resolveAreaRoofType(projectRoofType, area)
+  return t === 'tiles' || t === 'flat_installation'
 }
 
 /**
- * Check whether ALL areas in the project are tiles-typed.
+ * Check whether ALL areas in the project are frameless.
  * When true, construction-frame tabs (bases, detail) can be hidden.
  *
  * @param {string} projectRoofType
  * @param {object[]} areas - step2 areas array
  * @returns {boolean}
  */
-export function allAreasTiles(projectRoofType, areas) {
-  if (!areas || areas.length === 0) return projectRoofType === 'tiles'
-  return areas.every(a => isAreaTiles(projectRoofType, a))
+export function allAreasFrameless(projectRoofType, areas) {
+  if (!areas || areas.length === 0) return projectRoofType === 'tiles' || projectRoofType === 'flat_installation'
+  return areas.every(a => isAreaFrameless(projectRoofType, a))
 }

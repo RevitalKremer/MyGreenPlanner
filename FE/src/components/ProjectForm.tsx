@@ -124,6 +124,7 @@ export default function ProjectForm({
         >
           <option value="concrete">{t('roofSpec.type.concrete')}</option>
           <option value="tiles">{t('roofSpec.type.tiles')}</option>
+          <option value="flat_installation">{t('roofSpec.type.flatInstallation')}</option>
           <option value="iskurit">{t('roofSpec.type.iskurit')}</option>
           <option value="insulated_panel">{t('roofSpec.type.insulatedPanel')}</option>
           <option value="mixed">{t('roofSpec.type.mixed')}</option>

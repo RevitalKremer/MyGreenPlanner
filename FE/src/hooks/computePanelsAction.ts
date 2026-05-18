@@ -10,7 +10,7 @@
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
-import { isAreaTiles } from '../utils/roofSpecUtils'
+import { isAreaFrameless } from '../utils/roofSpecUtils'
 import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
 
 
@@ -202,10 +202,10 @@ export function computePanelsAction({
     const { areaLabel } = groupEntries[0]
     const isManual = groupEntries[0].area.manualTrapezoids
 
-    // Tiles areas have no construction frame → skip trap splitting entirely.
-    // Panels are added to allPanels without a trapezoidId.
-    const areaTileTyped = isAreaTiles(roofType, groupEntries[0].area)
-    if (areaTileTyped) {
+    // Frameless areas (tiles, flat_installation) have no construction frame →
+    // skip trap splitting entirely. Panels are added to allPanels without a trapezoidId.
+    const areaIsFrameless = isAreaFrameless(roofType, groupEntries[0].area)
+    if (areaIsFrameless) {
       groupEntries.forEach(ge => {
         ge.filtered.forEach(p => {
           allPanels.push({
