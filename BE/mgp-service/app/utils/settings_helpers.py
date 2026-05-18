@@ -41,6 +41,16 @@ def get_setting_or_override(app_defaults: dict, overrides: dict, key: str):
     return app_defaults[key]
 
 
+# Roof types with no construction frame (no trapezoids, no blocks, no a/h).
+# Rails attach to the roof via virtual anchor lines rather than physical bases.
+FRAMELESS_ROOF_TYPES = frozenset({'tiles', 'flat_installation'})
+
+
+def is_frameless_roof_type(roof_type: str | None) -> bool:
+    """True if the roof type has no construction frame (tiles, flat_installation)."""
+    return roof_type in FRAMELESS_ROOF_TYPES
+
+
 def resolve_roof_spec(project_roof_spec: dict | None, area: dict | None) -> dict:
     """Return the effective roof spec for a step2 area.
 

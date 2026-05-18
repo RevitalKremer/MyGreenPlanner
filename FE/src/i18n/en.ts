@@ -110,6 +110,7 @@ const en = {
   // ── Roof Specification ───────────────────────────────────────────────────
   'roofSpec.type.concrete':           'Concrete',
   'roofSpec.type.tiles':              'Tiles',
+  'roofSpec.type.flatInstallation':   'Flat Installation (Omegas)',
   'roofSpec.type.iskurit':            'Iskurit (Corrugated Metal)',
   'roofSpec.type.insulatedPanel':     'Insulated Panel',
   'roofSpec.type.mixed':              'Mixed (per-area)',
@@ -447,7 +448,7 @@ const en = {
   'step3.layer.ruler':           '📏 Ruler',
   'step3.layer.rulerOn':         '📏 Ruler ON',
   'step3.layer.bases':           'Bases',
-  'step3.layer.hooks':           'Hooks',
+  'step3.layer.anchors':         'Anchors',
   'step3.layer.blocks':          'Blocks',
   'step3.layer.baseIDs':         'Base IDs',
   'step3.layer.railLines':       'Rail lines',

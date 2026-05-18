@@ -240,9 +240,10 @@ export function computeExpandedBasePlans({
  */
 export function buildAreaFrames(panels: PanelLayout[], trapAreaMap: Record<string, string | number>, areas: Step2Area[]): Record<string, any> {
   const rowPanels: Record<string, { areaKey: string | number; ri: number; panels: PanelLayout[] }> = {}
-  // Tile-area panels carry trapezoidId=null. Resolve their areaKey via the
-  // panel's area index (set by computePanelsAction) → step2 areas[] entry,
-  // not via a guessed trap-id stem. Keeps each tile area in its own frame.
+  // Frameless-area panels (tiles, flat_installation) carry trapezoidId=null.
+  // Resolve their areaKey via the panel's area index (set by computePanelsAction)
+  // → step2 areas[] entry, not via a guessed trap-id stem. Keeps each frameless
+  // area in its own frame.
   for (const p of panels) {
     let areaKey: string | number
     if (p.trapezoidId) {

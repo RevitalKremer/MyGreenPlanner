@@ -22,7 +22,7 @@ from app.utils.panel_geometry import (
     is_empty_orientation, infer_row_orientation,
     PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
-from app.utils.settings_helpers import resolve_roof_spec
+from app.utils.settings_helpers import resolve_roof_spec, is_frameless_roof_type
 from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
 
 
@@ -89,8 +89,8 @@ def _validate_step2_for_advance(data: dict, project_roof_spec: dict | None) -> l
         area_type = spec.get('type', 'concrete')
         area_label = area.get('label') or str(area_idx)
 
-        if area_type == 'tiles':
-            continue  # tiles areas have no construction frame → a/h irrelevant
+        if is_frameless_roof_type(area_type):
+            continue  # frameless areas (tiles, flat_installation) have no construction frame → a/h irrelevant
 
         eff_ang = area.get('angleDeg') if area.get('angleDeg') is not None else default_ang
         eff_fh  = area.get('frontHeightCm') if area.get('frontHeightCm') is not None else default_fh
@@ -1288,11 +1288,11 @@ def _compute_row_hook_bases(
     panel_grid: dict, row_idx: int,
     rails: list[dict],
 ) -> list[dict]:
-    """Compute virtual hook bases for one tile-area row.
+    """Compute virtual anchor bases for one frameless-area row (tiles, flat_installation).
 
     Reuses `compute_area_bases` with no owning trapezoid (full panel-row X
     extent → auto-computed by the function when trap_start/end are None),
-    then `fill_hook_offsets` populates each base's hookOffsets from
+    then `fill_frameless_anchors_offsets` populates each base's hookOffsets from
     the rail intersections. Returns the bases list (empty list on no panels).
     """
     inputs = _build_base_inputs(
@@ -1306,7 +1306,7 @@ def _compute_row_hook_bases(
     if not result:
         return []
     bases = result.get('bases') or []
-    bs.fill_hook_offsets(
+    bs.fill_frameless_anchors_offsets(
         bases, rails, panel_grid,
         inputs['panel_width_cm'], inputs['panel_length_cm'],
         inputs['line_gap_cm'],
@@ -1338,11 +1338,11 @@ async def compute_and_save_bases(
         label = area.get('label') or str(i)
 
         # Resolve this area's roof spec (per-area for mixed projects,
-        # otherwise the project spec). Tile areas use the virtual-hook
-        # branch below — they have no construction frame, but each rail
-        # crossing a virtual base line becomes one hook on the tile.
+        # otherwise the project spec). Frameless areas (tiles, flat_installation)
+        # use the virtual-anchor branch below — they have no construction frame,
+        # but each rail crossing a virtual base line becomes one anchor point.
         roof_spec = resolve_roof_spec(project_roof_spec, area)
-        if roof_spec.get('type') == 'tiles':
+        if is_frameless_roof_type(roof_spec.get('type')):
             computed_area = _get_computed_area(data, area_id) or {}
             panel_rows = area.get('panelRows', [])
             if not panel_rows:
@@ -1614,20 +1614,20 @@ async def update_project_step(
     flag_modified(project, 'data')
     await db.commit()
 
-    # ── Tiles: force angle=0, frontHeight=0 (no construction frame) ──
-    # For mixed projects, only zero out tile-typed areas and the traps
-    # belonging to them. For fully-tile projects, zero everything and the
-    # step2 defaults. Non-tile projects: no change.
+    # ── Frameless roofs: force angle=0, frontHeight=0 (no construction frame) ──
+    # For mixed projects, only zero out frameless-typed areas and the traps
+    # belonging to them. For fully-frameless projects, zero everything and the
+    # step2 defaults. Non-frameless projects: no change.
     project_roof_spec = project.roof_spec
     ptype = project_roof_spec.get('type')
-    if ptype == 'tiles' or ptype == 'mixed':
+    if is_frameless_roof_type(ptype) or ptype == 'mixed':
         step2 = data.get('step2', {})
-        if ptype == 'tiles':
+        if is_frameless_roof_type(ptype):
             step2['defaultAngleDeg'] = 0
             step2['defaultFrontHeightCm'] = 0
-        tile_trap_ids: set[str] = set()
+        frameless_trap_ids: set[str] = set()
         for area in step2.get('areas', []):
-            if resolve_roof_spec(project_roof_spec, area).get('type') != 'tiles':
+            if not is_frameless_roof_type(resolve_roof_spec(project_roof_spec, area).get('type')):
                 continue
             area['angleDeg'] = 0
             area['frontHeightCm'] = 0
@@ -1637,19 +1637,19 @@ async def update_project_step(
                     continue
                 pr['angleDeg'] = 0
                 pr['frontHeightCm'] = 0
-            tile_trap_ids.update(area.get('trapezoidIds') or [])
-        # Remove tiles traps entirely from step2.trapezoids (tiles areas
+            frameless_trap_ids.update(area.get('trapezoidIds') or [])
+        # Remove frameless-area traps entirely from step2.trapezoids (these areas
         # have no construction frame → traps are meaningless). Also clear
         # the area's trapezoidIds so downstream consumers see no traps.
-        if tile_trap_ids:
+        if frameless_trap_ids:
             step2['trapezoids'] = [
                 t for t in step2.get('trapezoids', [])
-                if t.get('id') not in tile_trap_ids
+                if t.get('id') not in frameless_trap_ids
             ]
             for area in step2.get('areas', []):
-                if resolve_roof_spec(project_roof_spec, area).get('type') == 'tiles':
+                if is_frameless_roof_type(resolve_roof_spec(project_roof_spec, area).get('type')):
                     area['trapezoidIds'] = []
-        if tile_trap_ids or ptype == 'tiles':
+        if frameless_trap_ids or is_frameless_roof_type(ptype):
             project.data = data
             flag_modified(project, 'data')
             await db.commit()
@@ -1798,9 +1798,9 @@ def _compute_all_trapezoid_details(
             continue
 
         # Resolve this trap's effective roof spec via its owning area.
-        # Tile areas have no construction frame → skip the trap.
+        # Frameless areas (tiles, flat_installation) have no construction frame → skip the trap.
         roof_spec = resolve_roof_spec(project_roof_spec, area)
-        if roof_spec.get('type') == 'tiles':
+        if is_frameless_roof_type(roof_spec.get('type')):
             continue
 
         area_id = area.get('id', 0)
@@ -2138,9 +2138,9 @@ async def compute_and_save_trapezoid_details(
 
     project_roof_spec = project.roof_spec
 
-    # Global tiles skip only for fully-tile projects. Mixed projects let
-    # the per-trap check inside _compute_all_trapezoid_details decide.
-    if project_roof_spec.get('type') == 'tiles':
+    # Global frameless skip only for fully-frameless projects (tiles, flat_installation).
+    # Mixed projects let the per-trap check inside _compute_all_trapezoid_details decide.
+    if is_frameless_roof_type(project_roof_spec.get('type')):
         project.data = data
         flag_modified(project, 'data')
         await db.commit()

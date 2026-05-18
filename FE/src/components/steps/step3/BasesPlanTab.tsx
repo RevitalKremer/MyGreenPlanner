@@ -32,7 +32,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const { t } = useLang()
   const [showRoofImage,   setShowRoofImage]   = useState(true)
   const [showBases,      setShowBases]      = useState(true)
-  const [showHooks,      setShowHooks]      = useState(true)
+  const [showAnchors,    setShowAnchors]    = useState(true)
   const [showBlocks,     setShowBlocks]     = useState(true)
   const [showBaseIDs,    setShowBaseIDs]    = useState(true)
   const [showRailLines,  setShowRailLines]  = useState(true)
@@ -58,14 +58,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     [trapIds, trapGroups, pixelToCmRatio, trapSettingsMap, trapLineRailsMap, customBasesMap, beRailsData, areas],
   )
 
-  // Tile-area rails: the trap-keyed pipeline above produces nothing for tile
-  // panels (no construction frame → trap settings are absent). Detect tile
-  // panels by their *area's* resolved roof type — robust against legacy
-  // saves that defaulted trapezoidId to 'A' instead of leaving it null.
-  // Group by (areaGroupKey, panelRowIdx) and feed `computeRowRailLayout`
-  // with global rail settings + the area's BE-computed lineRails.
+  // Frameless-area rails (tiles, flat_installation): the trap-keyed pipeline above
+  // produces nothing for frameless panels (no construction frame → trap settings
+  // are absent). Detect frameless panels by their *area's* resolved roof type —
+  // robust against legacy saves that defaulted trapezoidId to 'A' instead of
+  // leaving it null. Group by (areaGroupKey, panelRowIdx) and feed
+  // `computeRowRailLayout` with global rail settings + the area's BE-computed lineRails.
   const tileRailLayouts = useMemo(() => {
-    if (roofType !== 'tiles' && roofType !== 'mixed') return [] as Array<{ rl: any; areaLabel: string }>
+    if (roofType !== 'tiles' && roofType !== 'flat_installation' && roofType !== 'mixed') return [] as Array<{ rl: any; areaLabel: string }>
     const overhangCm = globalRailConfig?.overhangCm
     const stockLengths = globalRailConfig?.stockLengths
     if (!overhangCm || !stockLengths) return []
@@ -75,7 +75,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
       const agk = p.areaGroupKey
       if (agk == null) continue
       const area = areaByGroupKey[agk]
-      if (!area || resolveAreaRoofSpec(roofType, area).type !== 'tiles') continue
+      const areaType = area ? resolveAreaRoofSpec(roofType, area).type : null
+      if (!area || (areaType !== 'tiles' && areaType !== 'flat_installation')) continue
       const ri = p.panelRowIdx ?? 0
       const key = `${agk}:${ri}`
       if (!buckets[key]) buckets[key] = { areaGroupKey: agk, ri, panels: [] }
@@ -186,13 +187,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const effTrapId = printMode ? null : effectiveSelectedTrapId
   const effZoom   = printMode ? 1 : zoom
   const sBases    = printMode || showBases
-  const sHooks    = printMode || showHooks
+  const sAnchors  = printMode || showAnchors
   const sBlocks   = printMode || showBlocks
   const sBaseIDs  = printMode || showBaseIDs
 
-  // Hooks are populated only on tile-roof bases (one per rail × base intersection).
-  // Detect any non-empty hookOffsets to surface the toggle.
-  const hasHooks = (beBasesData ?? []).some(ad => (ad.bases ?? []).some(b => (b.hookOffsets?.length ?? 0) > 0))
+  // Anchor points are populated only on frameless-roof bases (tiles, flat_installation)
+  // — one per rail × base intersection. Detect any non-empty hookOffsets to surface the toggle.
+  const hasAnchors = (beBasesData ?? []).some(ad => (ad.bases ?? []).some(b => (b.hookOffsets?.length ?? 0) > 0))
   const sRails    = !printMode && showRailLines
   const sDiags    = printMode || showDiagonals
   const sDims     = printMode || showDimensions
@@ -293,7 +294,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   trapSettingsMap={trapSettingsMap}
                 />
 
-                {/* 1b. Tile-area rails — independent of the trap-keyed pipeline. */}
+                {/* 1b. Frameless-area rails (tiles, flat_installation) — independent of the trap-keyed pipeline. */}
                 {tileRailLayouts.length > 0 && (
                   <RailsOverlay
                     railLayouts={tileRailLayouts.map(t => t.rl)}
@@ -357,12 +358,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const { af } = ctx
                     const { btx, bty, bbx, bby, la } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const mx = (btx + bbx) / 2, my = (bty + bby) / 2
-                    // Tile bases are virtual anchor lines (no physical beam) —
-                    // their hooks + rails carry the meaning, so the base line
+                    // Frameless-roof bases are virtual anchor lines (no physical beam) —
+                    // their anchor points + rails carry the meaning, so the base line
                     // would only add visual noise. Detect via non-empty
                     // hookOffsets and skip the line/ID render.
-                    const isTileBase = (sb.hookOffsets?.length ?? 0) > 0
-                    if (isTileBase) return null
+                    const isFramelessBase = (sb.hookOffsets?.length ?? 0) > 0
+                    if (isFramelessBase) return null
                     return (
                       <g key={`base-${ai}-${sbi}`}>
                         <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
@@ -372,8 +373,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   })
                 })}
 
-                {/* 4.5 Hooks — tile-roof: one mark per rail crossing each virtual base line */}
-                {sHooks && hasHooks && (beBasesData ?? []).map((areaData, ai) => {
+                {/* 4.5 Anchor points — frameless roofs: one mark per rail crossing each virtual base line */}
+                {sAnchors && hasAnchors && (beBasesData ?? []).map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const offsets = sb.hookOffsets ?? []
                     if (!offsets.length || !(sb.lengthCm > 0)) return null
@@ -382,12 +383,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const { af } = ctx
                     const { btx, bty, bbx, bby } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
                     const r = Math.max(2, 4 / effZoom)
+                    // hookOffsets are measured from the base's REAR end. baseScreenCoords
+                    // returns (btx,bty)=rear for TTB but swaps endpoints in BTT mode —
+                    // pick the rear endpoint explicitly so anchors land correctly in both.
+                    const isBtt = !!af?.isBtt
+                    const [rx, ry, fx, fy] = isBtt ? [bbx, bby, btx, bty] : [btx, bty, bbx, bby]
                     return offsets.map((off, oi) => {
                       const frac = Math.max(0, Math.min(1, off / sb.lengthCm))
-                      const hx = btx + (bbx - btx) * frac
-                      const hy = bty + (bby - bty) * frac
+                      const hx = rx + (fx - rx) * frac
+                      const hy = ry + (fy - ry) * frac
                       return (
-                        <circle key={`hook-${ai}-${sbi}-${oi}`} cx={hx} cy={hy} r={r}
+                        <circle key={`anchor-${ai}-${sbi}-${oi}`} cx={hx} cy={hy} r={r}
                           fill={SUCCESS_DARK} stroke={WHITE} strokeWidth={1.5 / effZoom} />
                       )
                     })
@@ -665,7 +671,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
             { label: t('step3.layer.blocks'),     checked: showBlocks,     setter: setShowBlocks },
-            ...(hasHooks ? [{ label: t('step3.layer.hooks'), checked: showHooks, setter: setShowHooks }] : []),
+            ...(hasAnchors ? [{ label: t('step3.layer.anchors'), checked: showAnchors, setter: setShowAnchors }] : []),
             { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },

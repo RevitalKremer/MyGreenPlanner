@@ -5,7 +5,7 @@ import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
 import { projectReducer, initialProjectState, A } from './useProjectReducer'
 import { computePanelsAction, refreshAreaTrapezoidsAction, reSyncLoadedPanelColsAction, rebuildPanelGridAction } from './computePanelsAction'
-import { allAreasTiles, isAreaTiles } from '../utils/roofSpecUtils'
+import { allAreasFrameless, isAreaFrameless } from '../utils/roofSpecUtils'
 import useAppConfig from './useAppConfig'
 
 export function useProjectState() {
@@ -888,7 +888,7 @@ export function useProjectState() {
       case 2: {
         const roofType = currentProject?.roofSpec?.type || 'concrete'
         if (rectAreas.length === 0) return false
-        if (allAreasTiles(roofType, [])) return true
+        if (allAreasFrameless(roofType, [])) return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
@@ -897,7 +897,7 @@ export function useProjectState() {
         const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
         // Per-area a/h (with global fallback) + per-area purlin distance for mixed
         const areasOk = rectAreas.every(a => {
-          if (isAreaTiles(roofType, a)) return true
+          if (isAreaFrameless(roofType, a)) return true
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
           if (!(fh !== '' && inFh(parseFloat(fh)) && ang !== '' && inAng(parseFloat(ang)))) return false

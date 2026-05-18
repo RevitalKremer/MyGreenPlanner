@@ -6,8 +6,8 @@ import {
 } from '../../styles/colors'
 
 const SECTION_LABELS = { global: 'Global', rails: 'Rails', bases: 'Bases', detail: 'Block & Detail' }
-const ROOF_TYPES = ['concrete', 'iskurit', 'insulated_panel', 'tiles']
-const ROOF_TYPE_SHORT = { concrete: 'C', iskurit: 'I', insulated_panel: 'IP', tiles: 'T' }
+const ROOF_TYPES = ['concrete', 'iskurit', 'insulated_panel', 'tiles', 'flat_installation']
+const ROOF_TYPE_SHORT = { concrete: 'C', iskurit: 'I', insulated_panel: 'IP', tiles: 'T', flat_installation: 'F' }
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<any[]>([])

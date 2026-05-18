@@ -3,12 +3,13 @@ import { useLang } from '../../../i18n/LangContext'
 import { CadPage } from '../Step5PdfReport'
 import AreasTab, { InstallMethodLegend } from '../step3/AreasTab'
 import { getPanelsBoundingBox, computePrintFit } from '../step3/tabUtils'
-import { ROOF_CONCRETE, ROOF_TILES, ROOF_CORRUGATED } from '../../../styles/colors'
+import { ROOF_CONCRETE, ROOF_TILES, ROOF_FLAT_INSTALLATION, ROOF_CORRUGATED } from '../../../styles/colors'
 import { resolveAreaRoofType } from '../../../utils/roofSpecUtils'
 
 const ROOF_COLOR_MAP = {
   concrete: ROOF_CONCRETE,
   tiles: ROOF_TILES,
+  flat_installation: ROOF_FLAT_INSTALLATION,
   iskurit: ROOF_CORRUGATED,
   insulated_panel: ROOF_CORRUGATED,
 }
