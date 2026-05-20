@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, SUCCESS_DARK, WHITE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, OMEGA_PURPLE, WHITE } from '../../../styles/colors'
 import { consolidateAreaBases, buildTrapAreaMaps, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
 import { computeRowRailLayout, buildLineRailsFromBE, buildLineSegmentsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
@@ -394,7 +394,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                       const hy = ry + (fy - ry) * frac
                       return (
                         <circle key={`anchor-${ai}-${sbi}-${oi}`} cx={hx} cy={hy} r={r}
-                          fill={SUCCESS_DARK} stroke={WHITE} strokeWidth={1.5 / effZoom} />
+                          fill={OMEGA_PURPLE} stroke={WHITE} strokeWidth={1.5 / effZoom} />
                       )
                     })
                   })
@@ -435,15 +435,37 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const lxA = tIsRtl ? tLB.maxX - xA / pixelToCmRatio : tLB.minX + xA / pixelToCmRatio
                     const lxB = tIsRtl ? tLB.maxX - xB / pixelToCmRatio : tLB.minX + xB / pixelToCmRatio
 
-                    // Y: start point at exact depth on base A.
-                    // Endpoint shifts inward by one block length (to the block's inner edge
-                    // on base B), separating diagonals from dimension labels visually.
+                    // Y: both endpoints come from BE data — startBase/endBaseOffsetCm
+                    // may be mid-base when paired bases differ in length, and
+                    // baseA / baseB can sit on different panelLineIdx, so each
+                    // endpoint resolves its own line frame.
+                    // After the geometric lyB is computed, B is then shifted
+                    // inward by one block length — purely visual, to separate
+                    // the diagonal from the row-edge dimension labels.
                     const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
+                    const lineB = tLines?.find(l => l.lineIdx === baseB.panelLineIdx) ?? tLines?.[0]
                     const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
+                    const depthB = (baseB.startCm + (d.endBaseOffsetCm   ?? 0)) / pixelToCmRatio
                     const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
+                    const lyBgeom = tIsBtt ? (lineB?.maxY ?? tLB.maxY) - depthB : (lineB?.minY ?? tLB.minY) + depthB
                     const blockLen = (beTrapezoidsData?.[baseB.trapezoidId]?.geometry?.blockLengthCm ?? 50) / pixelToCmRatio
-                    const areaMiddleY = ((lineA?.minY ?? tLB.minY) + (lineA?.maxY ?? tLB.maxY)) / 2
-                    const lyB = lyA + (lyA < areaMiddleY ? blockLen : -blockLen)
+                    // Inward shift reference: the diagonal's OVERLAP region —
+                    // the local-Y band where both bases coexist. Anything else
+                    // (lineA's middle, the whole area's middle) can push lyB
+                    // outside the overlap when paired bases differ in length
+                    // or sit on different panelLineIdx (A1/A2, C1/C2, D1/D2).
+                    const aRearLY = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - baseA.startCm / pixelToCmRatio
+                                           : (lineA?.minY ?? tLB.minY) + baseA.startCm / pixelToCmRatio
+                    const aFrontLY = tIsBtt ? aRearLY - baseA.lengthCm / pixelToCmRatio
+                                            : aRearLY + baseA.lengthCm / pixelToCmRatio
+                    const bRearLY = tIsBtt ? (lineB?.maxY ?? tLB.maxY) - baseB.startCm / pixelToCmRatio
+                                           : (lineB?.minY ?? tLB.minY) + baseB.startCm / pixelToCmRatio
+                    const bFrontLY = tIsBtt ? bRearLY - baseB.lengthCm / pixelToCmRatio
+                                            : bRearLY + baseB.lengthCm / pixelToCmRatio
+                    const overlapMinLY = Math.max(Math.min(aRearLY, aFrontLY), Math.min(bRearLY, bFrontLY))
+                    const overlapMaxLY = Math.min(Math.max(aRearLY, aFrontLY), Math.max(bRearLY, bFrontLY))
+                    const overlapMidLY = (overlapMinLY + overlapMaxLY) / 2
+                    const lyB = lyBgeom + (lyA < overlapMidLY ? blockLen : -blockLen)
 
                     const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
                     const pb = localToScreen({ x: lxB, y: lyB }, tFrame.center, tAngle)
