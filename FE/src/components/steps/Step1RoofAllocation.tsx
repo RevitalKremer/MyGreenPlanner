@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
-import { blobToImagePayload } from '../../utils/imagePayload'
+import { blobToDataURL } from '../../utils/imagePayload'
 import CanvasNavigator from '../shared/CanvasNavigator'
 import RoofMapper from '../RoofMapper'
 import ImageUploader from '../ImageUploader'
@@ -60,6 +60,9 @@ export default function Step1RoofAllocation({
   const { t } = useLang()
   const [mousePos, setMousePos] = useState(null)
   const [viewZoom, setViewZoom] = useState(1)
+  // When user pastes an image, route it through ImageUploader (rotate UI) before
+  // committing. Setting this also clears uploadedImageData to surface the uploader.
+  const [pendingPasteImage, setPendingPasteImage] = useState<{ dataURL: string; file: File } | null>(null)
 
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
 
@@ -118,8 +121,9 @@ export default function Step1RoofAllocation({
     return () => el.removeEventListener('wheel', handler)
   }, [setViewZoom])
 
-  // Paste from clipboard while in image mode — Cmd/Ctrl+V (replaces current image).
-  // Listens on document; only fires when no editable element has focus.
+  // Paste from clipboard while in image mode — Cmd/Ctrl+V routes the pasted
+  // image through ImageUploader's rotate UI before it's committed. The user
+  // can align the image to north there; rotation is baked into pixels at confirm.
   useEffect(() => {
     if (roofSource !== 'image') return
     const onPaste = async (e: ClipboardEvent) => {
@@ -136,15 +140,20 @@ export default function Step1RoofAllocation({
       if (!imageBlob) return
       e.preventDefault()
       try {
-        const payload = await blobToImagePayload(imageBlob, 'pasted_image.png')
-        handleImageUploaded(payload)
+        const dataURL = await blobToDataURL(imageBlob)
+        const file = new File([imageBlob], 'pasted_image.png', { type: imageBlob.type || 'image/png' })
+        setUploadedImageData(null)
+        setRoofPolygon(null)
+        setReferenceLine(null)
+        setReferenceLineLengthCm('')
+        setPendingPasteImage({ dataURL, file })
       } catch (err) {
         console.error('Paste image failed:', err)
       }
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [roofSource, handleImageUploaded])
+  }, [roofSource, setUploadedImageData, setRoofPolygon, setReferenceLine, setReferenceLineLengthCm])
 
 
   const getImageCoords = (e) => {
@@ -211,7 +220,7 @@ export default function Step1RoofAllocation({
                   alt="Uploaded roof"
                   style={{
                     display: 'block',
-                    transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
+                    transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
                     maxWidth: '100%',
                     maxHeight: 'calc(100vh - 250px)',
                     width: 'auto',
@@ -229,7 +238,7 @@ export default function Step1RoofAllocation({
                       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                       pointerEvents: isDrawingLine ? 'all' : 'none',
                       cursor: isDrawingLine ? 'crosshair' : 'default',
-                      transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`
+                      transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`
                     }}
                     onClick={handleSVGClick}
                     onMouseMove={handleSVGMouseMove}
@@ -279,7 +288,11 @@ export default function Step1RoofAllocation({
               )}
             </div>
         ) : showUploader ? (
-          <ImageUploader onImageUploaded={handleImageUploaded} onClose={() => {}} />
+          <ImageUploader
+            onImageUploaded={(payload) => { setPendingPasteImage(null); handleImageUploaded(payload) }}
+            onClose={() => {}}
+            initialImage={pendingPasteImage}
+          />
         ) : showMap ? (
           <RoofMapper onCapture={handleImageUploaded} />
         ) : null}
