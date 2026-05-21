@@ -333,8 +333,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const lenPx = sb.lengthCm / pixelToCmRatio
                     const ty = tIsBtt ? (line?.maxY ?? af.frame.localBounds.maxY) - depthPx - lenPx : (line?.minY ?? af.frame.localBounds.minY) + depthPx
                     const by = ty + lenPx
-                    // Only render blocks that fit within this base's actual length
-                    const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= sb.lengthCm + 1)
+                    // Filter blocks whose slope-axis end falls within the trapezoid's slope
+                    // length. Comparing against sb.lengthCm here is wrong: that field is the
+                    // base bar length (which can sit ~1cm short of the slope due to BE end
+                    // clearance, e.g. A1 ends up with sb.lengthCm=150 vs topBeamLength=151),
+                    // so a block legitimately placed at slopePositionCm=100.3 with
+                    // slopeBlockLengthCm≈50.77 would test as 151.07 > 151 and silently drop.
+                    const slopeUpperCm = geom.topBeamLength ?? sb.lengthCm
+                    const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= slopeUpperCm + 1)
                     const blockWidthCm = trapSettingsMap[sb.trapezoidId]?.blockWidthCm
                     if (blockWidthCm == null) return null
                     const blockWSvg = (blockWidthCm / pixelToCmRatio) * sc
