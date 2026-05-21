@@ -30,7 +30,6 @@ export default function RailLayoutTab({
   printSc = null,   // pre-computed scale to maximize page fit (PDF only)
   printBbox = null, // when set in printMode, overrides the internal bbox (skips image expansion)
   trapSettingsMap = {},
-  trapLineRailsMap = {},
   railLayouts: railLayoutsProp = null,  // pre-computed per-area layouts from parent
   railsComputing = false,
   beRailsData = null,
@@ -56,11 +55,6 @@ export default function RailLayoutTab({
   const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
-  const railConfig = useMemo(() => ({
-    lineRails,
-    overhangCm: railOverhangCm,
-    stockLengths,
-  }), [lineRails, railOverhangCm, stockLengths])
 
   const { map: rowGroups, keys: rowKeys } = useMemo(() => buildRowGroups(panels), [panels])
 
@@ -76,7 +70,10 @@ export default function RailLayoutTab({
     [panels, rowKeys, beRailsData],
   )
 
-  // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries)
+  // Compute rail layouts — one per physical panel row (multi-row areas expand to multiple entries).
+  // Deps MUST include every input read inside, otherwise stale layouts produce FE rails whose
+  // (railId, lineIdx) tuples don't match the freshly-arrived BE rails — and the overlay's
+  // material-summary / dimensions silently drop because beSegsFn returns [].
   const { railLayouts, railLayoutKeys } = useMemo(() => {
     if (railLayoutsProp) return { railLayouts: railLayoutsProp, railLayoutKeys: rowKeys }
     return computeAllRowRailLayouts({
@@ -85,7 +82,7 @@ export default function RailLayoutTab({
       lineRails, trapSettingsMap, railOverhangCm, stockLengths,
       beRailsData, groupKeyToLabel,
     })
-  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, railConfig, selectedRowIdx, trapLineRailsMap, trapSettingsMap, printMode])
+  }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, selectedRowIdx, selectedPanelRowIdx, printMode, lineRails, trapSettingsMap, railOverhangCm, stockLengths, beRailsData, groupKeyToLabel])
 
   const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
   const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)

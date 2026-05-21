@@ -12,7 +12,7 @@ const PM_PAD = 12  // print mode — minimal padding
 export default function RailsLayoutPage({
   panels = [], refinedArea,
   uploadedImageData, imageSrc,
-  trapSettingsMap = {}, trapLineRailsMap = {},
+  trapSettingsMap = {},
   beRailsData = null,
   rectAreas = null,
   project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
@@ -56,7 +56,6 @@ export default function RailsLayoutPage({
             uploadedImageData={uploadedImageData}
             imageSrc={imageSrc}
             trapSettingsMap={trapSettingsMap}
-            trapLineRailsMap={trapLineRailsMap}
             beRailsData={beRailsData}
             rectAreas={rectAreas}
             printMode

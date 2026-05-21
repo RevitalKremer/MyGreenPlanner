@@ -799,7 +799,7 @@ export default function Step5PdfReport({
               pageRef={page5Ref}
               panels={panels} refinedArea={refinedArea}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
+              trapSettingsMap={trapSettingsMap}
               beRailsData={beRailsData}
               rectAreas={rectAreas}
               project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
