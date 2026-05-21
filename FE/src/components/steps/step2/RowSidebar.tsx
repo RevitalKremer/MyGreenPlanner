@@ -396,14 +396,17 @@ export default function RowSidebar({
                               setRectAreas?.(prev => prev.map(a => {
                                 if (a.areaGroupId !== group.groupId) return a
                                 const prevSpec = a.roofSpec || {}
-                                // Reset purlin params when switching to a type that doesn't use them
+                                // Reset purlin params when switching to a type that doesn't use them.
+                                // For iskurit/insulated_panel, default orientation to 'perpendicular'
+                                // so the stored value matches what the dropdown below displays — the
+                                // BE only emits the base-beam extension on an explicit 'perpendicular'.
                                 const keepPurlin = type === 'iskurit' || type === 'insulated_panel'
                                 return {
                                   ...a,
                                   roofSpec: {
                                     type,
                                     distanceBetweenPurlinsCm: keepPurlin ? (prevSpec.distanceBetweenPurlinsCm ?? null) : null,
-                                    installationOrientation: keepPurlin ? (prevSpec.installationOrientation ?? null) : null,
+                                    installationOrientation: keepPurlin ? (prevSpec.installationOrientation ?? 'perpendicular') : null,
                                   },
                                 }
                               }))
