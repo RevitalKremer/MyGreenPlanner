@@ -1,14 +1,31 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './ImageUploader.css'
 import { useLang } from '../i18n/LangContext'
+import { bakeImageRotation, dataURLToFile } from '../utils/imagePayload'
 
-function ImageUploader({ onImageUploaded, onClose: _onClose }) {
+type InitialImage = { dataURL: string; file: File }
+
+function ImageUploader({ onImageUploaded, onClose: _onClose, initialImage }: {
+  onImageUploaded: (payload: any) => void
+  onClose?: () => void
+  initialImage?: InitialImage | null
+}) {
   const { t } = useLang()
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [rotation, setRotation] = useState(0)
   const [imageScale, setImageScale] = useState(1)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [busy, setBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (initialImage && !uploadedImage) {
+      setUploadedImage(initialImage.dataURL)
+      setImageFile(initialImage.file)
+      setRotation(0)
+      setImageScale(1)
+    }
+  }, [initialImage, uploadedImage])
 
   const loadFromFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -48,20 +65,28 @@ function ImageUploader({ onImageUploaded, onClose: _onClose }) {
   const handleRotationChange = (e) => setRotation(parseInt(e.target.value))
   const handleScaleChange    = (e) => setImageScale(parseFloat(e.target.value))
 
-  const handleConfirm = () => {
-    if (uploadedImage && imageFile) {
-      const img = new Image()
-      img.onload = () => {
-        onImageUploaded({
-          imageData: uploadedImage,
-          file: imageFile,
-          rotation: rotation,
-          scale: imageScale,
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })
-      }
-      img.src = uploadedImage
+  const handleConfirm = async () => {
+    if (!uploadedImage || !imageFile || busy) return
+    setBusy(true)
+    try {
+      const baked = await bakeImageRotation(uploadedImage, rotation)
+      const fileName = imageFile.name || 'image.png'
+      const bakedFile = rotation % 360 === 0
+        ? imageFile
+        : await dataURLToFile(baked.dataURL, fileName, 'image/png')
+      onImageUploaded({
+        imageData: baked.dataURL,
+        file: bakedFile,
+        rotation: 0,
+        scale: imageScale,
+        width: baked.width,
+        height: baked.height,
+      })
+    } catch (err) {
+      console.error('Image bake failed:', err)
+      alert(t('welcome.invalidImage'))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -122,7 +147,7 @@ function ImageUploader({ onImageUploaded, onClose: _onClose }) {
                     transition: 'transform 0.2s ease'
                   }}
                 />
-                <div className="north-indicator" style={{ transform: `rotate(${rotation}deg)` }}>
+                <div className="north-indicator">
                   <span className="north-arrow">↑</span>
                   <span className="north-label">N</span>
                 </div>
@@ -191,10 +216,10 @@ function ImageUploader({ onImageUploaded, onClose: _onClose }) {
 
           {uploadedImage && (
             <div className="uploader-footer">
-              <button className="btn-reset" onClick={handleReset}>
+              <button className="btn-reset" onClick={handleReset} disabled={busy}>
                 {t('uploader.uploadDifferent')}
               </button>
-              <button className="btn-confirm" onClick={handleConfirm}>
+              <button className="btn-confirm" onClick={handleConfirm} disabled={busy}>
                 {t('uploader.useThis')}
               </button>
             </div>

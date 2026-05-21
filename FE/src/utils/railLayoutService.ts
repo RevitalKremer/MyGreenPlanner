@@ -135,27 +135,39 @@ function splitIntoStockSegments(lengthMm: number, stockLengths: number[]) {
 /**
  * Map each FE areaGroupKey to its BE rails-area entry.
  *
- * areaGroupKey is a rectArea index (FE-unique); we resolve it to the BE area
- * by reading rectArea.areaGroupId (= BE areaId) and matching against
- * beRailsData. This avoids the collision risk of a numeric string-keyed
- * lookup (FE rectArea index ↔ BE areaId) and the assumption that areaLabel
- * is unique.
+ * areaGroupKey is a rectArea index (FE-unique). Primary resolution is by
+ * rectArea.areaGroupId → beRailsData[].areaId — a stable numeric link that
+ * survives label renames and avoids collisions when labels repeat.
+ *
+ * Fallback by label is required for the step 2 → 3 transition on a
+ * fresh-create project: rectAreas are still holding their local negative
+ * rowIds in areaGroupId until handleImportProject mirrors the BE-assigned
+ * positive areaId back in. Without the fallback, beSegsFn in RailsOverlay
+ * returns [] for every rail and the material-summary / dimensions layers
+ * silently render nothing until the user reloads the project.
  */
 export function buildGroupKeyToBeArea(
   rowKeys: number[],
   beRailsData: BeRailsAreaData[] | null,
-  rectAreas: { areaGroupId?: number | string | null }[] | null = null,
+  rectAreas: { areaGroupId?: number | string | null; label?: string | null }[] | null = null,
 ): Record<number, BeRailsAreaData> {
   const map: Record<number, BeRailsAreaData> = {}
   if (!beRailsData || beRailsData.length === 0 || !rectAreas) return map
   const beByAreaId: Record<number, BeRailsAreaData> = {}
+  const beByLabel: Record<string, BeRailsAreaData> = {}
   for (const a of beRailsData) {
     if (a.areaId != null) beByAreaId[a.areaId] = a
+    if (a.areaLabel) beByLabel[a.areaLabel] = a
   }
   for (const gk of rowKeys) {
-    const beAreaId = rectAreas[gk]?.areaGroupId
+    const ra = rectAreas[gk]
+    const beAreaId = ra?.areaGroupId
     if (typeof beAreaId === 'number' && beByAreaId[beAreaId]) {
       map[gk] = beByAreaId[beAreaId]
+      continue
+    }
+    if (ra?.label && beByLabel[ra.label]) {
+      map[gk] = beByLabel[ra.label]
     }
   }
   return map

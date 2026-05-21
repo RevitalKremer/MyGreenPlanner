@@ -1428,7 +1428,18 @@ async def compute_and_save_bases(
             all_row_bases[row_idx] = row_bases
             if not first_bases_data_map:
                 first_bases_data_map = bases_data_map
-            per_row_data[row_idx] = {'basesDataMap': bases_data_map, 'consolidated': consolidated}
+            # `Base.startCm` is line-relative — external-diagonal Y-overlap
+            # geometry must translate to area-rear-relative Y, so stash the
+            # row's line-rear table now while panel_grid + dims are in scope.
+            line_rears_cm = bs.line_rear_edges_cm(
+                pg, step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['lineGapCm'],
+            )
+            per_row_data[row_idx] = {
+                'basesDataMap': bases_data_map,
+                'consolidated': consolidated,
+                'lineRearsCm': line_rears_cm,
+            }
 
             # Authoritative trap assignment — probe each base's x-position
             # against the row's panelGrid to derive the column signature
@@ -1468,8 +1479,7 @@ async def compute_and_save_bases(
             # trap assignments AND the new bases added by the completion pass.
             # Without this, diagonals are paired against stale (pre-reassign)
             # trap groupings and miss any added bases entirely. Sort each trap's
-            # bases by offset so _diagonal_pairs picks geometrically-adjacent
-            # pairs (outer corners, etc.) rather than insertion-order pairs.
+            # bases by offset (legacy callers without row_bases still need this).
             consolidated = {tid: [] for tid in trap_ids}
             for b in row_bases:
                 tid = b.get('trapezoidId')
@@ -1523,6 +1533,12 @@ async def compute_and_save_external_diagonals(
         trap_ids = area_res.get('trapIds', [])
         per_row_data = area_res.get('perRowData', {})
 
+        # Per-row rails were persisted by compute_and_save_rails into
+        # step3.computedAreas[].rails[rowIdx]. The rails-based diagonal
+        # algorithm needs them to identify external rails + shape edges.
+        computed_area = _get_computed_area(data, area_id) or {}
+        rails_by_row = computed_area.get('rails', {})
+
         # Compute external diagonals per panel row, tag each with panelRowIdx
         all_diagonals = []
         if per_row_data:
@@ -1530,9 +1546,17 @@ async def compute_and_save_external_diagonals(
                 bdm = row_data.get('basesDataMap', {})
                 cons = row_data.get('consolidated', {})
                 row_bases = row_data.get('rowBases')
+                line_rears_cm = row_data.get('lineRearsCm')
+                rails = (rails_by_row.get(row_idx)
+                         or rails_by_row.get(str(row_idx))
+                         or [])
                 if not bdm:
                     continue
-                row_diags = bs.compute_external_diagonals(trap_ids, bdm, cons, computed_trapezoids, row_bases=row_bases)
+                row_diags = bs.compute_external_diagonals(
+                    trap_ids, bdm, cons, computed_trapezoids,
+                    row_bases=row_bases, line_rears_cm=line_rears_cm,
+                    rails=rails,
+                )
                 for d in row_diags:
                     d['panelRowIdx'] = row_idx
                 all_diagonals.extend(row_diags)

@@ -10,11 +10,20 @@ Depth convention (lineIdx ordering in panelGrid.rows[]):
 """
 
 from __future__ import annotations
+import logging
 import math
 from typing import Optional
 
 from app.utils.math_helpers import round_to_2dp
 from app.utils.panel_geometry import infer_row_orientation, default_panel_positions, PANEL_V, PANEL_H
+
+logger = logging.getLogger(__name__)
+
+# Length difference (cm) above which two adjacent bases are treated as a
+# shape-edge seam in external-diagonal pair selection. Below this, the
+# difference is treated as float-rounding noise from the depth derivation
+# / consolidation pipeline.
+LENGTH_TRANSITION_TOL_CM = 1.0
 
 
 # ── Edge-offset tolerance optimisation ────────────────────────────────────────
@@ -292,7 +301,7 @@ def compute_area_bases(
 
 # ── Frameless-roof anchor points (tiles, flat_installation) ─────────────────
 
-def _line_rear_edges_cm(
+def line_rear_edges_cm(
     panel_grid: dict,
     panel_width_cm: float,
     panel_length_cm: float,
@@ -300,8 +309,10 @@ def _line_rear_edges_cm(
 ) -> dict[int, float]:
     """Cumulative rear-edge position (cm from area's rear edge) for each line.
 
-    Mirrors the line-info computation in `compute_area_bases`, but returns
-    only what the hook calculation needs: a `lineIdx → rearEdgeCm` map.
+    Mirrors the line-info computation in `compute_area_bases`. Used by both
+    frameless-anchor hook offsets and external-diagonal Y-overlap geometry —
+    `Base.startCm` is line-relative (depth from `panelLineIdx`'s rear), so any
+    comparison across bases on different lines must add this offset first.
     """
     rows = panel_grid.get('rows', [])
     out: dict[int, float] = {}
@@ -344,7 +355,7 @@ def fill_frameless_anchors_offsets(
     rows do not invoke this, so concrete / iskurit / insulated bases keep an
     empty `hookOffsets`.
     """
-    line_rears = _line_rear_edges_cm(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
+    line_rears = line_rear_edges_cm(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
     for b in bases:
         base_line = b.get('panelLineIdx', 0)
         base_rear = line_rears.get(base_line, 0.0)
@@ -367,93 +378,388 @@ def fill_frameless_anchors_offsets(
 
 # ── External diagonals (runs after trapezoid details) ────────────────────────
 
-def _diagonal_pairs(n: int, base_lengths: list[float] | None = None) -> list[list[int]]:
-    """Compute diagonal base pairs: outer pairs + corner pairs + inward expansion.
+def _select_row_pairs(
+    bases: list[dict],
+    line_rears_cm: dict[int, float] | None = None,
+) -> list[tuple[int, int, bool, bool]]:
+    """Pick `(outer_idx, inner_idx, emit_rear, emit_front)` pairs for a row.
 
-    Step 1 — always add outer pairs [0,1] and [n-1,n-2].
-    Corner detection — scan inward from each side; where base length changes
-    (short→long), add a corner pair at the first two long bases. This covers
-    the structural "corners" of irregular area shapes (e.g. L-shaped).
-    Expansion — from all seed pairs, continue inward with consecutive pairs,
-    alternating left/right, stop when pairs overlap.
+    `bases` MUST be sorted by `offsetFromStartCm` (left → right along the row).
+    Each tuple is oriented so `outer_idx` is the row-edge anchor (FE renders
+    the cyan endpoint at that base, tilts the inner end inward by one block
+    length). The `emit_*` flags tell the emission step which of the two
+    overlap-edge diagonals to actually produce — extension pairs only emit
+    at the side of the seam where the longer base's flank is exposed, so
+    we don't duplicate a same-Y diagonal one base over from the existing
+    row-end brace ("gap of 1 base between diagonals").
+
+    Selection rules:
+      A) Row outer ends — (0,1) and (n-2,n-1) always braced, both edges.
+      B) Shape-edge seams — consecutive pair where the trapezoid changes OR
+         `lengthCm` differs by more than `LENGTH_TRANSITION_TOL_CM`. Both
+         edges of the seam pair's overlap are emitted (those are the actual
+         exposed shape transitions).
+      C) Long-side extension — when a seam at (i,i+1) has one base materially
+         longer in Y than the other, also brace the adjacent pair on the
+         longer side, but only at the Y edge where the long base actually
+         extends past the short one. (e.g. A1 extends past A2 in front only
+         → emit only the front-edge diagonal of the extension pair; D's D2
+         extends past D1 on both rear and front → emit both.)
+      D) Inward expansion — fill remaining unbraced consecutive pairs only
+         across runs of same-trap, same-length bases, alternating left/right.
     """
+    n = len(bases)
     if n < 2:
         return []
 
+    line_rears = line_rears_cm or {}
+
+    def _y_range(b: dict) -> tuple[float, float]:
+        rear = line_rears.get(b.get('panelLineIdx', 0), 0.0) + b.get('startCm', 0)
+        return rear, rear + b.get('lengthCm', 0)
+
+    # raw_pairs entries: [lo, hi, emit_rear, emit_front, outer_hint]
+    # outer_hint ∈ {'lo', 'hi', None}: which index of the pair is the OUTER
+    # (cyan-endpoint) anchor. First non-None hint wins on duplicate adds.
+    raw_pairs: list[list] = []
+    seen: dict[tuple[int, int], int] = {}  # (lo,hi) → index into raw_pairs
     connected: set[int] = set()
-    pairs: list[list[int]] = []
 
-    def _add(a: int, b: int) -> None:
-        pairs.append([a, b])
-        connected.update([a, b])
+    def add(
+        a: int, b: int,
+        emit_rear: bool = True, emit_front: bool = True,
+        outer_hint: str | None = None,
+    ) -> None:
+        if a == b:
+            return
+        key = (min(a, b), max(a, b))
+        if key in seen:
+            entry = raw_pairs[seen[key]]
+            entry[2] = entry[2] or emit_rear
+            entry[3] = entry[3] or emit_front
+            if entry[4] is None and outer_hint is not None:
+                entry[4] = outer_hint
+            return
+        seen[key] = len(raw_pairs)
+        raw_pairs.append([key[0], key[1], emit_rear, emit_front, outer_hint])
+        connected.update(key)
 
-    # ── Step 1: outer pairs ───────────────────────────────────────────────
-    _add(0, 1)
+    # Rule A — outer ends (explicit orientation: left-end anchored at lo, right
+    # at hi)
+    add(0, 1, outer_hint='lo')
     if n > 2:
-        _add(n - 1, n - 2)
+        add(n - 2, n - 1, outer_hint='hi')
 
-    # ── Corner pairs: detect length transitions from each side ────────────
-    lens = base_lengths or []
-    threshold = 1.0  # cm
+    # Rule B — shape-edge seams (+ Rule C as a consequence of each seam)
+    def _is_seam(a: dict, b: dict) -> bool:
+        if a.get('trapezoidId') != b.get('trapezoidId'):
+            return True
+        return abs(a.get('lengthCm', 0) - b.get('lengthCm', 0)) > LENGTH_TRANSITION_TOL_CM
 
-    if len(lens) >= n:
-        # From left: scan inward, find first short→long transition
-        for i in range(n - 2):
-            if lens[i + 1] - lens[i] > threshold:
-                # Corner: add first two long bases (left→right)
-                if i + 2 < n and (i + 1) not in connected:
-                    _add(i + 1, i + 2)
-                elif i + 2 < n and (i + 2) not in connected:
-                    _add(i + 1, i + 2)
-                break
-            if lens[i] - lens[i + 1] > threshold:
-                break  # getting shorter — no corner from this side
+    for i in range(n - 1):
+        a, b = bases[i], bases[i + 1]
+        if not _is_seam(a, b):
+            continue
+        add(i, i + 1)
+        # Rule C — extension on the longer base's exposed Y-flank, but only
+        # when the seam itself sits at a row outer end. An interior seam's
+        # long-side flank is already braced by whichever row-end pair is on
+        # that side; the extension would just land deep interior with no
+        # adjacent row-end pair (redundant, gap of >1 base to any neighbor).
+        if i != 0 and i + 1 != n - 1:
+            continue
+        # Compare the actual area-Y ranges rather than raw lengthCm: cross-
+        # line seams can leave equal-length bases sitting at different Y
+        # origins, and we need to brace whichever flank is exposed.
+        a_rear, a_front = _y_range(a)
+        b_rear, b_front = _y_range(b)
+        a_y_len = a_front - a_rear
+        b_y_len = b_front - b_rear
+        tol = LENGTH_TRANSITION_TOL_CM
+        if a_y_len - b_y_len > tol and i > 0:
+            emit_rear = a_rear < b_rear - tol
+            emit_front = a_front > b_front + tol
+            if emit_rear or emit_front:
+                # Extension on the long-base side of the seam: outer anchor is
+                # the index ADJACENT to the seam (i.e., `i`), which is the `hi`
+                # of pair (i-1, i).
+                add(i - 1, i, emit_rear=emit_rear, emit_front=emit_front,
+                    outer_hint='hi')
+        elif b_y_len - a_y_len > tol and i + 2 < n:
+            emit_rear = b_rear < a_rear - tol
+            emit_front = b_front > a_front + tol
+            if emit_rear or emit_front:
+                # Mirror: outer anchor is `i+1` (adjacent to seam), which is
+                # the `lo` of pair (i+1, i+2).
+                add(i + 1, i + 2, emit_rear=emit_rear, emit_front=emit_front,
+                    outer_hint='lo')
 
-        # From right: scan inward, find first short→long transition
-        for i in range(n - 1, 0, -1):
-            if lens[i - 1] - lens[i] > threshold:
-                # Corner: add first two long bases (right→left)
-                if i - 2 >= 0 and (i - 1) not in connected:
-                    _add(i - 1, i - 2)
-                elif i - 2 >= 0 and (i - 2) not in connected:
-                    _add(i - 1, i - 2)
-                break
-            if lens[i] - lens[i - 1] > threshold:
-                break  # getting shorter — no corner from this side
-
-    # ── Expansion: inward from both ends ──────────────────────────────────
-    left_next = min((i for i in range(n) if i not in connected), default=n)
-    right_next = max((i for i in range(n) if i not in connected), default=-1)
-
+    # Rule D — inward expansion over uniform (same-trap, same-length) runs
+    left_next = 0
+    right_next = n - 1
     while True:
         added = False
-
-        # Left side: find next unconnected consecutive pair (left→right)
         while left_next + 1 < n:
             a, b = left_next, left_next + 1
-            if a not in connected and b not in connected:
-                _add(a, b)
-                left_next = b + 1
-                added = True
-                break
-            left_next += 1
-
-        # Right side: find next unconnected consecutive pair (right→left)
+            if a in connected or b in connected or _is_seam(bases[a], bases[b]):
+                left_next += 1
+                continue
+            add(a, b)
+            left_next = b + 1
+            added = True
+            break
         while right_next - 1 >= 0:
             a, b = right_next, right_next - 1
-            if a not in connected and b not in connected:
-                _add(a, b)
-                right_next = b - 1
-                added = True
-                break
-            right_next -= 1
-
+            if a in connected or b in connected or _is_seam(bases[a], bases[b]):
+                right_next -= 1
+                continue
+            add(a, b)
+            right_next = b - 1
+            added = True
+            break
         if not added:
             break
 
+    # Orient each pair as (outer, inner). `outer_hint` pins the orientation;
+    # row-end pairs and extension pairs both supply hints, so unhinted pairs
+    # (purely interior expansion, middle seams) default to (lo, hi).
+    oriented: list[tuple[int, int, bool, bool]] = []
+    for lo, hi, er, ef, hint in raw_pairs:
+        if hint == 'hi':
+            oriented.append((hi, lo, er, ef))
+        else:
+            oriented.append((lo, hi, er, ef))
+    return oriented
+
+
+def _interp_leg_height_cm(
+    base: dict,
+    off_along_base_cm: float,
+    bases_data_map: dict[str, dict],
+    trap_geom: dict[str, dict],
+) -> float:
+    """Linear interpolation of leg height (cm) at a depth along the base.
+
+    `off_along_base_cm` is measured from `base.startCm` along the base's depth
+    axis (0 = rear edge of the base in its own line frame, lengthCm = front edge).
+    The leg-height profile (heightRear → heightFront) is keyed off the trap's
+    rear/front leg depths and evaluated at the absolute depth-from-trap-rear.
+    """
+    bd = bases_data_map.get(base.get('trapezoidId', ''), {}) or {}
+    geom = trap_geom.get(base.get('trapezoidId', ''), {}) or {}
+    edge_depth_cm = bd.get('baseTopDepthCm', 0) + off_along_base_cm
+    rl = bd.get('rearLegDepthCm', 0)
+    fl = bd.get('frontLegDepthCm', 0)
+    hr = geom.get('heightRear', 0)
+    hf = geom.get('heightFront', 0)
+    if fl <= rl or hr <= 0:
+        return 0.0
+    t = max(0.0, min(1.0, (edge_depth_cm - rl) / (fl - rl)))
+    return hr + t * (hf - hr)
+
+
+def _rail_select_subrow_pairs(n: int) -> list[tuple[int, int]]:
+    """Outer-pairs-plus-alternating-expansion on a `n`-base sub-row.
+
+    No seam / shape logic — sub-rows here are slices of bases that all
+    intersect a given rail, so every consecutive pair sits at the rail's Y.
+    Returns (lo, hi) tuples in the order they're added (Rule A first, then
+    Rule D alternating-walk expansion). Orientation handled by the caller.
+    """
+    if n < 2:
+        return []
+    pairs: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    connected: set[int] = set()
+
+    def add(a: int, b: int) -> None:
+        if a == b:
+            return
+        key = (min(a, b), max(a, b))
+        if key in seen:
+            return
+        seen.add(key)
+        pairs.append(key)
+        connected.update(key)
+
+    add(0, 1)
+    if n > 2:
+        add(n - 2, n - 1)
+    left_next, right_next = 0, n - 1
+    while True:
+        added = False
+        while left_next + 1 < n:
+            a, b = left_next, left_next + 1
+            if a in connected or b in connected:
+                left_next += 1
+                continue
+            add(a, b); left_next = b + 1; added = True; break
+        while right_next - 1 >= 0:
+            a, b = right_next, right_next - 1
+            if a in connected or b in connected:
+                right_next -= 1
+                continue
+            add(a, b); right_next = b - 1; added = True; break
+        if not added:
+            break
     return pairs
 
 
+def _compute_diagonals_via_rails(
+    rails: list[dict],
+    row_bases: list[dict],
+    bases_data_map: dict[str, dict],
+    trap_geom: dict[str, dict],
+    line_rears: dict[int, float],
+) -> list[dict]:
+    """Rails-based external-diagonal placement.
+
+    Two passes:
+      1. Identify the rear-most and front-most rails of the area (the
+         "external" rails). For each, gather the bases it intersects (Y in
+         base's area-Y range AND X in rail's X span). Run standard
+         outer-pair + alternating expansion on that sub-row and emit one
+         diagonal per pair at the rail's area-Y.
+      2. For every remaining (internal) rail, gather intersecting bases. If
+         the sub-row's left or right end is INTERIOR to the overall row
+         (i.e., the overall row continues beyond on that side), the sub-row
+         end is a shape edge. Emit one brace pair at each such edge.
+
+    Endpoints are line-relative offsets along each base: `off = rail.Y −
+    base.areaYRear`. Heights come from `_interp_leg_height_cm` evaluated at
+    the OUTER base's offset.
+    """
+    if not rails or len(row_bases) < 2:
+        return []
+
+    def rail_y(rail: dict) -> float:
+        return line_rears.get(rail.get('lineIdx', 0), 0.0) + rail.get('offsetFromRearEdgeCm', 0)
+
+    def base_y_range(base: dict) -> tuple[float, float]:
+        rear = line_rears.get(base.get('panelLineIdx', 0), 0.0) + base.get('startCm', 0)
+        return rear, rear + base.get('lengthCm', 0)
+
+    tol = 0.5  # cm — tolerance for the strict-inequality intersection check
+
+    def intersects(base: dict, rail: dict) -> bool:
+        # Y-only intersection: a rail's Y defines the diagonal's Y level. A
+        # base participates in this rail's sub-row when its Y-span covers
+        # that Y. Rail X-span isn't relevant here — irregular shapes (stair-
+        # step, L) have short rails that don't reach every base on their
+        # line, but those bases still have a leg at the rail's Y level via
+        # the area's structural frame.
+        ry = rail_y(rail)
+        by_rear, by_front = base_y_range(base)
+        return by_rear - tol <= ry <= by_front + tol
+
+    # Map each base in row_bases to its index so emitted indices align with
+    # the stored array regardless of sort order.
+    base_idx_by_id: dict[str, int] = {}
+    for i, b in enumerate(row_bases):
+        bid = b.get('baseId')
+        if bid:
+            base_idx_by_id[bid] = i
+
+    bases_sorted = sorted(row_bases, key=lambda b: b.get('offsetFromStartCm', 0))
+    overall_n = len(bases_sorted)
+
+    rails_sorted = sorted(rails, key=rail_y)
+    if len(rails_sorted) < 2:
+        external_rails = rails_sorted
+        internal_rails: list[dict] = []
+    else:
+        external_rails = [rails_sorted[0], rails_sorted[-1]]
+        internal_rails = rails_sorted[1:-1]
+
+    diagonals: list[dict] = []
+
+    def emit(rail: dict, outer: dict, inner: dict) -> None:
+        ry = rail_y(rail)
+        out_len = outer.get('lengthCm', 0)
+        inn_len = inner.get('lengthCm', 0)
+        out_rear, _ = base_y_range(outer)
+        inn_rear, _ = base_y_range(inner)
+        off_outer = max(0.0, min(out_len, ry - out_rear))
+        off_inner = max(0.0, min(inn_len, ry - inn_rear))
+        horiz_mm = round(abs(inner.get('offsetFromStartCm', 0) - outer.get('offsetFromStartCm', 0)) * 10)
+        height_at_edge_cm = _interp_leg_height_cm(outer, off_outer, bases_data_map, trap_geom)
+        vert_mm = round(height_at_edge_cm * 10)
+        diagonals.append({
+            'startBaseIdx': base_idx_by_id.get(outer.get('baseId'), 0),
+            'endBaseIdx': base_idx_by_id.get(inner.get('baseId'), 0),
+            'startBaseOffsetCm': round_to_2dp(off_outer),
+            'startBaseHeightCm': round_to_2dp(height_at_edge_cm),
+            'endBaseOffsetCm': round_to_2dp(off_inner),
+            'endBaseHeightCm': 0.0,
+            'horizMm': horiz_mm,
+            'vertMm': vert_mm,
+            'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
+        })
+
+    # Pass 1 — external rails: full outer+alternating pair selection
+    for rail in external_rails:
+        sub_row = [b for b in bases_sorted if intersects(b, rail)]
+        n = len(sub_row)
+        for lo, hi in _rail_select_subrow_pairs(n):
+            # Orient outer→inner: row-end pairs put the row-edge index first.
+            if lo == 0 and hi == 1:
+                outer_idx, inner_idx = 0, 1
+            elif lo == n - 2 and hi == n - 1:
+                outer_idx, inner_idx = n - 1, n - 2
+            else:
+                outer_idx, inner_idx = lo, hi
+            emit(rail, sub_row[outer_idx], sub_row[inner_idx])
+
+    # Pass 2 — internal rails: brace only at rail-base intersections that
+    # sit at the base's REAR or FRONT Y-edge (= this rail is the first or
+    # last intersecting rail for that base). For a "long" base spanning the
+    # full area depth, both Y-edges land on the external rails, so internal
+    # rails see only its middle and emit nothing. For a "short" partial
+    # base, an internal rail catches the Y-edge and pulls in a brace pair
+    # against the X-adjacent neighbour at the same Y level. Duplicate pairs
+    # (e.g. when both bases of an adjacent pair are at Y-edges here) are
+    # dropped so each rail-pair is emitted once.
+    rails_per_base: dict[str, list[dict]] = {}
+    for b in bases_sorted:
+        bid = b.get('baseId')
+        if bid is None:
+            continue
+        rails_per_base[bid] = [r for r in rails_sorted if intersects(b, r)]
+
+    emitted_pair_keys: set[tuple[int, int, str]] = set()
+    for rail in internal_rails:
+        rail_id = rail.get('railId', '')
+        for i, base in enumerate(bases_sorted):
+            base_rails = rails_per_base.get(base.get('baseId'), [])
+            if not base_rails or rail not in base_rails:
+                continue
+            at_rear_edge = rail is base_rails[0]
+            at_front_edge = rail is base_rails[-1]
+            if not (at_rear_edge or at_front_edge):
+                continue
+            for j in (i - 1, i + 1):
+                if not (0 <= j < overall_n):
+                    continue
+                neighbor = bases_sorted[j]
+                if rail not in rails_per_base.get(neighbor.get('baseId'), []):
+                    # Neighbor doesn't reach this rail's Y — can't form a
+                    # rail-parallel diagonal between them.
+                    continue
+                lo, hi = (i, j) if i < j else (j, i)
+                key = (lo, hi, rail_id)
+                if key in emitted_pair_keys:
+                    continue
+                emitted_pair_keys.add(key)
+                # Outer (start, cyan anchor) is the in-row NEIGHBOUR — the
+                # base whose shape continues at this rail's Y. Inner (end,
+                # shifted in the FE) is the Y-edge base, where the brace
+                # tilts toward the corner being anchored. Putting the cyan
+                # endpoint on the continuous side and the tilt on the
+                # shape-edge corner matches the "opposite direction" the
+                # user flagged on the previous orientation.
+                emit(rail, neighbor, base)
+
+    return diagonals
 
 
 def compute_external_diagonals(
@@ -462,107 +768,135 @@ def compute_external_diagonals(
     consolidated: dict[str, list[dict]],
     computed_trapezoids: list[dict],
     row_bases: list[dict] | None = None,
+    line_rears_cm: dict[int, float] | None = None,
+    rails: list[dict] | None = None,
 ) -> list[dict]:
     """
-    Compute external diagonals for all trapezoids in one area.
+    Compute external diagonals for one panel row in one area.
 
     Runs AFTER trapezoid details so heightRear/heightFront are available.
 
-    trap_ids             — ordered list of trapezoid IDs for this area
-    bases_data_map       — { trapId: compute_area_bases() result } (for frame data)
-    consolidated         — { trapId: [base, ...] } final per-trap bases (post-reassign + completion)
-    computed_trapezoids  — list of ComputedTrapezoid dicts (with geometry.heightRear/Front)
-    row_bases            — the stored bases list for this row; when supplied, startBaseIdx /
-                           endBaseIdx are emitted as positions within this list (via baseId
-                           lookup) so they always line up with the storage. Falls back to
-                           the consolidated-concatenation index when omitted.
+    Pair selection is row-level (across all traps in the area's row) so single-
+    base traps and trap/area seams that today fall through `n < 2` get braced.
+    Endpoint placement uses the Y-overlap of the two paired bases — diagonals
+    are parallel to rails in plan view, so both endpoints sit at the SAME
+    line-rear-relative Y, and an endpoint may land mid-base when the two bases
+    don't share a Y origin.
 
-    Returns flat list of diagonal dicts with startBaseIdx / endBaseIdx.
+    Parameters
+    ----------
+    trap_ids
+        Ordered list of trapezoid IDs for this area (used only for the legacy
+        fallback when `row_bases is None`).
+    bases_data_map
+        ``{trapId: compute_area_bases() result}`` — supplies `baseTopDepthCm`,
+        `rearLegDepthCm`, `frontLegDepthCm` per trap for leg-height
+        interpolation.
+    consolidated
+        ``{trapId: [base, ...]}`` — only used to flatten into a synthetic
+        `row_bases` when none is supplied (legacy callers).
+    computed_trapezoids
+        List of ComputedTrapezoid dicts; supplies `geometry.heightRear/Front`.
+    row_bases
+        The stored bases list for this row. When supplied, `startBaseIdx` /
+        `endBaseIdx` are emitted as positions within this list (via baseId
+        lookup) so they line up with the storage.
+    line_rears_cm
+        ``{panelLineIdx: cm-from-area-rear}``. `Base.startCm` is
+        line-relative, so cross-line Y comparison must add this offset.
+        Omit (or pass {}) to treat all bases as if they shared a Y origin.
+    rails
+        Per-row computed rails (each with ``lineIdx``, ``offsetFromRearEdgeCm``,
+        ``startCm``, ``lengthCm``). When supplied, selection runs the
+        rails-based algorithm: external rails get outer-pair+alternating
+        bracing along their intersecting bases, and internal rails brace
+        only where the sub-row deviates from the overall row (shape edges).
+        Omit to fall back to the legacy base-pair/overlap path.
     """
-    trap_geom = {}
+    trap_geom: dict[str, dict] = {}
     for ct in computed_trapezoids:
         tid = ct.get('trapezoidId', '')
         geom = ct.get('geometry', {})
         if geom:
             trap_geom[tid] = geom
 
-    # Per-baseId index in row_bases — used when row_bases is supplied so the
-    # emitted indices reference the actual stored array, regardless of the
-    # consolidated grouping order.
-    base_idx_by_id: dict[str, int] = {}
-    if row_bases is not None:
-        for i, b in enumerate(row_bases):
-            bid = b.get('baseId')
-            if bid:
-                base_idx_by_id[bid] = i
+    line_rears = line_rears_cm or {}
 
-    # Fallback area-wide offset per trap (matches how all_bases is built when
-    # row_bases isn't supplied — kept for legacy callers).
-    trap_area_offset = {}
-    offset = 0
-    for tid in trap_ids:
-        trap_area_offset[tid] = offset
-        offset += len(consolidated.get(tid, []))
+    # Source of truth for pair-selection and emitted indices.
+    if row_bases is None:
+        bases_source = [b for tid in trap_ids for b in consolidated.get(tid, [])]
+    else:
+        bases_source = row_bases
+
+    if rails:
+        return _compute_diagonals_via_rails(
+            rails, bases_source, bases_data_map, trap_geom, line_rears,
+        )
+    base_idx_by_id: dict[str, int] = {}
+    for i, b in enumerate(bases_source):
+        bid = b.get('baseId')
+        if bid:
+            base_idx_by_id[bid] = i
+
+    # Sort a separate list for pair selection; emit indices via `base_idx_by_id`
+    # so the storage order is unchanged.
+    sorted_bases = sorted(bases_source, key=lambda b: b.get('offsetFromStartCm', 0))
+    pairs = _select_row_pairs(sorted_bases, line_rears_cm=line_rears)
+
+    def area_y_of(base: dict, off_along_base_cm: float) -> float:
+        return line_rears.get(base.get('panelLineIdx', 0), 0.0) \
+               + base.get('startCm', 0) + off_along_base_cm
 
     result: list[dict] = []
-    for trap_id in trap_ids:
-        bd = bases_data_map.get(trap_id)
-        if not bd:
+    for outer_idx, inner_idx, emit_rear, emit_front in pairs:
+        outer = sorted_bases[outer_idx]
+        inner = sorted_bases[inner_idx]
+        outer_len = outer.get('lengthCm', 0)
+        inner_len = inner.get('lengthCm', 0)
+        horiz_mm = round(abs(inner.get('offsetFromStartCm', 0) - outer.get('offsetFromStartCm', 0)) * 10)
+
+        # Y-spans (area-rear-relative) — `Base.startCm` is line-relative so
+        # `line_rears` is required to compare across panelLineIdx.
+        y_outer0 = area_y_of(outer, 0.0)
+        y_outer1 = area_y_of(outer, outer_len)
+        y_inner0 = area_y_of(inner, 0.0)
+        y_inner1 = area_y_of(inner, inner_len)
+        y_rear = max(y_outer0, y_inner0)
+        y_front = min(y_outer1, y_inner1)
+
+        if y_front <= y_rear:
+            logger.warning(
+                "external_diagonal: no Y-overlap between consecutive bases — "
+                "skipped. outer.baseId=%s (Y=[%.2f,%.2f]) inner.baseId=%s (Y=[%.2f,%.2f])",
+                outer.get('baseId'), y_outer0, y_outer1,
+                inner.get('baseId'), y_inner0, y_inner1,
+            )
             continue
-        # Use consolidated bases (post-consolidation) for diagonal pairs
-        trap_bases = consolidated.get(trap_id, [])
-        n = len(trap_bases)
-        if n < 2:
-            continue
 
-        base_lens = [b.get('lengthCm', 0) for b in trap_bases]
-        diag_pairs = _diagonal_pairs(n, base_lens)
-        area_offset = trap_area_offset.get(trap_id, 0)
+        start_idx = base_idx_by_id.get(outer.get('baseId'), outer_idx)
+        end_idx = base_idx_by_id.get(inner.get('baseId'), inner_idx)
 
-        base_top_depth_cm = bd.get('baseTopDepthCm', 0)
-        base_bottom_depth_cm = bd.get('baseBottomDepthCm', 0)
-        rear_leg_depth_cm = bd.get('rearLegDepthCm', 0)
-        front_leg_depth_cm = bd.get('frontLegDepthCm', 0)
-
-        geom = trap_geom.get(trap_id, {})
-        height_rear = geom.get('heightRear', 0)
-        height_front = geom.get('heightFront', 0)
-
-        # Base offsets relative to frame start
-        frame_start = bd.get('frameStartCm', 0)
-        base_offsets_cm = [b['offsetFromStartCm'] - frame_start for b in trap_bases]
-
-        for ai, bi in diag_pairs:
-            horiz_mm = round(abs(base_offsets_cm[bi] - base_offsets_cm[ai]) * 10)
-            base_a = trap_bases[ai]
-            base_b = trap_bases[bi]
-            # Prefer row_bases-anchored indices; fall back to consolidated concat.
-            if base_idx_by_id:
-                start_idx = base_idx_by_id.get(base_a.get('baseId'), area_offset + ai)
-                end_idx = base_idx_by_id.get(base_b.get('baseId'), area_offset + bi)
-            else:
-                start_idx = area_offset + ai
-                end_idx = area_offset + bi
-            for edge_depth_cm in [base_top_depth_cm, base_bottom_depth_cm]:
-                is_rear = edge_depth_cm == base_top_depth_cm
-                height_at_edge_cm = 0.0
-                if height_rear > 0 and front_leg_depth_cm > rear_leg_depth_cm:
-                    t = max(0.0, min(1.0,
-                        (edge_depth_cm - rear_leg_depth_cm) / (front_leg_depth_cm - rear_leg_depth_cm)
-                    ))
-                    height_at_edge_cm = height_rear + t * (height_front - height_rear)
-                vert_mm = round(height_at_edge_cm * 10)
-                result.append({
-                    'startBaseIdx': start_idx,
-                    'endBaseIdx': end_idx,
-                    'startBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_a.get('lengthCm', 0)),
-                    'startBaseHeightCm': round_to_2dp(height_at_edge_cm),
-                    'endBaseOffsetCm': 0.0 if is_rear else round_to_2dp(base_b.get('lengthCm', 0)),
-                    'endBaseHeightCm': 0.0,
-                    'horizMm': horiz_mm,
-                    'vertMm': vert_mm,
-                    'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
-                })
+        for Y, do_emit in ((y_rear, emit_rear), (y_front, emit_front)):
+            if not do_emit:
+                continue
+            off_outer = max(0.0, min(outer_len, Y - y_outer0))
+            off_inner = max(0.0, min(inner_len, Y - y_inner0))
+            # Both endpoints share Y → same depth-from-area-rear → leg height
+            # is structurally identical on both bases by design (parallel-to-
+            # rails diagonal). Interpolate on the outer base.
+            height_at_edge_cm = _interp_leg_height_cm(outer, off_outer, bases_data_map, trap_geom)
+            vert_mm = round(height_at_edge_cm * 10)
+            result.append({
+                'startBaseIdx': start_idx,
+                'endBaseIdx': end_idx,
+                'startBaseOffsetCm': round_to_2dp(off_outer),
+                'startBaseHeightCm': round_to_2dp(height_at_edge_cm),
+                'endBaseOffsetCm': round_to_2dp(off_inner),
+                'endBaseHeightCm': 0.0,
+                'horizMm': horiz_mm,
+                'vertMm': vert_mm,
+                'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
+            })
 
     return result
 

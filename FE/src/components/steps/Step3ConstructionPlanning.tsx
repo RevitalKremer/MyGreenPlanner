@@ -423,7 +423,6 @@ export default function Step3ConstructionPlanning({
                 onApplyRailsToAll={() => settings.applySection(selectedRowIdx, ['lineRails'])}
                 onResetRails={settings.resetLineRails}
                 highlightGroup={PARAM_GROUP[highlightParam] ?? null}
-                trapLineRailsMap={rowData.trapLineRailsMap}
                 trapSettingsMap={rowData.trapSettingsMap}
                 railsComputing={railsComputing}
                 beRailsData={beRailsData}

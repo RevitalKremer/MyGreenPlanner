@@ -520,10 +520,15 @@ def compute_trapezoid_details(
     base_beam_length = base_beam_core
 
     # ── Iskurit / Insulated Panel: perpendicular beam extension ────────────
+    # Treat missing/null orientation as 'perpendicular' — the FE dropdown displays
+    # "Perpendicular" by default for iskurit/insulated_panel areas, so projects
+    # where the user never explicitly toggled the dropdown still carry null in
+    # their data. Mirrors base_service.is_purlin_parallel which already treats
+    # null as non-parallel (== perpendicular).
     front_ext = 0.0
     rear_ext = 0.0
     if roof_type in ('iskurit', 'insulated_panel'):
-        orientation = rs.get('installationOrientation')
+        orientation = rs.get('installationOrientation') or 'perpendicular'
         purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
         if orientation == 'perpendicular' and purlin_dist_cm and purlin_dist_cm > 0:
             buffer_cm = _s(settings, ov, 'purlinBufferCm')
