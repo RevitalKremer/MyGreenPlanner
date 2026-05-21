@@ -23,6 +23,9 @@ export default function Step3ConstructionPlanning({
   rectAreas = [],
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
+  // Push one TrapExtendOp onto the host's pending queue. Drained into
+  // `overrides.traps` on the next bases-tab save. See _apply_trap_extend_ops on BE.
+  onTrapExtendOp = null as null | ((op: any) => void),
   beRailsData = null, beBasesData = null, beTrapezoidsData = null, beTrapezoidGroups = [],
   railsComputing = false, onTabSave, onTabReset, onActiveTabChange,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
@@ -305,6 +308,16 @@ export default function Step3ConstructionPlanning({
         onApplyChanges={(tab) => applyTab(tab)}
         effectiveDiagSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveDiagSettings ?? null}
         effectiveBasesSettings={beTrapezoidsData?.[effectiveSelectedTrapId]?.effectiveBasesSettings ?? null}
+        trapExtensions={(() => {
+          // Surface only USER variations (idx 1+) to the sidebar; idx 0 is
+          // the BE default and is already represented by the parent entry.
+          const out: Record<string, any[]> = {}
+          for (const tid of Object.keys(beTrapezoidsData ?? {})) {
+            const ext = beTrapezoidsData?.[tid]?.geometry?.extensions
+            if (Array.isArray(ext) && ext.length > 1) out[tid] = ext.slice(1)
+          }
+          return out
+        })()}
       />
 
       {/* ── Main content ── */}
@@ -452,6 +465,11 @@ export default function Step3ConstructionPlanning({
                 setUserEditedBases(prev => new Set([...prev, key]))
                 // Drag-edits don't go through useStep3Settings setters; mark
                 // the bases tab dirty explicitly so the Apply UX kicks in.
+                settings.markDirty('bases')
+              }}
+              onTrapExtend={(op) => {
+                onTrapExtendOp?.(op)
+                // Extend edits also need an Apply pass to flush + recompute.
                 settings.markDirty('bases')
               }}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {

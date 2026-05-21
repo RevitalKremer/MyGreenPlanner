@@ -2,7 +2,7 @@ import copy
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
-from typing import Optional
+from typing import Annotated, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,10 +40,56 @@ class TabSettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+class TrapExtendTargetBase(BaseModel):
+    """Target one specific base by its (areaId, baseId)."""
+    scope: Literal['base']
+    areaId: int | str
+    baseId: str
+
+
+class TrapExtendTargetRow(BaseModel):
+    """Target every base in a panel row across all sub-traps of the area."""
+    scope: Literal['row']
+    areaId: int | str
+    rowIdx: int
+
+
+class TrapExtendTargetArea(BaseModel):
+    """Target every base in every row of every sub-trap in the area."""
+    scope: Literal['area']
+    areaId: int | str
+
+
+TrapExtendTarget = Annotated[
+    TrapExtendTargetBase | TrapExtendTargetRow | TrapExtendTargetArea,
+    Field(discriminator='scope'),
+]
+
+
+class TrapExtendOp(BaseModel):
+    """Apply a (front, back) base-beam extension to one or more bases.
+
+    Server resolves the (frontExtMm, backExtMm) signature against each
+    affected base's PARENT trap geometry.extensions[]:
+      - exact match → reuse that index;
+      - no match → append the new entry, take the new tail index.
+    Each affected base's trapezoidId is then re-tagged from "A1" (or its
+    previous "A1.N") to the variation suffix that names the resolved index
+    ("A1" for idx 0, "A1.N" for N>0). The next recompute pass applies the
+    new lengths to startCm / lengthCm via _apply_base_extensions.
+    """
+    op: Literal['extend'] = 'extend'
+    target: TrapExtendTarget
+    frontExtMm: float
+    backExtMm: float
+
+
 class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
     rails: Optional[dict] = None       # { areaLabel: { lineIdx: [positions] } }
-    bases: Optional[dict] = None       # { trapId: [positions] }
+    bases: Optional[dict] = None       # legacy snapshot: { trapId: [positions] } (move/add/delete still flow through this for now)
+    traps: Optional[list[TrapExtendOp]] = None
+    # New op-based wire format for trap base-beam extensions. See TrapExtendOp.
     diagonals: Optional[dict] = None   # { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
 
 class SaveTabRequest(BaseModel):
@@ -273,6 +319,10 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
                 overrides['rails'] = payload.overrides.rails
             if payload.overrides.bases:
                 overrides['bases'] = payload.overrides.bases
+            if payload.overrides.traps:
+                # Pass through as plain dicts so the service layer can iterate
+                # without a Pydantic dependency. by_alias keeps `scope` literal.
+                overrides['traps'] = [op.model_dump() for op in payload.overrides.traps]
             if payload.overrides.diagonals:
                 overrides['diagonals'] = payload.overrides.diagonals
 

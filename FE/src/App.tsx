@@ -122,6 +122,10 @@ function App() {
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
+  // Pending step3 extend ops (TrapExtendOp[]) accumulated by drag handlers
+  // in BasesPlanTab and flushed on the bases save. Stored as a ref so that
+  // closure callbacks always see the latest queue without re-renders.
+  const pendingTrapOpsRef = useRef<any[]>([])
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
@@ -378,6 +382,15 @@ function App() {
 
         payload.overrides = payload.overrides || {}
         payload.overrides.bases = customBases
+
+        // Drain pending trap extend ops (front/back base-beam variations).
+        // BE consumes them under overrides.traps; on success we clear the
+        // queue so the next save starts fresh.
+        const pendingTraps = pendingTrapOpsRef.current
+        if (pendingTraps && pendingTraps.length > 0) {
+          payload.overrides.traps = pendingTraps
+          pendingTrapOpsRef.current = []
+        }
 
       } else if (tabName === 'trapezoids') {
         // Trapezoids tab overrides: diagonal positions from areaSettings
@@ -877,6 +890,7 @@ function App() {
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
+            onTrapExtendOp={(op) => { pendingTrapOpsRef.current = [...pendingTrapOpsRef.current, op] }}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             beBasesData={beBasesData}

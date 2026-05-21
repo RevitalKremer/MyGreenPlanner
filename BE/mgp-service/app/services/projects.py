@@ -1307,18 +1307,177 @@ def _parse_variation_trap_id(trap_id: str) -> tuple[str, int]:
     return parent, int(suffix)
 
 
+def _apply_trap_extend_ops(project, ops: list[dict]) -> None:
+    """Mutate persistent override state (`step3.trapExtensions` and
+    `step3.baseVariations`) from a list of TrapExtendOp dicts.
+
+    For each op:
+      * Resolve affected bases per `target.scope` ('base'/'row'/'area').
+      * Group by their parent trap (parsed from current `Base.trapezoidId`).
+      * Resolve the (frontExtMm, backExtMm) signature against
+        - the parent trap's BE default (current `geometry.extensions[0]`); a
+          match means idx 0 (no variation stored on the base).
+        - existing entries in `trapExtensions[parent]` (idx 1..N); a match
+          means reuse that index.
+        - else append a new entry; the base takes the new tail index.
+      * Write `baseVariations[areaId][baseId] = idx` (or drop the entry if
+        idx 0).
+
+    The next recompute pass — `_apply_trap_extensions` + `_apply_base_extensions`
+    — surfaces this state onto each base's `trapezoidId` + `startCm` / `lengthCm`.
+    """
+    eps = 0.001
+    data = project.data or {}
+    step3 = data.setdefault('step3', {})
+    trap_exts: dict[str, list[dict]] = (step3.get('trapExtensions') or {})
+    base_vars: dict[str, dict[str, int]] = (step3.get('baseVariations') or {})
+
+    # Build lookups against the LAST computed snapshot so we can resolve
+    # signatures and identify affected bases. Brand-new projects won't have
+    # these yet — ops are no-ops until the first compute runs.
+    computed_traps_by_id: dict[str, dict] = {
+        t.get('trapezoidId'): t
+        for t in step3.get('computedTrapezoids') or []
+        if t.get('trapezoidId')
+    }
+    areas_by_id: dict[str, dict] = {
+        str(a.get('areaId')): a for a in step3.get('computedAreas') or []
+    }
+
+    def _iter_area_bases(area: dict, row_idx: int | None):
+        bases_by_row = area.get('bases') or {}
+        if isinstance(bases_by_row, dict):
+            if row_idx is None:
+                for rb in bases_by_row.values():
+                    if isinstance(rb, list):
+                        yield from rb
+            else:
+                rb = bases_by_row.get(row_idx) or bases_by_row.get(str(row_idx))
+                if isinstance(rb, list):
+                    yield from rb
+        elif isinstance(bases_by_row, list):
+            yield from bases_by_row
+
+    def _bases_for_target(target: dict):
+        area = areas_by_id.get(str(target.get('areaId')))
+        if not area:
+            return []
+        scope = target.get('scope')
+        if scope == 'base':
+            base_id = target.get('baseId')
+            return [b for b in _iter_area_bases(area, None) if b.get('baseId') == base_id]
+        if scope == 'row':
+            return list(_iter_area_bases(area, target.get('rowIdx')))
+        if scope == 'area':
+            return list(_iter_area_bases(area, None))
+        return []
+
+    def _resolve_idx(parent_tid: str, front_mm: float, back_mm: float) -> int:
+        # idx 0 == BE default; check the trap's current geometry.extensions[0].
+        parent_trap = computed_traps_by_id.get(parent_tid) or {}
+        default_ext = ((parent_trap.get('geometry') or {}).get('extensions') or [{}])[0]
+        if (abs((default_ext.get('frontExtMm') or 0) - front_mm) < eps
+                and abs((default_ext.get('backExtMm') or 0) - back_mm) < eps):
+            return 0
+        user_list = trap_exts.setdefault(parent_tid, [])
+        for i, e in enumerate(user_list, start=1):
+            if (abs((e.get('frontExtMm') or 0) - front_mm) < eps
+                    and abs((e.get('backExtMm') or 0) - back_mm) < eps):
+                return i
+        user_list.append({'frontExtMm': float(front_mm), 'backExtMm': float(back_mm)})
+        return len(user_list)
+
+    for op in ops:
+        if op.get('op') != 'extend':
+            continue
+        target = op.get('target') or {}
+        front_mm = float(op.get('frontExtMm') or 0)
+        back_mm = float(op.get('backExtMm') or 0)
+        area_key = str(target.get('areaId'))
+        per_base = base_vars.setdefault(area_key, {})
+        for base in _bases_for_target(target):
+            base_id = base.get('baseId')
+            raw_tid = base.get('trapezoidId') or ''
+            parent_tid, _ = _parse_variation_trap_id(raw_tid)
+            if not parent_tid:
+                continue
+            idx = _resolve_idx(parent_tid, front_mm, back_mm)
+            if idx == 0:
+                per_base.pop(base_id, None)
+            else:
+                per_base[base_id] = idx
+        if not per_base:
+            base_vars.pop(area_key, None)
+
+    if trap_exts:
+        # Drop empty entries to keep storage tidy.
+        step3['trapExtensions'] = {k: v for k, v in trap_exts.items() if v}
+    elif 'trapExtensions' in step3:
+        step3['trapExtensions'] = {}
+
+    if base_vars:
+        step3['baseVariations'] = {k: v for k, v in base_vars.items() if v}
+    elif 'baseVariations' in step3:
+        step3['baseVariations'] = {}
+
+    flag_modified(project, 'data')
+
+
+def _apply_trap_extensions(project) -> None:
+    """Append user-created variations to each ComputedTrapezoid.geometry.extensions[].
+
+    trapezoid_detail_service emits extensions=[BE_default] per trap. This
+    post-process reads the persisted user variations from
+    step3.trapExtensions[parentTrapId] and appends them so that
+    geometry.extensions[i] is addressable by base.variationIdx for i > 0.
+
+    Mutates project.data in place; caller commits.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    user_vars: dict = step3.get('trapExtensions') or {}
+    if not user_vars:
+        return
+    for t in step3.get('computedTrapezoids') or []:
+        parent = t.get('trapezoidId')
+        if not parent:
+            continue
+        added = user_vars.get(parent)
+        if not added:
+            continue
+        geom = t.setdefault('geometry', {})
+        default_list = geom.get('extensions') or [{'frontExtMm': 0, 'backExtMm': 0}]
+        # Always rebuild: default at idx 0, then user additions in stored order.
+        geom['extensions'] = [default_list[0]] + [
+            {'frontExtMm': float(e.get('frontExtMm') or 0),
+             'backExtMm':  float(e.get('backExtMm')  or 0)}
+            for e in added
+        ]
+
+
 def _apply_base_extensions(project) -> None:
-    """Post-process bases: resolve each base's variation via its trapezoidId
-    and apply the matching `geometry["extensions"]` entry to `startCm`/`lengthCm`.
+    """Post-process bases: stamp each base with the variation it owns and
+    re-apply the matching extension to `startCm` / `lengthCm`.
 
-    Bases with `trapezoidId="A1"` use `A1.geometry.extensions[0]` (the trap's
-    BE-default — zero for concrete, purlin-buffered for iskurit-perp).
-    Bases with `trapezoidId="A1.N"` use `A1.geometry.extensions[N]` (a user-
-    created variation appended in Step 3).
+    Persisted state is `step3.baseVariations[areaId][baseId] = idx` (sparse;
+    only non-zero indices are stored). Index 0 = trap default; idx > 0 = a
+    user variation living at `parentTrap.geometry.extensions[idx]` (populated
+    by `_apply_trap_extensions`).
 
-    Must run AFTER `compute_and_save_trapezoid_details` since `extensions`
-    is populated by trapezoid_detail_service. Mutates `project.data` in
-    place; caller is responsible for `flag_modified` + commit.
+    The base's `trapezoidId` is the surface representation: parent ("A1") for
+    idx 0; dotted ("A1.N") for idx > 0. Recompute always emits the parent;
+    this function adds the suffix and stretches the beam.
+
+    Units: `frontExtMm` / `backExtMm` are HORIZONTAL mm (they parallel the
+    trap's horizontal base beam — the physical purlin-aligned beam). The
+    plan-view Base in `startCm` / `lengthCm` is SLOPE-axis cm; converting
+    horizontal → slope = horizontal / cos(angle). Bases on iskurit /
+    insulated_panel sit on the base beam, so the slope-direction projection
+    of the same physical extension is slightly LONGER at a tilted angle.
+
+    Must run AFTER `compute_and_save_trapezoid_details` AND `_apply_trap_extensions`
+    since both populate the extensions list. Mutates project.data in place;
+    caller commits.
     """
     data = project.data or {}
     step3 = data.get('step3') or {}
@@ -1328,15 +1487,22 @@ def _apply_base_extensions(project) -> None:
         return
 
     exts_by_trap: dict[str, list[dict]] = {}
+    angle_by_trap: dict[str, float] = {}
     for t in computed_traps:
         tid = t.get('trapezoidId')
         if not tid:
             continue
-        ext_list = (t.get('geometry') or {}).get('extensions')
+        geom = t.get('geometry') or {}
+        ext_list = geom.get('extensions')
         if isinstance(ext_list, list) and ext_list:
             exts_by_trap[tid] = ext_list
+        angle_by_trap[tid] = float(geom.get('angle') or 0)
+
+    base_vars: dict = step3.get('baseVariations') or {}
 
     for area in computed_areas:
+        area_id_key = str(area.get('areaId'))
+        per_base = base_vars.get(area_id_key) or {}
         bases_by_row = area.get('bases') or {}
         # `bases` may be dict[row_idx -> list[Base]] or list[Base] for legacy
         rows = bases_by_row.values() if isinstance(bases_by_row, dict) else [bases_by_row]
@@ -1344,18 +1510,29 @@ def _apply_base_extensions(project) -> None:
             if not isinstance(row_bases, list):
                 continue
             for base in row_bases:
-                trap_id = base.get('trapezoidId')
-                if not trap_id:
+                raw_tid = base.get('trapezoidId')
+                if not raw_tid:
                     continue
-                parent_tid, idx = _parse_variation_trap_id(trap_id)
-                ext_list = exts_by_trap.get(parent_tid) or exts_by_trap.get(trap_id)
+                # The base may already carry a variation suffix from a prior
+                # run; strip it so we can re-stamp from the persistent map.
+                parent_tid, _ = _parse_variation_trap_id(raw_tid)
+                ext_list = exts_by_trap.get(parent_tid)
                 if not ext_list:
                     continue
+                idx = per_base.get(base.get('baseId'), 0) or 0
                 if not (0 <= idx < len(ext_list)):
                     idx = 0
+                # Surface the variation onto the trapezoidId for downstream
+                # readers (BOM rollups, sidebar tree, schedule labels).
+                base['trapezoidId'] = (
+                    f'{parent_tid}.{idx}' if idx > 0 else parent_tid
+                )
                 ext = ext_list[idx]
-                front_cm = (ext.get('frontExtMm') or 0) / 10
-                back_cm = (ext.get('backExtMm') or 0) / 10
+                # Horizontal mm → slope cm (divide by cos(angle), then /10).
+                angle_deg = angle_by_trap.get(parent_tid, 0.0)
+                cos_a = math.cos(math.radians(angle_deg)) or 1.0
+                front_cm = ((ext.get('frontExtMm') or 0) / 10) / cos_a
+                back_cm = ((ext.get('backExtMm') or 0) / 10) / cos_a
                 if front_cm or back_cm:
                     base['startCm'] = round(base.get('startCm', 0) - back_cm, 2)
                     base['lengthCm'] = round(
@@ -1789,9 +1966,9 @@ async def update_project_step(
         bases_result = await compute_and_save_bases(db, project, bs)
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
-            # Bases were computed before trap details; replay extensions so
-            # per-base startCm/lengthCm reflects the variation index parsed
-            # from base.trapezoidId.
+            # Surface user variations onto each trap's geometry.extensions[],
+            # then stamp affected bases' trapezoidId + startCm/lengthCm.
+            _apply_trap_extensions(project)
             _apply_base_extensions(project)
             flag_modified(project, 'data')
             await db.commit()
@@ -2379,6 +2556,13 @@ async def save_tab(
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
+        # Trap extend ops → step3.trapExtensions + step3.baseVariations
+        # Stored as persistent override state; surfaced onto computedTraps +
+        # computedAreas by _apply_trap_extensions / _apply_base_extensions
+        # after each recompute. See TrapExtendOp in routers/projects.py.
+        if 'traps' in overrides and overrides['traps']:
+            _apply_trap_extend_ops(project, overrides['traps'])
+
     # Persist trap-scope schema params into step3.trapezoidConfigs so they
     # survive project reload. Drag-edit keys (customOffsets, customDiagonals,
     # panelRowIdx) live in their own step3 paths and are excluded here.
@@ -2393,8 +2577,9 @@ async def save_tab(
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
-        # Apply per-base extensions (geometry.extensions[idx] resolved from
-        # base.trapezoidId) after trap details populate the extensions list.
+        # Surface user variations onto each trap's geometry.extensions[],
+        # then stamp affected bases' trapezoidId + startCm/lengthCm.
+        _apply_trap_extensions(project)
         _apply_base_extensions(project)
         flag_modified(project, 'data')
         await db.commit()
@@ -2441,6 +2626,10 @@ async def reset_tab(
         step3['globalSettings'] = gs
     elif tab == 'bases':
         step3.pop('customBasesOffsets', None)
+        # Trap base-beam extension variants — both the per-trap variation
+        # list and the per-base assignments — are wiped on bases reset.
+        step3.pop('trapExtensions', None)
+        step3.pop('baseVariations', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
                 for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:

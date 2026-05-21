@@ -145,6 +145,10 @@ export default function Step3Sidebar({
   effectiveBasesSettings = null,
   dirty = { rails: false, bases: false, detail: false } as { rails: boolean; bases: boolean; detail: boolean },
   isOverride: isOverrideProp = null as null | ((path: any) => boolean),
+  // Per-trap user variation lists: { parentTrapId: TrapExtension[] }. Used
+  // to expand each trap into A1.0 (= A1), A1.1, A1.2, ... entries in the
+  // tree so the user can select an individual variation.
+  trapExtensions = {} as Record<string, Array<{ frontExtMm: number; backExtMm: number }>>,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -457,10 +461,10 @@ export default function Step3Sidebar({
                 if (!showTraps && !showRows) return null
                 return (
                   <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
-                    {showTraps && trapIds.map(trapId => {
+                    {showTraps && trapIds.flatMap(trapId => {
                       const isTrapSelected = effectiveSelectedTrapId === trapId
                       const count = areaPanels.filter(p => p.trapezoidId === trapId).length
-                      return (
+                      const parent = (
                         <div
                           key={`t-${trapId}`}
                           onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
@@ -475,6 +479,27 @@ export default function Step3Sidebar({
                           )}
                         </div>
                       )
+                      // Append a row per user-created variation of this trap
+                      // (A1.1, A1.2, ...). Each selects the variation as
+                      // a virtual trap id so downstream code can scope by it.
+                      const userVars = trapExtensions[trapId] || []
+                      const variantNodes = userVars.map((_, idx) => {
+                        const variantId = `${trapId}.${idx + 1}`
+                        const isSelected = effectiveSelectedTrapId === variantId
+                        return (
+                          <div
+                            key={`tv-${variantId}`}
+                            onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(variantId) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 1rem 0.3rem 2.5rem', cursor: 'pointer', borderLeft: `3px solid ${isSelected ? PRIMARY : 'transparent'}`, background: isSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s', fontStyle: 'italic' }}
+                          >
+                            <span style={{ fontSize: '0.68rem', fontWeight: '600', color: isSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isSelected ? TRAP_BADGE_BG : 'transparent', padding: '1px 6px', borderRadius: '10px', border: `1px solid ${isSelected ? PRIMARY : BORDER_FAINT}` }}>
+                              {variantId}
+                            </span>
+                            <span style={{ fontSize: '0.65rem', color: TEXT_VERY_LIGHT }}>variation</span>
+                          </div>
+                        )
+                      })
+                      return [parent, ...variantNodes]
                     })}
                     {showRows && panelRowIdxs.map((ri, idx) => {
                       const isRowSelected = selectedPanelRowIdx === null || selectedPanelRowIdx === ri

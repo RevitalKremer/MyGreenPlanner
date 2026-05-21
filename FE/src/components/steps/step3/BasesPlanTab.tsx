@@ -14,13 +14,14 @@ import LayersPanel from './LayersPanel'
 import BackgroundImageLayer from './BackgroundImageLayer'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
+import BaseEndpointGrips from './BaseEndpointGrips'
 import RailsOverlay from './RailsOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -613,6 +614,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     )
                   })
                 })}
+
+                {/* 7b. Endpoint grips — front/back drag handles for the extend op */}
+                {sEditBar && (
+                  <BaseEndpointGrips
+                    beBasesData={beBasesData}
+                    beTrapezoidsData={beTrapezoidsData}
+                    areaFrames={areaFrames}
+                    areaTrapsMap={areaTrapsMap}
+                    trapAreaMap={trapAreaMap}
+                    customBasesMap={customBasesMap}
+                    effectiveSelectedTrapId={effTrapId}
+                    pixelToCmRatio={pixelToCmRatio}
+                    sc={sc}
+                    zoom={effZoom}
+                    toSvg={toSvg}
+                    onExtend={(op) => onTrapExtend?.(op)}
+                  />
+                )}
 
                 {/* Base parameter highlights (top z-order) */}
                 {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {

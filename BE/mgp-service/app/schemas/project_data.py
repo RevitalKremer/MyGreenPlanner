@@ -259,6 +259,18 @@ class Step3Data(_StrictBase):
     areaSettings: Optional[dict] = None
     customBasesOffsets: Optional[dict] = None
     customDiagonals: Optional[dict] = None
+    # User-created trap base-beam variations, keyed by parent trapezoidId.
+    # Entries are USER additions only — index 0 (BE default) lives on each
+    # ComputedTrapezoid.geometry.extensions[0] and is recomputed per pass.
+    # The combined emitted list = [BE default] + trapExtensions[parent].
+    # Persisted across saves; cleared by reset.
+    trapExtensions: Optional[dict[str, list[TrapExtension]]] = None
+    # Sparse per-base variation assignments: { areaId(str): { baseId: idx } }.
+    # Only non-zero (variant) entries are stored — defaults are implicit.
+    # idx 0 = parent default; idx N>0 = trapExtensions[parent][N-1].
+    # baseVariations is preserved across recomputes; _apply_base_extensions
+    # surfaces it onto each base's trapezoidId + startCm/lengthCm.
+    baseVariations: Optional[dict[str, dict[str, int]]] = None
     # Server-computed (never sent by FE, preserved during merge)
     computedAreas: list[ComputedArea] = Field(default_factory=list)
     computedTrapezoids: list[ComputedTrapezoid] = Field(default_factory=list)
