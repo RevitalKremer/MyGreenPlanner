@@ -49,6 +49,13 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   // Require BE data — geometry and legs must come from server
   if (!beDetailData?.geometry || !beDetailData?.legs?.length) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('step3.empty.selectRow')}</div>
   const geom = beDetailData.geometry
+  // Trap's BE-default base-beam extension lives at geometry.extensions[0]
+  // (zero for concrete & parallel-purlin; non-zero for iskurit / insulated_panel
+  // perpendicular). Variations 1..N are user-created. DetailView renders the
+  // parent trap, so we use [0].
+  const defaultExt = geom.extensions?.[0] ?? { frontExtMm: 0, backExtMm: 0 }
+  const defaultFrontExtCm = (defaultExt.frontExtMm ?? 0) / 10
+  const defaultRearExtCm = (defaultExt.backExtMm ?? 0) / 10
 
   const baseOverhangCm = settings.baseOverhangCm
   const { heightRear, heightFront, baseLength, angle, topBeamLength } = geom
@@ -78,8 +85,8 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
     : [{ depthCm: panelLengthCm ?? 0, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const rearExtPx = (geom.rearExtensionCm ?? 0) * SC
-  const padL = Math.max(120, railOffH + OHx + (geom.frontExtensionCm ?? 0) * SC + 40)
+  const rearExtPx = defaultRearExtCm * SC
+  const padL = Math.max(120, railOffH + OHx + defaultFrontExtCm * SC + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
   const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
   const _panelOffsetApprox = 2 * SC + 10 + 3
@@ -156,7 +163,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   // Live diagonal punch positions: recomputed from current pct values (including overrides)
   // so punch circles and labels update immediately when the user drags a handle.
   const beDiags = beDetailData?.diagonals ?? []
-  const legOffsetCm = geom.rearExtensionCm ?? 0
+  const legOffsetCm = defaultRearExtCm
   const liveDiagPunches = computeLiveDiagPunchPositions(
     beDiags, diagOverrides, beLegs, beamThickCm, angleRad, legOffsetCm
   ).filter(d => activeDiags.some(a => a.spanIndex === d.spanIndex))
@@ -563,16 +570,16 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 </g>
               )}
 
-              {hl('extension') && (geom.frontExtensionCm > 0 || geom.rearExtensionCm > 0) && (
+              {hl('extension') && (defaultFrontExtCm > 0 || defaultRearExtCm > 0) && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                  {geom.frontExtensionCm > 0 && (() => {
+                  {defaultFrontExtCm > 0 && (() => {
                     const extW = firstLegPos * SC
                     return <rect x={legX0 - extW - 3} y={baseY - 3} width={extW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}
-                  {geom.rearExtensionCm > 0 && (() => {
+                  {defaultRearExtCm > 0 && (() => {
                     const bbEnd = legX0 - firstLegPos * SC + (geom.baseBeamLength ?? 0) * SC
-                    const rearExtW = (geom.rearExtensionCm ?? 0) * SC
+                    const rearExtW = defaultRearExtCm * SC
                     return <rect x={bbEnd - rearExtW - 3} y={baseY - 3} width={rearExtW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}

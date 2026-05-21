@@ -149,6 +149,12 @@ class Base(_StrictBase):
     hookOffsets: list[float] = Field(default_factory=list)
     # Position of each rail along this base, measured from `startCm`.
     # Populated only for tile-roof areas.
+    # Variation identity is encoded directly in `trapezoidId`:
+    #   "A1"    → parent trap, default extension (index 0 of parent's geometry.extensions)
+    #   "A1.N"  → variation N of parent A1 (index N of parent's geometry.extensions)
+    # Bases for default-extension panels use the parent string ("A1"); bases on
+    # user-created variations use the dotted form ("A1.1", "A1.2", ...).
+    # Parse with split('.', 1) to recover (parent, idx); see trapExtensionService.ts.
 
 
 class ExternalDiagonal(_StrictBase):
@@ -180,6 +186,24 @@ class ComputedArea(_StrictBase):
     numLargeGaps: int = 0
 
 
+class TrapExtension(_StrictBase):
+    """One front/back base-beam extension variant on a trapezoid.
+
+    Stored append-only inside `ComputedTrapezoid.geometry["extensions"]`.
+    Index 0 is always the trap's BE-computed default (zero for concrete and
+    parallel-purlin roofs; non-zero for iskurit / insulated_panel with
+    `perpendicular` orientation). Indices 1..N are user-created alternatives,
+    appended in change order — never reordered, never re-indexed. Bases
+    identify their variation through `Base.trapezoidId` ("A1" → idx 0,
+    "A1.N" → idx N).
+
+    This Pydantic model documents the dict shape and is also used directly in
+    the wire schema for `TrapExtend` ops (SaveTabRequest.overrides.traps).
+    """
+    frontExtMm: float = 0
+    backExtMm: float = 0
+
+
 class ComputedTrapezoid(_StrictBase):
     """Server-computed structural details for one trapezoid."""
     trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
@@ -198,6 +222,13 @@ class ComputedTrapezoid(_StrictBase):
     #   originCm                         — coordinate origin in global panel coords (cm)
     #   panelEdgeToFirstRailCm, panelEdgeToLastRailCm, railToRailCm, overhangCm
     #   beamThickCm, panelThickCm, blockHeightCm, blockLengthCm, crossRailHeightCm
+    #   extensions                       — list[TrapExtension] (dict form: {frontExtMm, backExtMm}).
+    #                                      Index 0 is the trap's BE-default base-beam extension
+    #                                      (zero for concrete & parallel-purlin; non-zero for
+    #                                      iskurit/insulated_panel perpendicular). Indices 1..N
+    #                                      are user-created variations, append-only. Bases
+    #                                      identify their variation via Base.trapezoidId
+    #                                      ("A1" → idx 0, "A1.N" → idx N).
     legs: list[dict] = Field(default_factory=list)
     # legs[]: positionCm, heightCm, railPositionCm (inner only); sorted by positionCm, first/last are outer
     blocks: list[dict] = Field(default_factory=list)

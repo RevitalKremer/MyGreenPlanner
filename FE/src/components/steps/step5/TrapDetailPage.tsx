@@ -31,8 +31,12 @@ function computeNaturalSize(settings, lineRails, panelLines, beDetailData) {
     : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const rearExtPx = (geom.rearExtensionCm ?? 0) * SC
-  const padL = Math.max(120, railOffH + OHx + (geom.frontExtensionCm ?? 0) * SC + 40)
+  // Trap default extension lives at geometry.extensions[0]; see TrapezoidGeometry type.
+  const defaultExt = geom.extensions?.[0] ?? { frontExtMm: 0, backExtMm: 0 }
+  const defaultFrontExtCm = (defaultExt.frontExtMm ?? 0) / 10
+  const defaultRearExtCm = (defaultExt.backExtMm ?? 0) / 10
+  const rearExtPx = defaultRearExtCm * SC
+  const padL = Math.max(120, railOffH + OHx + defaultFrontExtCm * SC + 40)
   const panelExtCm = (totalPanelDepthCm - railOffsetCm) * Math.cos(angleRad) - baseLength
   const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
 

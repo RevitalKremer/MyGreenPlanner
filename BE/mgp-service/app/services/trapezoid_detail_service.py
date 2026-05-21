@@ -579,10 +579,17 @@ def compute_trapezoid_details(
         'punchInnerOffsetCm': _r(punch_inner_offset),
     }
 
-    # Store extension info for FE rendering
-    if front_ext > 0 or rear_ext > 0:
-        geometry['frontExtensionCm'] = _r(front_ext)
-        geometry['rearExtensionCm'] = _r(rear_ext)
+    # Base-beam extension variants. Index 0 is the trap's BE-default extension;
+    # indices 1..N are user-created variations appended by step3 extend ops.
+    # Bases identify their variation via Base.trapezoidId ("A1" → idx 0,
+    # "A1.N" → idx N). See TrapExtension docstring in schemas/project_data.py.
+    # This is the canonical home for front/back extension data — no separate
+    # geometry["frontExtensionCm"] / ["rearExtensionCm"] keys; consumers
+    # read extensions[idx].
+    geometry['extensions'] = [{
+        'frontExtMm': _r(front_ext * 10),
+        'backExtMm':  _r(rear_ext * 10),
+    }]
 
     # ── Rail items ─────────────────────────────────────────────────────────
     rail_items, total_panel_depth = _build_rail_items(panel_lines, line_rails)

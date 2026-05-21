@@ -228,7 +228,15 @@ async def get_project_for_user(
     query = select(Project).where(Project.id == project_id)
     if user.role.value != "admin":
         query = query.where(Project.owner_id == user.id)
-    return (await db.execute(query)).scalar_one_or_none()
+    project = (await db.execute(query)).scalar_one_or_none()
+    if project is not None and isinstance(project.data, dict):
+        areas = project.data.get('step2', {}).get('areas', [])
+        if any(not isinstance(a.get('id'), int) for a in areas):
+            _assign_area_ids(project.data)
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
+    return project
 
 
 async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: ProjectCreate) -> Project:
@@ -1282,6 +1290,79 @@ def _compute_row_bases(
     return row_bases, bases_data_map, consolidated
 
 
+def _parse_variation_trap_id(trap_id: str) -> tuple[str, int]:
+    """Split a base's trapezoidId into (parentTrapId, extensionIdx).
+
+    Convention:
+      "A1"    → ("A1", 0)   default extension
+      "A1.N"  → ("A1", N)   variation N
+
+    Any non-integer suffix is treated as part of the parent ID (no split).
+    """
+    if not trap_id or '.' not in trap_id:
+        return trap_id, 0
+    parent, suffix = trap_id.rsplit('.', 1)
+    if not suffix.isdigit():
+        return trap_id, 0
+    return parent, int(suffix)
+
+
+def _apply_base_extensions(project) -> None:
+    """Post-process bases: resolve each base's variation via its trapezoidId
+    and apply the matching `geometry["extensions"]` entry to `startCm`/`lengthCm`.
+
+    Bases with `trapezoidId="A1"` use `A1.geometry.extensions[0]` (the trap's
+    BE-default — zero for concrete, purlin-buffered for iskurit-perp).
+    Bases with `trapezoidId="A1.N"` use `A1.geometry.extensions[N]` (a user-
+    created variation appended in Step 3).
+
+    Must run AFTER `compute_and_save_trapezoid_details` since `extensions`
+    is populated by trapezoid_detail_service. Mutates `project.data` in
+    place; caller is responsible for `flag_modified` + commit.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    computed_traps = step3.get('computedTrapezoids') or []
+    computed_areas = step3.get('computedAreas') or []
+    if not computed_traps or not computed_areas:
+        return
+
+    exts_by_trap: dict[str, list[dict]] = {}
+    for t in computed_traps:
+        tid = t.get('trapezoidId')
+        if not tid:
+            continue
+        ext_list = (t.get('geometry') or {}).get('extensions')
+        if isinstance(ext_list, list) and ext_list:
+            exts_by_trap[tid] = ext_list
+
+    for area in computed_areas:
+        bases_by_row = area.get('bases') or {}
+        # `bases` may be dict[row_idx -> list[Base]] or list[Base] for legacy
+        rows = bases_by_row.values() if isinstance(bases_by_row, dict) else [bases_by_row]
+        for row_bases in rows:
+            if not isinstance(row_bases, list):
+                continue
+            for base in row_bases:
+                trap_id = base.get('trapezoidId')
+                if not trap_id:
+                    continue
+                parent_tid, idx = _parse_variation_trap_id(trap_id)
+                ext_list = exts_by_trap.get(parent_tid) or exts_by_trap.get(trap_id)
+                if not ext_list:
+                    continue
+                if not (0 <= idx < len(ext_list)):
+                    idx = 0
+                ext = ext_list[idx]
+                front_cm = (ext.get('frontExtMm') or 0) / 10
+                back_cm = (ext.get('backExtMm') or 0) / 10
+                if front_cm or back_cm:
+                    base['startCm'] = round(base.get('startCm', 0) - back_cm, 2)
+                    base['lengthCm'] = round(
+                        base.get('lengthCm', 0) + front_cm + back_cm, 2
+                    )
+
+
 def _compute_row_hook_bases(
     bs, data: dict, area: dict, area_idx: int,
     app_defaults: dict, roof_spec: dict,
@@ -1708,6 +1789,13 @@ async def update_project_step(
         bases_result = await compute_and_save_bases(db, project, bs)
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
+            # Bases were computed before trap details; replay extensions so
+            # per-base startCm/lengthCm reflects the variation index parsed
+            # from base.trapezoidId.
+            _apply_base_extensions(project)
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
         # External diagonals — after trapezoid details so heights are available
         diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 
@@ -2024,7 +2112,11 @@ def _trim_non_full_trapezoids(
             continue
         full_geom = full_trap_detail.get('geometry', {})
         full_origin = full_geom.get('originCm', 0)
-        full_front_ext = full_geom.get('frontExtensionCm', 0)
+        # extensions[0] is the canonical home for trap default extension (mm).
+        full_exts = full_geom.get('extensions') or [{'frontExtMm': 0, 'backExtMm': 0}]
+        full_default_ext = full_exts[0] if full_exts else {'frontExtMm': 0, 'backExtMm': 0}
+        full_front_ext = (full_default_ext.get('frontExtMm') or 0) / 10
+        full_rear_ext = (full_default_ext.get('backExtMm') or 0) / 10
 
         # Normalize: temporarily subtract rear_ext from full trap legs so the
         # trim logic works in the original coordinate system (first leg at 0).
@@ -2078,8 +2170,7 @@ def _trim_non_full_trapezoids(
         result[tid] = detail
 
         # Re-apply extension to trimmed trap
-        if full_front_ext or full_geom.get('rearExtensionCm', 0):
-            full_rear_ext = full_geom.get('rearExtensionCm', 0)
+        if full_front_ext or full_rear_ext:
             geom = detail['geometry']
             # Shift legs back into base beam coords
             for leg in detail.get('legs', []):
@@ -2092,10 +2183,14 @@ def _trim_non_full_trapezoids(
             for p in detail.get('punches', []):
                 if p['beamType'] == 'base':
                     p['positionCm'] = round_to_1dp(p['positionCm'] + full_front_ext)
-            # Extend base beam length and copy extension info
+            # Extend base beam length
             geom['baseBeamLength'] = round_to_1dp(geom.get('baseBeamLength', 0) + full_front_ext + full_rear_ext)
-            geom['frontExtensionCm'] = full_front_ext
-            geom['rearExtensionCm'] = full_rear_ext
+
+        # Inherit/refresh the trap's base-beam extensions list. Trimmed traps
+        # share the parent's extension variants, so the array mirrors the full
+        # trap's. extensions[0] carries the (possibly non-zero) BE default; any
+        # user-created variations (idx 1..N) propagate as well.
+        detail['geometry']['extensions'] = [dict(e) for e in full_exts]
 
 
 def _align_blocks_across_trapezoids(
@@ -2298,6 +2393,12 @@ async def save_tab(
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
+        # Apply per-base extensions (geometry.extensions[idx] resolved from
+        # base.trapezoidId) after trap details populate the extensions list.
+        _apply_base_extensions(project)
+        flag_modified(project, 'data')
+        await db.commit()
+        await db.refresh(project)
     # External diagonals — after trapezoid details so heights are available
     diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 

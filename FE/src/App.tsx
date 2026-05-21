@@ -165,6 +165,7 @@ function App() {
         if (!s2a) return a
         return {
           ...a,
+          id: s2a.id ?? a.id,
           trapezoidIds: s2a.trapezoidIds ?? a.trapezoidIds,
           panelRows: s2a.panelRows ?? a.panelRows,
           roofSpec: s2a.roofSpec ?? a.roofSpec,
