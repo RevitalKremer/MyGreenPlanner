@@ -5,7 +5,7 @@ import { parseVariationTrapId, getExtensionForBase, variationLabel as deriveVari
 
 const GRIP_RADIUS_SVG = 4
 const READOUT_OFFSET_SVG = 14
-const EDITOR_LIFETIME_MS = 6000  // popover auto-dismisses if user doesn't engage
+const EDITOR_LIFETIME_MS = 3000  // popover auto-dismisses after ~3s of inactivity
 const SLOPE_DEFAULT_ANGLE_DEG = 0 // fallback when trap geometry lacks angle
 
 type ExtendTarget =
@@ -283,11 +283,30 @@ export default function BaseEndpointGrips({
       {beBasesData.flatMap((areaData) => {
         const areaKey = String(areaData.areaId ?? areaData.areaLabel ?? areaData.label)
         if (selectedAreaForFilter != null && String(selectedAreaForFilter) !== areaKey) return []
-        const bases = areaData.bases ?? []
+        // Dedupe by baseId — a defensive guard against any upstream diff
+        // path that might emit the same baseId twice within an area
+        // (would otherwise duplicate the grip circles).
+        const bases: any[] = []
+        const seen = new Set<string>()
+        for (const sb of (areaData.bases ?? [])) {
+          const id = sb?.baseId
+          if (!id) continue
+          if (seen.has(id)) {
+            // eslint-disable-next-line no-console
+            console.warn('[BaseEndpointGrips] duplicate baseId skipped:', id, 'in area', areaKey)
+            continue
+          }
+          seen.add(id)
+          bases.push(sb)
+        }
 
         return bases.map((sb: any, sbi: number) => {
           // Skip frameless / virtual hook lines — they have no beam to extend.
           if ((sb.hookOffsets?.length ?? 0) > 0) return null
+          // Synthetic adds (from the in-flight live diff) have no real
+          // BE-assigned baseId yet — defer extend grips until the user
+          // hits Apply and the BE round-trip returns a stable baseId.
+          if (sb.__synthetic) return null
 
           const rowIdx = sb._panelRowIdx ?? 0
           const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, rowIdx)

@@ -19,6 +19,7 @@ import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
+import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -126,6 +127,10 @@ function App() {
   // in BasesPlanTab and flushed on the bases save. Stored as a ref so that
   // closure callbacks always see the latest queue without re-renders.
   const pendingTrapOpsRef = useRef<any[]>([])
+  // Pending base ops are NOT accumulated per click anymore — they're
+  // derived on save from the customBasesMap snapshot via
+  // buildBaseOpsFromState. The ref is kept for the discard path (so a
+  // pending FE-state reset still has a single place to clear).
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
@@ -377,11 +382,21 @@ function App() {
 
       // Add tab-specific overrides
       if (tabName === 'bases') {
-        const customBases = { ...customBasesRef.current }
-        if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
-
         payload.overrides = payload.overrides || {}
-        payload.overrides.bases = customBases
+
+        // Derive base ops from the diff between the user-intended state
+        // (customBasesRef) and the BE snapshot. Consolidates identical
+        // changes across rows into one op with multiple targets — handles
+        // the "added to all rows then deleted one" case naturally because
+        // the diff outputs exactly the rows that still differ.
+        const baseOps = buildBaseOpsFromState(customBasesRef.current, beBasesData)
+        if (baseOps.length > 0) {
+          payload.overrides.bases = baseOps
+        } else if (opts?.resetTrapId) {
+          // Reset-to-defaults still uses the legacy snapshot dict (one
+          // empty-list entry per trap to clear) since it isn't a diff.
+          payload.overrides.bases = { [opts.resetTrapId]: [] }
+        }
 
         // Drain pending trap extend ops (front/back base-beam variations).
         // BE consumes them under overrides.traps; on success we clear the
@@ -891,6 +906,7 @@ function App() {
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
             onTrapExtendOp={(op) => { pendingTrapOpsRef.current = [...pendingTrapOpsRef.current, op] }}
+            onTrapOpsDiscard={() => { pendingTrapOpsRef.current = [] }}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             beBasesData={beBasesData}

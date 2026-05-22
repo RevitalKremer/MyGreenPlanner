@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLang } from '../../i18n/LangContext'
-import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY, WARNING_BG, WARNING_DARK, WARNING } from '../../styles/colors'
+import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMARY, WARNING } from '../../styles/colors'
 import ConfirmDialog from '../ConfirmDialog'
 import { useConfirm } from '../../hooks/useConfirm'
 import { PANEL_V } from '../../utils/panelCodes'
@@ -26,6 +26,11 @@ export default function Step3ConstructionPlanning({
   // Push one TrapExtendOp onto the host's pending queue. Drained into
   // `overrides.traps` on the next bases-tab save. See _apply_trap_extend_ops on BE.
   onTrapExtendOp = null as null | ((op: any) => void),
+  // Drop the host's queued TrapExtendOps without sending them to BE. Wired
+  // to the bases-tab "Discard" button in edit mode.
+  onTrapOpsDiscard = null as null | (() => void),
+  // (BaseOp wire format is derived on save by App.tsx via
+  // buildBaseOpsFromState — no per-click push from Step3/BasesPlanTab.)
   beRailsData = null, beBasesData = null, beTrapezoidsData = null, beTrapezoidGroups = [],
   railsComputing = false, onTabSave, onTabReset, onActiveTabChange,
   appDefaults, paramSchema: PARAM_SCHEMA = [], settingsDefaults: SETTINGS_DEFAULTS = {},
@@ -51,7 +56,9 @@ export default function Step3ConstructionPlanning({
   const [activeTab, setActiveTab] = useState((initialTab && initialTab !== 'null') ? initialTab : 'areas')
   const [highlightParam, setHighlightParam] = useState(null)
   const [customBasesMap, setCustomBasesMap] = useState({})
-  const [userEditedBases, setUserEditedBases] = useState(new Set())
+  // (userEditedBases was used to gate which customBasesMap entries were
+  // sent to BE. Obsolete now — buildBaseOpsFromState diffs every entry
+  // against beBasesData and only emits ops where they actually differ.)
 
   // ── Settings hook ──────────────────────────────────────────────────────
   // Pre-compute areaByGroupKey for settings (needed before useRowData runs)
@@ -184,6 +191,29 @@ export default function Step3ConstructionPlanning({
     }
     setActiveTab(next)
   }, [activeTab, settings, confirmDialog, t, applyTab])
+
+  // Exit gate for bases edit mode. The layers-panel "Exit edit mode"
+  // button calls this — returns true if the caller should actually
+  // exit (either no dirty edits, or the user chose apply / discard).
+  const requestExitBasesEdit = useCallback(async (): Promise<boolean> => {
+    if (!settings.dirty.bases) return true
+    const choice = await confirmDialog.ask({
+      message: t('step3.editMode.exitConfirm'),
+      confirmLabel: t('step3.editMode.applyAndExit'),
+      discardLabel: t('step3.editMode.discardAndExit'),
+      cancelLabel: t('common.cancel'),
+      variant: 'warning',
+    })
+    if (choice === false) return false
+    if (choice === 'discard') {
+      setCustomBasesMap({})
+      onTrapOpsDiscard?.()
+      settings.markClean('bases')
+    } else {
+      await applyTab('bases')
+    }
+    return true
+  }, [settings, confirmDialog, t, applyTab, onTrapOpsDiscard])
   
   // Save initial tab to backend if it was defaulted to 'areas'
   const initialSaveRef = useRef(false)
@@ -195,25 +225,23 @@ export default function Step3ConstructionPlanning({
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync effects ───────────────────────────────────────────────────────
-  // Seed customBasesMap with per-row keys ("trapId:rowIdx") from BE data
+  // Seed customBasesMap with PER-ROW keys ("areaId:rowIdx") from BE data.
+  // Each entry is the row's sorted mm offsets ACROSS ALL sub-traps — so
+  // a row that spans A1 + A2 yields a single combined list instead of
+  // two per-sub-trap lists. This is the data shape the edit bar shows
+  // and the diff compares against; sub-trap reassignment is the BE's
+  // responsibility (signature-based) and stays out of FE state.
   useEffect(() => {
     if (!beBasesData) return
     const map = {}
     for (const areaData of beBasesData) {
-      // Group bases by panelRowIdx
-      const byRow = {}
+      const areaKey = areaData.areaId ?? areaData.areaLabel ?? areaData.label
+      if (areaKey == null) continue
       for (const base of (areaData.bases || [])) {
         const ri = base._panelRowIdx ?? 0
-        if (!byRow[ri]) byRow[ri] = []
-        byRow[ri].push(base)
-      }
-      for (const [riStr, rowBases] of Object.entries(byRow) as [string, any[]][]) {
-        for (const base of rowBases) {
-          const tid = base.trapezoidId
-          const key = `${tid}:${riStr}`
-          if (!map[key]) map[key] = []
-          map[key].push(Math.round(base.offsetFromStartCm * 10))
-        }
+        const key = `${areaKey}:${ri}`
+        if (!map[key]) map[key] = []
+        map[key].push(Math.round(base.offsetFromStartCm * 10))
       }
     }
     for (const k of Object.keys(map)) map[k].sort((a, b) => a - b)
@@ -223,11 +251,12 @@ export default function Step3ConstructionPlanning({
   useEffect(() => { onTrapConfigsChange?.(trapezoidConfigs) }, [trapezoidConfigs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const userEdited = {}
-    for (const tid of userEditedBases as Set<string>) {
-      if (customBasesMap[tid]) userEdited[tid] = customBasesMap[tid]
-    }
-    onCustomBasesChange?.(userEdited)
+    // Expose the FULL customBasesMap to the host. The save flow derives
+    // ops by diffing this map against beBasesData — entries that match
+    // produce no op, so sending everything is safe and avoids the
+    // userEditedBases-filter trap (which would lose ops if the set
+    // missed a key for any reason).
+    onCustomBasesChange?.(customBasesMap)
   }, [customBasesMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -356,28 +385,6 @@ export default function Step3ConstructionPlanning({
           })}
         </div>
 
-        {/* Unsaved-changes banner — shown when the currently-visible tab has
-            pending edits. The canvas below shows the LAST APPLIED state, so
-            this banner makes the gap explicit. */}
-        {(activeTab === 'rails' || activeTab === 'bases' || activeTab === 'detail') && settings.dirty[activeTab] && (
-          <div style={{
-            padding: '0.55rem 1rem', background: WARNING_BG, color: WARNING_DARK,
-            borderBottom: `1px solid ${WARNING}`,
-            fontSize: '0.82rem', fontWeight: 600,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
-          }}>
-            <span>{t('step3.unsaved.bannerMessage')}</span>
-            <button
-              onClick={() => applyTab(activeTab)}
-              style={{
-                padding: '0.3rem 0.8rem', borderRadius: '6px',
-                border: `1px solid ${WARNING_DARK}`, background: WARNING_DARK, color: '#fff',
-                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
-              }}
-            >{t('step3.unsaved.applyNow')}</button>
-          </div>
-        )}
-
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} roofType={roofType} />}
@@ -459,10 +466,12 @@ export default function Step3ConstructionPlanning({
               beRailsData={beRailsData}
               highlightGroup={PARAM_GROUP[highlightParam] ?? null}
               customBasesMap={customBasesMap}
-              onBasesChange={(trapId, offsets, panelRowIdx) => {
-                const key = `${trapId}:${panelRowIdx ?? selectedPanelRowIdx}`
+              onBasesChange={(areaKey, offsets, panelRowIdx) => {
+                // customBasesMap is keyed PER ROW now (`areaId:rowIdx`),
+                // not per sub-trap — so a multi-sub-trap row writes back
+                // to a single key with all bases' sorted offsets.
+                const key = `${areaKey}:${panelRowIdx ?? selectedPanelRowIdx}`
                 setCustomBasesMap(prev => ({ ...prev, [key]: offsets }))
-                setUserEditedBases(prev => new Set([...prev, key]))
                 // Drag-edits don't go through useStep3Settings setters; mark
                 // the bases tab dirty explicitly so the Apply UX kicks in.
                 settings.markDirty('bases')
@@ -472,10 +481,10 @@ export default function Step3ConstructionPlanning({
                 // Extend edits also need an Apply pass to flush + recompute.
                 settings.markDirty('bases')
               }}
+              onRequestExitEdit={requestExitBasesEdit}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
                 clearAll: () => {
                   setCustomBasesMap({})
-                  setUserEditedBases(new Set())
                 },
               })}
               roofType={roofType}

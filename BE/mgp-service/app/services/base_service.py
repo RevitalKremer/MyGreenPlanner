@@ -73,6 +73,129 @@ def _optimize_edge_offset(
     return max(edge_offset_mm, min(min_edge_mm, max_edge_mm))
 
 
+# ── Per-base depth helpers ────────────────────────────────────────────────────
+#
+# Extracted from `compute_area_bases` so the per-base depth assignment can run
+# AFTER user-override application (`_apply_persisted_position_overrides`) and
+# signature-based trap reassignment. Without re-running these, a base whose X
+# crossed into another sub-trap's column range keeps the SHAPE of whichever
+# sub-trap originally produced it (panelLineIdx / startCm / lengthCm) — even
+# after its trapezoidId is correctly reassigned.
+
+
+def build_line_infos(
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    line_gap_cm: float,
+) -> dict[int, dict]:
+    """Cumulative per-line geometry for a row.
+
+    Returns ``{lineIdx: {rearEdgeCm, frontEdgeCm, depthCm, orient}}`` for
+    every line that has a non-empty orientation. Lines whose only cells
+    are empty slots (EV/EH) are omitted.
+    """
+    rows = panel_grid.get('rows', [])
+    short_cm = panel_width_cm
+    long_cm = panel_length_cm
+    line_infos: dict[int, dict] = {}
+    cumulative_cm = 0.0
+    for line_idx, cells in enumerate(rows):
+        orient = infer_row_orientation(cells)
+        if line_idx > 0:
+            cumulative_cm += line_gap_cm
+        depth_cm = long_cm if orient == PANEL_V else (short_cm if orient == PANEL_H else 0)
+        if orient:
+            line_infos[line_idx] = {
+                'rearEdgeCm': cumulative_cm,
+                'frontEdgeCm': cumulative_cm + depth_cm,
+                'depthCm': depth_cm,
+                'orient': orient,
+            }
+        cumulative_cm += depth_cm
+    return line_infos
+
+
+def assign_base_depth(
+    base: dict,
+    panel_grid: dict,
+    line_infos: dict[int, dict],
+    line_rails: dict[str, list[float]],
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+    base_overhang_cm: float,
+    fallback_panel_line_idx: int | None = None,
+    fallback_start_cm: float | None = None,
+    fallback_length_cm: float | None = None,
+) -> None:
+    """Recompute ``base.panelLineIdx`` / ``startCm`` / ``lengthCm`` from
+    ``base.offsetFromStartCm``.
+
+    Probes each non-empty line at the base's X position: if a real
+    panel exists there (within ``panel_gap_cm`` tolerance), that line
+    counts as active for this base. The base then spans from the
+    rear-most active line to the front-most. Single-line active set
+    (e.g. col 5 in a row whose line 0 is EV) yields a single-line
+    shape — that's the case the bug was about.
+
+    Fallbacks apply when no line is active at the X (base sits outside
+    every line's real-panel extent). Defaults to a zero-length record
+    when no fallback is provided.
+    """
+    rows = panel_grid.get('rows', [])
+    row_positions = panel_grid.get('rowPositions') or {}
+    base_x = base.get('offsetFromStartCm', 0)
+    short_cm = panel_width_cm
+    long_cm = panel_length_cm
+
+    active_lines: list[int] = []
+    for li, cells in enumerate(rows):
+        orient = infer_row_orientation(cells)
+        if not orient or li not in line_infos:
+            continue
+        panel_along_cm = short_cm if orient == PANEL_V else long_cm
+        stored = row_positions.get(str(li))
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
+        if not positions:
+            continue
+        # The base is "active" on this line only if there's a real
+        # panel at the base's column. Tolerance = panel_gap_cm so a
+        # base sitting in the standard inter-panel gap still counts.
+        tol = panel_gap_cm
+        if any(p - tol <= base_x <= p + panel_along_cm + tol for p in positions):
+            active_lines.append(li)
+
+    if active_lines:
+        b_rear_idx = min(active_lines)
+        b_front_idx = max(active_lines)
+        b_rear_line = line_infos[b_rear_idx]
+        b_front_line = line_infos[b_front_idx]
+        b_rear_rails = line_rails.get(str(b_rear_idx), [])
+        b_front_rails = line_rails.get(str(b_front_idx), [])
+        b_rear_leg = b_rear_line['rearEdgeCm'] + (b_rear_rails[0] if b_rear_rails else 0)
+        b_front_leg = b_front_line['rearEdgeCm'] + (
+            b_front_rails[-1] if b_front_rails else b_front_line['depthCm']
+        )
+        base['panelLineIdx'] = b_rear_idx
+        base['startCm'] = round_to_2dp(b_rear_leg - base_overhang_cm - b_rear_line['rearEdgeCm'])
+        base['lengthCm'] = round_to_2dp((b_front_leg + base_overhang_cm) - (b_rear_leg - base_overhang_cm))
+        return
+
+    if fallback_panel_line_idx is not None and fallback_start_cm is not None and fallback_length_cm is not None:
+        base['panelLineIdx'] = fallback_panel_line_idx
+        base['startCm'] = round_to_2dp(fallback_start_cm)
+        base['lengthCm'] = round_to_2dp(fallback_length_cm)
+    else:
+        # No active lines and no fallback — base sits outside the row
+        # extent. Mark with zero length so downstream renderers can
+        # safely skip it.
+        sorted_lines = sorted(line_infos.keys())
+        base['panelLineIdx'] = sorted_lines[0] if sorted_lines else 0
+        base['startCm'] = 0
+        base['lengthCm'] = 0
+
+
 # ── Main computation ──────────────────────────────────────────────────────────
 
 def compute_area_bases(
@@ -89,16 +212,20 @@ def compute_area_bases(
     trapezoid_id: str = '',
     trap_start_cm: float | None = None,
     trap_end_cm: float | None = None,
-    custom_offsets: list[float] | None = None,
     roof_spec: dict | None = None,
     edge_offset_tolerance_pct: float = 0,
 ) -> dict | None:
     """
-    Compute base layout for one area (or trapezoid sub-range).
+    Compute DEFAULT base layout for one area (or trapezoid sub-range).
 
     panel_grid  — { rows: list[list[str]], rowPositions?: dict[str, list[float]] }
     line_rails  — { str(lineIdx): [offsetFromLineFrontCm, ...] }
     Returns     — dict with bases[], frame extents, leg depths, etc.
+
+    Pure default positioning, no user override. User edits
+    (move/add/delete) are applied later by
+    `_apply_persisted_position_overrides` on the row-aggregated base
+    list — see `compute_and_save_bases` in projects.py.
     """
     rows = panel_grid.get('rows', [])
     if not rows:
@@ -146,9 +273,7 @@ def compute_area_bases(
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
     is_purlin_parallel = roof_type in ('iskurit', 'insulated_panel') and rs.get('installationOrientation') == 'parallel' and spacing_mm > 0
 
-    if custom_offsets and len(custom_offsets) > 0:
-        base_offsets_cm = [mm / 10 for mm in custom_offsets]
-    elif is_purlin_parallel:
+    if is_purlin_parallel:
         # Purlin-aligned: fixed spacing, adjust edge offset to center within frame
         num_spans = max(1, math.floor(inner_span_mm / spacing_mm))
         total_bases_span = num_spans * spacing_mm
@@ -177,6 +302,11 @@ def compute_area_bases(
         if len(base_offsets_cm) > 1 else 0
     )
 
+    # `base_offsets_cm` are SUB-TRAP-relative — convert to row-absolute
+    # coordinates by adding the sub-trap's frame start. (User overrides
+    # are ROW-ABSOLUTE and applied later by
+    # `_apply_persisted_position_overrides` on the row-coord row_bases
+    # list, not here.)
     bases = [
         {
             'baseId': f'B{i + 1}',
@@ -187,22 +317,7 @@ def compute_area_bases(
     ]
 
     # ── Cumulative line depths (cm from rear edge of area) ─────────────────
-    line_infos: dict[int, dict] = {}
-    cumulative_cm = 0.0
-    for line_idx, cells in enumerate(rows):
-        orient = infer_row_orientation(cells)
-        if line_idx > 0:
-            cumulative_cm += line_gap_cm
-        depth_cm = long_cm if orient == PANEL_V else (short_cm if orient == PANEL_H else 0)
-        if orient:
-            line_infos[line_idx] = {
-                'rearEdgeCm': cumulative_cm,
-                'frontEdgeCm': cumulative_cm + depth_cm,
-                'depthCm': depth_cm,
-                'orient': orient,
-            }
-        cumulative_cm += depth_cm
-
+    line_infos = build_line_infos(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
     active_line_idxs = sorted(line_infos.keys())
     if not active_line_idxs:
         return None
@@ -226,50 +341,13 @@ def compute_area_bases(
 
     # ── Per-base depth positions ───────────────────────────────────────────
     for base in bases:
-        base_x = base['offsetFromStartCm']
-        active_lines_for_base = []
-
-        for li, cells in enumerate(rows):
-            orient = infer_row_orientation(cells)
-            if not orient or li not in line_infos:
-                continue
-            panel_along_cm = short_cm if orient == PANEL_V else long_cm
-            stored = row_positions.get(str(li))
-            positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
-            if not positions:
-                continue
-            # The base is "active" on this line only if there's a real panel at
-            # the base's column. Checking the line's overall extent (first-real
-            # to last-real) would incorrectly include EV gaps inside the line —
-            # a base at col-1 in cells [V, EV, V] would be marked active even
-            # though col-1 is empty. Tolerance = panel_gap_cm so bases sitting
-            # in the standard inter-panel gap still count for the adjacent panel.
-            tol = panel_gap_cm
-            panel_at_base = any(
-                p - tol <= base_x <= p + panel_along_cm + tol
-                for p in positions
-            )
-            if panel_at_base:
-                active_lines_for_base.append(li)
-
-        if active_lines_for_base:
-            b_rear_idx = min(active_lines_for_base)
-            b_front_idx = max(active_lines_for_base)
-            b_rear_line = line_infos[b_rear_idx]
-            b_front_line = line_infos[b_front_idx]
-            b_rear_rails = line_rails.get(str(b_rear_idx), [])
-            b_front_rails = line_rails.get(str(b_front_idx), [])
-            b_rear_leg = b_rear_line['rearEdgeCm'] + (b_rear_rails[0] if b_rear_rails else 0)
-            b_front_leg = b_front_line['rearEdgeCm'] + (
-                b_front_rails[-1] if b_front_rails else b_front_line['depthCm']
-            )
-            base['panelLineIdx'] = b_rear_idx
-            base['startCm'] = round_to_2dp(b_rear_leg - base_overhang_cm - b_rear_line['rearEdgeCm'])
-            base['lengthCm'] = round_to_2dp((b_front_leg + base_overhang_cm) - (b_rear_leg - base_overhang_cm))
-        else:
-            base['panelLineIdx'] = rear_idx
-            base['startCm'] = round_to_2dp(base_top_depth_cm - rear_line['rearEdgeCm'])
-            base['lengthCm'] = round_to_2dp(base_length_cm)
+        assign_base_depth(
+            base, panel_grid, line_infos, line_rails,
+            panel_width_cm, panel_length_cm, panel_gap_cm, base_overhang_cm,
+            fallback_panel_line_idx=rear_idx,
+            fallback_start_cm=base_top_depth_cm - rear_line['rearEdgeCm'],
+            fallback_length_cm=base_length_cm,
+        )
 
     # Block positions are computed in trapezoid_detail_service (single source of truth).
     # The FE bases view reads blocks from computedTrapezoids[trapId].blocks.

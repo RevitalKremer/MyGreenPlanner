@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, OMEGA_PURPLE, WHITE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, OMEGA_PURPLE, WHITE, PRIMARY } from '../../../styles/colors'
 import { consolidateAreaBases, buildTrapAreaMaps, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
 import { computeRowRailLayout, buildLineRailsFromBE, buildLineSegmentsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
@@ -21,7 +21,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), onRequestExitEdit = null as null | (() => Promise<boolean>), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -39,7 +39,42 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const [showRailLines,  setShowRailLines]  = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showDiagonals,  setShowDiagonals]  = useState(true)
-  const [showEditBar,    setShowEditBar]    = useState(false)
+  // Edit mode replaces the "Edit Bar" layer toggle. Entering edit mode
+  // simplifies the canvas to bases + rails + dimensions (hiding derived
+  // layers like blocks, diagonals, anchors, base IDs that depend on BE-
+  // recomputed state and would be misleading while edits are pending).
+  // Exit via Save (applies pending edits) or Discard (drops them).
+  const [editMode, setEditMode] = useState(false)
+
+  // Op popover: shown after the user commits a base op on the edit bar.
+  // Lets them refine (move only) and fan the change out across the
+  // area. `kind` discriminates which branch the popover renders.
+  const [moveEditor, setMoveEditor] = useState<null | {
+    kind: 'move' | 'add' | 'delete'
+    trapId: string
+    rowIdx: number
+    baseIdx: number       // for move/delete; -1 for add
+    oldOffsetMm: number   // for move; equals newOffsetMm for add/delete
+    newOffsetMm: number
+    areaKey: string
+  }>(null)
+  const moveEditorTimerRef = useRef<number | null>(null)
+  const dismissMoveEditorSoon = () => {
+    if (moveEditorTimerRef.current != null) window.clearTimeout(moveEditorTimerRef.current)
+    // Auto-dismiss after a few seconds of inactivity. Any mouseDown / keyDown
+    // inside the popover refreshes the timer (see the foreignObject handlers
+    // below) so an active user keeps it open.
+    moveEditorTimerRef.current = window.setTimeout(() => {
+      setMoveEditor(null)
+      moveEditorTimerRef.current = null
+    }, 3000) as unknown as number
+  }
+  useEffect(() => () => {
+    if (moveEditorTimerRef.current != null) window.clearTimeout(moveEditorTimerRef.current)
+  }, [])
+  useEffect(() => {
+    if (moveEditor) dismissMoveEditorSoon()
+  }, [moveEditor?.trapId, moveEditor?.rowIdx, moveEditor?.baseIdx])  // eslint-disable-line react-hooks/exhaustive-deps
   const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
   const initialMountRef = useRef(true)
@@ -187,18 +222,205 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   // Print mode: all layers on, no selection, zoom=1, no edit bar
   const effTrapId = printMode ? null : effectiveSelectedTrapId
   const effZoom   = printMode ? 1 : zoom
-  const sBases    = printMode || showBases
-  const sAnchors  = printMode || showAnchors
-  const sBlocks   = printMode || showBlocks
-  const sBaseIDs  = printMode || showBaseIDs
+  // In edit mode we force the canvas to the minimal editable set — bases,
+  // rails, dimensions on; derived/decorative layers off — so the user
+  // focuses on what they can manipulate. Outside edit mode the layer
+  // toggles drive visibility as before.
+  const sEditMode = !printMode && editMode
+  const sBases    = sEditMode ? true  : (printMode || showBases)
+  const sAnchors  = sEditMode ? false : (printMode || showAnchors)
+  const sBlocks   = sEditMode ? false : (printMode || showBlocks)
+  const sBaseIDs  = sEditMode ? false : (printMode || showBaseIDs)
 
   // Anchor points are populated only on frameless-roof bases (tiles, flat_installation)
   // — one per rail × base intersection. Detect any non-empty hookOffsets to surface the toggle.
   const hasAnchors = (beBasesData ?? []).some(ad => (ad.bases ?? []).some(b => (b.hookOffsets?.length ?? 0) > 0))
-  const sRails    = !printMode && showRailLines
-  const sDiags    = printMode || showDiagonals
-  const sDims     = printMode || showDimensions
-  const sEditBar  = !printMode && showEditBar
+  const sRails    = sEditMode ? true  : (!printMode && showRailLines)
+  const sDiags    = sEditMode ? false : (printMode || showDiagonals)
+  const sDims     = sEditMode ? true  : (printMode || showDimensions)
+
+  // ── In-flight base override projection ────────────────────────────────────
+  // While the user edits in the edit bar, `customBasesMap[trapId:rowIdx]` holds
+  // the live mm offsets — possibly with bases ADDED, DELETED, or MOVED. To
+  // render the whole base (line, label, blocks, diagonals, dims) in sync
+  // with the bar BEFORE Apply, we diff the live array against the BE peers
+  // per (trap, row) group and emit a derived `liveBeBasesData`:
+  //   • move  → existing BE peer reused with new offsetFromStartCm
+  //   • add   → synthetic base cloned from a neighbour (synthetic baseId
+  //             so downstream lookups don't collide with real BE ids)
+  //   • delete→ BE peer dropped from the array
+  //
+  // The 2-pointer diff below assumes sorted offsets (BasePlanOverlay
+  // enforces this on every mutation). INSERT_GAP_CM defines when a live
+  // offset is treated as a NEW insertion rather than a move of the current
+  // BE peer — small enough to detect inserts, large enough to absorb
+  // typical drag distances.
+  // Move-vs-insert tolerance only matters when live and BE differ in
+  // length; for length-equal cases we use index-based matching, since
+  // the edit bar's clampOffset prevents reordering.
+  const INSERT_GAP_MM = 5000
+  const stripVariation = (tid: any): string => {
+    const s = String(tid ?? '')
+    const dot = s.indexOf('.')
+    return dot >= 0 ? s.slice(0, dot) : s
+  }
+  const diffRowBases = (bePeers: any[], liveMm: number[]): any[] => {
+    // bePeers already sorted ascending by offsetFromStartCm.
+    const live = [...liveMm].sort((a, b) => a - b)
+    const beMm = bePeers.map(b => Math.round((b.offsetFromStartCm ?? 0) * 10))
+    const template = bePeers[0]
+
+    const syntheticAt = (templateBase: any, liveMmI: number, idx: number) => ({
+      ...templateBase,
+      baseId: `__live__${templateBase?.trapezoidId ?? 't'}_${idx}_${liveMmI}`,
+      offsetFromStartCm: liveMmI / 10,
+      __synthetic: true,
+    })
+
+    // Length match → pure move (or no-op). Pair index-wise, override
+    // offset only when it actually changed (mm-precision compare).
+    if (live.length === bePeers.length) {
+      const result: any[] = []
+      for (let i = 0; i < bePeers.length; i++) {
+        const b = bePeers[i]
+        if (live[i] === beMm[i]) {
+          result.push(b)
+        } else {
+          result.push({ ...b, offsetFromStartCm: live[i] / 10 })
+        }
+      }
+      return result
+    }
+
+    // Single ADD: live has exactly one extra entry. Try skipping each
+    // live index and pick the one with minimum total drift against the
+    // BE peers — the skipped index is the newly added base. Without
+    // this min-drift alignment, a naive two-pointer misreads an insert
+    // in the middle of the row as "move the next existing base forward,
+    // move the one after that, …, and tag the trailing one as new" —
+    // which corrupts every downstream base's startCm / lengthCm
+    // because each surviving base carries the SHAPE of its previous
+    // neighbour.
+    if (live.length === bePeers.length + 1) {
+      let bestSkip = 0
+      let bestDrift = Infinity
+      for (let skipIdx = 0; skipIdx < live.length; skipIdx++) {
+        let drift = 0
+        let bi = 0
+        for (let li = 0; li < live.length; li++) {
+          if (li === skipIdx) continue
+          drift += Math.abs(live[li] - beMm[bi])
+          bi++
+        }
+        if (drift < bestDrift) {
+          bestDrift = drift
+          bestSkip = skipIdx
+        }
+      }
+      const result: any[] = []
+      let bi = 0
+      for (let li = 0; li < live.length; li++) {
+        if (li === bestSkip) {
+          // Insert position falls between the previous and current BE
+          // peer; use whichever exists as a shape template.
+          const tpl = bePeers[bi] ?? bePeers[bi - 1] ?? template
+          result.push(syntheticAt(tpl, live[li], li))
+          continue
+        }
+        const b = bePeers[bi]
+        result.push(live[li] === beMm[bi] ? b : { ...b, offsetFromStartCm: live[li] / 10 })
+        bi++
+      }
+      return result
+    }
+
+    // Single DELETE: live has exactly one fewer entry. Try skipping
+    // each BE index; the skipped one is the deleted base.
+    if (live.length === bePeers.length - 1) {
+      let bestSkip = 0
+      let bestDrift = Infinity
+      for (let skipIdx = 0; skipIdx < bePeers.length; skipIdx++) {
+        let drift = 0
+        let li = 0
+        for (let bi = 0; bi < bePeers.length; bi++) {
+          if (bi === skipIdx) continue
+          drift += Math.abs(live[li] - beMm[bi])
+          li++
+        }
+        if (drift < bestDrift) {
+          bestDrift = drift
+          bestSkip = skipIdx
+        }
+      }
+      const result: any[] = []
+      let li = 0
+      for (let bi = 0; bi < bePeers.length; bi++) {
+        if (bi === bestSkip) continue
+        const b = bePeers[bi]
+        result.push(live[li] === beMm[bi] ? b : { ...b, offsetFromStartCm: live[li] / 10 })
+        li++
+      }
+      return result
+    }
+
+    // Multi-edit fallback — length differs by > 1. Best-effort two-
+    // pointer with the gap heuristic.
+    const result: any[] = []
+    let bi = 0
+    let li = 0
+    let synthCount = 0
+    while (li < live.length || bi < bePeers.length) {
+      if (li >= live.length) { bi++; continue }
+      const liveMmI = live[li]
+      if (bi >= bePeers.length) {
+        const tpl = bePeers[bi - 1] || template
+        if (tpl) result.push(syntheticAt(tpl, liveMmI, synthCount++))
+        li++
+        continue
+      }
+      const beMmI = beMm[bi]
+      if (live.length > bePeers.length && liveMmI + INSERT_GAP_MM < beMmI) {
+        result.push(syntheticAt(bePeers[bi], liveMmI, synthCount++))
+        li++
+      } else if (live.length < bePeers.length && beMmI + INSERT_GAP_MM < liveMmI) {
+        bi++
+      } else {
+        const b = bePeers[bi]
+        result.push(liveMmI === beMmI ? b : { ...b, offsetFromStartCm: liveMmI / 10 })
+        bi++
+        li++
+      }
+    }
+    return result
+  }
+  const liveBeBasesData = (beBasesData ?? []).map((ad: any) => {
+    const bases = ad?.bases ?? []
+    // Group bases by panelRowIdx — customBasesMap is per row (across
+    // every sub-trap), so the diff runs once per row regardless of how
+    // many sub-traps contribute bases there.
+    const areaKey = ad?.areaId ?? ad?.areaLabel ?? ad?.label
+    const peersByRow: Record<number, any[]> = {}
+    const rowOrder: number[] = []
+    for (const b of bases) {
+      const ri = b._panelRowIdx ?? 0
+      if (!peersByRow[ri]) { peersByRow[ri] = []; rowOrder.push(ri) }
+      peersByRow[ri].push(b)
+    }
+    for (const ri of rowOrder) {
+      peersByRow[ri].sort((a: any, b: any) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
+    }
+    const nextBases: any[] = []
+    for (const ri of rowOrder) {
+      const peers = peersByRow[ri]
+      const live = areaKey != null ? customBasesMap?.[`${areaKey}:${ri}`] : undefined
+      if (!Array.isArray(live)) {
+        nextBases.push(...peers)
+        continue
+      }
+      nextBases.push(...diffRowBases(peers, live))
+    }
+    return { ...ad, bases: nextBases }
+  })
 
   // ── SVG layers (shared by both print and interactive modes) ──
   const svgLayers = (
@@ -223,7 +445,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
           Per-area in mixed mode: each area uses its own roofSpec.type /
           distanceBetweenPurlinsCm / installationOrientation. Non-mixed
           projects fall through to the project-level scalar props. */}
-      {(beBasesData ?? []).map((areaData, ai) => {
+      {liveBeBasesData.map((areaData, ai) => {
         const areaRoof = resolveAreaRoof(areaData)
         if (areaRoof.type !== 'iskurit' && areaRoof.type !== 'insulated_panel') return null
         if (areaRoof.installationOrientation !== 'parallel') return null
@@ -312,7 +534,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 )}
 
                 {/* 2. Blocks */}
-                {sBlocks && (beBasesData ?? []).map((areaData, ai) => {
+                {sBlocks && liveBeBasesData.map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const trapDetail = beTrapezoidsData?.[sb.trapezoidId]
                     const allBlocks = trapDetail?.blocks ?? []
@@ -357,7 +579,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 })}
 
                 {/* 3. Bases + 4. Base IDs */}
-                {sBases && (beBasesData ?? []).map((areaData, ai) => {
+                {sBases && liveBeBasesData.map((areaData, ai) => {
                   const profThick = (4 / pixelToCmRatio) * sc
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
@@ -381,7 +603,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 })}
 
                 {/* 4.5 Anchor points — frameless roofs: one mark per rail crossing each virtual base line */}
-                {sAnchors && hasAnchors && (beBasesData ?? []).map((areaData, ai) => {
+                {sAnchors && hasAnchors && liveBeBasesData.map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const offsets = sb.hookOffsets ?? []
                     if (!offsets.length || !(sb.lengthCm > 0)) return null
@@ -408,7 +630,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 })}
 
                 {/* 5. External diagonals */}
-                {sDiags && sBases && (beBasesData ?? []).map((areaData, ai) => {
+                {sDiags && sBases && liveBeBasesData.map((areaData, ai) => {
                   const PROFILE_THICK = (4 / pixelToCmRatio) * sc
                   const diags = areaData.diagonals ?? []
                   const allBases = areaData.bases ?? []
@@ -499,7 +721,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 })}
 
                 {/* 6. Dimensions — per panel row */}
-                {sDims && (beBasesData ?? []).map((areaData, ai) => {
+                {sDims && liveBeBasesData.map((areaData, ai) => {
                   // Group bases by panelRowIdx
                   const basesByRow = {}
                   for (const b of (areaData.bases ?? [])) {
@@ -558,15 +780,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                 })}
 
                 {/* 7. Edit bar */}
-                {sEditBar && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
+                {sEditMode && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
                   const af = areaFrames[areaKey]
                   if (!af?.frame?.center) return null
                   const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
                   if (effTrapId !== null && String(areaKey) !== String(selectedArea)) return null
                   const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
                   if (!areaData?.bases?.length) return null
-                  const fullTrapId = areaTrapIds.find(tid => beTrapezoidsData?.[tid]?.isFullTrap) ?? areaTrapIds[0]
-                  const trapS = trapSettingsMap[fullTrapId] ?? {}
 
                   // Determine which panel rows to render
                   const allRowIdxs = ([...new Set((areaData.bases ?? []).map(sb => sb._panelRowIdx ?? 0))] as number[]).sort((a, b) => a - b)
@@ -580,11 +800,26 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const { center, angleRad, localBounds } = rowFrame
                     const frameLengthPx = localBounds.maxX - localBounds.minX
 
-                    const rowBases = (areaData.bases ?? []).filter(sb => (sb._panelRowIdx ?? 0) === pri)
-                    if (rowBases.length === 0) return null
+                    // Sort by current offset so the bar's index aligns with
+                    // sorted mm offsets — required for multi-sub-trap rows.
+                    const rowBasesSorted = (areaData.bases ?? [])
+                      .filter(sb => (sb._panelRowIdx ?? 0) === pri)
+                      .slice()
+                      .sort((a, b) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
+                    if (rowBasesSorted.length === 0) return null
 
-                    const liveOffsets = customBasesMap[`${fullTrapId}:${pri}`]
-                    const offsetSource = liveOffsets ?? rowBases.map(sb => Math.round(sb.offsetFromStartCm * 10))
+                    // Settings: prefer the row's first sub-trap. Edge / spacing
+                    // params on the row are usually uniform across sub-traps;
+                    // when they aren't, the first sub-trap drives clamp limits
+                    // — acceptable since the per-base BE recompute is final.
+                    const firstSubTrapId = stripVariation(rowBasesSorted[0].trapezoidId) || areaTrapIds[0]
+                    const trapS = trapSettingsMap[firstSubTrapId] ?? trapSettingsMap[rowBasesSorted[0].trapezoidId] ?? {}
+
+                    // Per-row customBasesMap key (`areaId:rowIdx`) — single
+                    // entry per row spanning every sub-trap.
+                    const rowKey = `${areaKey}:${pri}`
+                    const liveOffsets = customBasesMap[rowKey]
+                    const offsetSource = liveOffsets ?? rowBasesSorted.map(sb => Math.round(sb.offsetFromStartCm * 10))
                     const syntheticBases = offsetSource.map((offMm) => {
                       const offCm = offMm / 10
                       const lx = afIsRtl
@@ -609,16 +844,57 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                         edgeOffsetMm={trapS.edgeOffsetMm}
                         isSelected={true}
                         overrideBarLocalY={barLocalY}
-                        onBasesChange={onBasesChange ? (offsets) => onBasesChange(fullTrapId, offsets, pri) : null}
+                        onBasesChange={onBasesChange ? (offsets) => onBasesChange(areaKey, offsets, pri) : null}
+                        // Each commit just opens the popover. The save flow
+                        // (App.tsx) derives the BaseOp list from the diff
+                        // between customBasesMap and beBasesData — every
+                        // user gesture has already updated customBasesMap
+                        // via onBasesChange, so we don't push ops here.
+                        onBaseMoveCommit={(info: any) => {
+                          setMoveEditor({
+                            kind: 'move',
+                            trapId: firstSubTrapId,
+                            rowIdx: pri,
+                            baseIdx: info.baseIdx,
+                            oldOffsetMm: info.oldOffsetMm,
+                            newOffsetMm: info.newOffsetMm,
+                            areaKey,
+                          })
+                        }}
+                        onBaseAddCommit={(info: any) => {
+                          setMoveEditor({
+                            kind: 'add',
+                            trapId: firstSubTrapId,
+                            rowIdx: pri,
+                            baseIdx: -1,
+                            oldOffsetMm: info.offsetMm,
+                            newOffsetMm: info.offsetMm,
+                            areaKey,
+                          })
+                        }}
+                        onBaseDeleteCommit={(info: any) => {
+                          setMoveEditor({
+                            kind: 'delete',
+                            trapId: firstSubTrapId,
+                            rowIdx: pri,
+                            baseIdx: info.baseIdx,
+                            oldOffsetMm: info.offsetMm,
+                            newOffsetMm: info.offsetMm,
+                            areaKey,
+                          })
+                        }}
                       />
                     )
                   })
                 })}
 
-                {/* 7b. Endpoint grips — front/back drag handles for the extend op */}
-                {sEditBar && (
+                {/* 7b. Endpoint grips — front/back drag handles for the extend op.
+                    Consumes `liveBeBasesData` so grips ride the moved/added base
+                    and disappear on deleted ones, in sync with the rest of the
+                    canvas while the user edits in the bar. */}
+                {sEditMode && (
                   <BaseEndpointGrips
-                    beBasesData={beBasesData}
+                    beBasesData={liveBeBasesData}
                     beTrapezoidsData={beTrapezoidsData}
                     areaFrames={areaFrames}
                     areaTrapsMap={areaTrapsMap}
@@ -633,8 +909,214 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   />
                 )}
 
+                {/* 7c. Move popover — opens on mouseup after a base drag.
+                    Reuses the styling/idiom of BaseEndpointGrips's editor:
+                    numeric mm input + "Apply to similar rows" fan-out. */}
+                {sEditMode && moveEditor && (() => {
+                  // Locate the area + row this base lives in.
+                  const ad = (beBasesData ?? []).find((a: any) =>
+                    String(a.areaId) === moveEditor.areaKey
+                      || a.areaLabel === moveEditor.areaKey
+                      || a.label === moveEditor.areaKey
+                  )
+                  if (!ad) return null
+                  const af = areaFrames[moveEditor.areaKey]
+                    ?? areaFrames[String(moveEditor.areaKey)]
+                    ?? areaFrames[`${moveEditor.areaKey}:${moveEditor.rowIdx}`]
+                  if (!af?.frame?.center) return null
+
+                  // Anchor the popover at this base's CURRENT (post-move)
+                  // SVG position. Use frame geometry to project offset → screen.
+                  const { frame: tFrame, isRtl: afIsRtl } = af
+                  const { angleRad: tAngle, localBounds: tLB } = tFrame
+                  const offCm = moveEditor.newOffsetMm / 10
+                  const lx = afIsRtl
+                    ? tLB.maxX - offCm / pixelToCmRatio
+                    : tLB.minX + offCm / pixelToCmRatio
+                  const ly = (tLB.minY + tLB.maxY) / 2
+                  const ps = localToScreen({ x: lx, y: ly }, tFrame.center, tAngle)
+                  const [ax, ay] = toSvg(ps.x, ps.y)
+
+                  // Identify rows in this area "similar" to the edited row —
+                  // same number of bases with matching (trapezoidId stripped
+                  // of variation suffix, offsetFromStartCm) sequences. The
+                  // user can fan the same absolute offset out to those rows.
+                  const allRowIdxs = ([...new Set((ad.bases ?? []).map((b: any) => b._panelRowIdx ?? 0))] as number[]).sort((a, b) => a - b)
+                  const seqFor = (ri: number) =>
+                    (ad.bases ?? [])
+                      .filter((b: any) => (b._panelRowIdx ?? 0) === ri)
+                      .slice()
+                      .sort((a: any, b: any) => a.offsetFromStartCm - b.offsetFromStartCm)
+                  const editedSeq = seqFor(moveEditor.rowIdx)
+                  const similarRowIdxs = allRowIdxs.filter((ri) => {
+                    if (ri === moveEditor.rowIdx) return false
+                    const seq = seqFor(ri)
+                    if (seq.length !== editedSeq.length) return false
+                    for (let i = 0; i < seq.length; i++) {
+                      if (stripVariation(seq[i].trapezoidId) !== stripVariation(editedSeq[i].trapezoidId)) return false
+                      if (Math.abs(seq[i].offsetFromStartCm - editedSeq[i].offsetFromStartCm) > 0.1) return false
+                    }
+                    return true
+                  })
+
+                  // Every helper below just mutates customBasesMap (the
+                  // FE's intended-state map). The save flow in App.tsx
+                  // derives the BaseOp wire payload from the diff between
+                  // customBasesMap and beBasesData, consolidating
+                  // identical changes across rows into single ops with
+                  // multiple targets — so no FE-side op tracking needed.
+                  //
+                  // customBasesMap is keyed PER ROW (`areaId:rowIdx`) —
+                  // a row's entry is the sorted mm offsets ACROSS all
+                  // sub-traps. The diff (baseOpsBuilder) carries
+                  // trapezoidId on each emitted op for BE disambiguation.
+                  const rowKey = (ri: number) => `${moveEditor.areaKey}:${ri}`
+                  const commitOffset = (mm: number) => {
+                    const arr = customBasesMap?.[rowKey(moveEditor.rowIdx)]
+                      ?? editedSeq.map((b: any) => Math.round(b.offsetFromStartCm * 10))
+                    const next = [...arr]
+                    next[moveEditor.baseIdx] = mm
+                    onBasesChange?.(moveEditor.areaKey, next, moveEditor.rowIdx)
+                    setMoveEditor({ ...moveEditor, newOffsetMm: mm })
+                    dismissMoveEditorSoon()
+                  }
+                  const applyToSimilar = () => {
+                    for (const otherRi of similarRowIdxs) {
+                      const otherSeq = seqFor(otherRi)
+                      const arr = customBasesMap?.[rowKey(otherRi)]
+                        ?? otherSeq.map((b: any) => Math.round(b.offsetFromStartCm * 10))
+                      const next = [...arr]
+                      next[moveEditor.baseIdx] = moveEditor.newOffsetMm
+                      onBasesChange?.(moveEditor.areaKey, next, otherRi)
+                    }
+                    setMoveEditor(null)
+                  }
+                  const applyAddToArea = () => {
+                    for (const otherRi of allRowIdxs) {
+                      if (otherRi === moveEditor.rowIdx) continue
+                      const otherSeq = seqFor(otherRi)
+                      const arr = customBasesMap?.[rowKey(otherRi)]
+                        ?? otherSeq.map((b: any) => Math.round(b.offsetFromStartCm * 10))
+                      if (arr.some((o: number) => Math.abs(o - moveEditor.newOffsetMm) < 100)) continue
+                      const next = [...arr, moveEditor.newOffsetMm].sort((a, b) => a - b)
+                      onBasesChange?.(moveEditor.areaKey, next, otherRi)
+                    }
+                    setMoveEditor(null)
+                  }
+                  const applyDeleteToArea = () => {
+                    for (const otherRi of allRowIdxs) {
+                      if (otherRi === moveEditor.rowIdx) continue
+                      const otherSeq = seqFor(otherRi)
+                      const arr = customBasesMap?.[rowKey(otherRi)]
+                        ?? otherSeq.map((b: any) => Math.round(b.offsetFromStartCm * 10))
+                      if (moveEditor.baseIdx < 0 || moveEditor.baseIdx >= arr.length) continue
+                      const next = arr.filter((_: number, i: number) => i !== moveEditor.baseIdx)
+                      onBasesChange?.(moveEditor.areaKey, next, otherRi)
+                    }
+                    setMoveEditor(null)
+                  }
+
+                  const otherRowsCount = allRowIdxs.filter(ri => ri !== moveEditor.rowIdx).length
+                  const w = 210 / effZoom
+                  const h = (moveEditor.kind === 'move' ? 110 : 80) / effZoom
+                  const fontSz = 10 / effZoom
+                  const title =
+                    moveEditor.kind === 'add' ? 'Base added (mm from start)' :
+                    moveEditor.kind === 'delete' ? 'Base deleted' :
+                    'Move base (mm from start)'
+                  return (
+                    <foreignObject x={ax + 10 / effZoom} y={ay - h / 2} width={w} height={h}>
+                      <div
+                        onMouseDown={(e) => { e.stopPropagation(); dismissMoveEditorSoon() }}
+                        onKeyDown={(e) => { e.stopPropagation(); dismissMoveEditorSoon() }}
+                        onWheel={(e) => e.stopPropagation()}
+                        style={{
+                          background: 'white', border: `1px solid ${BORDER_MID}`,
+                          borderRadius: 4 / effZoom, padding: `${6 / effZoom}px ${8 / effZoom}px`,
+                          fontSize: fontSz, fontFamily: 'inherit',
+                          boxShadow: `0 ${2 / effZoom}px ${6 / effZoom}px rgba(0,0,0,0.15)`,
+                          display: 'flex', flexDirection: 'column', gap: 4 / effZoom,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: PRIMARY }}>{title}</div>
+                        {moveEditor.kind === 'move' && (
+                          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 / effZoom }}>
+                            offset
+                            <input
+                              type="number" min={0} step={10}
+                              value={moveEditor.newOffsetMm}
+                              onChange={(e) => {
+                                const v = Math.max(0, Math.round(Number(e.target.value) || 0))
+                                setMoveEditor({ ...moveEditor, newOffsetMm: v })
+                              }}
+                              onBlur={() => commitOffset(moveEditor.newOffsetMm)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  commitOffset(moveEditor.newOffsetMm)
+                                }
+                              }}
+                              style={{
+                                width: 70 / effZoom, padding: `${2 / effZoom}px ${4 / effZoom}px`,
+                                border: `1px solid ${BORDER_MID}`, borderRadius: 2 / effZoom,
+                                fontSize: fontSz, textAlign: 'right',
+                              }}
+                            />
+                          </label>
+                        )}
+                        <div style={{ borderTop: `1px solid ${BORDER_MID}`, paddingTop: 4 / effZoom }}>
+                          {moveEditor.kind === 'move' && (
+                            <button
+                              type="button"
+                              disabled={similarRowIdxs.length === 0}
+                              onClick={applyToSimilar}
+                              title={similarRowIdxs.length === 0
+                                ? 'No other rows in this area match the edited row'
+                                : `Will update rows ${similarRowIdxs.join(', ')}`}
+                              style={{
+                                width: '100%', padding: `${3 / effZoom}px ${6 / effZoom}px`,
+                                border: `1px solid ${BORDER_MID}`,
+                                borderRadius: 2 / effZoom,
+                                background: similarRowIdxs.length === 0 ? '#f5f5f5' : 'white',
+                                color: similarRowIdxs.length === 0 ? '#999' : 'inherit',
+                                cursor: similarRowIdxs.length === 0 ? 'not-allowed' : 'pointer',
+                                fontSize: fontSz, textAlign: 'left',
+                              }}
+                            >
+                              Apply to similar rows
+                              {similarRowIdxs.length > 0 && ` (${similarRowIdxs.length})`}
+                            </button>
+                          )}
+                          {(moveEditor.kind === 'add' || moveEditor.kind === 'delete') && (
+                            <button
+                              type="button"
+                              disabled={otherRowsCount === 0}
+                              onClick={moveEditor.kind === 'add' ? applyAddToArea : applyDeleteToArea}
+                              title={otherRowsCount === 0
+                                ? 'No other rows in this area'
+                                : `Will ${moveEditor.kind} the same base in ${otherRowsCount} other row(s)`}
+                              style={{
+                                width: '100%', padding: `${3 / effZoom}px ${6 / effZoom}px`,
+                                border: `1px solid ${BORDER_MID}`,
+                                borderRadius: 2 / effZoom,
+                                background: otherRowsCount === 0 ? '#f5f5f5' : 'white',
+                                color: otherRowsCount === 0 ? '#999' : 'inherit',
+                                cursor: otherRowsCount === 0 ? 'not-allowed' : 'pointer',
+                                fontSize: fontSz, textAlign: 'left',
+                              }}
+                            >
+                              Apply to all rows
+                              {otherRowsCount > 0 && ` (${otherRowsCount})`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </foreignObject>
+                  )
+                })()}
+
                 {/* Base parameter highlights (top z-order) */}
-                {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && (beBasesData ?? []).map((areaData, ai) => {
+                {(highlightGroup === 'base-spacing' || highlightGroup === 'base-edges' || highlightGroup === 'base-overhang') && liveBeBasesData.map((areaData, ai) => {
                   const firstBasePri = (areaData.bases ?? [])[0]?._panelRowIdx
                   const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, firstBasePri)
                   if (!ctx) return null
@@ -713,7 +1195,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
         <RulerTool active={rulerActive} zoom={zoom} pxPerCm={sc / pixelToCmRatio} containerRef={containerRef} />
 
         <LayersPanel
-          layers={[
+          layers={editMode ? [] : [
             { label: t('step3.layer.roofImage'),  checked: showRoofImage,  setter: setShowRoofImage },
             { label: t('step3.layer.bases'),      checked: showBases,      setter: setShowBases },
             { label: t('step3.layer.baseIDs'),    checked: showBaseIDs,    setter: setShowBaseIDs },
@@ -722,10 +1204,54 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.railLines'),  checked: showRailLines,  setter: setShowRailLines },
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
-            { label: t('step3.layer.editBar'),    checked: showEditBar,    setter: setShowEditBar },
           ]}
-          summary={null}
-          actions={[
+          summary={editMode ? (
+            <span>{t('step3.editMode.hint') || 'Drag bases on the bar to move; click to add or ✕ to remove. Drag base endpoints to extend.'}</span>
+          ) : null}
+          actions={editMode ? [
+            // In edit mode: only an "Exit" toggle. Save lives in the sidebar
+            // (per-tab Apply Changes); the host's onRequestExitEdit handles
+            // the unsaved-edits confirm dialog before letting us flip out.
+            { label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 8.5l3 3 7-7" />
+                  </svg>
+                  {t('step3.editMode.exit')}
+                </span>
+              ),
+              onClick: async () => {
+                if (onRequestExitEdit) {
+                  const ok = await onRequestExitEdit()
+                  if (!ok) return
+                }
+                setEditMode(false)
+              },
+              style: {
+                color: 'white', background: PRIMARY, border: `1px solid ${PRIMARY}`,
+                padding: '0.45rem 0.6rem', fontSize: '0.78rem', fontWeight: 700,
+              } },
+            { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'),
+              onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) },
+              style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+          ] : [
+            // Out of edit mode: prominent primary entry button with a thin
+            // pencil glyph (inline SVG — emoji icons feel out of place in
+            // an engineering tool).
+            { label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M11.5 1.5l3 3-9 9H2.5v-3z" />
+                    <path d="M10 3l3 3" />
+                  </svg>
+                  {t('step3.editMode.enter')}
+                </span>
+              ),
+              onClick: () => setEditMode(true),
+              style: {
+                color: 'white', background: PRIMARY, border: `1px solid ${PRIMARY}`,
+                padding: '0.45rem 0.6rem', fontSize: '0.78rem', fontWeight: 700,
+              } },
             ...(onResetBases ? [{ label: t('step3.layer.resetDefaults'), onClick: onResetBases, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
             { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
           ]}
