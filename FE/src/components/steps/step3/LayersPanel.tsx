@@ -58,8 +58,8 @@ export default function LayersPanel({ layers, summary = null, actions }) {
           )}
           {actions?.length > 0 && (
             <div style={{ borderTop: `1px solid ${BG_MID}`, paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {actions.map(({ label, onClick, style: btnStyle }) => (
-                <button key={label} onClick={onClick} style={{ padding: '0.22rem 0.4rem', fontSize: '0.62rem', fontWeight: '600', borderRadius: '4px', cursor: 'pointer', ...btnStyle }}>
+              {actions.map(({ label, onClick, style: btnStyle }, i) => (
+                <button key={i} onClick={onClick} style={{ padding: '0.22rem 0.4rem', fontSize: '0.62rem', fontWeight: '600', borderRadius: '4px', cursor: 'pointer', ...btnStyle }}>
                   {label}
                 </button>
               ))}

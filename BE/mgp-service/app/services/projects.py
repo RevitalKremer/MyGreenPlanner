@@ -228,7 +228,15 @@ async def get_project_for_user(
     query = select(Project).where(Project.id == project_id)
     if user.role.value != "admin":
         query = query.where(Project.owner_id == user.id)
-    return (await db.execute(query)).scalar_one_or_none()
+    project = (await db.execute(query)).scalar_one_or_none()
+    if project is not None and isinstance(project.data, dict):
+        areas = project.data.get('step2', {}).get('areas', [])
+        if any(not isinstance(a.get('id'), int) for a in areas):
+            _assign_area_ids(project.data)
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
+    return project
 
 
 async def create_project(db: AsyncSession, owner_id: uuid.UUID, payload: ProjectCreate) -> Project:
@@ -572,13 +580,21 @@ def _upsert_computed_area(step3: dict, area_id: int, label: str, updates: dict) 
 
 
 def _upsert_computed_trapezoid(step3: dict, trap_id: str, detail: dict) -> None:
-    """Insert or update a computed trapezoid entry by trapId."""
+    """Insert or update a computed trapezoid entry by trapId.
+
+    REPLACES the entry rather than shallow-merging, so keys present in the
+    previous detail but absent from `detail` (e.g. punches/blocks tied to
+    a base that was just removed) do not leak forward. Reset-to-defaults
+    relies on this: clearing customBasesOffsets and recomputing must
+    actually drop the geometry derived from the user's prior bases.
+    """
     computed = step3.setdefault('computedTrapezoids', [])
-    for ct in computed:
+    new_entry = {'trapezoidId': trap_id, **detail}
+    for i, ct in enumerate(computed):
         if ct.get('trapezoidId') == trap_id:
-            ct.update(detail)
+            computed[i] = new_entry
             return
-    computed.append({'trapezoidId': trap_id, **detail})
+    computed.append(new_entry)
 
 
 def _derive_line_rails(computed_area: dict | None, row_index: int = 0) -> dict[str, list[float]]:
@@ -742,8 +758,19 @@ def _compute_trap_x_range(
     """
     Compute the X extent (start, end cm) for one trapezoid within an area.
     For single-trap areas returns (None, None) — use full area frame.
-    For multi-trap areas, computes the X extent from panel positions on
-    each trap's active lines.
+    For multi-trap areas, scans columns of the row's reference (first
+    non-empty) line and only counts columns where the per-line cell
+    pattern exactly matches the trap's lineOrientations. This is the
+    same signature rule used by `_match_trap_by_signature`, so the X
+    extent reported here lines up with the trap assignment that the
+    downstream `_reassign_row_base_traps_by_signature` pass applies.
+
+    Without this, a multi-sub-trap row where every line has REAL_PANELS
+    along its full width (e.g. line 0 = V V V V EV EV, line 1 = V V V V
+    V V) would report every trap as spanning the full row — and
+    `consolidate_area_bases` would then cull a sub-trap's user-placed
+    bases whenever the "primary" trap (first in trap_ids) reports an
+    overlapping range.
     """
     if len(trap_ids) <= 1:
         return None, None
@@ -758,40 +785,62 @@ def _compute_trap_x_range(
 
     trap_cfg = trapezoids.get(trapezoid_id, {})
     line_orients = trap_cfg.get('lineOrientations', [])
+    if not line_orients:
+        return None, None
 
-    # Compute X extent from actual panel positions on active lines
+    # Reference line: the trap's first non-empty line. Its column pitch
+    # drives the X axis. We assume all non-empty lines of a row share a
+    # consistent column layout — true for the FE's current panelGrid
+    # generator.
+    ref_li = next(
+        (li for li, orient in enumerate(line_orients)
+         if not is_empty_orientation(orient) and li < len(rows)),
+        None,
+    )
+    if ref_li is None:
+        return None, None
+    ref_orient = line_orients[ref_li]
+    ref_is_h = ref_orient == PANEL_H
+    ref_along = long_cm if ref_is_h else short_cm
+    ref_pitch = ref_along + panel_gap_cm
+    if ref_pitch <= 0:
+        return None, None
+
+    ref_cells = rows[ref_li]
+    ref_positions = row_positions.get(str(ref_li))
+    n_cols = max(len(rows[li]) for li in range(len(rows))) if rows else 0
+
     x_min = float('inf')
     x_max = float('-inf')
-    for line_idx, orient in enumerate(line_orients):
-        if is_empty_orientation(orient):
+    for col in range(n_cols):
+        # Build the per-line signature at this column. Out-of-range or
+        # implicit-empty entries pad to the line's empty code (EV / EH)
+        # so a column with a shorter line still matches an explicit-
+        # empty trap signature.
+        sig: list[str] = []
+        for li, orient in enumerate(line_orients):
+            cells = rows[li] if li < len(rows) else []
+            empty_code = PANEL_EH if (orient == PANEL_H or orient == PANEL_EH) else PANEL_EV
+            sig.append(cells[col] if col < len(cells) else empty_code)
+        if sig != list(line_orients):
             continue
-        if line_idx >= len(rows):
-            continue
-        cells = rows[line_idx]
-        is_h = orient == PANEL_H
-        panel_along = long_cm if is_h else short_cm
-        stored = row_positions.get(str(line_idx))
-        if stored:
-            positions = stored
+
+        # Column matches — accumulate its X extent. Prefer stored
+        # rowPositions for the reference line if available; else fall
+        # back to uniform `col * pitch`.
+        if ref_positions and col < len(ref_positions):
+            x = ref_positions[col]
+        elif col < len(ref_cells):
+            x = col * ref_pitch
         else:
-            row_orient = PANEL_H if any(c in (PANEL_H, PANEL_EH) for c in cells) else PANEL_V
-            row_along = long_cm if row_orient == PANEL_H else short_cm
-            positions = [
-                i * (row_along + panel_gap_cm)
-                for i, cell in enumerate(cells)
-                if cell in REAL_PANELS
-            ]
-        if positions:
-            x_min = min(x_min, positions[0])
-            x_max = max(x_max, positions[-1] + panel_along)
+            continue
+        x_min = min(x_min, x)
+        x_max = max(x_max, x + ref_along)
 
     if x_min == float('inf'):
         return None, None
 
-    trap_start = x_min
-    trap_end = x_max
-
-    return trap_start, trap_end
+    return x_min, x_max
 
 
 def _build_base_inputs(
@@ -822,7 +871,6 @@ def _build_base_inputs(
         **(persisted_traps.get(trapezoid_id) or {}),
         **((trapezoid_configs or {}).get(trapezoid_id, {})),
     }
-    custom_offsets = trap_cfg.get('customOffsets')
 
     effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
 
@@ -840,7 +888,6 @@ def _build_base_inputs(
         'trapezoid_id':        trapezoid_id,
         'trap_start_cm':       trap_start_cm,
         'trap_end_cm':         trap_end_cm,
-        'custom_offsets':      custom_offsets,
         'roof_spec':           roof_spec,
         'edge_offset_tolerance_pct': trap_cfg.get('baseEdgeOffsetTolerance', app_defaults.get('baseEdgeOffsetTolerance', 0)),
     }
@@ -864,9 +911,9 @@ def _merge_step3_data(data: dict, step3_data: dict) -> None:
 # Trap-scope schema params that the FE edits via the sidebar. Persisted under
 # `data.step3.trapezoidConfigs[trapId]` so they survive project reload —
 # without this, the compute pipeline accepted them per-request but never wrote
-# them back. Drag-edit keys (customOffsets / customDiagonals / panelRowIdx)
-# live in their own step3 paths (customBasesOffsets, customDiagonals) and are
-# intentionally excluded here.
+# them back. Drag-edit data (base position overrides, diagonal overrides)
+# lives in dedicated step3 paths (customBasesOffsets, customDiagonals) and
+# is intentionally NOT mixed into trapezoidConfigs.
 TRAP_SCHEMA_PARAM_KEYS = (
     'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',  # bases tab
     'extendFront', 'extendRear',                    # detail tab
@@ -904,54 +951,20 @@ async def _persist_trap_schema_configs(db: AsyncSession, project: Project, trape
         await db.commit()
 
 
-def _sync_custom_offsets(
-    step3: dict, trapezoid_configs: dict | None,
-) -> dict:
-    """Persist/clear FE-sent custom offsets into step3. Returns the stored_custom dict."""
+def _sync_custom_offsets(step3: dict) -> dict:
+    """Return the persisted user position-override snapshot dict.
+
+    The snapshot is the input `_apply_persisted_position_overrides`
+    reads to layer user edits onto the default positions. Save_tab is
+    the sole writer — it translates an incoming `overrides.bases` ops
+    list (or legacy snapshot dict) into entries via `_ops_to_base_snapshot`
+    and persists them BEFORE compute runs. By the time we reach here, the
+    snapshot already reflects every accumulated user edit; this function
+    just guarantees the dict exists and returns a reference.
+    """
     stored_custom = step3.get('customBasesOffsets') or {}
-    if trapezoid_configs:
-        for trap_id, cfg in trapezoid_configs.items():
-            co = cfg.get('customOffsets')
-            row_idx = cfg.get('panelRowIdx', 0)
-            row_key = f'{trap_id}:{row_idx}'
-            if co is not None:
-                if len(co) > 0:
-                    stored_custom[row_key] = co
-                else:
-                    stored_custom.pop(row_key, None)
     step3['customBasesOffsets'] = stored_custom
     return stored_custom
-
-
-def _resolve_trap_custom_offsets(
-    trap_id: str, row_idx: int,
-    effective_configs: dict, stored_custom: dict,
-    has_existing_bases: bool, trap_frame_mm: float | None,
-) -> None:
-    """Resolve custom offsets for one trapezoid: FE-sent → stored DB.
-
-    Mutates effective_configs[trap_id] and stored_custom in place.
-    """
-    trap_cfg = effective_configs[trap_id]
-    row_custom_key = f'{trap_id}:{row_idx}'
-
-    if 'customOffsets' in trap_cfg:
-        # FE explicitly sent offsets (or reset with empty list) — use as-is
-        if not trap_cfg['customOffsets']:
-            trap_cfg.pop('customOffsets', None)
-            stored_custom.pop(row_custom_key, None)
-    else:
-        # No FE override — try to restore from stored DB data
-        stored = stored_custom.get(row_custom_key)
-        if stored and has_existing_bases:
-            frame_check = trap_frame_mm
-            if frame_check is not None:
-                if len(stored) >= 2 and max(stored) <= frame_check:
-                    trap_cfg['customOffsets'] = stored
-                else:
-                    stored_custom.pop(row_custom_key, None)
-            elif len(stored) >= 2:
-                trap_cfg['customOffsets'] = stored
 
 
 # ── Base → trap validation (signature-based) ───────────────────────────────
@@ -1232,17 +1245,53 @@ def _filter_trap_ids_for_row(
             if _trap_matches_panel_grid(trapezoids.get(tid) or {}, panel_grid)]
 
 
-def _compute_row_bases(
+# ── Compute and save bases — per-row pipeline ──────────────────────────────
+#
+# Each panel row's bases flow through three sub-functions, in this order:
+#
+#   _compute_row_default_bases
+#       Pure DEFAULT positions per sub-trap, consolidated into one
+#       row list. No user overrides, no trap reassignment, no
+#       renumbering, no completion. Just default positions from
+#       each sub-trap's geometry.
+#
+#   _apply_persisted_position_overrides
+#       Apply user position edits from the persisted
+#       `step3.customBasesOffsets` snapshot to the row_bases list.
+#       Move/add/delete ops arriving in a save payload are translated
+#       into snapshot updates upstream (see `_ops_to_base_snapshot` in
+#       save_tab); this function consumes that snapshot.
+#
+#   _finalize_row_bases
+#       Position-independent passes that produce the final stored row
+#       state, in order:
+#         (1) signature-based trap reassignment
+#         (2) bases_completion_for_segmented_rails
+#         (3) renumber baseIds globally per row (B1..BN)
+#         (4) rebuild the consolidated{trapId: [bases]} dict
+#
+# The user-override pass runs on default positions but BEFORE the
+# trap-reassignment and completion passes — those depend on final
+# positions to do their work correctly.
+
+
+def _compute_row_default_bases(
     bs, data: dict, area: dict, area_idx: int,
     trap_ids: list[str], trapezoids: dict,
     app_defaults: dict, roof_spec: dict,
     trapezoid_configs: dict | None,
-    stored_custom: dict, has_existing_bases: bool,
     panel_grid: dict, row_idx: int,
-) -> tuple[list, dict[str, dict | None], dict]:
-    """Compute bases for one panel row across all trapezoids.
+) -> tuple[list, dict[str, dict | None]]:
+    """Compute DEFAULT base positions for one panel row across all
+    sub-trapezoids. No user overrides are applied here — those are
+    handled by `_apply_persisted_position_overrides`.
 
-    Returns (row_bases, bases_data_map, consolidated).
+    Returns ``(row_bases, bases_data_map)``. `row_bases` is the
+    concatenation of each sub-trap's consolidated bases in trap_ids
+    order; baseIds at this point are PER-SUB-TRAP (`B1..BN` restart
+    inside each sub-trap) and the trapezoidId on each base reflects the
+    sub-trap that produced it — `_finalize_row_bases` handles
+    renumbering and signature-based reassignment.
     """
     step2 = data.get('step2', {})
 
@@ -1253,19 +1302,10 @@ def _compute_row_bases(
             step2['panelWidthCm'], step2['panelLengthCm'],
             app_defaults['panelGapCm'],
         )
-        trap_frame_mm = (
-            round((trap_end - trap_start) * 10)
-            if trap_start is not None and trap_end is not None else None
-        )
 
         effective_configs = dict(trapezoid_configs or {})
         if trap_id not in effective_configs:
             effective_configs[trap_id] = {}
-
-        _resolve_trap_custom_offsets(
-            trap_id, row_idx, effective_configs, stored_custom,
-            has_existing_bases, trap_frame_mm,
-        )
 
         inputs = _build_base_inputs(
             data, area, area_idx, app_defaults, trap_id, effective_configs,
@@ -1275,11 +1315,843 @@ def _compute_row_bases(
         bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
 
     consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
-    row_bases = []
+    row_bases: list[dict] = []
     for trap_id in trap_ids:
         row_bases.extend(consolidated.get(trap_id, []))
 
-    return row_bases, bases_data_map, consolidated
+    return row_bases, bases_data_map
+
+
+def _dedupe_subtrap_boundary_bases(
+    row_bases: list[dict], spacing_mm: float,
+) -> None:
+    """Remove redundant edge bases at sub-trap boundaries.
+
+    Per-sub-trap default placement (see `_compute_row_default_bases`)
+    places an edge base `edgeOffsetMm` in from each sub-trap's frame
+    edge. When two sub-traps meet at a panel boundary, both place an
+    edge base just inside that boundary — leaving two bases within
+    ~`spacing_mm/2` of each other where structurally only one is
+    needed. Keep the first; drop the second.
+
+    Threshold is `spacing_mm / 2`: smaller than that and the two
+    edge bases serve the same structural purpose (covering the panel-
+    boundary load). Bases farther apart than that are intentional row
+    spacing and stay. Runs on DEFAULT positions only — user overrides
+    are layered on afterwards, so deliberate close-placements (e.g. a
+    user adding a base 10 cm from another) survive untouched.
+
+    Hook-anchor bases (frameless / virtual) are left alone — they
+    aren't structural base bars and don't compete for the same anchor
+    point.
+    """
+    if len(row_bases) < 2 or spacing_mm <= 0:
+        return
+    threshold_cm = (spacing_mm / 2) / 10
+    row_bases.sort(key=lambda b: b.get('offsetFromStartCm', 0))
+    keep: list[dict] = []
+    for b in row_bases:
+        if (b.get('hookOffsets') or []):
+            keep.append(b)
+            continue
+        if keep:
+            prev = keep[-1]
+            if (prev.get('hookOffsets') or []):
+                keep.append(b)
+                continue
+            gap = b.get('offsetFromStartCm', 0) - prev.get('offsetFromStartCm', 0)
+            if gap < threshold_cm:
+                continue
+        keep.append(b)
+    row_bases[:] = keep
+
+
+def _apply_persisted_position_overrides(
+    row_bases: list[dict],
+    stored_custom: dict,
+    row_idx: int,
+    stored_variations: dict | None = None,
+) -> None:
+    """Apply user position + variation overrides from the persisted
+    ``customBasesOffsets`` / ``customBaseVariations`` snapshots to the
+    default row_bases produced by `_compute_row_default_bases`.
+
+    Snapshots are keyed ``{trap_id}:{row_idx}`` with row-absolute mm
+    offsets (and an i-th-aligned `extensionIdx` for variations). We
+    group row_bases by stripped (variation-less) trapezoidId and, for
+    each sub-trap that has a stored entry, re-position its bases to
+    match. Length mismatch is resolved by ADD (stored has more entries)
+    or DELETE (stored has fewer) so the row reaches the user's intended
+    count. The variation at each slot travels with its offset, so
+    add/delete-induced renumbering can never orphan a variation
+    reference.
+
+    Bases with non-empty ``hookOffsets`` (frameless / virtual anchors)
+    are not editable by users and are left untouched.
+
+    trapezoidId stays as the default compute assigned it; cross-sub-
+    trap moves leave a stale trap stamp that `_finalize_row_bases`'s
+    signature reassignment resolves authoritatively (and the parallel
+    extension stamp comes from `_apply_base_extensions` later).
+    """
+    # Early-out only when BOTH snapshots are empty. An extend-only
+    # save has no customBasesOffsets entries but does carry
+    # customBaseVariations — we must still set `extensionIdx` on each
+    # affected base so `_apply_base_extensions` can stamp the
+    # trapezoidId suffix and stretch the beam.
+    if not stored_custom and not stored_variations:
+        return
+
+    by_parent: dict[str, list[dict]] = {}
+    for b in row_bases:
+        if (b.get('hookOffsets') or []):
+            continue
+        parent, _ = _parse_variation_trap_id(b.get('trapezoidId') or '')
+        if parent:
+            by_parent.setdefault(parent, []).append(b)
+
+    additions: list[dict] = []
+    removal_ids: set[int] = set()
+
+    stored_variations = stored_variations or {}
+
+    for parent, peers in by_parent.items():
+        key = f'{parent}:{row_idx}'
+        has_positions = key in stored_custom
+        has_variations = key in stored_variations
+        if not has_positions and not has_variations:
+            continue   # no override for this sub-trap → keep defaults
+        peers_sorted = sorted(peers, key=lambda b: b.get('offsetFromStartCm', 0))
+        # Position source: explicit override if provided, else the
+        # default offsets currently on the bases (extend-only saves
+        # don't touch positions, but we still need to align the
+        # variation idx with each base's slot).
+        if has_positions:
+            offs = list(stored_custom[key] or [])
+        else:
+            offs = [round((p.get('offsetFromStartCm') or 0) * 10) for p in peers_sorted]
+        vars_list = list(stored_variations.get(key) or [])
+        # Pad vars_list with zeros if missing entries (legacy snapshot
+        # without variations, or extend op added bases without filling).
+        while len(vars_list) < len(offs):
+            vars_list.append(0)
+        # Pair offset + variation idx so a sort below keeps them aligned.
+        pairs = sorted(zip(offs, vars_list), key=lambda p: p[0])
+        n_peers = len(peers_sorted)
+        n_stored = len(pairs)
+
+        # Update positions + extension idx of existing peers (sort-paired
+        # against stored). `extensionIdx` is the slot-stable variation
+        # reference; `_apply_base_extensions` consumes it after the
+        # finalize pass.
+        for i in range(min(n_peers, n_stored)):
+            off_mm, ext_idx = pairs[i]
+            peers_sorted[i]['offsetFromStartCm'] = round(off_mm / 10, 2)
+            peers_sorted[i]['extensionIdx'] = int(ext_idx)
+
+        # ADD: stored has more entries than defaults — clone the last
+        # peer as a template (preserves panelLineIdx / startCm /
+        # lengthCm; the finalize pass will re-stamp trapezoidId via
+        # signature, recompute depth, and renumber baseId).
+        if n_stored > n_peers and peers_sorted:
+            template = peers_sorted[-1]
+            for i in range(n_peers, n_stored):
+                off_mm, ext_idx = pairs[i]
+                new_b = dict(template)
+                new_b['offsetFromStartCm'] = round(off_mm / 10, 2)
+                new_b['extensionIdx'] = int(ext_idx)
+                additions.append(new_b)
+
+        # DELETE: stored has fewer entries — drop the trailing peers by
+        # identity so we don't accidentally remove a same-position
+        # base from another sub-trap.
+        if n_stored < n_peers:
+            for extra in peers_sorted[n_stored:]:
+                removal_ids.add(id(extra))
+
+    if removal_ids:
+        row_bases[:] = [b for b in row_bases if id(b) not in removal_ids]
+    row_bases.extend(additions)
+
+
+def _finalize_row_bases(
+    bs, row_bases: list[dict],
+    panel_grid: dict, trap_ids: list[str], trapezoids: dict,
+    step2: dict, app_defaults: dict,
+    area_label: str, row_idx: int,
+    row_angle_deg: float | None, row_front_height_cm: float | None,
+    rails_for_row: list[dict],
+    line_rails_dict: dict[str, list[float]],
+    base_overhang_by_trap: dict[str, float],
+) -> dict[str, list[dict]]:
+    """Position-independent finalization for one row's bases.
+
+    Runs the passes that turn a positioned-but-unfinalized row into
+    the final stored shape, in order:
+
+      1. Signature-based trap reassignment — re-stamps each base's
+         `trapezoidId` from its X-position signature, regardless of
+         which sub-trap originally produced it.
+      2. Per-base depth recompute — re-derive `panelLineIdx` /
+         `startCm` / `lengthCm` from each base's X position. The
+         user-override step's ADD path clones a sub-trap template,
+         so a base whose X falls in a different sub-trap's column
+         range keeps stale geometry until this pass restamps it.
+      3. `bases_completion_for_segmented_rails` — adds bases to rail
+         segments that ended up with < 2 bases (split-at-holes can
+         leave isolated columns with only one).
+      4. Renumber `baseId` globally per row (B1..BN) so the FE wire
+         protocol's `(areaId, rowIdx, baseId)` addressing is
+         unambiguous and the diagonal emitter's `base_idx_by_id` map
+         doesn't suffer last-write-wins collisions between sub-traps.
+      5. Rebuild the `consolidated{trapId: [bases]}` dict from the final
+         row_bases so downstream callers (external diagonals etc.) see
+         the post-reassignment trap groupings.
+
+    Mutates `row_bases` in place. Returns the rebuilt `consolidated`.
+    """
+    # (1) Signature-based trap reassignment.
+    _reassign_row_base_traps_by_signature(
+        row_bases, panel_grid, trap_ids, trapezoids,
+        step2['panelWidthCm'], step2['panelLengthCm'],
+        app_defaults['panelGapCm'],
+        area_label, row_idx,
+        row_angle_deg=row_angle_deg,
+        row_front_height_cm=row_front_height_cm,
+    )
+
+    # (2) Per-base depth recompute. Cumulative line geometry is
+    # row-wide, so build it once and feed each base into
+    # `assign_base_depth`. `base_overhang_by_trap` lets each base use
+    # ITS sub-trap's overhang (post-reassignment); fall back to the
+    # app default for unknown traps.
+    line_infos = bs.build_line_infos(
+        panel_grid,
+        step2['panelWidthCm'], step2['panelLengthCm'],
+        app_defaults['lineGapCm'],
+    )
+    if line_infos:
+        default_overhang = app_defaults['baseOverhangCm']
+        for b in row_bases:
+            parent, _ = _parse_variation_trap_id(b.get('trapezoidId') or '')
+            overhang = base_overhang_by_trap.get(parent, default_overhang)
+            bs.assign_base_depth(
+                b, panel_grid, line_infos, line_rails_dict,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'], overhang,
+            )
+
+    # (3) Add bases to rail segments left with <2 after standard placement.
+    bs.bases_completion_for_segmented_rails(
+        row_bases, rails_for_row, panel_grid,
+        step2['panelWidthCm'], step2['panelLengthCm'],
+        app_defaults['panelGapCm'],
+        app_defaults['edgeOffsetMm'],
+    )
+
+    # (4) Renumber baseIds globally per row, sorted by offset, so the
+    #     visual order matches the wire-protocol identifier order. The
+    #     default-positions pass produces colliding `B1..BN` per sub-
+    #     trap; finalize is the last place to make them unique before
+    #     downstream consumers (diagonal emitter, FE save flow) read
+    #     them.
+    row_bases.sort(key=lambda b: b.get('offsetFromStartCm', 0))
+    for i, b in enumerate(row_bases):
+        b['baseId'] = f'B{i + 1}'
+
+    # (5) Rebuild consolidated from final row_bases. Without this,
+    #     diagonals are paired against stale (pre-reassign) trap
+    #     groupings and miss any newly added completion bases.
+    consolidated: dict[str, list[dict]] = {tid: [] for tid in trap_ids}
+    for b in row_bases:
+        tid = b.get('trapezoidId')
+        if tid in consolidated:
+            consolidated[tid].append(b)
+    for tid in consolidated:
+        consolidated[tid].sort(key=lambda b: b.get('offsetFromStartCm', 0))
+
+    return consolidated
+
+
+def _ops_to_base_snapshot(project, ops: list) -> tuple[dict, dict, dict]:
+    """Materialise a list of BaseOp into the persisted shapes that the
+    recompute path consumes.
+
+    Returns ``(snapshot, var_snapshot, base_lookup)``:
+
+      * ``snapshot`` — ``{ "trapId:rowIdx": offsetsMm[] }``, written into
+        ``step3.customBasesOffsets``.
+      * ``var_snapshot`` — same keys, same lengths, each i-th value is the
+        ``extensionIdx`` for the i-th offset (so a base's variation
+        travels with its slot through add/delete renumbering instead of
+        being orphaned by a stale baseId reference). Written into
+        ``step3.customBaseVariations``.
+      * ``base_lookup`` — ``(areaId, rowIdx, baseId) → (snapshot_key, slot)``
+        AFTER all ops have been applied. Callers (e.g.
+        ``_apply_trap_extend_ops``) use it to locate the slot that
+        corresponds to an extend op's targeted baseId.
+
+    Starts from the current ``step3.computedAreas`` (the BE's last
+    truth), reads each base's stamped variation idx, then applies each
+    op in order:
+
+        move:   reset slot's offset (variation stays at the same slot).
+        add:    append offset + 0 variation; sort the pair list together
+                so they re-align by offset.
+        delete: pop both at the slot.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    computed_areas = step3.get('computedAreas') or []
+
+    # `bases` is stored as a dict keyed by row index (`{"0": [...], "1": [...]}`)
+    # — the row idx lives on the OUTER key, NOT on each base. Use the key
+    # everywhere; otherwise multi-row areas collapse to `A:0` and any move
+    # op targeting a non-zero row silently misses.
+    def _rows_with_idx(bases_by_row: any) -> list[tuple[int, list]]:
+        if isinstance(bases_by_row, dict):
+            return [(int(k), v) for k, v in bases_by_row.items() if isinstance(v, list)]
+        if isinstance(bases_by_row, list):
+            return [(0, bases_by_row)]
+        return []
+
+    # Build the starting snapshots from current computed bases.
+    snapshot: dict[str, list[int]] = {}
+    var_snapshot: dict[str, list[int]] = {}
+    # (area_id, row_idx, base_id) → (snapshot_key, idx_in_sorted_offsets).
+    # baseIds are assigned globally per (area, row) by
+    # consolidate_area_bases (renumbered B1..BN across every sub-trap in
+    # the row), so this triple is unique.
+    base_lookup: dict[tuple[str, int, str], tuple[str, int]] = {}
+
+    # Legacy baseVariations[areaId][baseId] = idx — used to seed the
+    # parallel var_snapshot for projects saved before customBaseVariations
+    # existed. The per-base trapezoidId stamp is the more reliable source
+    # (it survives renumbers), but for projects whose bases haven't been
+    # re-stamped yet we fall back to this map.
+    legacy_base_vars: dict = step3.get('baseVariations') or {}
+
+    for area in computed_areas:
+        area_id = str(area.get('areaId'))
+        legacy_for_area: dict[str, int] = legacy_base_vars.get(area_id) or {}
+        for ri, row_bases in _rows_with_idx(area.get('bases')):
+            # Group this row's bases by parent trap (strip variation suffix).
+            grouped: dict[str, list[dict]] = {}
+            for b in row_bases:
+                trap_raw = b.get('trapezoidId') or ''
+                parent, _ = _parse_variation_trap_id(trap_raw)
+                grouped.setdefault(f'{parent}:{ri}', []).append(b)
+            for key, group in grouped.items():
+                group.sort(key=lambda b: b.get('offsetFromStartCm', 0))
+                snapshot[key] = [round(b.get('offsetFromStartCm', 0) * 10) for b in group]
+                # Variation idx: prefer the live trapezoidId stamp, fall
+                # back to the legacy baseVariations lookup.
+                var_snapshot[key] = []
+                for b in group:
+                    _, stamped_idx = _parse_variation_trap_id(b.get('trapezoidId') or '')
+                    if stamped_idx == 0:
+                        stamped_idx = legacy_for_area.get(b.get('baseId'), 0) or 0
+                    var_snapshot[key].append(int(stamped_idx))
+                for idx, b in enumerate(group):
+                    bid = b.get('baseId')
+                    if bid:
+                        base_lookup[(area_id, ri, bid)] = (key, idx)
+
+    # Map `(areaId, rowIdx)` → ordered list of snapshot keys (per sub-trap)
+    # so add ops can resolve which row's snapshot to append to. The FIRST
+    # sub-trap key is the default insertion site for an add.
+    keys_by_area_row: dict[tuple[str, int], list[str]] = {}
+    for area in computed_areas:
+        a_id = str(area.get('areaId'))
+        for ri, row_bases in _rows_with_idx(area.get('bases')):
+            for b in row_bases:
+                trap_raw = b.get('trapezoidId') or ''
+                parent, _ = _parse_variation_trap_id(trap_raw)
+                if parent:
+                    keys_by_area_row.setdefault((a_id, ri), [])
+                    sk = f'{parent}:{ri}'
+                    if sk not in keys_by_area_row[(a_id, ri)]:
+                        keys_by_area_row[(a_id, ri)].append(sk)
+
+    def _sort_pair(key: str) -> None:
+        """Sort snapshot[key] ascending and reorder var_snapshot[key] in
+        lockstep so variation idx stays paired with its offset."""
+        pairs = sorted(zip(snapshot[key], var_snapshot[key]), key=lambda p: p[0])
+        snapshot[key] = [p[0] for p in pairs]
+        var_snapshot[key] = [p[1] for p in pairs]
+
+    def _shift_lookup_for_add(key: str, inserted_slot: int) -> None:
+        """When an add inserts at `inserted_slot`, every base whose old
+        slot was ≥ that index in this key needs its lookup updated."""
+        for k, (lk, slot) in list(base_lookup.items()):
+            if lk == key and slot >= inserted_slot:
+                base_lookup[k] = (lk, slot + 1)
+
+    def _shift_lookup_for_delete(key: str, deleted_slot: int, deleted_base_id: str | None) -> None:
+        """When a delete removes `deleted_slot`, every base whose old slot
+        was > that index needs its lookup decremented; the deleted base's
+        own entry is dropped."""
+        for k, (lk, slot) in list(base_lookup.items()):
+            if lk != key:
+                continue
+            if slot == deleted_slot and (deleted_base_id is None or k[2] == deleted_base_id):
+                base_lookup.pop(k, None)
+            elif slot > deleted_slot:
+                base_lookup[k] = (lk, slot - 1)
+
+    for op in ops:
+        op_type = op.get('op')
+        targets = op.get('targets') or []
+        if op_type == 'move':
+            offset_mm = round(float(op.get('offsetMm') or 0))
+            for t in targets:
+                ri = int(t.get('rowIdx') or 0)
+                lookup = base_lookup.get((str(t.get('areaId')), ri, t.get('baseId')))
+                if not lookup:
+                    continue
+                key, idx = lookup
+                if 0 <= idx < len(snapshot.get(key, [])):
+                    snapshot[key][idx] = offset_mm
+                    # NB: don't re-sort after a move — the clampOffset on
+                    # the FE bar prevents crossings, so order is preserved.
+                    # If we sorted here, base_lookup slots would no longer
+                    # correspond to snapshot indices.
+        elif op_type == 'add':
+            offset_mm = round(float(op.get('offsetMm') or 0))
+            for t in targets:
+                ri = int(t.get('rowIdx') or 0)
+                area_id_s = str(t.get('areaId'))
+                keys = keys_by_area_row.get((area_id_s, ri), [])
+                if not keys:
+                    continue
+                # No sub-trap hint on the wire — the BE assigns the new
+                # base to a sub-trap by X position via signature
+                # reassignment after the recompute. Park it in the first
+                # sub-trap's snapshot; the reassign pass will reparent it
+                # if it actually belongs elsewhere.
+                key = keys[0]
+                snapshot.setdefault(key, [])
+                var_snapshot.setdefault(key, [])
+                # Dedupe near-neighbours so re-issuing the same add op is
+                # idempotent (BE may receive a retried payload).
+                if all(abs(o - offset_mm) > 1 for o in snapshot[key]):
+                    snapshot[key].append(offset_mm)
+                    var_snapshot[key].append(0)
+                    # Determine where the new offset will land after sort,
+                    # then shift lookups before sorting.
+                    inserted_slot = sorted(snapshot[key]).index(offset_mm)
+                    _shift_lookup_for_add(key, inserted_slot)
+                    _sort_pair(key)
+        elif op_type == 'delete':
+            for t in targets:
+                ri = int(t.get('rowIdx') or 0)
+                area_id_s = str(t.get('areaId'))
+                bid = t.get('baseId')
+                lookup = base_lookup.get((area_id_s, ri, bid))
+                if not lookup:
+                    continue
+                key, idx = lookup
+                if 0 <= idx < len(snapshot.get(key, [])):
+                    snapshot[key].pop(idx)
+                    if 0 <= idx < len(var_snapshot.get(key, [])):
+                        var_snapshot[key].pop(idx)
+                    _shift_lookup_for_delete(key, idx, bid)
+
+    return snapshot, var_snapshot, base_lookup
+
+
+def _parse_variation_trap_id(trap_id: str) -> tuple[str, int]:
+    """Split a base's trapezoidId into (parentTrapId, extensionIdx).
+
+    Convention:
+      "A1"    → ("A1", 0)   default extension
+      "A1.N"  → ("A1", N)   variation N
+
+    Any non-integer suffix is treated as part of the parent ID (no split).
+    """
+    if not trap_id or '.' not in trap_id:
+        return trap_id, 0
+    parent, suffix = trap_id.rsplit('.', 1)
+    if not suffix.isdigit():
+        return trap_id, 0
+    return parent, int(suffix)
+
+
+def _apply_trap_extend_ops(
+    project,
+    ops: list[dict],
+    base_lookup: dict[tuple[str, int, str], tuple[str, int]] | None = None,
+) -> None:
+    """Mutate persistent override state (`step3.trapExtensions` and
+    `step3.customBaseVariations`) from a list of TrapExtendOp dicts.
+
+    Wire shape: each op carries a flat ``targets: list[TrapExtendTarget]``
+    where each target is ``{areaId, rowIdx, baseId}``. Row/area
+    fan-out gestures are expanded into per-base targets by the FE
+    before being sent.
+
+    For each op, for each target:
+      * Locate the base in the post-ops snapshot via
+        `base_lookup[(areaId, rowIdx, baseId)] → (snap_key, slot)`.
+      * Resolve the (frontExtMm, backExtMm) signature against the
+        target base's PARENT trap geometry.extensions[]:
+          - exact match against extensions[0] (BE default) → idx 0.
+          - exact match against an existing user variation → reuse idx.
+          - no match → append a new entry, take the new tail idx.
+      * Write `customBaseVariations[snap_key][slot] = idx`. Slot is
+        the base's position in the parallel offsets array — slot-
+        based addressing survives baseId renumbering caused by
+        add/delete.
+
+    `base_lookup` (from `_ops_to_base_snapshot`) maps the wire
+    `(areaId, rowIdx, baseId)` to the post-ops `(snapshot_key, slot)`
+    so we can address slots that have already shifted under add/delete
+    ops in the same save. When called WITHOUT a lookup (e.g. an
+    extend-only save), we rebuild it from the current computedAreas.
+
+    The next recompute pass — `_apply_trap_extensions` +
+    `_apply_persisted_position_overrides` + `_apply_base_extensions`
+    — surfaces this state onto each base's `trapezoidId` + `startCm` /
+    `lengthCm`.
+    """
+    eps = 0.001
+    # Deep-copy + reassign at the end is the SQLAlchemy-safe pattern
+    # for mutating a JSONB column. In-place mutation + `flag_modified`
+    # works in MOST cases, but mixing it with the deep-copies used
+    # elsewhere in `save_tab` led to occasional dropped writes.
+    data = copy.deepcopy(project.data or {})
+    step3 = data.setdefault('step3', {})
+    trap_exts: dict[str, list[dict]] = (step3.get('trapExtensions') or {})
+    custom_vars: dict[str, list[int]] = (step3.get('customBaseVariations') or {})
+
+    # Build lookups against the LAST computed snapshot so we can resolve
+    # signatures and identify affected bases. Brand-new projects won't have
+    # these yet — ops are no-ops until the first compute runs.
+    computed_traps_by_id: dict[str, dict] = {
+        t.get('trapezoidId'): t
+        for t in step3.get('computedTrapezoids') or []
+        if t.get('trapezoidId')
+    }
+    computed_areas = step3.get('computedAreas') or []
+    areas_by_id: dict[str, dict] = {str(a.get('areaId')): a for a in computed_areas}
+
+    def _rows_with_idx(bases_by_row: any) -> list[tuple[int, list]]:
+        if isinstance(bases_by_row, dict):
+            return [(int(k), v) for k, v in bases_by_row.items() if isinstance(v, list)]
+        if isinstance(bases_by_row, list):
+            return [(0, bases_by_row)]
+        return []
+
+    # If the caller didn't pass a base_lookup (extend-only save), rebuild
+    # it from the current computedAreas — same algorithm as the snapshot
+    # builder but without applying any ops on top.
+    if base_lookup is None:
+        base_lookup = {}
+        for area in computed_areas:
+            area_id = str(area.get('areaId'))
+            for ri, row_bases in _rows_with_idx(area.get('bases')):
+                grouped: dict[str, list[dict]] = {}
+                for b in row_bases:
+                    parent, _ = _parse_variation_trap_id(b.get('trapezoidId') or '')
+                    grouped.setdefault(f'{parent}:{ri}', []).append(b)
+                for key, group in grouped.items():
+                    group.sort(key=lambda b: b.get('offsetFromStartCm', 0))
+                    for idx, b in enumerate(group):
+                        bid = b.get('baseId')
+                        if bid:
+                            base_lookup[(area_id, ri, bid)] = (key, idx)
+                    # Seed customBaseVariations from current trapezoidId
+                    # stamps so post-this-save state matches reality.
+                    if key not in custom_vars:
+                        custom_vars[key] = []
+                        for b in group:
+                            _, stamped = _parse_variation_trap_id(b.get('trapezoidId') or '')
+                            custom_vars[key].append(int(stamped))
+
+    def _resolve_existing_idx(
+        parent_tid: str, front_mm: float, back_mm: float,
+    ) -> int | None:
+        """Return the variation idx whose (front, back) signature
+        matches the given values WITHIN THE PARENT'S OWN namespace:
+          - idx 0 if it matches `computed_traps_by_id[parent_tid]
+            .geometry.extensions[0]` (this parent's BE default).
+          - idx N>0 if it matches an entry in `trap_exts[parent_tid]`
+            (this parent's user variation list).
+          - None if no existing signature matches.
+
+        Every lookup is scoped by `parent_tid` so a {front, back}
+        signature on, say, A1 never reuses a variation that happens
+        to share the same values on A2 — each parent maintains its
+        own variation namespace.
+        """
+        parent_trap = computed_traps_by_id.get(parent_tid) or {}
+        default_ext = ((parent_trap.get('geometry') or {}).get('extensions') or [{}])[0]
+        if (abs((default_ext.get('frontExtMm') or 0) - front_mm) < eps
+                and abs((default_ext.get('backExtMm') or 0) - back_mm) < eps):
+            return 0
+        for i, e in enumerate(trap_exts.get(parent_tid) or [], start=1):
+            if (abs((e.get('frontExtMm') or 0) - front_mm) < eps
+                    and abs((e.get('backExtMm') or 0) - back_mm) < eps):
+                return i
+        return None
+
+    def _is_sole_user(
+        parent_tid: str, idx: int,
+        excl_snap_key: str, excl_slot: int,
+    ) -> bool:
+        """True iff no other base in `custom_vars` references variation
+        `idx` of `parent_tid` (excluding the position
+        `(excl_snap_key, excl_slot)` itself).
+
+        Scoped to the parent's own snapshot keys (`f'{parent_tid}:…'`)
+        — variations on a different parent that happen to share the
+        same idx number are NOT counted; the idx number is local to
+        each parent's variation list.
+        """
+        prefix = f'{parent_tid}:'
+        for snap_key, slots in custom_vars.items():
+            if not snap_key.startswith(prefix):
+                continue
+            for s_idx, v in enumerate(slots):
+                if v != idx:
+                    continue
+                if snap_key == excl_snap_key and s_idx == excl_slot:
+                    continue
+                return False
+        return True
+
+    def _set_slot(snap_key: str, slot: int, idx: int) -> None:
+        slots = custom_vars.setdefault(snap_key, [])
+        while len(slots) <= slot:
+            slots.append(0)
+        slots[slot] = idx
+
+    for op in ops:
+        if op.get('op') != 'extend':
+            continue
+        front_mm = float(op.get('frontExtMm') or 0)
+        back_mm = float(op.get('backExtMm') or 0)
+        for target in (op.get('targets') or []):
+            area_key = str(target.get('areaId'))
+            row_idx = int(target.get('rowIdx') or 0)
+            base_id = target.get('baseId')
+            if not base_id:
+                continue
+            area = areas_by_id.get(area_key)
+            if not area:
+                continue
+            # Find the base in computedAreas so we can read its
+            # current parent trapezoidId (for variation idx resolution).
+            base = None
+            for ri, row_bases in _rows_with_idx(area.get('bases')):
+                if ri != row_idx:
+                    continue
+                for b in row_bases:
+                    if b.get('baseId') == base_id:
+                        base = b
+                        break
+                if base is not None:
+                    break
+            if base is None:
+                continue
+            parent_tid, _ = _parse_variation_trap_id(base.get('trapezoidId') or '')
+            if not parent_tid:
+                continue
+            lookup = base_lookup.get((area_key, row_idx, base_id))
+            if not lookup:
+                continue
+            snap_key, slot = lookup
+            # Current variation idx (slot-stable, post-ops).
+            current_slots = custom_vars.get(snap_key) or []
+            current_idx = current_slots[slot] if slot < len(current_slots) else 0
+
+            # 1) Signature matches an existing variation (or parent
+            #    default at idx 0) → reuse it. Always takes priority
+            #    over the COW path to avoid creating duplicates.
+            matched_idx = _resolve_existing_idx(parent_tid, front_mm, back_mm)
+            if matched_idx is not None:
+                if matched_idx != current_idx:
+                    _set_slot(snap_key, slot, matched_idx)
+                continue
+
+            # 2) No existing match.
+            #    a) If the base is the SOLE user of its current
+            #       variation, update that variation in place
+            #       (copy-on-write — the variation is effectively a
+            #       per-base storage). The base keeps its idx; the
+            #       associated ComputedTrapezoid "A.N" entry is
+            #       regenerated on the next recompute with the new
+            #       values.
+            if current_idx > 0 and _is_sole_user(parent_tid, current_idx, snap_key, slot):
+                user_list = trap_exts.setdefault(parent_tid, [])
+                while len(user_list) < current_idx:
+                    user_list.append({'frontExtMm': 0.0, 'backExtMm': 0.0})
+                user_list[current_idx - 1] = {
+                    'frontExtMm': float(front_mm),
+                    'backExtMm': float(back_mm),
+                }
+                continue
+
+            #    b) Otherwise append a new variation entry and point
+            #       this base at its tail idx. Other bases sharing the
+            #       previous idx (multi-user case) remain on it.
+            user_list = trap_exts.setdefault(parent_tid, [])
+            user_list.append({
+                'frontExtMm': float(front_mm),
+                'backExtMm': float(back_mm),
+            })
+            _set_slot(snap_key, slot, len(user_list))
+
+    if trap_exts:
+        step3['trapExtensions'] = {k: v for k, v in trap_exts.items() if v}
+    elif 'trapExtensions' in step3:
+        step3['trapExtensions'] = {}
+
+    if custom_vars:
+        step3['customBaseVariations'] = {k: v for k, v in custom_vars.items() if v}
+    elif 'customBaseVariations' in step3:
+        step3['customBaseVariations'] = {}
+
+    # Legacy baseVariations is being phased out — clear it once we've
+    # populated customBaseVariations so it doesn't shadow newer state.
+    if 'baseVariations' in step3:
+        step3['baseVariations'] = {}
+
+    project.data = data
+    flag_modified(project, 'data')
+
+
+def _apply_trap_extensions(project) -> None:
+    """Append user-created variations to each ComputedTrapezoid.geometry.extensions[].
+
+    trapezoid_detail_service emits extensions=[BE_default] per trap. This
+    post-process reads the persisted user variations from
+    step3.trapExtensions[parentTrapId] and appends them so that
+    geometry.extensions[i] is addressable by base.variationIdx for i > 0.
+
+    Mutates project.data in place; caller commits.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    user_vars: dict = step3.get('trapExtensions') or {}
+    if not user_vars:
+        return
+    for t in step3.get('computedTrapezoids') or []:
+        parent = t.get('trapezoidId')
+        if not parent:
+            continue
+        added = user_vars.get(parent)
+        if not added:
+            continue
+        geom = t.setdefault('geometry', {})
+        default_list = geom.get('extensions') or [{'frontExtMm': 0, 'backExtMm': 0}]
+        # Always rebuild: default at idx 0, then user additions in stored order.
+        geom['extensions'] = [default_list[0]] + [
+            {'frontExtMm': float(e.get('frontExtMm') or 0),
+             'backExtMm':  float(e.get('backExtMm')  or 0)}
+            for e in added
+        ]
+
+
+def _apply_base_extensions(project) -> None:
+    """Post-process bases: stamp each base with the variation it owns and
+    re-apply the matching extension to `startCm` / `lengthCm`.
+
+    The variation idx comes from `base.extensionIdx` (set during
+    `_apply_persisted_position_overrides`, which reads it from the
+    slot-stable `step3.customBaseVariations` snapshot). The on-base
+    field survives baseId renumbering because it travels with the
+    base record itself.
+
+    Legacy fallback: projects saved before `customBaseVariations`
+    existed don't have `extensionIdx` on their bases. We fall back to
+    `step3.baseVariations[areaId][baseId]` (the old baseId-keyed map)
+    — fragile against renumber, but kept so existing projects keep
+    rendering until their next save migrates them.
+
+    The base's `trapezoidId` is the surface representation: parent ("A1")
+    for idx 0; dotted ("A1.N") for idx > 0. Recompute always emits the
+    parent; this function adds the suffix and stretches the beam.
+
+    Units: `frontExtMm` / `backExtMm` are HORIZONTAL mm (they parallel
+    the trap's horizontal base beam — the physical purlin-aligned beam).
+    The plan-view Base in `startCm` / `lengthCm` is SLOPE-axis cm;
+    converting horizontal → slope = horizontal / cos(angle). Bases on
+    iskurit / insulated_panel sit on the base beam, so the slope-
+    direction projection of the same physical extension is slightly
+    LONGER at a tilted angle.
+
+    Must run AFTER `compute_and_save_trapezoid_details` AND
+    `_apply_trap_extensions` since both populate the extensions list.
+    Mutates project.data in place; caller commits.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    computed_traps = step3.get('computedTrapezoids') or []
+    computed_areas = step3.get('computedAreas') or []
+    if not computed_traps or not computed_areas:
+        return
+
+    exts_by_trap: dict[str, list[dict]] = {}
+    angle_by_trap: dict[str, float] = {}
+    for t in computed_traps:
+        tid = t.get('trapezoidId')
+        if not tid:
+            continue
+        geom = t.get('geometry') or {}
+        ext_list = geom.get('extensions')
+        if isinstance(ext_list, list) and ext_list:
+            exts_by_trap[tid] = ext_list
+        angle_by_trap[tid] = float(geom.get('angle') or 0)
+
+    legacy_base_vars: dict = step3.get('baseVariations') or {}
+
+    for area in computed_areas:
+        area_id_key = str(area.get('areaId'))
+        legacy_for_area = legacy_base_vars.get(area_id_key) or {}
+        bases_by_row = area.get('bases') or {}
+        # `bases` may be dict[row_idx -> list[Base]] or list[Base] for legacy
+        rows = bases_by_row.values() if isinstance(bases_by_row, dict) else [bases_by_row]
+        for row_bases in rows:
+            if not isinstance(row_bases, list):
+                continue
+            for base in row_bases:
+                raw_tid = base.get('trapezoidId')
+                if not raw_tid:
+                    continue
+                # The base may already carry a variation suffix from a
+                # prior run; strip it so we can re-stamp cleanly.
+                parent_tid, _ = _parse_variation_trap_id(raw_tid)
+                ext_list = exts_by_trap.get(parent_tid)
+                if not ext_list:
+                    continue
+                # Prefer the on-base extensionIdx (slot-stable, set by
+                # `_apply_persisted_position_overrides`). Fall back to
+                # the legacy baseVariations map for not-yet-migrated
+                # projects.
+                if 'extensionIdx' in base:
+                    idx = int(base.get('extensionIdx') or 0)
+                else:
+                    idx = legacy_for_area.get(base.get('baseId'), 0) or 0
+                if not (0 <= idx < len(ext_list)):
+                    idx = 0
+                # Surface the variation onto the trapezoidId for
+                # downstream readers (BOM rollups, sidebar tree,
+                # schedule labels).
+                base['trapezoidId'] = (
+                    f'{parent_tid}.{idx}' if idx > 0 else parent_tid
+                )
+                ext = ext_list[idx]
+                # Horizontal mm → slope cm (divide by cos(angle), then /10).
+                angle_deg = angle_by_trap.get(parent_tid, 0.0)
+                cos_a = math.cos(math.radians(angle_deg)) or 1.0
+                front_cm = ((ext.get('frontExtMm') or 0) / 10) / cos_a
+                back_cm = ((ext.get('backExtMm') or 0) / 10) / cos_a
+                if front_cm or back_cm:
+                    base['startCm'] = round(base.get('startCm', 0) - back_cm, 2)
+                    base['lengthCm'] = round(
+                        base.get('lengthCm', 0) + front_cm + back_cm, 2
+                    )
 
 
 def _compute_row_hook_bases(
@@ -1330,7 +2202,8 @@ async def compute_and_save_bases(
     app_defaults = settings_cache.get_all_settings()
     project_roof_spec = project.roof_spec
 
-    stored_custom = _sync_custom_offsets(step3, trapezoid_configs)
+    stored_custom = _sync_custom_offsets(step3)
+    stored_variations = step3.get('customBaseVariations') or {}
     result = []
 
     for i, area in enumerate(areas):
@@ -1382,12 +2255,6 @@ async def compute_and_save_bases(
         if not trap_ids:
             trap_ids = [label]
 
-        computed_area = _get_computed_area(data, area_id)
-        existing_bases = computed_area.get('bases', {}) if computed_area else {}
-        has_existing_bases = bool(existing_bases) and any(
-            len(v) > 0 for v in (existing_bases.values() if isinstance(existing_bases, dict) else [existing_bases])
-        )
-
         panel_rows = area.get('panelRows', [])
         if not panel_rows:
             pg = area.get('panelGrid')
@@ -1418,12 +2285,21 @@ async def compute_and_save_bases(
                 # area). Keep the full list so we at least produce bases.
                 row_trap_ids = trap_ids
 
-            row_bases, bases_data_map, consolidated = _compute_row_bases(
+            # Pure DEFAULT base positions for this row. No user
+            # overrides; those get layered on by the override pass below.
+            row_bases, bases_data_map = _compute_row_default_bases(
                 bs, data, area, i,
                 row_trap_ids, trapezoids,
                 app_defaults, roof_spec,
-                trapezoid_configs, stored_custom, has_existing_bases,
+                trapezoid_configs,
                 panel_grid=pg, row_idx=row_idx,
+            )
+            # Multi-sub-trap rows produce a pair of redundant edge bases
+            # at each sub-trap boundary (each sub-trap independently
+            # places one `edgeOffsetMm` inside its frame). Collapse such
+            # pairs before user overrides are layered on.
+            _dedupe_subtrap_boundary_bases(
+                row_bases, app_defaults.get('spacingMm', 2000),
             )
             all_row_bases[row_idx] = row_bases
             if not first_bases_data_map:
@@ -1435,62 +2311,65 @@ async def compute_and_save_bases(
                 pg, step2['panelWidthCm'], step2['panelLengthCm'],
                 app_defaults['lineGapCm'],
             )
-            per_row_data[row_idx] = {
-                'basesDataMap': bases_data_map,
-                'consolidated': consolidated,
-                'lineRearsCm': line_rears_cm,
-            }
 
-            # Authoritative trap assignment — probe each base's x-position
-            # against the row's panelGrid to derive the column signature
-            # (V/H/EV/EH per line) and match it to the owning trap. Row a/h
-            # disambiguates traps with identical signatures but different
-            # mounting (Phase A: sigToTrap keys on signature + a/h).
+            # Apply persisted user position overrides. The snapshot
+            # `customBasesOffsets` is updated by save_tab from the
+            # incoming ops payload (via `_ops_to_base_snapshot`); we
+            # consume it here on the row_bases list, BEFORE the
+            # position-independent finalize pass below.
+            _apply_persisted_position_overrides(
+                row_bases, stored_custom, row_idx,
+                stored_variations=stored_variations,
+            )
+
+            # Finalize: trap reassignment, completion, baseId renumber,
+            # rebuild consolidated.
             row_ang = pr.get('angleDeg')
             if row_ang is None:
                 row_ang = area.get('angleDeg')
             row_fh = pr.get('frontHeightCm')
             if row_fh is None:
                 row_fh = area.get('frontHeightCm')
-            _reassign_row_base_traps_by_signature(
-                row_bases, pg, trap_ids, trapezoids,
-                step2['panelWidthCm'], step2['panelLengthCm'],
-                app_defaults['panelGapCm'],
-                label, row_idx,
-                row_angle_deg=row_ang,
-                row_front_height_cm=row_fh,
-            )
-
-            # Final pass: ensure every rail segment has ≥ 2 bases. After split-
-            # at-holes rails, each isolated-column segment may only carry 1 base
-            # from standard placement — add another (and relocate the existing
-            # one to a std edge-offset position if needed).
             row_rails = (_get_computed_area(data, area_id) or {}).get('rails', {})
             rails_for_row = row_rails.get(row_idx) or row_rails.get(str(row_idx)) or []
-            bs.bases_completion_for_segmented_rails(
-                row_bases, rails_for_row, pg,
-                step2['panelWidthCm'], step2['panelLengthCm'],
-                app_defaults['panelGapCm'],
-                app_defaults['edgeOffsetMm'],
+            # Per-line rails for the per-base depth recompute. Same
+            # shape `compute_area_bases` consumes from line_rails.
+            line_rails_dict = _derive_line_rails(
+                _get_computed_area(data, area_id), row_index=row_idx,
+            )
+            # Per-trap baseOverhangCm so the depth recompute uses each
+            # base's OWN sub-trap overhang (post-signature-reassignment),
+            # not the sub-trap that originally produced it.
+            persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+            base_overhang_by_trap: dict[str, float] = {}
+            for tid in trap_ids:
+                merged = {
+                    **(persisted_traps.get(tid) or {}),
+                    **((trapezoid_configs or {}).get(tid, {})),
+                }
+                base_overhang_by_trap[tid] = merged.get(
+                    'baseOverhangCm', app_defaults['baseOverhangCm'],
+                )
+            consolidated = _finalize_row_bases(
+                bs, row_bases,
+                panel_grid=pg, trap_ids=trap_ids, trapezoids=trapezoids,
+                step2=step2, app_defaults=app_defaults,
+                area_label=label, row_idx=row_idx,
+                row_angle_deg=row_ang, row_front_height_cm=row_fh,
+                rails_for_row=rails_for_row,
+                line_rails_dict=line_rails_dict,
+                base_overhang_by_trap=base_overhang_by_trap,
             )
 
-            # Rebuild `consolidated` from the final row_bases so downstream
-            # external-diagonal computation sees the post-signature-reassignment
-            # trap assignments AND the new bases added by the completion pass.
-            # Without this, diagonals are paired against stale (pre-reassign)
-            # trap groupings and miss any added bases entirely. Sort each trap's
-            # bases by offset (legacy callers without row_bases still need this).
-            consolidated = {tid: [] for tid in trap_ids}
-            for b in row_bases:
-                tid = b.get('trapezoidId')
-                if tid in consolidated:
-                    consolidated[tid].append(b)
-            for tid in consolidated:
-                consolidated[tid].sort(key=lambda b: b.get('offsetFromStartCm', 0))
-            per_row_data[row_idx]['consolidated'] = consolidated
-            # Stash the final row_bases so diagonal calc can emit indices that
-            # reference the stored array directly (via baseId lookup).
-            per_row_data[row_idx]['rowBases'] = row_bases
+            per_row_data[row_idx] = {
+                'basesDataMap': bases_data_map,
+                'consolidated': consolidated,
+                'lineRearsCm': line_rears_cm,
+                # Stash the final row_bases so diagonal calc can emit
+                # indices that reference the stored array directly (via
+                # baseId lookup).
+                'rowBases': row_bases,
+            }
 
         _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
         result.append({
@@ -1539,13 +2418,41 @@ async def compute_and_save_external_diagonals(
         computed_area = _get_computed_area(data, area_id) or {}
         rails_by_row = computed_area.get('rails', {})
 
+        # `per_row_data.rowBases` is captured by `compute_and_save_bases`
+        # BEFORE `_apply_base_extensions` shifts startCm / lengthCm for
+        # iskurit perpendicular and variation extensions. The persisted
+        # computedAreas[].bases is the post-extension truth, so re-key by
+        # baseId and substitute the live geometry — otherwise the
+        # slope-range guard in `_base_slope_y_range` works against
+        # un-extended startCm/lengthCm while reading extension values from
+        # `geom.extensions`, mis-clipping the slope range and steering
+        # diagonals off the slope-beam ends.
+        live_bases_by_row: dict[int, list[dict]] = {}
+        live_bases_by_row_str: dict = (computed_area.get('bases') or {})
+        for k, v in live_bases_by_row_str.items():
+            try:
+                live_bases_by_row[int(k)] = v if isinstance(v, list) else []
+            except (TypeError, ValueError):
+                continue
+
         # Compute external diagonals per panel row, tag each with panelRowIdx
         all_diagonals = []
         if per_row_data:
             for row_idx, row_data in sorted(per_row_data.items()):
                 bdm = row_data.get('basesDataMap', {})
                 cons = row_data.get('consolidated', {})
-                row_bases = row_data.get('rowBases')
+                stale_row_bases = row_data.get('rowBases') or []
+                # Substitute post-extension startCm/lengthCm from the live
+                # computedAreas store, matched by baseId.
+                live_row = live_bases_by_row.get(row_idx) or []
+                if live_row and stale_row_bases:
+                    live_by_id = {lb.get('baseId'): lb for lb in live_row}
+                    row_bases = []
+                    for sb in stale_row_bases:
+                        live = live_by_id.get(sb.get('baseId'))
+                        row_bases.append({**sb, **live} if live else sb)
+                else:
+                    row_bases = stale_row_bases
                 line_rears_cm = row_data.get('lineRearsCm')
                 rails = (rails_by_row.get(row_idx)
                          or rails_by_row.get(str(row_idx))
@@ -1708,6 +2615,13 @@ async def update_project_step(
         bases_result = await compute_and_save_bases(db, project, bs)
         if tds:
             trapezoid_details = await compute_and_save_trapezoid_details(db, project, tds)
+            # Surface user variations onto each trap's geometry.extensions[],
+            # then stamp affected bases' trapezoidId + startCm/lengthCm.
+            _apply_trap_extensions(project)
+            _apply_base_extensions(project)
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
         # External diagonals — after trapezoid details so heights are available
         diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 
@@ -1982,6 +2896,58 @@ def _compute_all_trapezoid_details(
             result[trap_id] = detail
             trap_row_map[trap_id] = owning_row_idx
 
+            # ── Sub-trap variations ("A.1", "A.2", ...) ─────────────────
+            # Each user variation is materialised as its OWN
+            # ComputedTrapezoid entry — same inputs as the parent plus
+            # the (front, back) extension applied. This gives each
+            # variation its own legs/blocks/punches/diagonals so
+            # downstream consumers (Detail view, BOM, PDF) treat it
+            # like a normal trap. The variation entry references its
+            # parent via `parentId`; the parent retains
+            # `geometry.extensions[]` as the input-side list of
+            # variations (idx 0 = parent default, idx N>0 = nth
+            # variation).
+            user_vars = (step3.get('trapExtensions') or {}).get(trap_id) or []
+            for var_idx, var_ext in enumerate(user_vars, start=1):
+                cos_a = math.cos(math.radians(angle)) or 1.0
+                front_ext_cm = (float(var_ext.get('frontExtMm') or 0) / 10) / cos_a
+                back_ext_cm = (float(var_ext.get('backExtMm') or 0) / 10) / cos_a
+                if not front_ext_cm and not back_ext_cm:
+                    continue
+                var_id = f'{trap_id}.{var_idx}'
+                var_detail = tds.compute_trapezoid_details(
+                    bases_data=bases_data,
+                    line_rails=line_rails,
+                    panel_lines=panel_lines,
+                    angle_deg=angle,
+                    front_height_cm=front_height,
+                    rail_offset_cm=rail_offset_cm,
+                    settings=app_defaults,
+                    overrides=merged_overrides,
+                    custom_diagonals=custom_diags,
+                    global_settings=global_settings,
+                    roof_spec=roof_spec,
+                    variation_front_ext_cm=front_ext_cm,
+                    variation_back_ext_cm=back_ext_cm,
+                )
+                if not var_detail:
+                    continue
+                var_detail['isFullTrap'] = is_full
+                var_detail['panelRowIdx'] = owning_row_idx
+                var_detail['parentId'] = trap_id
+                # The variation's INTRINSIC extension is the user's
+                # input (frontExtMm/backExtMm). Mirror it as idx 0 of
+                # the variation's own extensions list — matches the
+                # `parentTrap.extensions[var_idx]` entry surfaced onto
+                # the parent later by `_apply_trap_extensions`.
+                geom = var_detail.setdefault('geometry', {})
+                geom['extensions'] = [{
+                    'frontExtMm': float(var_ext.get('frontExtMm') or 0),
+                    'backExtMm': float(var_ext.get('backExtMm') or 0),
+                }]
+                result[var_id] = var_detail
+                trap_row_map[var_id] = owning_row_idx
+
     return result, trap_row_map
 
 
@@ -2011,10 +2977,13 @@ def _trim_non_full_trapezoids(
     for tid, detail in result.items():
         if detail.get('isFullTrap'):
             continue
-        # Find this trap's area
+        # Resolve owning area: direct lookup for parent traps, parent's
+        # area for sub-trap variations ("C2.1" inherits C2's area).
+        lookup_id = detail.get('parentId') or tid
+        is_variation = bool(detail.get('parentId'))
         trap_area = None
         for a in areas:
-            if tid in a.get('trapezoidIds', []):
+            if lookup_id in a.get('trapezoidIds', []):
                 trap_area = a
                 break
         if not trap_area:
@@ -2024,22 +2993,46 @@ def _trim_non_full_trapezoids(
             continue
         full_geom = full_trap_detail.get('geometry', {})
         full_origin = full_geom.get('originCm', 0)
-        full_front_ext = full_geom.get('frontExtensionCm', 0)
+        # Extension source for the strip / re-apply trim path:
+        #   - Parent trap (non-full): use the FULL trap's BE-default
+        #     extension (extensions[0]) since trimmed sub-traps share
+        #     the full trap's default beam shape.
+        #   - Variation (e.g. C2.1): use the VARIATION's OWN
+        #     intrinsic extension (its extensions[0] = user's input),
+        #     so the trimmed variation keeps its specific extension.
+        full_exts = full_geom.get('extensions') or [{'frontExtMm': 0, 'backExtMm': 0}]
+        if is_variation:
+            own_exts = (detail.get('geometry') or {}).get('extensions') or [{'frontExtMm': 0, 'backExtMm': 0}]
+            ext_source = own_exts[0] if own_exts else {'frontExtMm': 0, 'backExtMm': 0}
+        else:
+            ext_source = full_exts[0] if full_exts else {'frontExtMm': 0, 'backExtMm': 0}
+        # User-facing semantics (post-schema-fix):
+        #   frontExtMm = beam-FRONT extension (right in drawing) — pure
+        #                length increase past the front leg.
+        #   backExtMm  = beam-REAR extension (left in drawing) — shifts
+        #                every leg forward by this amount in beam-local
+        #                coords (BE applies via `leg_offset=back_ext`).
+        # The trim algorithm runs in the un-shifted (original) coordinate
+        # system, so only the back extension needs to be normalized out of
+        # leg positions. The front extension affects beam length only and
+        # is re-added below alongside the back shift.
+        full_front_ext = (ext_source.get('frontExtMm') or 0) / 10
+        full_rear_ext  = (ext_source.get('backExtMm') or 0) / 10
 
-        # Normalize: temporarily subtract rear_ext from full trap legs so the
-        # trim logic works in the original coordinate system (first leg at 0).
-        # After trimming, _trim_trapezoid rebases and we add the offset back.
         normalized_full = {**full_trap_detail}
-        if full_front_ext:
+        if full_rear_ext:
             normalized_full['legs'] = []
             for leg in full_trap_detail.get('legs', []):
-                nl = {**leg, 'positionCm': round_to_1dp(leg['positionCm'] - full_front_ext),
-                       'positionEndCm': round_to_1dp((leg.get('positionEndCm', leg['positionCm'] + full_geom.get('beamThickCm', 4)) - full_front_ext))}
+                nl = {**leg, 'positionCm': round_to_1dp(leg['positionCm'] - full_rear_ext),
+                       'positionEndCm': round_to_1dp((leg.get('positionEndCm', leg['positionCm'] + full_geom.get('beamThickCm', 4)) - full_rear_ext))}
                 if 'railPositionCm' in leg:
-                    nl['railPositionCm'] = round_to_1dp(leg['railPositionCm'] - full_front_ext)
+                    nl['railPositionCm'] = round_to_1dp(leg['railPositionCm'] - full_rear_ext)
                 normalized_full['legs'].append(nl)
 
-        trap_cfg_local = trapezoids.get(tid, {})
+        # Use the PARENT's lineOrientations for variations — the
+        # variation isn't in step2.trapezoids; its line layout matches
+        # its parent's.
+        trap_cfg_local = trapezoids.get(lookup_id, {})
         local_orients = trap_cfg_local.get('lineOrientations', [PANEL_V])
         trap_area_id = trap_area.get('id', 0)
         trap_computed_area = _get_computed_area(data, trap_area_id)
@@ -2077,25 +3070,89 @@ def _trim_non_full_trapezoids(
         )
         result[tid] = detail
 
-        # Re-apply extension to trimmed trap
-        if full_front_ext or full_geom.get('rearExtensionCm', 0):
-            full_rear_ext = full_geom.get('rearExtensionCm', 0)
+        # Re-apply extension to trimmed trap. The back extension shifts
+        # every leg / base-beam punch forward in beam-local coords (same as
+        # the upstream leg_offset). The front extension only adds length to
+        # the beam — no position shift.
+        if full_front_ext or full_rear_ext:
             geom = detail['geometry']
-            # Shift legs back into base beam coords
             for leg in detail.get('legs', []):
-                leg['positionCm'] = round_to_1dp(leg['positionCm'] + full_front_ext)
+                leg['positionCm'] = round_to_1dp(leg['positionCm'] + full_rear_ext)
                 if 'positionEndCm' in leg:
-                    leg['positionEndCm'] = round_to_1dp(leg['positionEndCm'] + full_front_ext)
+                    leg['positionEndCm'] = round_to_1dp(leg['positionEndCm'] + full_rear_ext)
                 if 'railPositionCm' in leg:
-                    leg['railPositionCm'] = round_to_1dp(leg['railPositionCm'] + full_front_ext)
-            # Shift base beam punches by rear extension offset
+                    leg['railPositionCm'] = round_to_1dp(leg['railPositionCm'] + full_rear_ext)
             for p in detail.get('punches', []):
                 if p['beamType'] == 'base':
-                    p['positionCm'] = round_to_1dp(p['positionCm'] + full_front_ext)
-            # Extend base beam length and copy extension info
+                    p['positionCm'] = round_to_1dp(p['positionCm'] + full_rear_ext)
             geom['baseBeamLength'] = round_to_1dp(geom.get('baseBeamLength', 0) + full_front_ext + full_rear_ext)
-            geom['frontExtensionCm'] = full_front_ext
-            geom['rearExtensionCm'] = full_rear_ext
+
+            # Add extension-tip outer blocks (and their block punches) — same
+            # pattern as `_compute_block_positions` for the full-trap path.
+            # The trim path regenerates a fresh block layout that knows
+            # nothing about extensions, so we layer the tip blocks on top
+            # after re-applying the extension geometry.
+            if 'blockLengthCm' in geom and detail.get('blocks') is not None:
+                block_length_cm = geom['blockLengthCm']
+                block_punch_cm = geom.get('blockPunchCm', 5)
+                beam_thick_cm = geom.get('beamThickCm', 4)
+                profile_half = beam_thick_cm / 2
+                angle = geom.get('angle', 0)
+                cos_a = math.cos(math.radians(angle)) or 1.0
+                base_beam_length = geom['baseBeamLength']
+                blocks = list(detail.get('blocks') or [])
+                added_tip_punches: list[dict] = []
+                if full_rear_ext > 0:
+                    tip_pos = 0.0
+                    blocks.insert(0, {
+                        'positionCm': round_to_1dp(tip_pos),
+                        'isEnd': True,
+                        'slopePositionCm': round_to_1dp(profile_half + (tip_pos - profile_half) / cos_a if cos_a > 0 else tip_pos),
+                    })
+                    rev = round(base_beam_length - block_punch_cm)
+                    added_tip_punches.append({
+                        'beamType': 'base', 'origin': 'block',
+                        'positionCm': round_to_1dp(base_beam_length - rev),
+                        'reversedPositionCm': rev,
+                    })
+                if full_front_ext > 0:
+                    tip_pos = base_beam_length - block_length_cm
+                    blocks.append({
+                        'positionCm': round_to_1dp(tip_pos),
+                        'isEnd': True,
+                        'slopePositionCm': round_to_1dp(profile_half + (tip_pos - profile_half) / cos_a if cos_a > 0 else tip_pos),
+                    })
+                    raw_pos = base_beam_length - block_punch_cm
+                    rev = round(base_beam_length - raw_pos)
+                    added_tip_punches.append({
+                        'beamType': 'base', 'origin': 'block',
+                        'positionCm': round_to_1dp(base_beam_length - rev),
+                        'reversedPositionCm': rev,
+                    })
+                # Renumber blockIdx on existing + new block punches to stay
+                # 1:1 with the blocks list (downstream BOM / FE both rely on
+                # the index ordering).
+                detail['blocks'] = blocks
+                if added_tip_punches:
+                    block_punches = [p for p in detail.get('punches', []) if p.get('origin') == 'block']
+                    other_punches = [p for p in detail.get('punches', []) if p.get('origin') != 'block']
+                    # Insert/append the new punches in the same order as the new blocks.
+                    if full_rear_ext > 0:
+                        block_punches.insert(0, added_tip_punches.pop(0))
+                    if full_front_ext > 0 and added_tip_punches:
+                        block_punches.append(added_tip_punches.pop(0))
+                    for i, bp in enumerate(block_punches):
+                        bp['blockIdx'] = i
+                    detail['punches'] = other_punches + block_punches
+
+        # Inherit/refresh the trap's base-beam extensions list:
+        #   - Parent trimmed trap: mirrors the FULL trap's list so the
+        #     trimmed C2 carries the same default + user variants as C1.
+        #   - Variation (C2.1): keeps its OWN extensions list (a single
+        #     entry — its intrinsic extension), regardless of the
+        #     parent's list.
+        if not is_variation:
+            detail['geometry']['extensions'] = [dict(e) for e in full_exts]
 
 
 def _align_blocks_across_trapezoids(
@@ -2260,21 +3317,49 @@ async def save_tab(
                         area_cfg['lineRails'] = line_rails
                         break
         
-        # Bases overrides → trapezoidConfigs[].customOffsets
+        # Bases overrides → step3.customBasesOffsets (the row-aware store).
+        #
+        # Accept two wire shapes:
+        #   - Snapshot dict: { "trapId:rowIdx": offsetsMm[] }
+        #   - Op list: list[BaseOp] (move / add / delete)
+        # Both materialise as a per-(trap, row) snapshot, then write into
+        # `step3.customBasesOffsets` directly. The recompute path's
+        # `_apply_persisted_position_overrides` reads from that store
+        # using the `f'{trap_id}:{row_idx}'` key.
+        # Build the per-(trap, row) snapshot from base ops and stash the
+        # post-ops base_lookup so the trap-extend handler below can find
+        # each affected base's slot in the variations array (the lookup
+        # accounts for slot shifts caused by add / delete ops).
+        post_ops_base_lookup: dict[tuple[str, int, str], tuple[str, int]] | None = None
         if 'bases' in overrides and overrides['bases']:
-            trapezoid_configs = trapezoid_configs or {}
-            for key, offsets in overrides['bases'].items():
-                # Key format: "trapId:rowIdx" (per-row) or plain "trapId"
-                if ':' in key:
-                    trap_id, row_idx_str = key.rsplit(':', 1)
-                    row_idx = int(row_idx_str)
-                else:
-                    trap_id = key
-                    row_idx = 0
-                trap_cfg = trapezoid_configs.setdefault(trap_id, {})
-                trap_cfg['customOffsets'] = offsets
-                trap_cfg['panelRowIdx'] = row_idx
-        
+            raw_bases = overrides['bases']
+            if isinstance(raw_bases, list):
+                snapshot, var_snapshot, post_ops_base_lookup = _ops_to_base_snapshot(
+                    project, raw_bases,
+                )
+            else:
+                # Legacy snapshot dict — no variations carried; preserve any
+                # existing customBaseVariations untouched.
+                snapshot = raw_bases
+                var_snapshot = None
+            # Mutate project.data in place so the compute chain that runs
+            # downstream picks it up. MUST commit before the recompute
+            # chain — compute_and_save_rails refreshes the project from
+            # the DB and would otherwise discard the in-memory write.
+            data = copy.deepcopy(project.data or {})
+            step3 = data.setdefault('step3', {})
+            cbo = step3.setdefault('customBasesOffsets', {})
+            for key, offsets in snapshot.items():
+                cbo[key] = offsets
+            if var_snapshot is not None:
+                cbv = step3.setdefault('customBaseVariations', {})
+                for key, vars_for_key in var_snapshot.items():
+                    cbv[key] = vars_for_key
+            project.data = data
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
+
         # Diagonal overrides → trapezoidConfigs[].customDiagonals
         # Format: { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
         if 'diagonals' in overrides and overrides['diagonals']:
@@ -2284,9 +3369,26 @@ async def save_tab(
                 trap_cfg = trapezoid_configs.setdefault(trap_id, {})
                 trap_cfg['customDiagonals'] = expanded_obj
 
+        # Trap extend ops → step3.trapExtensions + step3.customBaseVariations.
+        # Surfaced onto each base's trapezoidId + startCm/lengthCm by
+        # `_apply_base_extensions` after the recompute. See TrapExtendOp
+        # in routers/projects.py.
+        #
+        # MUST commit + refresh after applying — the compute chain that
+        # follows (`compute_and_save_rails` → `compute_and_save_bases`)
+        # opens with `await db.refresh(project)` which would revert any
+        # uncommitted JSONB mutation, silently dropping the extends.
+        if 'traps' in overrides and overrides['traps']:
+            _apply_trap_extend_ops(
+                project, overrides['traps'],
+                base_lookup=post_ops_base_lookup,
+            )
+            await db.commit()
+            await db.refresh(project)
+
     # Persist trap-scope schema params into step3.trapezoidConfigs so they
-    # survive project reload. Drag-edit keys (customOffsets, customDiagonals,
-    # panelRowIdx) live in their own step3 paths and are excluded here.
+    # survive project reload. Drag-edit data (customBasesOffsets,
+    # customDiagonals) lives in dedicated step3 paths, not here.
     if trapezoid_configs:
         await _persist_trap_schema_configs(db, project, trapezoid_configs)
 
@@ -2298,6 +3400,13 @@ async def save_tab(
         trapezoid_details = await compute_and_save_trapezoid_details(
             db, project, tds, step3_data, trapezoid_configs,
         )
+        # Surface user variations onto each trap's geometry.extensions[],
+        # then stamp affected bases' trapezoidId + startCm/lengthCm.
+        _apply_trap_extensions(project)
+        _apply_base_extensions(project)
+        flag_modified(project, 'data')
+        await db.commit()
+        await db.refresh(project)
     # External diagonals — after trapezoid details so heights are available
     diagonals_result = await compute_and_save_external_diagonals(db, project, bs, bases_result)
 
@@ -2340,6 +3449,12 @@ async def reset_tab(
         step3['globalSettings'] = gs
     elif tab == 'bases':
         step3.pop('customBasesOffsets', None)
+        # Trap base-beam extension variants — both the per-trap variation
+        # list and the per-base assignments (current customBaseVariations
+        # + legacy baseVariations) — are wiped on bases reset.
+        step3.pop('trapExtensions', None)
+        step3.pop('customBaseVariations', None)
+        step3.pop('baseVariations', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
                 for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:

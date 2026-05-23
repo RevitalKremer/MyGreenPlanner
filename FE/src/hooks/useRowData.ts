@@ -283,6 +283,13 @@ export default function useRowData({
         map[trapId] = rails
       })
     })
+    // Variations inherit their parent's lineRails — they share the row.
+    if (beTrapezoidsData) {
+      Object.entries(beTrapezoidsData).forEach(([tid, t]) => {
+        const parentId = (t as any)?.parentId
+        if (parentId && map[parentId] && map[tid] == null) map[tid] = map[parentId]
+      })
+    }
     return map
   }, [rowKeys, areaTrapezoidMap, getLineOrientations, getLineRails, beTrapezoidsData])
 
@@ -296,8 +303,18 @@ export default function useRowData({
         map[trapId] = { ...s, ...getTrapBasesSettings(trapId) }
       })
     })
+    // Variations (trapIds with a parentId, e.g. "A.1") aren't in Step 2's
+    // areaTrapezoidMap, but bases on them carry the variation id as their
+    // trapezoidId. Mirror the parent's settings entry under the variation id
+    // so per-trap lookups by base.trapezoidId resolve.
+    if (beTrapezoidsData) {
+      Object.entries(beTrapezoidsData).forEach(([tid, t]) => {
+        const parentId = (t as any)?.parentId
+        if (parentId && map[parentId] && map[tid] == null) map[tid] = map[parentId]
+      })
+    }
     return map
-  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings, _isAreaFrameless]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areaSettings, globalSettings, trapezoidConfigs, getTrapBasesSettings, _isAreaFrameless, beTrapezoidsData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const trapRCMap = useMemo(() => {
     const map: Record<string, any> = {}
@@ -306,8 +323,15 @@ export default function useRowData({
       const trapIds = areaTrapezoidMap[areaKey] || []
       trapIds.forEach(trapId => { map[trapId] = rowConstructions[i] })
     })
+    // Variations inherit their parent's row construction.
+    if (beTrapezoidsData) {
+      Object.entries(beTrapezoidsData).forEach(([tid, t]) => {
+        const parentId = (t as any)?.parentId
+        if (parentId && map[parentId] && map[tid] == null) map[tid] = map[parentId]
+      })
+    }
     return map
-  }, [rowKeys, areaTrapezoidMap, rowConstructions, _isAreaFrameless])
+  }, [rowKeys, areaTrapezoidMap, rowConstructions, _isAreaFrameless, beTrapezoidsData])
 
   const trapPanelLinesMap = useMemo(() => {
     const map: Record<string, PanelLineSegment[]> = {}
@@ -327,8 +351,15 @@ export default function useRowData({
         }))
       })
     })
+    // Variations inherit their parent's panel-line segments.
+    if (beTrapezoidsData) {
+      Object.entries(beTrapezoidsData).forEach(([tid, t]) => {
+        const parentId = (t as any)?.parentId
+        if (parentId && map[parentId] && map[tid] == null) map[tid] = map[parentId]
+      })
+    }
     return map
-  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings, _isAreaFrameless]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rowKeys, areaTrapezoidMap, areas, refinedArea, trapezoidConfigs, areaSettings, globalSettings, _isAreaFrameless, beTrapezoidsData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     rowPanelCounts, rowKeys, areaByGroupKey,

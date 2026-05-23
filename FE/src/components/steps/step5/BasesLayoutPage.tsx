@@ -20,10 +20,31 @@ export default function BasesLayoutPage({
   const { panelBbox, naturalW, naturalH, sc } = useMemo(() => {
     const nonEmpty = panels.filter(p => !p.isEmpty)
     if (!nonEmpty.length) return { panelBbox: null, naturalW: CONTENT_W, naturalH: 200, sc: 1 }
-    const panelBbox = getPanelsBoundingBox(nonEmpty)
+    let panelBbox = getPanelsBoundingBox(nonEmpty)
+    // Bases with extensions (variations like A.1) stretch past the panel
+    // bbox in the slope direction. Inflate the bbox uniformly by the worst-
+    // case extension so the dashed extension portion isn't clipped. Slope
+    // direction varies per panel rotation, so uniform inflation is the
+    // robust choice — minor extra padding on the wrong sides is acceptable.
+    let maxExtCm = 0
+    if (beTrapezoidsData) {
+      for (const t of Object.values(beTrapezoidsData)) {
+        const exts = (t as any)?.geometry?.extensions ?? []
+        for (const e of exts) {
+          maxExtCm = Math.max(maxExtCm, (e?.frontExtMm || 0) / 10, (e?.backExtMm || 0) / 10)
+        }
+      }
+    }
+    if (maxExtCm > 0) {
+      const pad = maxExtCm / (refinedArea?.pixelToCmRatio || 1)
+      panelBbox = {
+        minX: panelBbox.minX - pad, maxX: panelBbox.maxX + pad,
+        minY: panelBbox.minY - pad, maxY: panelBbox.maxY + pad,
+      }
+    }
     const fit = computePrintFit(panelBbox.maxX - panelBbox.minX, panelBbox.maxY - panelBbox.minY, CONTENT_W, CONTENT_H, PAD)
     return { panelBbox, ...fit }
-  }, [panels])
+  }, [panels, beTrapezoidsData, refinedArea])
 
   const fitZoom = Math.min(CONTENT_W / naturalW, CONTENT_H / naturalH)
 

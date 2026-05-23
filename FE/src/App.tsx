@@ -19,6 +19,7 @@ import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
+import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -122,6 +123,16 @@ function App() {
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
+  // Pending step3 extend ops (TrapExtendOp[]) accumulated by drag handlers
+  // in BasesPlanTab. The authoritative state lives in Step3ConstructionPlanning
+  // (so the canvas can re-render with each pending op as a live preview);
+  // this ref just mirrors it for the bases-tab save flow. App.tsx itself
+  // doesn't need to re-render on every op — Step3 already does.
+  const pendingTrapOpsRef = useRef<any[]>([])
+  // Pending base ops are NOT accumulated per click anymore — they're
+  // derived on save from the customBasesMap snapshot via
+  // buildBaseOpsFromState. The ref is kept for the discard path (so a
+  // pending FE-state reset still has a single place to clear).
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
@@ -165,6 +176,7 @@ function App() {
         if (!s2a) return a
         return {
           ...a,
+          id: s2a.id ?? a.id,
           trapezoidIds: s2a.trapezoidIds ?? a.trapezoidIds,
           panelRows: s2a.panelRows ?? a.panelRows,
           roofSpec: s2a.roofSpec ?? a.roofSpec,
@@ -372,11 +384,59 @@ function App() {
 
       // Add tab-specific overrides
       if (tabName === 'bases') {
-        const customBases = { ...customBasesRef.current }
-        if (opts?.resetTrapId) customBases[opts.resetTrapId] = []
-
         payload.overrides = payload.overrides || {}
-        payload.overrides.bases = customBases
+
+        // Derive base ops from the diff between the user-intended state
+        // (customBasesRef) and the BE snapshot. Consolidates identical
+        // changes across rows into one op with multiple targets — handles
+        // the "added to all rows then deleted one" case naturally because
+        // the diff outputs exactly the rows that still differ.
+        const baseOps = buildBaseOpsFromState(customBasesRef.current, beBasesData)
+        if (baseOps.length > 0) {
+          payload.overrides.bases = baseOps
+        } else if (opts?.resetTrapId) {
+          // Reset-to-defaults still uses the legacy snapshot dict (one
+          // empty-list entry per trap to clear) since it isn't a diff.
+          payload.overrides.bases = { [opts.resetTrapId]: [] }
+        }
+
+        // Drain pending trap extend ops (front/back base-beam
+        // variations). BE consumes them under overrides.traps as a
+        // flat-targets list, same shape as BaseOp. Two save-time
+        // touch-ups before sending:
+        //   1) Delete-cascade: prune any targeted base that is ALSO
+        //      in a delete op from the op's targets list. If the
+        //      targets list ends up empty, drop the op entirely.
+        //      Key by (areaId, rowIdx, baseId) since baseIds collide
+        //      across rows.
+        //   2) Strip the FE-only `_sessionId` tag.
+        // Ops are sent in chronological order — BE applies them in
+        // order, last-write-wins per base. The user does fan-out
+        // first, then per-base refinements naturally win.
+        let pendingTraps = pendingTrapOpsRef.current
+        if (pendingTraps && pendingTraps.length > 0) {
+          const deletedBaseKeys = new Set<string>()
+          for (const op of baseOps) {
+            if (op.op === 'delete') {
+              for (const t of (op.targets ?? [])) {
+                if (t.baseId) deletedBaseKeys.add(`${t.areaId}:${t.rowIdx}:${t.baseId}`)
+              }
+            }
+          }
+          if (deletedBaseKeys.size > 0) {
+            pendingTraps = pendingTraps
+              .map(op => ({
+                ...op,
+                targets: (op.targets ?? []).filter((t: any) =>
+                  !deletedBaseKeys.has(`${t.areaId}:${t.rowIdx}:${t.baseId}`),
+                ),
+              }))
+              .filter(op => (op.targets ?? []).length > 0)
+          }
+          if (pendingTraps.length > 0) {
+            payload.overrides.traps = pendingTraps.map(({ _sessionId, ...op }) => op)
+          }
+        }
 
       } else if (tabName === 'trapezoids') {
         // Trapezoids tab overrides: diagonal positions from areaSettings
@@ -876,6 +936,7 @@ function App() {
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
+            onTrapExtendOpsChange={(ops) => { pendingTrapOpsRef.current = ops }}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
             beBasesData={beBasesData}

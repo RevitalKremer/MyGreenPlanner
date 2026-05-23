@@ -31,10 +31,18 @@ function computeNaturalSize(settings, lineRails, panelLines, beDetailData) {
     : [{ depthCm: panelLengthCm, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const rearExtPx = (geom.rearExtensionCm ?? 0) * SC
-  const padL = Math.max(120, railOffH + OHx + (geom.frontExtensionCm ?? 0) * SC + 40)
+  // Trap default extension lives at geometry.extensions[0]; see TrapezoidGeometry type.
+  const defaultExt = geom.extensions?.[0] ?? { frontExtMm: 0, backExtMm: 0 }
+  const defaultFrontExtCm = (defaultExt.frontExtMm ?? 0) / 10
+  const defaultRearExtCm = (defaultExt.backExtMm ?? 0) / 10
+  // Back extension shifts leg 0 forward and extends the beam past it on the
+  // LEFT (leg-0 side); front extension extends the beam past the front leg
+  // on the RIGHT — mirror the padding sides in DetailView.
+  const frontExtPx = defaultFrontExtCm * SC
+  const backExtPx  = defaultRearExtCm * SC
+  const padL = Math.max(120, railOffH + OHx + backExtPx + 40)
   const panelExtCm = (totalPanelDepthCm - railOffsetCm) * Math.cos(angleRad) - baseLength
-  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
+  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, frontExtPx) + 70)
 
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
