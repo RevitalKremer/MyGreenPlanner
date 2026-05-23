@@ -23,6 +23,16 @@ export default function BasePlanOverlay({
   isSelected,
   overrideBarLocalY,
   onBasesChange,
+  // Fired once on mouseup after a base was actually dragged (didDrag &&
+  // offset changed). Receives { baseIdx, oldOffsetMm, newOffsetMm }.
+  // BasesPlanTab uses this to open the move popover with the fan-out option.
+  onBaseMoveCommit = null,
+  // Fired after a bar-click added a new base. Receives { offsetMm }.
+  onBaseAddCommit = null,
+  // Fired after the ✕-handle click deleted a base. Receives
+  // { baseIdx, offsetMm } where baseIdx is the index in the PRE-delete
+  // sorted list (so BasesPlanTab can resolve baseId from beBasesData).
+  onBaseDeleteCommit = null,
 }) {
   const dragging   = useRef(null)
   const didDrag    = useRef(false)
@@ -98,6 +108,7 @@ export default function BasePlanOverlay({
     const startX = e.clientX, startY = e.clientY
     const startOffsets = [...offsets]
     dragging.current = { bi, startX, startY, startOffsets }
+    let lastCommittedOffset = startOffsets[bi]
 
     const onMove = (me) => {
       if (Math.abs(me.clientX - startX) > 2 || Math.abs(me.clientY - startY) > 2)
@@ -105,23 +116,33 @@ export default function BasePlanOverlay({
       const dMm = dClientToOffsetMm(me.clientX - startX, me.clientY - startY)
       const next = [...startOffsets]
       next[bi] = clampOffset(startOffsets[bi] + dMm, bi, startOffsets)
+      lastCommittedOffset = next[bi]
       onBasesChange(next)
     }
     const onUp = () => {
+      const wasDrag = didDrag.current
       dragging.current = null
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      if (wasDrag && lastCommittedOffset !== startOffsets[bi]) {
+        onBaseMoveCommit?.({
+          baseIdx: bi,
+          oldOffsetMm: startOffsets[bi],
+          newOffsetMm: lastCommittedOffset,
+        })
+      }
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [offsets, spacingMm, edgeOffsetMm, frameLengthMm, zoom, sc, pixelToCmRatio, cosA, sinA, isSelected, onBasesChange])
+  }, [offsets, spacingMm, edgeOffsetMm, frameLengthMm, zoom, sc, pixelToCmRatio, cosA, sinA, isSelected, onBasesChange, onBaseMoveCommit])
 
   // ─── Delete on handle click ───────────────────────────────────────────────
   const onHandleClick = useCallback((e, bi) => {
     if (!isSelected || didDrag.current || bases.length <= 2) return
     e.stopPropagation()
     onBasesChange(offsets.filter((_, i) => i !== bi))
-  }, [isSelected, bases.length, offsets, onBasesChange])
+    onBaseDeleteCommit?.({ baseIdx: bi, offsetMm: offsets[bi] })
+  }, [isSelected, bases.length, offsets, onBasesChange, onBaseDeleteCommit])
 
   // ─── Add on bar click ─────────────────────────────────────────────────────
   const onBarClick = useCallback((e) => {
@@ -134,9 +155,11 @@ export default function BasePlanOverlay({
     )
     if (offsetMm == null) return
     if (offsets.some(o => Math.abs(o - offsetMm) < 100)) return
-    onBasesChange([...offsets, offsetMm].sort((a, b) => a - b))
+    const next = [...offsets, offsetMm].sort((a, b) => a - b)
+    onBasesChange(next)
     setGhostOffset(null)
-  }, [isSelected, offsets, zoom, svgRef, onBasesChange, barX0, barY0, barX1, barY1, frameLengthMm])
+    onBaseAddCommit?.({ offsetMm })
+  }, [isSelected, offsets, zoom, svgRef, onBasesChange, onBaseAddCommit, barX0, barY0, barX1, barY1, frameLengthMm])
 
   const onBarMove = useCallback((e) => {
     if (!isSelected || dragging.current) return

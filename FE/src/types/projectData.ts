@@ -80,6 +80,9 @@ export interface Rail {
 
 export interface Base {
   baseId: string
+  // Encodes the variation: "A1" = parent (default extension, idx 0);
+  // "A1.N" = variation N. Parse with parseVariationTrapId() in
+  // trapExtensionService.ts to recover (parentTrapId, idx).
   trapezoidId: string
   offsetFromStartCm: number
   panelLineIdx: number
@@ -121,8 +124,18 @@ export interface TrapezoidGeometry {
   blockHeightCm?: number
   blockLengthCm?: number
   blockPunchCm?: number
-  frontExtensionCm?: number
-  rearExtensionCm?: number
+  // Base-beam extension variants for this trap. [0] is the BE-default
+  // extension (zero for concrete & parallel-purlin roofs; non-zero for
+  // iskurit / insulated_panel perpendicular). [1..] are user-created
+  // variations from Step 3 extend ops. Bases identify their variation via
+  // `Base.trapezoidId` ("A1" → idx 0, "A1.N" → idx N). See
+  // trapExtensionService.ts for helpers.
+  extensions?: TrapExtension[]
+}
+
+export interface TrapExtension {
+  frontExtMm: number
+  backExtMm: number
 }
 
 export interface Leg {

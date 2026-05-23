@@ -2,7 +2,7 @@ import copy
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
-from typing import Optional
+from typing import Annotated, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,10 +40,105 @@ class TabSettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+class TrapExtendTarget(BaseModel):
+    """A specific base addressed by its (areaId, rowIdx, baseId).
+
+    `rowIdx` is REQUIRED because `baseId` is BE-assigned per row
+    (B1..BN renumbered globally within each row), so `(areaId,
+    baseId)` alone collides across rows in the same multi-row area.
+
+    Row / area "fan-out" gestures expand into multiple targets on the
+    FE before being sent — the wire format is always a flat list of
+    bases, mirroring the BaseOp model.
+    """
+    areaId: int | str
+    rowIdx: int
+    baseId: str
+
+
+class TrapExtendOp(BaseModel):
+    """Apply a (front, back) base-beam extension to one or more bases.
+
+    Server resolves the (frontExtMm, backExtMm) signature against each
+    target's PARENT trap geometry.extensions[]:
+      - exact match → reuse that index;
+      - no match → append the new entry, take the new tail index.
+    Each affected base's trapezoidId is then re-tagged from "A1" (or
+    its previous "A1.N") to the variation suffix that names the
+    resolved index ("A1" for idx 0, "A1.N" for N>0). The next
+    recompute pass applies the new lengths to startCm / lengthCm via
+    _apply_base_extensions.
+    """
+    op: Literal['extend'] = 'extend'
+    targets: list[TrapExtendTarget]
+    frontExtMm: float
+    backExtMm: float
+
+
+# ── Per-base ops ───────────────────────────────────────────────────────────
+#
+# Ops always operate on a list of base targets — never a scope-expanding
+# "row" / "area" descriptor. The FE derives the targets list from the
+# diff between user-intended state (customBasesMap) and the BE snapshot,
+# then consolidates identical (op, value) entries into one op carrying
+# multiple targets. This keeps edge cases honest: if the user added a
+# base to N rows then deleted it from one, the resulting payload reflects
+# exactly the N-1 rows that still differ — no scope-expansion accidents.
+#
+# Each target carries `(areaId, rowIdx)` — `baseId` for move/delete so the
+# BE can address a specific base; add doesn't carry baseId because the
+# base doesn't exist yet (BE assigns one).
+
+class BaseMoveTarget(BaseModel):
+    areaId: int | str
+    rowIdx: int
+    baseId: str
+
+
+class BaseMoveOp(BaseModel):
+    op: Literal['move'] = 'move'
+    targets: list[BaseMoveTarget]
+    offsetMm: float
+
+
+class BaseAddTarget(BaseModel):
+    areaId: int | str
+    rowIdx: int
+
+
+class BaseAddOp(BaseModel):
+    op: Literal['add'] = 'add'
+    targets: list[BaseAddTarget]
+    offsetMm: float
+
+
+class BaseDeleteTarget(BaseModel):
+    areaId: int | str
+    rowIdx: int
+    baseId: str
+
+
+class BaseDeleteOp(BaseModel):
+    op: Literal['delete'] = 'delete'
+    targets: list[BaseDeleteTarget]
+
+
+BaseOp = Annotated[
+    BaseMoveOp | BaseAddOp | BaseDeleteOp,
+    Field(discriminator='op'),
+]
+
+
 class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
     rails: Optional[dict] = None       # { areaLabel: { lineIdx: [positions] } }
-    bases: Optional[dict] = None       # { trapId: [positions] }
+    # Either a list of BaseOp (op-based wire format) OR the legacy snapshot
+    # dict `{ "trapId:rowIdx": offsetsMm[] }`. When a list is provided BE
+    # translates ops to a per-(trap,row) snapshot before applying via the
+    # standard recompute path. Snapshot remains as the in-storage shape.
+    bases: Optional[list[BaseOp] | dict] = None
+    traps: Optional[list[TrapExtendOp]] = None
+    # New op-based wire format for trap base-beam extensions. See TrapExtendOp.
     diagonals: Optional[dict] = None   # { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
 
 class SaveTabRequest(BaseModel):
@@ -272,7 +367,18 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
             if payload.overrides.rails:
                 overrides['rails'] = payload.overrides.rails
             if payload.overrides.bases:
-                overrides['bases'] = payload.overrides.bases
+                # bases may be a legacy snapshot dict OR a list of BaseOp.
+                # Pass through the raw shape; the service layer dispatches
+                # on type. Pydantic models are dumped to plain dicts so the
+                # service has no Pydantic dependency.
+                b = payload.overrides.bases
+                overrides['bases'] = (
+                    [op.model_dump() for op in b] if isinstance(b, list) else b
+                )
+            if payload.overrides.traps:
+                # Pass through as plain dicts so the service layer can iterate
+                # without a Pydantic dependency. by_alias keeps `scope` literal.
+                overrides['traps'] = [op.model_dump() for op in payload.overrides.traps]
             if payload.overrides.diagonals:
                 overrides['diagonals'] = payload.overrides.diagonals
 
