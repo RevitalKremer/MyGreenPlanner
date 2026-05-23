@@ -142,8 +142,10 @@ export function computePanelsAction({
   rectAreas.forEach((area, areaIdx) => {
     if (onlyAreaIdx !== undefined && areaIdx !== onlyAreaIdx) return
     const areaLabel = area.label || area.id || `area-${areaIdx}`
-    const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
-    const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
+    // Explicit empty-string check — area.angle='0' is a real user choice, not
+    // a missing value, so `|| panelAngle` would wrongly override it.
+    const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
+    const aAngle = parseFloat((area.angle !== '' && area.angle != null) ? area.angle : panelAngle) || 0
     // Resolve this row's a/h: existing row a/h → area default → panel default
     const ri = area.rowIndex ?? 0
     const inMtg = (rowMounting?.[areaLabel] || [])[ri]
@@ -419,8 +421,8 @@ function _refreshSingleRowTrapezoids({
   const minLX = Math.min(...localVerts.map(v => v.x))
   const maxLX = Math.max(...localVerts.map(v => v.x))
 
-  const aFront = parseFloat(area.frontHeight) || parseFloat(panelFrontHeight) || 0
-  const aAngle = parseFloat(area.angle) || parseFloat(panelAngle) || 0
+  const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
+  const aAngle = parseFloat((area.angle !== '' && area.angle != null) ? area.angle : panelAngle) || 0
   // Row a/h is the source of truth for trap a/h. Fallback to area defaults if
   // rowMounting has no entry for this row.
   const ri = area.rowIndex ?? 0

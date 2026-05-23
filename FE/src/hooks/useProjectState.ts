@@ -70,9 +70,12 @@ export function useProjectState() {
   // Step 2: PV area refinement
   const panelType = pState.data.step2.panelType
   const setPanelType = (v) => pDispatch({ type: A.SET_STEP2, payload: { panelType: v } })
-  const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm || '')
+  // Use `??` (not `||`) — 0 is a real user choice (angle=0 means flat panels,
+  // slope beam sits directly on the base beam); coercing it to '' would
+  // silently revert the input back to the global default on the next render.
+  const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm ?? '')
   const setPanelFrontHeight = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
-  const panelAngle = String(pState.data.step2.defaultAngleDeg || '')
+  const panelAngle = String(pState.data.step2.defaultAngleDeg ?? '')
   const setPanelAngle = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultAngleDeg: parseFloat(v) || 0 } })
 
   // Derived from layout + step2 data

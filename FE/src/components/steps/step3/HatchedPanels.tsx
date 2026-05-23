@@ -4,7 +4,7 @@ import { PANEL_LIGHT_BG, PANEL_LIGHT_BG_ALT, PANEL_DARK, PANEL_MID } from '../..
  * Renders all panels as hatched rectangles into an SVG.
  * clipIdPrefix must be unique per usage site to avoid SVG clipPath ID collisions.
  */
-export default function HatchedPanels({ panels, selectedTrapId, selectedArea = null, selectedPanelRowIdx = null, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp' }) {
+export default function HatchedPanels({ panels, selectedTrapId, selectedArea = null, selectedPanelRowIdx = null, toSvg, sc, pixelToCmRatio, clipIdPrefix = 'cp', onPanelClick = null }) {
   return panels.map(panel => {
     const [sx, sy] = toSvg(panel.x, panel.y)
     const sw = panel.width * sc, sh = panel.height * sc
@@ -32,12 +32,15 @@ export default function HatchedPanels({ panels, selectedTrapId, selectedArea = n
       )
     }
 
+    const clickable = !!onPanelClick
     return (
-      <g key={panel.id} opacity={opacity} transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}>
+      <g key={panel.id} opacity={opacity} transform={`rotate(${panel.rotation || 0} ${scx} ${scy})`}
+         onClick={clickable ? (e) => { e.stopPropagation(); onPanelClick(panel) } : undefined}
+         style={clickable ? { cursor: 'pointer' } : undefined}>
         <rect x={sx} y={sy} width={sw} height={sh} fill={fill} stroke="none" />
         <rect x={sx + ibw / 2} y={sy + ibw / 2} width={sw - ibw} height={sh - ibw}
           fill="none" stroke={borderColor} strokeWidth={ibw} style={{ pointerEvents: 'none' }} />
-        <g transform={`translate(${sx}, ${sy})`}>
+        <g transform={`translate(${sx}, ${sy})`} style={{ pointerEvents: 'none' }}>
           <clipPath id={`${clipIdPrefix}-${panel.id}`}>
             <rect x={inset} y={inset} width={sw - inset * 2} height={sh - inset * 2} />
           </clipPath>
