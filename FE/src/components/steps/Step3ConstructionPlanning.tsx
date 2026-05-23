@@ -23,12 +23,10 @@ export default function Step3ConstructionPlanning({
   rectAreas = [],
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
   onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
-  // Push one TrapExtendOp onto the host's pending queue. Drained into
-  // `overrides.traps` on the next bases-tab save. See _apply_trap_extend_ops on BE.
-  onTrapExtendOp = null as null | ((op: any) => void),
-  // Drop the host's queued TrapExtendOps without sending them to BE. Wired
-  // to the bases-tab "Discard" button in edit mode.
-  onTrapOpsDiscard = null as null | (() => void),
+  // Notify the host of the current queue of TrapExtendOps. App.tsx
+  // mirrors it into a ref for the save flow; sessionId is stripped
+  // before the payload goes over the wire.
+  onTrapExtendOpsChange = null as null | ((ops: any[]) => void),
   // (BaseOp wire format is derived on save by App.tsx via
   // buildBaseOpsFromState — no per-click push from Step3/BasesPlanTab.)
   beRailsData = null, beBasesData = null, beTrapezoidsData = null, beTrapezoidGroups = [],
@@ -59,6 +57,29 @@ export default function Step3ConstructionPlanning({
   // (userEditedBases was used to gate which customBasesMap entries were
   // sent to BE. Obsolete now — buildBaseOpsFromState diffs every entry
   // against beBasesData and only emits ops where they actually differ.)
+
+  // ── Pending trap-extend ops queue ──────────────────────────────────────
+  // Live state (not just a ref) so the canvas can preview each extension
+  // before save. Each op carries an FE-only `_sessionId`: one editor
+  // session = one logical user gesture, so successive emits within the
+  // same session (drag-release → input edit → scope button click) collapse
+  // to the LATEST op. App.tsx strips the sessionId before the payload
+  // goes over the wire.
+  const [pendingTrapOps, setPendingTrapOps] = useState<any[]>([])
+  const pushTrapExtendOp = useCallback((op: any) => {
+    setPendingTrapOps(prev => {
+      const sid = op?._sessionId
+      const filtered = sid != null ? prev.filter(o => o._sessionId !== sid) : prev
+      return [...filtered, op]
+    })
+    settings.markDirty('bases')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Mirror upstream so App.tsx can drain the queue on save.
+  useEffect(() => { onTrapExtendOpsChange?.(pendingTrapOps) }, [pendingTrapOps]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Clear pending ops whenever a fresh BE response lands — those ops
+  // have just been applied (or rejected) and any new edit starts a new
+  // session.
+  useEffect(() => { setPendingTrapOps([]) }, [beBasesData])
 
   // ── Settings hook ──────────────────────────────────────────────────────
   // Pre-compute areaByGroupKey for settings (needed before useRowData runs)
@@ -207,13 +228,13 @@ export default function Step3ConstructionPlanning({
     if (choice === false) return false
     if (choice === 'discard') {
       setCustomBasesMap({})
-      onTrapOpsDiscard?.()
+      setPendingTrapOps([])
       settings.markClean('bases')
     } else {
       await applyTab('bases')
     }
     return true
-  }, [settings, confirmDialog, t, applyTab, onTrapOpsDiscard])
+  }, [settings, confirmDialog, t, applyTab])
   
   // Save initial tab to backend if it was defaulted to 'areas'
   const initialSaveRef = useRef(false)
@@ -476,11 +497,8 @@ export default function Step3ConstructionPlanning({
                 // the bases tab dirty explicitly so the Apply UX kicks in.
                 settings.markDirty('bases')
               }}
-              onTrapExtend={(op) => {
-                onTrapExtendOp?.(op)
-                // Extend edits also need an Apply pass to flush + recompute.
-                settings.markDirty('bases')
-              }}
+              onTrapExtend={pushTrapExtendOp}
+              pendingTrapOps={pendingTrapOps}
               onRequestExitEdit={requestExitBasesEdit}
               onResetBases={() => settings.resetTrapBases(effectiveSelectedTrapId, {
                 clearAll: () => {

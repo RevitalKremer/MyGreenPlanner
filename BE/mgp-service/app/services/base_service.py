@@ -683,6 +683,35 @@ def _rail_select_subrow_pairs(n: int) -> list[tuple[int, int]]:
     return pairs
 
 
+def _base_slope_y_range(
+    base: dict, base_rear_y: float, base_front_y: float, trap_geom: dict[str, dict],
+) -> tuple[float, float]:
+    """Y range covered by a base's SLOPE beam — i.e. the un-extended portion
+    of the base bar. External diagonals must attach within this range so they
+    sit inside the panel area, not on the dashed extension(s).
+
+    The variation's intrinsic extension lives at
+    `computedTrapezoid[<base.trapezoidId>].geometry.extensions[0]` under the
+    user-facing convention (frontExtMm = beam-FRONT, backExtMm = beam-REAR).
+    Returns the full base Y range as a graceful fallback if extensions
+    would collapse it to a non-positive interval.
+    """
+    tid = base.get('trapezoidId', '')
+    geom = trap_geom.get(tid, {})
+    exts = geom.get('extensions') or []
+    if not exts:
+        return base_rear_y, base_front_y
+    ext = exts[0] or {}
+    angle = geom.get('angle', 0)
+    cos_a = math.cos(math.radians(angle)) or 1.0
+    inv_cos = 1.0 / cos_a if cos_a > 0 else 1.0
+    front_ext_cm = (float(ext.get('frontExtMm') or 0) / 10) * inv_cos
+    back_ext_cm = (float(ext.get('backExtMm') or 0) / 10) * inv_cos
+    rear = base_rear_y + back_ext_cm
+    front = base_front_y - front_ext_cm
+    return (rear, front) if front > rear else (base_rear_y, base_front_y)
+
+
 def _compute_diagonals_via_rails(
     rails: list[dict],
     row_bases: list[dict],
@@ -714,8 +743,12 @@ def _compute_diagonals_via_rails(
         return line_rears.get(rail.get('lineIdx', 0), 0.0) + rail.get('offsetFromRearEdgeCm', 0)
 
     def base_y_range(base: dict) -> tuple[float, float]:
+        # Slope-beam-only Y range (excludes back/front extensions). Rails on
+        # the extension shouldn't anchor diagonals — those would sit outside
+        # the panel area.
         rear = line_rears.get(base.get('panelLineIdx', 0), 0.0) + base.get('startCm', 0)
-        return rear, rear + base.get('lengthCm', 0)
+        full_front = rear + base.get('lengthCm', 0)
+        return _base_slope_y_range(base, rear, full_front, trap_geom)
 
     tol = 0.5  # cm — tolerance for the strict-inequality intersection check
 
@@ -751,12 +784,19 @@ def _compute_diagonals_via_rails(
 
     diagonals: list[dict] = []
 
+    def actual_rear_y(base: dict) -> float:
+        # Offsets along the base must be measured from the base's TRUE rear
+        # (where the base bar physically starts, including back-ext), not the
+        # slope-only range used for pair selection — otherwise emitted
+        # offsets would be off by the back-ext amount.
+        return line_rears.get(base.get('panelLineIdx', 0), 0.0) + base.get('startCm', 0)
+
     def emit(rail: dict, outer: dict, inner: dict) -> None:
         ry = rail_y(rail)
         out_len = outer.get('lengthCm', 0)
         inn_len = inner.get('lengthCm', 0)
-        out_rear, _ = base_y_range(outer)
-        inn_rear, _ = base_y_range(inner)
+        out_rear = actual_rear_y(outer)
+        inn_rear = actual_rear_y(inner)
         off_outer = max(0.0, min(out_len, ry - out_rear))
         off_inner = max(0.0, min(inn_len, ry - inn_rear))
         horiz_mm = round(abs(inner.get('offsetFromStartCm', 0) - outer.get('offsetFromStartCm', 0)) * 10)
@@ -934,13 +974,17 @@ def compute_external_diagonals(
         horiz_mm = round(abs(inner.get('offsetFromStartCm', 0) - outer.get('offsetFromStartCm', 0)) * 10)
 
         # Y-spans (area-rear-relative) — `Base.startCm` is line-relative so
-        # `line_rears` is required to compare across panelLineIdx.
+        # `line_rears` is required to compare across panelLineIdx. The full
+        # base extent (y0..y1) is kept for offset math below; pair selection
+        # uses the slope-only range so diagonals don't anchor on extensions.
         y_outer0 = area_y_of(outer, 0.0)
         y_outer1 = area_y_of(outer, outer_len)
         y_inner0 = area_y_of(inner, 0.0)
         y_inner1 = area_y_of(inner, inner_len)
-        y_rear = max(y_outer0, y_inner0)
-        y_front = min(y_outer1, y_inner1)
+        slope_outer0, slope_outer1 = _base_slope_y_range(outer, y_outer0, y_outer1, trap_geom)
+        slope_inner0, slope_inner1 = _base_slope_y_range(inner, y_inner0, y_inner1, trap_geom)
+        y_rear = max(slope_outer0, slope_inner0)
+        y_front = min(slope_outer1, slope_inner1)
 
         if y_front <= y_rear:
             logger.warning(
@@ -1074,6 +1118,22 @@ def bases_completion_for_segmented_rails(
         else:
             existing['offsetFromStartCm'] = round_to_2dp(pos_right)
             new_pos = pos_left
+
+        # Skip adding the second base if a neighbour already sits within
+        # ~`edge_offset` of the proposed slot. That neighbour — typically
+        # an adjacent sub-trap's edge base sitting just across the panel
+        # gap — already covers this panel's edge structurally, so a
+        # second base here would just be a redundant near-duplicate.
+        # Without this guard, narrow split-at-holes segments end up with
+        # an extra base right next to the segment-1 entry (the
+        # "72cm cluster" bug in multi-sub-trap rows like area D).
+        nearby_threshold_cm = 2 * edge_offset_cm  # 70 cm at default settings
+        if any(
+            b is not existing
+            and abs(b.get('offsetFromStartCm', 0) - new_pos) < nearby_threshold_cm
+            for b in row_bases
+        ):
+            continue
 
         new_base = {
             **existing,

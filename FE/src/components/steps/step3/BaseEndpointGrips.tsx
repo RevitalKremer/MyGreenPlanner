@@ -8,17 +8,18 @@ const READOUT_OFFSET_SVG = 14
 const EDITOR_LIFETIME_MS = 3000  // popover auto-dismisses after ~3s of inactivity
 const SLOPE_DEFAULT_ANGLE_DEG = 0 // fallback when trap geometry lacks angle
 
-type ExtendTarget =
-  | { scope: 'base'; areaId: string | number; baseId: string }
-  | { scope: 'row';  areaId: string | number; rowIdx: number }
-  | { scope: 'area'; areaId: string | number }
+type ExtendTarget = { areaId: string | number; rowIdx: number; baseId: string }
 
 type ExtendOp = {
   op: 'extend'
-  target: ExtendTarget
+  targets: ExtendTarget[]
   frontExtMm: number
   backExtMm: number
 }
+
+// FE-only scope tag used inside BaseEndpointGrips when the user picks
+// row / area fan-out from the editor. Drives target-list expansion.
+type FanoutScope = 'base' | 'row' | 'area'
 
 type Props = {
   beBasesData: any[] | null
@@ -99,7 +100,13 @@ export default function BaseEndpointGrips({
     anchor: [number, number]   // SVG coords near the base's front end
     frontMm: number
     backMm: number
+    // One editor session = one logical user gesture. Every op emitted
+    // while this editor is open carries the same sessionId; the host
+    // dedupes by sessionId so successive emits (drag-release → input
+    // change → scope-button click) collapse to the LATEST op.
+    sessionId: number
   }>(null)
+  const sessionIdRef = useRef(0)
   const editorTimerRef = useRef<number | null>(null)
   const scheduleEditorDismiss = useCallback(() => {
     if (editorTimerRef.current != null) window.clearTimeout(editorTimerRef.current)
@@ -111,6 +118,32 @@ export default function BaseEndpointGrips({
   useEffect(() => () => {
     if (editorTimerRef.current != null) window.clearTimeout(editorTimerRef.current)
   }, [])
+
+  // Expand a fan-out gesture into a flat list of base targets. The
+  // wire format is always a list of `(areaId, rowIdx, baseId)` — the
+  // FE owns scope expansion because it has the live base list in
+  // `beBasesData`. Bases with non-empty `hookOffsets` are virtual
+  // anchors (frameless roofs) and are excluded.
+  const expandTargets = useCallback((
+    scope: FanoutScope,
+    areaId: string | number,
+    rowIdx: number,
+    baseId: string,
+  ): ExtendTarget[] => {
+    if (scope === 'base') return [{ areaId, rowIdx, baseId }]
+    const out: ExtendTarget[] = []
+    for (const ad of (beBasesData ?? [])) {
+      const adAreaKey = String(ad.areaId ?? ad.areaLabel ?? ad.label)
+      if (adAreaKey !== String(areaId)) continue
+      for (const b of (ad.bases ?? [])) {
+        if ((b.hookOffsets?.length ?? 0) > 0) continue
+        const ri = b._panelRowIdx ?? 0
+        if (scope === 'row' && ri !== rowIdx) continue
+        if (b.baseId) out.push({ areaId, rowIdx: ri, baseId: b.baseId })
+      }
+    }
+    return out
+  }, [beBasesData])
 
   const onGripMouseDown = useCallback((
     e: React.MouseEvent,
@@ -215,22 +248,11 @@ export default function BaseEndpointGrips({
       const changed = preview.frontMm !== d.initialFrontMm
                     || preview.backMm  !== d.initialBackMm
       const areaId = trapAreaMap[d.parentTrapId]
-      if (changed && areaId != null) {
-        onExtend({
-          op: 'extend',
-          target: { scope: 'base', areaId, baseId: d.baseId },
-          frontExtMm: preview.frontMm,
-          backExtMm: preview.backMm,
-        } as ExtendOp)
-      }
-      setLivePreview(null)
-      // Open the numeric editor anchored to this base so the user can
-      // refine the just-dragged value precisely. Works after either a
-      // committed drag OR a no-change click.
+      // Look up the base's panel-row index — required for scope='base'
+      // (baseIds collide across rows in the same area) AND for the
+      // scope='row' fan-out button in the editor popover.
+      let rowIdx = 0
       if (areaId != null) {
-        // Look up the base's panel-row index (used by scope='row' fan-out
-        // button in the editor popover).
-        let rowIdx = 0
         for (const ad of (beBasesData ?? [])) {
           const adAreaKey = String(ad.areaId ?? ad.areaLabel ?? ad.label)
           if (adAreaKey !== String(areaId)) continue
@@ -241,6 +263,25 @@ export default function BaseEndpointGrips({
             }
           }
         }
+      }
+      // Allocate the sessionId BEFORE the drag-release emit so the
+      // editor's later commits can replace this op in the queue when
+      // the user picks a different scope.
+      const sessionId = ++sessionIdRef.current
+      if (changed && areaId != null) {
+        onExtend({
+          op: 'extend',
+          targets: [{ areaId, rowIdx, baseId: d.baseId }],
+          frontExtMm: preview.frontMm,
+          backExtMm: preview.backMm,
+          _sessionId: sessionId,
+        } as ExtendOp)
+      }
+      setLivePreview(null)
+      // Open the numeric editor anchored to this base so the user can
+      // refine the just-dragged value precisely. Works after either a
+      // committed drag OR a no-change click.
+      if (areaId != null) {
         setEditor({
           baseId: d.baseId,
           areaId,
@@ -249,6 +290,7 @@ export default function BaseEndpointGrips({
           anchor: d.frontEnd,
           frontMm: preview.frontMm,
           backMm: preview.backMm,
+          sessionId,
         })
         scheduleEditorDismiss()
       }
@@ -393,18 +435,20 @@ export default function BaseEndpointGrips({
         const fontSz = 10 / zoom
         const commit = (
           next: { frontMm: number; backMm: number },
-          scope: ExtendTarget['scope'] = 'base',
+          scope: FanoutScope = 'base',
         ) => {
-          let target: ExtendTarget
-          if (scope === 'row') target = { scope: 'row', areaId: editor.areaId, rowIdx: editor.rowIdx }
-          else if (scope === 'area') target = { scope: 'area', areaId: editor.areaId }
-          else target = { scope: 'base', areaId: editor.areaId, baseId: editor.baseId }
+          const targets = expandTargets(scope, editor.areaId, editor.rowIdx, editor.baseId)
+          if (targets.length === 0) return
           onExtend({
             op: 'extend',
-            target,
+            targets,
             frontExtMm: next.frontMm,
             backExtMm: next.backMm,
-          })
+            // Same session as the drag that opened this editor — host
+            // dedupes by sessionId so this op replaces the prior
+            // single-target op emitted on release. Final fan-out wins.
+            _sessionId: editor.sessionId,
+          } as ExtendOp)
           setEditor({ ...editor, ...next })
           scheduleEditorDismiss()
         }

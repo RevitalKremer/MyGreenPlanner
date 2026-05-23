@@ -159,8 +159,14 @@ class Base(_StrictBase):
 
 class ExternalDiagonal(_StrictBase):
     """Cross-brace connecting two adjacent base beams at a frame edge."""
-    startBaseIdx: int               # area-wide index of start base (high end)
-    endBaseIdx: int                 # area-wide index of end base (low end)
+    # Owning panel-row index within the area. Required for multi-row areas
+    # so the FE knows which row's bases the start/endBaseIdx refer to —
+    # without it, idx=0 ambiguously matches every row's first base and
+    # diagonals get rendered against the wrong row. Defaults to 0 for
+    # legacy single-row data that never carried the field.
+    panelRowIdx: int = 0
+    startBaseIdx: int               # row-relative index of start base (high end)
+    endBaseIdx: int                 # row-relative index of end base (low end)
     startBaseOffsetCm: float        # offset along start base beam to connection point
     startBaseHeightCm: float        # installation height at start connection (leg height)
     endBaseOffsetCm: float          # offset along end base beam to connection point
@@ -207,6 +213,15 @@ class TrapExtension(_StrictBase):
 class ComputedTrapezoid(_StrictBase):
     """Server-computed structural details for one trapezoid."""
     trapezoidId: str                # matches step2.trapezoids key and Base.trapezoidId
+    # Sub-trap variation parent. Set to the parent's trapezoidId (e.g.
+    # "A") for variation entries ("A.1", "A.2", …); omitted on parent
+    # / standalone traps. Variation entries carry their own
+    # legs/blocks/punches/diagonals reflecting the extended base beam;
+    # downstream consumers (Detail view, BOM, PDF) treat them like
+    # normal traps. The parent reference lets the FE group variations
+    # under their parent in the sidebar tree and propagate parent-
+    # level setting changes to all variations.
+    parentId: Optional[str] = None
     isFullTrap: bool = True         # False for trimmed sub-trapezoids (have empty EV/EH lines)
     # Index of the panelRow this trap lives in within its owning area — surfaced
     # so the FE can fetch the correct per-row rails when rendering the trap.
@@ -265,11 +280,20 @@ class Step3Data(_StrictBase):
     # The combined emitted list = [BE default] + trapExtensions[parent].
     # Persisted across saves; cleared by reset.
     trapExtensions: Optional[dict[str, list[TrapExtension]]] = None
-    # Sparse per-base variation assignments: { areaId(str): { baseId: idx } }.
-    # Only non-zero (variant) entries are stored — defaults are implicit.
-    # idx 0 = parent default; idx N>0 = trapExtensions[parent][N-1].
-    # baseVariations is preserved across recomputes; _apply_base_extensions
-    # surfaces it onto each base's trapezoidId + startCm/lengthCm.
+    # Per-base variation assignment, parallel to `customBasesOffsets`:
+    # `{ "{parentTrapId}:{rowIdx}": [extensionIdx, …] }`. The i-th value
+    # is the variation idx for the i-th offset in the matching
+    # customBasesOffsets entry — slot-based so add/delete-driven
+    # baseId renumbering can't orphan a variation reference. idx 0 =
+    # parent default; idx N > 0 = trapExtensions[parent][N-1].
+    # `_apply_persisted_position_overrides` loads it onto each base as
+    # `extensionIdx`, then `_apply_base_extensions` surfaces it onto
+    # `trapezoidId` + `startCm` / `lengthCm`.
+    customBaseVariations: Optional[dict[str, list[int]]] = None
+    # Legacy sparse map: `{ areaId(str): { baseId: idx } }`. Kept for
+    # one-release backward compatibility — projects saved before
+    # customBaseVariations existed still read this on first compute and
+    # migrate forward. New writes go to customBaseVariations only.
     baseVariations: Optional[dict[str, dict[str, int]]] = None
     # Server-computed (never sent by FE, preserved during merge)
     computedAreas: list[ComputedArea] = Field(default_factory=list)

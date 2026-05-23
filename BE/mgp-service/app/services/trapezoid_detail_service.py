@@ -309,6 +309,8 @@ def _compute_block_positions(
     base_beam_length: float,
     cos_a: float,
     beam_thick_cm: float,
+    back_ext_cm: float = 0.0,
+    front_ext_cm: float = 0.0,
 ) -> list[dict]:
     """
     Compute block positions on base beam — one per leg.
@@ -316,30 +318,45 @@ def _compute_block_positions(
     Returns list of blocks with positionCm, isEnd, slopePositionCm. Slope length
     is the same for every block in a trapezoid and derivable from
     geometry.blockLengthCm and geometry.angle, so it is not emitted per-block.
+
+    Variation extensions (back_ext_cm / front_ext_cm) don't move the
+    original outer blocks (which still mark the legs' edges of the
+    un-extended core beam). Instead an additional outer block is appended
+    at each extended tip — keeping the original layout untouched.
     """
     profile_half = beam_thick_cm / 2
+    base_beam_core = base_beam_length - back_ext_cm - front_ext_cm
 
     # Special case: only 2 blocks AND they would overlap - place consecutively
-    # Blocks overlap when base_beam_length < 2 * block_length_cm
-    if not inner_legs and base_beam_length < 2 * block_length_cm:
+    # Blocks overlap when base_beam_core < 2 * block_length_cm
+    if not inner_legs and base_beam_core < 2 * block_length_cm:
         blocks = [
             {
-                'positionCm': 0.0,
+                'positionCm': _r(back_ext_cm),
                 'isEnd': True,
-                'slopePositionCm': 0.0,
+                'slopePositionCm': _r(_base_to_slope(back_ext_cm, profile_half, cos_a)),
             },
             {
-                'positionCm': _r(block_length_cm),
+                'positionCm': _r(back_ext_cm + block_length_cm),
                 'isEnd': True,
-                'slopePositionCm': _r(_base_to_slope(block_length_cm, profile_half, cos_a)),
+                'slopePositionCm': _r(_base_to_slope(back_ext_cm + block_length_cm, profile_half, cos_a)),
             },
         ]
-        logger.info(f'Block positioning: 2 consecutive outer blocks (overlapping case), base_beam_length={base_beam_length}, block_length={block_length_cm}')
+        logger.info(f'Block positioning: 2 consecutive outer blocks (overlapping case), base_beam_core={base_beam_core}, block_length={block_length_cm}')
+        # Extension tip blocks (see general case below)
+        if back_ext_cm > 0:
+            blocks.insert(0, {'positionCm': 0.0, 'isEnd': True, 'slopePositionCm': 0.0})
+        if front_ext_cm > 0:
+            tip = base_beam_length - block_length_cm
+            blocks.append({'positionCm': _r(tip), 'isEnd': True, 'slopePositionCm': _r(_base_to_slope(tip, profile_half, cos_a))})
         return blocks
 
-    # General case: position blocks at leg centers
+    # General case: outer blocks at the un-extended core's edges, inner
+    # blocks at leg centers. positionCm=back_ext_cm is where the original
+    # rear edge sits after a back extension shifts everything forward by
+    # back_ext_cm (legs are already offset upstream via leg_offset=front_ext).
     raw_blocks = []
-    raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
+    raw_blocks.append({'positionCm': _r(back_ext_cm), 'isEnd': True})
     for il in inner_legs:
         # Leg positions are in SLOPE coordinates (along the angled beam)
         leg_left_slope = il['positionCm']
@@ -353,7 +370,16 @@ def _compute_block_positions(
         # Block length is in base coords, so this is consistent
         left_edge = leg_center_base - block_length_cm * 0.66
         raw_blocks.append({'positionCm': _r(left_edge), 'isEnd': False})
-    raw_blocks.append({'positionCm': _r(base_beam_length - block_length_cm), 'isEnd': True})
+    raw_blocks.append({'positionCm': _r(back_ext_cm + base_beam_core - block_length_cm), 'isEnd': True})
+
+    # Extension-tip outer blocks — one per non-zero extension. The original
+    # outer blocks above keep their positions; these new blocks land at the
+    # new physical end(s) of the beam. End-case overlap handling (extension
+    # shorter than block_length) is deferred per spec.
+    if back_ext_cm > 0:
+        raw_blocks.insert(0, {'positionCm': 0.0, 'isEnd': True})
+    if front_ext_cm > 0:
+        raw_blocks.append({'positionCm': _r(base_beam_length - block_length_cm), 'isEnd': True})
     
     logger.info(f'Block positioning: {len(raw_blocks)} raw blocks, base_beam_length={base_beam_length}, block_length={block_length_cm}')
 
@@ -465,6 +491,8 @@ def compute_trapezoid_details(
     custom_diagonals: dict | None = None,
     global_settings: dict | None = None,
     roof_spec: dict | None = None,
+    variation_front_ext_cm: float = 0.0,
+    variation_back_ext_cm: float = 0.0,
 ) -> dict | None:
     """
     Compute structural details for one trapezoid.
@@ -475,6 +503,11 @@ def compute_trapezoid_details(
     settings       — app_defaults dict (from app_settings table, single source of truth)
     overrides      — per-trapezoid config overrides (from trapezoidConfigs[trapId])
     global_settings — step3.globalSettings (for global-scope params like crossRailEdgeDistMm)
+    variation_front_ext_cm / variation_back_ext_cm — beam extensions in
+        SLOPE cm for a sub-trap variation (e.g. "A.1"). Extends the base
+        beam past its front / back leg without moving the legs
+        themselves. Caller passes them when computing a variation's
+        ComputedTrapezoid entry; for parent traps both are 0.
     """
     if not bases_data or not panel_lines:
         return None
@@ -539,6 +572,19 @@ def compute_trapezoid_details(
             rear_ext = extension if extend_rear else 0
             base_beam_length = base_beam_length + rear_ext + front_ext
 
+    # Sub-trap variation extensions ("A.1" beam stretches past parent's
+    # legs). These augment the iskurit-perpendicular path's ext above —
+    # local var `front_ext` represents BEAM-REAR extension (legs shift
+    # forward in beam-local coords; see leg_offset=front_ext below),
+    # and `rear_ext` represents BEAM-FRONT extension (pure length
+    # increase past the front leg). Caller-side `back` semantically
+    # extends the beam REAR, `front` extends the beam FRONT — wire
+    # them through to the correctly-named internal counterpart.
+    if variation_front_ext_cm or variation_back_ext_cm:
+        front_ext = front_ext + variation_back_ext_cm
+        rear_ext = rear_ext + variation_front_ext_cm
+        base_beam_length = base_beam_length + variation_front_ext_cm + variation_back_ext_cm
+
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
     slope_offset = rail_offset_cm - base_overhang_cm + cross_rail_cm * tan_a
@@ -586,9 +632,18 @@ def compute_trapezoid_details(
     # This is the canonical home for front/back extension data — no separate
     # geometry["frontExtensionCm"] / ["rearExtensionCm"] keys; consumers
     # read extensions[idx].
+    #
+    # User-facing semantics: `frontExtMm` always means "beam-FRONT extension"
+    # (extends past the front leg — drawing-RIGHT in the trap detail view);
+    # `backExtMm` means "beam-REAR extension" (extends past leg 0 — drawing-
+    # LEFT). The internal local vars are swapped from this naming
+    # (`front_ext` = beam-rear shift via leg_offset; `rear_ext` = beam-front
+    # length increase past the front leg — see comment above), so map them
+    # explicitly here. Variation persistence (projects.py) already stores
+    # user-facing values, so consumers can rely on one consistent convention.
     geometry['extensions'] = [{
-        'frontExtMm': _r(front_ext * 10),
-        'backExtMm':  _r(rear_ext * 10),
+        'frontExtMm': _r(rear_ext * 10),
+        'backExtMm':  _r(front_ext * 10),
     }]
 
     # ── Rail items ─────────────────────────────────────────────────────────
@@ -622,7 +677,16 @@ def compute_trapezoid_details(
     if roof_type in ('iskurit', 'insulated_panel'):
         blocks = []
     else:
-        blocks = _compute_block_positions(inner_legs, block_length_cm, base_beam_length, cos_a, beam_thick_cm)
+        # Pass extensions through so an extra outer block lands at each
+        # extended tip while the original outer blocks stay anchored to the
+        # un-extended core. Internal `front_ext` is the caller's BACK
+        # extension (beam-rear) and `rear_ext` is the caller's FRONT
+        # extension (beam-front) — see the variant-wiring comment above.
+        blocks = _compute_block_positions(
+            inner_legs, block_length_cm, base_beam_length, cos_a, beam_thick_cm,
+            back_ext_cm=front_ext,
+            front_ext_cm=rear_ext,
+        )
 
     # ── Punches ────────────────────────────────────────────────────────────
     punches = _compute_structural_punches(
@@ -637,6 +701,8 @@ def compute_trapezoid_details(
         block_punches = _compute_block_punches(
             blocks, inner_legs, other_base_positions, block_length_cm, base_beam_length,
             block_punch_cm, beam_thick_cm, cos_a, punch_overlap_margin, punch_inner_offset,
+            back_ext_cm=front_ext,
+            front_ext_cm=rear_ext,
         )
         punches += block_punches
 
@@ -764,6 +830,8 @@ def _compute_block_punches(
     cos_a: float,
     overlap_margin_cm: float,
     inner_offset_cm: float,
+    back_ext_cm: float = 0.0,
+    front_ext_cm: float = 0.0,
 ) -> list[dict]:
     """
     Compute one punch per block on the base beam.
@@ -780,22 +848,41 @@ def _compute_block_punches(
 
     result = []
     profile_half = profile_step_cm / 2
+    # Un-extended core spans [back_ext_cm, back_ext_cm + base_beam_core].
+    # Outer legs sit at the core's edges (the BE applies leg_offset=back_ext
+    # upstream). Extension-tip blocks land beyond those legs and have no
+    # adjacent leg to anchor a punch to — their punch sits inside the block
+    # at block_punch_cm from the beam's outer edge.
+    base_beam_core = base_beam_length - back_ext_cm - front_ext_cm
+    core_front_edge = back_ext_cm + base_beam_core
+    core_pivot = back_ext_cm + base_beam_core / 2
     for bi, block in enumerate(blocks):
         pos = block['positionCm']          # base beam coords
         block_end = pos + block_length_cm  # base beam coords
 
         if block['isEnd']:
-            is_rear = pos < base_beam_length / 2
-            if is_rear:
-                # Rear outer block: distance from rear leg END (right wall) + block_punch_cm
-                # Rear leg: 0 to profile_step_cm (4cm)
-                punch_pos = profile_step_cm + block_punch_cm
+            is_rear_tip  = back_ext_cm > 0  and pos < back_ext_cm - 0.5
+            is_front_tip = front_ext_cm > 0 and pos > core_front_edge - block_length_cm + 0.5
+            if is_rear_tip:
+                # No leg at this end — punch inside the tip block, offset block_punch_cm from beam rear.
+                punch_pos = block_punch_cm
+                while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
+                    punch_pos = _r(punch_pos + profile_step_cm)
+            elif is_front_tip:
+                # No leg at this end — punch inside the tip block, offset block_punch_cm from beam front.
+                punch_pos = base_beam_length - block_punch_cm
+                while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
+                    punch_pos = _r(punch_pos - profile_step_cm)
+            elif pos < core_pivot:
+                # Original rear outer block, anchored to the rear leg at
+                # [back_ext_cm, back_ext_cm + profile_step_cm].
+                punch_pos = back_ext_cm + profile_step_cm + block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
                     punch_pos = _r(punch_pos + profile_step_cm)
             else:
-                # Front outer block: distance from front leg START (left wall) - block_punch_cm
-                # Front leg: (base_beam_length - profile_step_cm) to base_beam_length
-                punch_pos = (base_beam_length - profile_step_cm) - block_punch_cm
+                # Original front outer block, anchored to the front leg at
+                # [core_front_edge - profile_step_cm, core_front_edge].
+                punch_pos = (core_front_edge - profile_step_cm) - block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
                     punch_pos = _r(punch_pos - profile_step_cm)
             check_lo, check_hi = pos - 0.1, block_end + 0.1

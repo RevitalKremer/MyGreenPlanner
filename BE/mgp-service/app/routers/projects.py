@@ -40,46 +40,37 @@ class TabSettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-class TrapExtendTargetBase(BaseModel):
-    """Target one specific base by its (areaId, baseId)."""
-    scope: Literal['base']
-    areaId: int | str
-    baseId: str
+class TrapExtendTarget(BaseModel):
+    """A specific base addressed by its (areaId, rowIdx, baseId).
 
+    `rowIdx` is REQUIRED because `baseId` is BE-assigned per row
+    (B1..BN renumbered globally within each row), so `(areaId,
+    baseId)` alone collides across rows in the same multi-row area.
 
-class TrapExtendTargetRow(BaseModel):
-    """Target every base in a panel row across all sub-traps of the area."""
-    scope: Literal['row']
+    Row / area "fan-out" gestures expand into multiple targets on the
+    FE before being sent — the wire format is always a flat list of
+    bases, mirroring the BaseOp model.
+    """
     areaId: int | str
     rowIdx: int
-
-
-class TrapExtendTargetArea(BaseModel):
-    """Target every base in every row of every sub-trap in the area."""
-    scope: Literal['area']
-    areaId: int | str
-
-
-TrapExtendTarget = Annotated[
-    TrapExtendTargetBase | TrapExtendTargetRow | TrapExtendTargetArea,
-    Field(discriminator='scope'),
-]
+    baseId: str
 
 
 class TrapExtendOp(BaseModel):
     """Apply a (front, back) base-beam extension to one or more bases.
 
     Server resolves the (frontExtMm, backExtMm) signature against each
-    affected base's PARENT trap geometry.extensions[]:
+    target's PARENT trap geometry.extensions[]:
       - exact match → reuse that index;
       - no match → append the new entry, take the new tail index.
-    Each affected base's trapezoidId is then re-tagged from "A1" (or its
-    previous "A1.N") to the variation suffix that names the resolved index
-    ("A1" for idx 0, "A1.N" for N>0). The next recompute pass applies the
-    new lengths to startCm / lengthCm via _apply_base_extensions.
+    Each affected base's trapezoidId is then re-tagged from "A1" (or
+    its previous "A1.N") to the variation suffix that names the
+    resolved index ("A1" for idx 0, "A1.N" for N>0). The next
+    recompute pass applies the new lengths to startCm / lengthCm via
+    _apply_base_extensions.
     """
     op: Literal['extend'] = 'extend'
-    target: TrapExtendTarget
+    targets: list[TrapExtendTarget]
     frontExtMm: float
     backExtMm: float
 

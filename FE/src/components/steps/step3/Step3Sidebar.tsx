@@ -453,7 +453,8 @@ export default function Step3Sidebar({
               {/* Sub-items by tab: areas=none, bases/rails=rows, detail=traps */}
               {isAreaSelected && activeTab !== 'areas' && (() => {
                 const areaPanels = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey)
-                const showTraps = activeTab === 'detail' && trapIds.length > 1
+                const hasVariations = trapIds.some(tid => (trapExtensions[tid] || []).length > 0)
+                const showTraps = activeTab === 'detail' && (trapIds.length > 1 || hasVariations)
                 const rowIdxSet = new Set()
                 areaPanels.forEach(p => rowIdxSet.add(p.panelRowIdx ?? 0))
                 const panelRowIdxs = ([...rowIdxSet] as number[]).sort((a, b) => a - b)

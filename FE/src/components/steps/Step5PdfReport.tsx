@@ -357,16 +357,31 @@ export default function Step5PdfReport({
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
+  // Variations live in beTrapezoidsData with a parentId pointing at the
+  // step2 trap, but panels only carry the parent trapId — so trapIds (from
+  // buildTrapezoidGroups(panels)) won't include "A.1". Allow variation IDs
+  // through the filter when their parent is one of the panel-derived trapIds.
+  const allowedTrapIds = useMemo(() => {
+    const set = new Set(trapIds)
+    if (beTrapezoidsData) {
+      for (const [tid, t] of Object.entries(beTrapezoidsData)) {
+        const parentId = (t as any)?.parentId
+        if (parentId && set.has(parentId)) set.add(tid)
+      }
+    }
+    return set
+  }, [trapIds, beTrapezoidsData])
+
   // One PDF page per group of structurally identical traps (server-computed).
   // Fall back to one page per trap for older projects that lack groups.
   const pdfTrapGroups = useMemo(() => {
     if (beTrapezoidGroups?.length) {
       return beTrapezoidGroups
-        .map(g => ({ ...g, trapIds: g.trapIds.filter(id => trapIds.includes(id)) }))
+        .map(g => ({ ...g, trapIds: g.trapIds.filter(id => allowedTrapIds.has(id)) }))
         .filter(g => g.trapIds.length > 0)
     }
-    return trapIds.map((id, i) => ({ groupIdx: i, trapIds: [id] }))
-  }, [beTrapezoidGroups, trapIds])
+    return [...allowedTrapIds].map((id, i) => ({ groupIdx: i, trapIds: [id] }))
+  }, [beTrapezoidGroups, allowedTrapIds])
 
   // Map trapId → all trapezoidIds in the same area (used for ghost + trap count)
   const areaGroupMap = useMemo(() => {

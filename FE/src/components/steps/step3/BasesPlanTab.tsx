@@ -21,7 +21,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), onRequestExitEdit = null as null | (() => Promise<boolean>), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), pendingTrapOps = [] as any[], onRequestExitEdit = null as null | (() => Promise<boolean>), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -409,7 +409,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     for (const ri of rowOrder) {
       peersByRow[ri].sort((a: any, b: any) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
     }
-    const nextBases: any[] = []
+    let nextBases: any[] = []
     for (const ri of rowOrder) {
       const peers = peersByRow[ri]
       const live = areaKey != null ? customBasesMap?.[`${areaKey}:${ri}`] : undefined
@@ -419,6 +419,54 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
       }
       nextBases.push(...diffRowBases(peers, live))
     }
+
+    // Layer pending trap-extend ops on top so the canvas previews each
+    // extension before save. For every base we find the LATEST pending
+    // op whose `targets` list includes it (matched by areaId + rowIdx
+    // + baseId). If the base already carried a variation suffix
+    // ("A1.N") the corresponding extension is stripped from
+    // startCm/lengthCm first so a new extension replaces (not stacks
+    // on) the previous one.
+    if (pendingTrapOps && pendingTrapOps.length) {
+      nextBases = nextBases.map((b: any) => {
+        if ((b.hookOffsets?.length ?? 0) > 0) return b   // frameless / virtual
+        const bRow = Number(b._panelRowIdx ?? 0)
+        let chosen: any = null
+        for (const op of pendingTrapOps) {
+          const hit = (op.targets ?? []).some((t: any) =>
+            String(t.areaId) === String(areaKey)
+            && Number(t.rowIdx) === bRow
+            && t.baseId === b.baseId,
+          )
+          if (hit) chosen = op
+        }
+        if (!chosen) return b
+        const parentTid = stripVariation(b.trapezoidId)
+        const trap = beTrapezoidsData?.[parentTid]
+        const angleDeg = Number(trap?.geometry?.angle ?? 0)
+        const cosA = Math.cos((angleDeg * Math.PI) / 180) || 1
+        // Strip the base's CURRENT variation extension from its shape.
+        const curIdxMatch = String(b.trapezoidId ?? '').match(/\.(\d+)$/)
+        const curIdx = curIdxMatch ? Number(curIdxMatch[1]) : 0
+        const curExt = trap?.geometry?.extensions?.[curIdx] ?? { frontExtMm: 0, backExtMm: 0 }
+        const curFrontCm = (Number(curExt?.frontExtMm) || 0) / 10 / cosA
+        const curBackCm = (Number(curExt?.backExtMm) || 0) / 10 / cosA
+        // Apply the pending extension.
+        const newFrontCm = (Number(chosen?.frontExtMm) || 0) / 10 / cosA
+        const newBackCm = (Number(chosen?.backExtMm) || 0) / 10 / cosA
+        const round2 = (n: number) => Math.round(n * 100) / 100
+        return {
+          ...b,
+          startCm: round2((b.startCm ?? 0) + curBackCm - newBackCm),
+          lengthCm: round2(
+            (b.lengthCm ?? 0)
+            - curFrontCm - curBackCm
+            + newFrontCm + newBackCm,
+          ),
+        }
+      })
+    }
+
     return { ...ad, bases: nextBases }
   })
 
@@ -556,14 +604,14 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const lenPx = sb.lengthCm / pixelToCmRatio
                     const ty = tIsBtt ? (line?.maxY ?? af.frame.localBounds.maxY) - depthPx - lenPx : (line?.minY ?? af.frame.localBounds.minY) + depthPx
                     const by = ty + lenPx
-                    // Filter blocks whose slope-axis end falls within the trapezoid's slope
-                    // length. Comparing against sb.lengthCm here is wrong: that field is the
-                    // base bar length (which can sit ~1cm short of the slope due to BE end
-                    // clearance, e.g. A1 ends up with sb.lengthCm=150 vs topBeamLength=151),
-                    // so a block legitimately placed at slopePositionCm=100.3 with
-                    // slopeBlockLengthCm≈50.77 would test as 151.07 > 151 and silently drop.
-                    const slopeUpperCm = geom.topBeamLength ?? sb.lengthCm
-                    const trapBlocks = allBlocks.filter(blk => blk.slopePositionCm + slopeBlockLengthCm <= slopeUpperCm + 1)
+                    // Filter blocks whose base-axis end falls within the trapezoid's full
+                    // base-beam length (includes any variation extensions). Compare in
+                    // base coords against geom.baseBeamLength — block.positionCm and
+                    // geom.blockLengthCm are both in base coords, so this is unit-safe
+                    // and naturally accommodates extension tip blocks beyond the slope
+                    // beam (topBeamLength) without filtering them out.
+                    const baseUpperCm = geom.baseBeamLength ?? sb.lengthCm
+                    const trapBlocks = allBlocks.filter(blk => blk.positionCm + geom.blockLengthCm <= baseUpperCm + 1)
                     const blockWidthCm = trapSettingsMap[sb.trapezoidId]?.blockWidthCm
                     if (blockWidthCm == null) return null
                     const blockWSvg = (blockWidthCm / pixelToCmRatio) * sc
@@ -593,9 +641,44 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     // hookOffsets and skip the line/ID render.
                     const isFramelessBase = (sb.hookOffsets?.length ?? 0) > 0
                     if (isFramelessBase) return null
+                    // Extension portions of the base beam (front/back) sit beyond the
+                    // slope beam (topBeamLength). Bases-tab is a top view of the slope
+                    // beam, so we dash the extension parts to make the boundary explicit.
+                    const trapGeom = beTrapezoidsData?.[sb.trapezoidId]?.geometry
+                    const topBeamCm = trapGeom?.topBeamLength
+                    const ext = trapGeom?.extensions?.[0] ?? { frontExtMm: 0, backExtMm: 0 }
+                    const frontExtMm = ext.frontExtMm || 0
+                    const backExtMm  = ext.backExtMm || 0
+                    const visibleExtCm = (topBeamCm != null) ? Math.max(0, sb.lengthCm - topBeamCm) : 0
+                    const sumExtMm = frontExtMm + backExtMm
+                    const hasExt = visibleExtCm > 0 && sumExtMm > 0
+                    let segments: { x1:number, y1:number, x2:number, y2:number, dashed:boolean }[]
+                    if (!hasExt) {
+                      segments = [{ x1: btx, y1: bty, x2: bbx, y2: bby, dashed: false }]
+                    } else {
+                      const isBtt = !!af?.isBtt
+                      // (rx,ry) = rear/back end, (fx,fy) = front end
+                      const [rx, ry, fx, fy] = isBtt ? [bbx, bby, btx, bty] : [btx, bty, bbx, bby]
+                      const backCm  = visibleExtCm * (backExtMm  / sumExtMm)
+                      const frontCm = visibleExtCm * (frontExtMm / sumExtMm)
+                      const fBack  = backCm  / sb.lengthCm
+                      const fFront = frontCm / sb.lengthCm
+                      const p1x = rx + (fx - rx) * fBack,         p1y = ry + (fy - ry) * fBack
+                      const p2x = rx + (fx - rx) * (1 - fFront),  p2y = ry + (fy - ry) * (1 - fFront)
+                      segments = []
+                      if (backCm  > 0) segments.push({ x1: rx,  y1: ry,  x2: p1x, y2: p1y, dashed: true  })
+                      segments.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y, dashed: false })
+                      if (frontCm > 0) segments.push({ x1: p2x, y1: p2y, x2: fx,  y2: fy,  dashed: true  })
+                    }
+                    const dashLen = Math.max(4, 8 / effZoom)
                     return (
                       <g key={`base-${ai}-${sbi}`}>
-                        <line x1={btx} y1={bty} x2={bbx} y2={bby} stroke={L_PROFILE_STROKE} strokeWidth={profThick} strokeLinecap="square" />
+                        {segments.map((s, si) => (
+                          <line key={si} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+                                stroke={L_PROFILE_STROKE} strokeWidth={profThick}
+                                strokeLinecap="square"
+                                strokeDasharray={s.dashed ? `${dashLen} ${dashLen * 0.7}` : undefined} />
+                        ))}
                         {sBaseIDs && <g transform={`rotate(${la} ${mx} ${my})`}><AreaLabel x={mx} y={my} label={sb.trapezoidId} fontSize={Math.max(6, Math.min(Math.max(14, 20 / effZoom), smallestPanelW / (2 * 0.6)))} showChevron={false} /></g>}
                       </g>
                     )

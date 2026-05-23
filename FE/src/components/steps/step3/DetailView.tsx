@@ -85,10 +85,14 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
     : [{ depthCm: panelLengthCm ?? 0, gapBeforeCm: 0 }]
   const totalPanelDepthCm = segments.reduce((s, seg) => s + (seg.gapBeforeCm ?? 0) + (seg.depthCm ?? 0), 0)
 
-  const rearExtPx = defaultRearExtCm * SC
-  const padL = Math.max(120, railOffH + OHx + defaultFrontExtCm * SC + 40)
+  // Back extension shifts leg 0 forward and extends the beam past it on the
+  // LEFT (leg-0 side); front extension extends the beam past the front leg
+  // on the RIGHT — match each side's padding to what actually sits there.
+  const frontExtPx = defaultFrontExtCm * SC
+  const backExtPx  = defaultRearExtCm * SC
+  const padL = Math.max(120, railOffH + OHx + backExtPx + 40)
   const panelExtCm = (totalPanelDepthCm - RAIL_CM) * Math.cos(angleRad) - baseLength
-  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, rearExtPx) + 70)
+  const padR = Math.max(100, Math.max(panelExtCm * SC, OHx, frontExtPx) + 70)
   const _panelOffsetApprox = 2 * SC + 10 + 3
   const _slopeAbove = bW > 0 ? (hR - hF) * railOffH / bW : 0
   const _annotAbove = Math.cos(angleRad) * (_panelOffsetApprox + 40)
@@ -572,15 +576,17 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
 
               {hl('extension') && (defaultFrontExtCm > 0 || defaultRearExtCm > 0) && (
                 <g style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
-                  {defaultFrontExtCm > 0 && (() => {
+                  {defaultRearExtCm > 0 && (() => {
+                    // Back extension (beam-REAR): drawing-LEFT, between bbX0 and leg 0
                     const extW = firstLegPos * SC
                     return <rect x={legX0 - extW - 3} y={baseY - 3} width={extW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}
-                  {defaultRearExtCm > 0 && (() => {
+                  {defaultFrontExtCm > 0 && (() => {
+                    // Front extension (beam-FRONT): drawing-RIGHT, last `frontExtCm` of the beam
                     const bbEnd = legX0 - firstLegPos * SC + (geom.baseBeamLength ?? 0) * SC
-                    const rearExtW = defaultRearExtCm * SC
-                    return <rect x={bbEnd - rearExtW - 3} y={baseY - 3} width={rearExtW + 6} height={BEAM_THICK_PX + 6}
+                    const frontExtW = defaultFrontExtCm * SC
+                    return <rect x={bbEnd - frontExtW - 3} y={baseY - 3} width={frontExtW + 6} height={BEAM_THICK_PX + 6}
                       fill="none" stroke={AMBER} strokeWidth="2.5" rx="3" />
                   })()}
                 </g>
