@@ -562,8 +562,10 @@ export default function Step2PanelPlacement({
     const autoOrients = sortedRows.map(([, p]) =>
       p.heightCm > p.widthCm ? PANEL_V : PANEL_H
     )
-    const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
-    const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0
+    // Explicit empty-string check — '0' is a real user choice, must not fall
+    // back to the global default via `||`.
+    const fH = parseFloat((rectAreas[areaKey]?.frontHeight !== '' && rectAreas[areaKey]?.frontHeight != null) ? rectAreas[areaKey].frontHeight : panelFrontHeight) || 0
+    const a  = parseFloat((rectAreas[areaKey]?.angle       !== '' && rectAreas[areaKey]?.angle       != null) ? rectAreas[areaKey].angle       : panelAngle)       || 0
 
     const current = trapezoidConfigs?.[selectedTrapezoidId] || {}
     if (

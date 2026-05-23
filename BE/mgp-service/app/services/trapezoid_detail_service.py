@@ -287,8 +287,12 @@ def _compute_diagonal_bracing(
             'disabled': skip,
         })
 
-    # Safety: if all skipped, force-show rightmost not explicitly disabled
-    if all(d['disabled'] for d in raw_diagonals):
+    # Safety: if all skipped, force-show rightmost not explicitly disabled.
+    # Exception: when every leg is virtual (slope sits directly on the base beam,
+    # e.g. angle=0), there's no structural span to brace — keep all diagonals
+    # disabled.
+    all_virtual = all(l.get('virtual') for l in legs)
+    if not all_virtual and all(d['disabled'] for d in raw_diagonals):
         for d in reversed(raw_diagonals):
             if custom.get(str(d['spanIdx']), {}).get('disabled') is not True:
                 d['disabled'] = False
