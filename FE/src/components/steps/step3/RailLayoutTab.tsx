@@ -34,6 +34,7 @@ export default function RailLayoutTab({
   railsComputing = false,
   beRailsData = null,
   rectAreas = null,
+  onPanelClick = null as null | ((panel: any) => void),
 }) {
   const { t } = useLang()
   const railOverhangCm      = settings.railOverhangCm      
@@ -177,6 +178,7 @@ export default function RailLayoutTab({
         sc={sc}
         pixelToCmRatio={pixelToCmRatio}
         clipIdPrefix={clipPrefix}
+        onPanelClick={printMode ? null : onPanelClick}
       />
       <RailsOverlay {...overlayProps} toSvg={toSvgFn} zoom={zoomVal}
         selectedRowIdx={printMode ? null : selectedRowIdx}
