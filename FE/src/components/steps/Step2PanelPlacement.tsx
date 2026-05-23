@@ -175,16 +175,19 @@ export default function Step2PanelPlacement({
     if (!area?.vertices?.length) return
 
     // Rotate the polygon 90° around V0 (the pivot/start corner) so V0 stays
-    // put. Keep `rotation` as-is so the effective rotation
-    // `(areaVertical?90:0)+rotation` follows the vertex change in lockstep —
-    // toggling areaVertical contributes the +90°.
+    // put. Add 90° to `rotation` so the effective rotation
+    // `(areaVertical?90:0)+rotation` follows the vertex change in lockstep
+    // ACROSS multiple clicks — two clicks must yield 180°, not cycle back to
+    // 0° (the previous `areaVertical` toggle gave only 2 states for a 4-step
+    // rotation cycle).
     const pivot = area.vertices[area.pivotIdx ?? 0]
     const cosR = Math.cos(Math.PI / 2), sinR = Math.sin(Math.PI / 2)
     const newVertices = area.vertices.map(v => ({
       x: pivot.x + (v.x - pivot.x) * cosR - (v.y - pivot.y) * sinR,
       y: pivot.y + (v.x - pivot.x) * sinR + (v.y - pivot.y) * cosR,
     }))
-    const updatedArea = { ...area, vertices: newVertices, areaVertical: !(area.areaVertical ?? false) }
+    const newRotation = (((area.rotation ?? 0) + 90) % 360 + 360) % 360
+    const updatedArea = { ...area, vertices: newVertices, rotation: newRotation }
 
     setRectAreas(prev => prev.map((a, i) => i === areaIdx ? updatedArea : a))
 
@@ -562,8 +565,10 @@ export default function Step2PanelPlacement({
     const autoOrients = sortedRows.map(([, p]) =>
       p.heightCm > p.widthCm ? PANEL_V : PANEL_H
     )
-    const fH = parseFloat(rectAreas[areaKey]?.frontHeight) || parseFloat(panelFrontHeight) || 0
-    const a  = parseFloat(rectAreas[areaKey]?.angle)       || parseFloat(panelAngle)       || 0
+    // Explicit empty-string check — '0' is a real user choice, must not fall
+    // back to the global default via `||`.
+    const fH = parseFloat((rectAreas[areaKey]?.frontHeight !== '' && rectAreas[areaKey]?.frontHeight != null) ? rectAreas[areaKey].frontHeight : panelFrontHeight) || 0
+    const a  = parseFloat((rectAreas[areaKey]?.angle       !== '' && rectAreas[areaKey]?.angle       != null) ? rectAreas[areaKey].angle       : panelAngle)       || 0
 
     const current = trapezoidConfigs?.[selectedTrapezoidId] || {}
     if (

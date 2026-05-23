@@ -129,6 +129,21 @@ export default function Step3ConstructionPlanning({
 
   const { rowKeys, areaTrapezoidMap, rowConstructions } = rowData
 
+  // Click a panel → sync sidebar to the most specific element for the active
+  // tab: Areas tab selects the panel's area; Rails/Bases tabs additionally
+  // pin to the panel's row.
+  const handlePanelClick = useCallback((panel) => {
+    const areaKey = panel.areaGroupKey ?? panel.area
+    const newRowIdx = rowKeys.indexOf(areaKey)
+    if (newRowIdx === -1) return
+    setSelectedRowIdx(newRowIdx)
+    if (activeTab === 'rails' || activeTab === 'bases') {
+      setSelectedPanelRowIdx(panel.panelRowIdx ?? 0)
+    } else {
+      setSelectedPanelRowIdx(null)
+    }
+  }, [activeTab, rowKeys])
+
   const effectiveSelectedTrapId = selectedTrapezoidId ??
     (rowKeys[selectedRowIdx] != null ? (areaTrapezoidMap[rowKeys[selectedRowIdx]]?.[0] ?? null) : null)
 
@@ -408,7 +423,7 @@ export default function Step3ConstructionPlanning({
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} roofType={roofType} />}
+          {activeTab === 'areas' && <AreasTab panels={panels} areas={areas} rowKeys={rowKeys} areaLabel={settings.areaLabel} uploadedImageData={uploadedImageData} imageSrc={imageSrc} roofType={roofType} onPanelClick={handlePanelClick} />}
 
           {activeTab === 'detail' && (() => {
             const areaTrapIds = areaTrapezoidMap[rowKeys[selectedRowIdx]] || []
@@ -455,6 +470,7 @@ export default function Step3ConstructionPlanning({
               <RailLayoutTab
                 panels={panels} refinedArea={refinedArea}
                 uploadedImageData={uploadedImageData} imageSrc={imageSrc}
+                onPanelClick={handlePanelClick}
                 selectedRowIdx={selectedRowIdx} selectedPanelRowIdx={selectedPanelRowIdx}
                 settings={settings.getSettings(selectedRowIdx)}
                 lineRails={geo.areaLineRails}
@@ -476,6 +492,7 @@ export default function Step3ConstructionPlanning({
             <BasesPlanTab
               panels={panels} refinedArea={refinedArea} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
+              onPanelClick={handlePanelClick}
               effectiveSelectedTrapId={effectiveSelectedTrapId}
               selectedRowIdx={selectedRowIdx} rowKeys={rowKeys}
               selectedPanelRowIdx={selectedPanelRowIdx}

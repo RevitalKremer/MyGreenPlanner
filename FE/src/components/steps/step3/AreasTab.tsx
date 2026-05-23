@@ -128,6 +128,7 @@ export default function AreasTab({
   printBbox = null,   // when set in printMode, overrides the internal bbox (skips image expansion)
   roofType = 'concrete',
   uploadedImageData, imageSrc,
+  onPanelClick = null as null | ((panel: any) => void),
 }) {
   const { t } = useLang()
   const [showAreas, setShowAreas] = useState(true)
@@ -298,6 +299,7 @@ export default function AreasTab({
         sc={sc}
         pixelToCmRatio={1}
         clipIdPrefix={printMode ? 'atpm' : 'at'}
+        onPanelClick={printMode ? null : onPanelClick}
       />
 
       {/* Installation method overlay — colored rect per panel.

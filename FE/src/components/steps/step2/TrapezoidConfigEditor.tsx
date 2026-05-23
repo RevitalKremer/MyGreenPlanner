@@ -28,8 +28,14 @@ export default function TrapezoidConfigEditor({
   const globalCfg = refinedArea?.panelConfig || {}
   const override = trapezoidConfigs?.[selectedTrapezoidId] || {}
   const isOverridden = !!(selectedTrapezoidId && trapezoidConfigs?.[selectedTrapezoidId])
-  const defaultAngle = parseFloat(panelAngle) || globalCfg.angle || 0
-  const defaultFrontHeight = parseFloat(panelFrontHeight) || globalCfg.frontHeight || 0
+  // Explicit empty-string check — panelAngle='0' is a real user choice and must
+  // not fall through `||` to globalCfg.angle.
+  const defaultAngle = (panelAngle !== '' && panelAngle != null)
+    ? (parseFloat(panelAngle) || 0)
+    : (globalCfg.angle ?? 0)
+  const defaultFrontHeight = (panelFrontHeight !== '' && panelFrontHeight != null)
+    ? (parseFloat(panelFrontHeight) || 0)
+    : (globalCfg.frontHeight ?? 0)
 
   const areaKey = getAreaKey(selectedRow[0])
   const area = areaKey !== null ? (rectAreas?.[areaKey] ?? null) : null
@@ -118,8 +124,8 @@ export default function TrapezoidConfigEditor({
               // Reset this row's a/h to the global defaults
               if (groupLabel && setRowMounting) {
                 updateRow({
-                  angleDeg: parseFloat(panelAngle) || defaultAngle || 0,
-                  frontHeightCm: parseFloat(panelFrontHeight) || defaultFrontHeight || 0,
+                  angleDeg: (panelAngle !== '' && panelAngle != null) ? (parseFloat(panelAngle) || 0) : defaultAngle,
+                  frontHeightCm: (panelFrontHeight !== '' && panelFrontHeight != null) ? (parseFloat(panelFrontHeight) || 0) : defaultFrontHeight,
                 })
               }
             }}

@@ -21,7 +21,7 @@ import DimensionAnnotation from './DimensionAnnotation'
 import { resolveAreaContext, baseScreenCoords } from './basePlanHelpers'
 
 
-export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), pendingTrapOps = [] as any[], onRequestExitEdit = null as null | (() => Promise<boolean>), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any> }) {
+export default function BasesPlanTab({ panels = [], refinedArea, areas = [], uploadedImageData, imageSrc, effectiveSelectedTrapId = null, selectedRowIdx = null, rowKeys = [] as number[], selectedPanelRowIdx = null, trapSettingsMap = {}, trapLineRailsMap = {}, trapRCMap = {}, beTrapezoidsData = null, beBasesData = null, beRailsData = null, highlightGroup = null, customBasesMap = {}, onBasesChange = null, onTrapExtend = null as null | ((op: any) => void), pendingTrapOps = [] as any[], onRequestExitEdit = null as null | (() => Promise<boolean>), onResetBases = null, printMode = false, printShowRoofImage = true, printSc = null, printBbox = null, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, globalRailConfig = null as { overhangCm?: number; stockLengths?: number[]; crossRailEdgeDistMm?: number } | null, areaByGroupKey = {} as Record<number, any>, onPanelClick = null as null | ((panel: any) => void) }) {
   // Resolve each area's effective roof spec using the shared helper.
   const resolveAreaRoof = (areaData) => {
     if (roofType !== 'mixed') return { type: roofType, purlinDistCm, installationOrientation }
@@ -487,6 +487,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
         selectedArea={!printMode && rowKeys.length > 1 && selectedRowIdx != null ? rowKeys[selectedRowIdx] : null}
         selectedPanelRowIdx={selectedPanelRowIdx}
         toSvg={toSvg} sc={sc} pixelToCmRatio={pixelToCmRatio} clipIdPrefix="bcp"
+        onPanelClick={printMode ? null : onPanelClick}
       />
 
       {/* Purlin lines for parallel installation — parallel to bases, starting from first base.
