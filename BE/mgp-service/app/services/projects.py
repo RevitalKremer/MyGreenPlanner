@@ -3031,6 +3031,7 @@ def _trim_non_full_trapezoids(
     data: dict,
     app_defaults: dict,
     tds,
+    stored_custom_blocks: dict | None = None,
 ) -> None:
     """
     Second pass: trim non-full trapezoids to include only legs for active panel lines.
@@ -3161,6 +3162,7 @@ def _trim_non_full_trapezoids(
             detail, normalized_full, active_rail_positions, full_origin,
             local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
             app_defaults['lineGapCm'],
+            custom_blocks=(stored_custom_blocks or {}).get(tid),
         )
         result[tid] = detail
 
@@ -3354,6 +3356,7 @@ async def compute_and_save_trapezoid_details(
     # ── Trim non-full trapezoids (second pass) ──────────────────────────────────
     _trim_non_full_trapezoids(
         result, trapezoids, areas, step2, data, app_defaults, tds,
+        stored_custom_blocks=stored_custom_blocks,
     )
 
     # Persist trimmed results

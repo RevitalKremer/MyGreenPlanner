@@ -896,26 +896,41 @@ def _compute_block_punches(
         if block['isEnd']:
             is_rear_tip  = back_ext_cm > 0  and pos < back_ext_cm - 0.5
             is_front_tip = front_ext_cm > 0 and pos > core_front_edge - block_length_cm + 0.5
+            # All isEnd punches are anchored to the BLOCK so that user-moved
+            # structural blocks (block CRUD edit mode) carry their punch with
+            # them. When a structural block overhangs the beam (FE allows up
+            # to ~blockLengthCm - (2*beamThickCm + blockPunchCm) of overhang),
+            # the punch is clamped to the BEAM edge so it never lands outside
+            # the physical beam. At default position these expressions yield
+            # the same result as the previous leg/beam-edge anchored formulas.
+            #
+            # Anchor points (block-edge clamped to beam):
+            #   rear tip      anchor_pos = max(0, pos)
+            #   rear outer    anchor_pos = max(0, pos), + profile_step_cm
+            #   front tip     anchor_end = min(beamLen, block_end)
+            #   front outer   anchor_end = min(beamLen, block_end), - profile_step_cm
+            anchor_pos = max(0.0, pos)
+            anchor_end = min(base_beam_length, block_end)
             if is_rear_tip:
-                # No leg at this end — punch inside the tip block, offset block_punch_cm from beam rear.
-                punch_pos = block_punch_cm
+                # Tip block sits past the rear leg — no leg foot to step over.
+                punch_pos = anchor_pos + block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
                     punch_pos = _r(punch_pos + profile_step_cm)
             elif is_front_tip:
-                # No leg at this end — punch inside the tip block, offset block_punch_cm from beam front.
-                punch_pos = base_beam_length - block_punch_cm
+                # Tip block sits past the front leg — no leg foot to step over.
+                punch_pos = anchor_end - block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
                     punch_pos = _r(punch_pos - profile_step_cm)
             elif pos < core_pivot:
-                # Original rear outer block, anchored to the rear leg at
-                # [back_ext_cm, back_ext_cm + profile_step_cm].
-                punch_pos = back_ext_cm + profile_step_cm + block_punch_cm
+                # Rear outer block — leaves room for the rear leg foot
+                # (profile_step_cm) at the block's rear edge.
+                punch_pos = anchor_pos + profile_step_cm + block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
                     punch_pos = _r(punch_pos + profile_step_cm)
             else:
-                # Original front outer block, anchored to the front leg at
-                # [core_front_edge - profile_step_cm, core_front_edge].
-                punch_pos = (core_front_edge - profile_step_cm) - block_punch_cm
+                # Front outer block — leaves room for the front leg foot
+                # (profile_step_cm) at the block's front edge.
+                punch_pos = anchor_end - profile_step_cm - block_punch_cm
                 while has_overlap(punch_pos, other_base_positions) and punch_pos > pos:
                     punch_pos = _r(punch_pos - profile_step_cm)
             check_lo, check_hi = pos - 0.1, block_end + 0.1
@@ -933,8 +948,14 @@ def _compute_block_punches(
                     break
 
             if target_leg is None:
-                # Block doesn't cover any inner leg — fall back to center.
-                punch_pos = (pos + block_end) / 2
+                # Block has been moved so no inner leg falls inside its span
+                # (block CRUD edit mode). Use the same configurable offset as
+                # an isEnd block's rear-outer punch — `block_punch_cm` past
+                # the block's rear edge, allowing for one leg-foot profile.
+                # Skip overlapping positions toward the block end.
+                punch_pos = pos + profile_step_cm + block_punch_cm
+                while has_overlap(punch_pos, other_base_positions) and punch_pos < block_end:
+                    punch_pos = _r(punch_pos + profile_step_cm)
                 check_lo, check_hi = pos - 0.1, block_end + 0.1
             else:
                 # Get leg position from inner_legs (in SLOPE coords)
@@ -1009,6 +1030,7 @@ def trim_trapezoid(
     panel_width_cm: float = 0,
     panel_length_cm: float = 0,
     line_gap_cm: float = 0,
+    custom_blocks: list[dict] | None = None,
 ) -> dict:
     """
     Trim a trapezoid detail to only include legs/blocks/punches/diagonals
@@ -1126,26 +1148,42 @@ def trim_trapezoid(
         logger.error('Trim trapezoid: blocks present but blockLengthCm missing from geometry — data inconsistency')
     profile_half = geom['beamThickCm'] / 2
     if has_blocks:
-        # Blocks: regenerate in base-beam coords (same rules as service)
         block_length_cm = geom['blockLengthCm']
-        raw_blocks = []
-        raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
-        for leg in filtered_legs[1:-1]:
-            rail_pos = leg.get('railPositionCm', leg['positionCm'])
-            rail_base = _slope_to_base(rail_pos, profile_half, cos_a)
-            raw_blocks.append({'positionCm': _r(rail_base - block_length_cm / 2), 'isEnd': False})
-        raw_blocks.append({'positionCm': _r(base_len - block_length_cm), 'isEnd': True})
-        new_blocks = []
-        for blk in raw_blocks:
-            if new_blocks and blk['positionCm'] < new_blocks[-1]['positionCm'] + block_length_cm - 0.1:
-                continue
-            pos = blk['positionCm']
-            new_blocks.append({
-                'positionCm': _r(pos),
-                'isEnd': blk['isEnd'],
-                'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
-            })
-        detail['blocks'] = new_blocks
+        if custom_blocks:
+            # User has overridden block positions for this trimmed trap.
+            # Use them verbatim (FE writes positionCm in trimmed coords) and
+            # re-derive slopePositionCm for the trimmed base length.
+            detail['blocks'] = sorted(
+                (
+                    {
+                        'positionCm': _r(float(b['positionCm'])),
+                        'isEnd': bool(b.get('isEnd', False)),
+                        'slopePositionCm': _r(_base_to_slope(float(b['positionCm']), profile_half, cos_a)),
+                    }
+                    for b in custom_blocks
+                ),
+                key=lambda b: b['positionCm'],
+            )
+        else:
+            # Blocks: regenerate in base-beam coords (same rules as service)
+            raw_blocks = []
+            raw_blocks.append({'positionCm': 0.0, 'isEnd': True})
+            for leg in filtered_legs[1:-1]:
+                rail_pos = leg.get('railPositionCm', leg['positionCm'])
+                rail_base = _slope_to_base(rail_pos, profile_half, cos_a)
+                raw_blocks.append({'positionCm': _r(rail_base - block_length_cm / 2), 'isEnd': False})
+            raw_blocks.append({'positionCm': _r(base_len - block_length_cm), 'isEnd': True})
+            new_blocks = []
+            for blk in raw_blocks:
+                if new_blocks and blk['positionCm'] < new_blocks[-1]['positionCm'] + block_length_cm - 0.1:
+                    continue
+                pos = blk['positionCm']
+                new_blocks.append({
+                    'positionCm': _r(pos),
+                    'isEnd': blk['isEnd'],
+                    'slopePositionCm': _r(_base_to_slope(pos, profile_half, cos_a)),
+                })
+            detail['blocks'] = new_blocks
     else:
         detail['blocks'] = []
 
