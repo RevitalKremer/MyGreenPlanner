@@ -40,6 +40,7 @@ export default function PanelCanvas({
   drawVertical = false,
   roofAxis = null,
   setRoofAxis,
+  roofAxisEnabled = false,
   togglePanelOrientation,
 }) {
   const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
@@ -60,6 +61,72 @@ export default function PanelCanvas({
   // While the user is drawing/editing the roof axis, the WIP line lives here.
   // null = inactive. {start, end, dragging: 'new'|'p1'|'p2'} = active.
   const [roofAxisDraft, setRoofAxisDraft] = useState(null)
+
+  // Roof-axis local frame for area-draw alignment. Only active when the
+  // user has enabled roof-axis mode via the compass toggle — when disabled,
+  // newly drawn rows fall back to screen 0° (rotation snap still targets
+  // the stored axis though, that path reads `roofAxis` directly).
+  // angleDeg is normalised to ±90 (the axis is bidirectional). e* =
+  // along-axis unit vector, n* = perpendicular unit vector.
+  const roofAxisFrame = useMemo(() => {
+    if (!roofAxisEnabled) return null
+    if (!roofAxis?.start || !roofAxis?.end) return null
+    const adx = roofAxis.end.x - roofAxis.start.x
+    const ady = roofAxis.end.y - roofAxis.start.y
+    if (Math.abs(adx) < 1e-6 && Math.abs(ady) < 1e-6) return null
+    let angleDeg = Math.atan2(ady, adx) * 180 / Math.PI
+    while (angleDeg > 90) angleDeg -= 180
+    while (angleDeg < -90) angleDeg += 180
+    const rad = angleDeg * Math.PI / 180
+    return {
+      angleDeg,
+      ex:  Math.cos(rad), ey: Math.sin(rad),
+      nx: -Math.sin(rad), ny: Math.cos(rad),
+    }
+  }, [roofAxis, roofAxisEnabled])
+
+  // Default-axis seeding: when the user enables roof-axis mode for the
+  // first time, drop a horizontal 0° line near the bottom of the image,
+  // centred horizontally and spanning roughly the floating tool widget's
+  // width — so it's clear of the panels and easy to grab. The user can then
+  // drag the endpoints to align it with the roof edge.
+  //
+  // Computed directly in image-pixel coords (centre = natW/2) so it's
+  // independent of pan/scroll. Only the line length is derived from the
+  // widget's screen width via the displayed image's scale.
+  useEffect(() => {
+    if (!roofAxisEnabled || !setRoofAxis) return
+    if (roofAxis?.start && roofAxis?.end) {
+      const adx = roofAxis.end.x - roofAxis.start.x
+      const ady = roofAxis.end.y - roofAxis.start.y
+      if (Math.hypot(adx, ady) > 1) return  // already has a real axis
+    }
+    const img = imageRef
+    const natW = img?.naturalWidth ?? 0
+    const natH = img?.naturalHeight ?? 0
+    if (!natW || !natH) return
+    const imgRect = img.getBoundingClientRect()
+    const scaleX = imgRect.width ? natW / imgRect.width : 1
+    const scaleY = imgRect.height ? natH / imgRect.height : 1
+
+    const widget = document.querySelector('[data-step2-toolpanel]')
+    const widgetWScreen = widget ? widget.getBoundingClientRect().width : 225
+    const lenImg = Math.min(natW * 0.9, widgetWScreen * scaleX)
+    const cx = natW / 2
+    const y = Math.max(0, natH - 40 * scaleY)  // ~40 screen px above the bottom
+    setRoofAxis({ start: { x: cx - lenImg / 2, y }, end: { x: cx + lenImg / 2, y } })
+  }, [roofAxisEnabled, roofAxis, imageRef, setRoofAxis])
+
+  // Project a screen-space drag delta into the roof-axis local frame.
+  // Returns dx/dy unchanged when no axis is set, so callers keep their
+  // existing screen-axis logic in that path.
+  const projectDrag = (dx, dy) => {
+    if (!roofAxisFrame) return { localDx: dx, localDy: dy }
+    return {
+      localDx: dx * roofAxisFrame.ex + dy * roofAxisFrame.ey,
+      localDy: dx * roofAxisFrame.nx + dy * roofAxisFrame.ny,
+    }
+  }
 
   const willDeselectRef = useRef(false)
   const wheelContainerRef = useRef(null)
@@ -92,23 +159,29 @@ export default function PanelCanvas({
     const dx = drawRectEnd.x - drawRectStart.x
     const dy = drawRectEnd.y - drawRectStart.y
     if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return []
-    const absDx = Math.abs(dx), absDy = Math.abs(dy)
+    // Project the screen-space drag into the roof-axis local frame so the
+    // preview rect aligns to the axis when one is set. With no axis the
+    // projection is the identity, preserving the pre-roof-axis behavior.
+    const { localDx, localDy } = projectDrag(dx, dy)
+    const absLDx = Math.abs(localDx), absLDy = Math.abs(localDy)
+    if (absLDx < 2 || absLDy < 2) return []
     // For vertical draw: swap width/height AND swap xDir/yDir sources
     // so the fill algorithm starts from the draw start point in rotated frame
     const vd = drawVertical
+    const baseRotation = (roofAxisFrame?.angleDeg ?? 0) + (vd ? 90 : 0)
     return computeRectPanels({
       cx: (drawRectStart.x + drawRectEnd.x) / 2,
       cy: (drawRectStart.y + drawRectEnd.y) / 2,
-      width:  vd ? absDy : absDx,
-      height: vd ? absDx : absDy,
-      rotation: vd ? 90 : 0,
+      width:  vd ? absLDy : absLDx,
+      height: vd ? absLDx : absLDy,
+      rotation: baseRotation,
       // V-Draw: 90° rotation maps localX→screenY, localY→screen-X
       // xDir controls column fill along localX (→ screen Y after rotation)
       // yDir controls row stack along localY (→ screen -X after rotation, hence inverted)
-      xDir: vd ? (dy >= 0 ? 'ltr' : 'rtl') : (dx >= 0 ? 'ltr' : 'rtl'),
-      yDir: vd ? (dx >= 0 ? 'btt' : 'ttb') : (dy >= 0 ? 'ttb' : 'btt'),
+      xDir: vd ? (localDy >= 0 ? 'ltr' : 'rtl') : (localDx >= 0 ? 'ltr' : 'rtl'),
+      yDir: vd ? (localDx >= 0 ? 'btt' : 'ttb') : (localDy >= 0 ? 'ttb' : 'btt'),
     }, cmPerPixel, panelSpec, panelGapCm)
-  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec, panelGapCm, drawVertical])
+  }, [drawRectStart, drawRectEnd, cmPerPixel, panelSpec, panelGapCm, drawVertical, roofAxisFrame])
 
   // Space bar for pan-anywhere
   useEffect(() => {
@@ -165,9 +238,45 @@ export default function PanelCanvas({
 
     const { x, y } = svgCoords(e)
 
+    const hitTestPanel = (p, px, py) => {
+      const cx = p.x + p.width / 2, cy = p.y + p.height / 2
+      const rad = -(p.rotation || 0) * Math.PI / 180
+      const dx = px - cx, dy = py - cy
+      const lx = dx * Math.cos(rad) - dy * Math.sin(rad)
+      const ly = dx * Math.sin(rad) + dy * Math.cos(rad)
+      return Math.abs(lx) <= p.width / 2 && Math.abs(ly) <= p.height / 2
+    }
+    const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
+
+    // In the area and roofAxis tools, drawing rows shares the same gesture.
+    // (In roofAxis mode the axis itself is edited only by dragging its
+    // endpoints — handled below — so empty-space clicks create rows.)
+    const isAreaDraw = activeTool === 'area' || activeTool === 'roofAxis'
+
+    // Roof axis editing: when an axis endpoint is clicked, drag it. This is
+    // the ONLY axis-mutating gesture — empty-space clicks fall through to the
+    // area-draw path below so they create a new row instead of redrawing the
+    // axis. Checked before the Y-lock body select so grabbing an endpoint
+    // that overlaps a locked area still edits the axis.
+    if (activeTool === 'roofAxis' && roofAxis?.start && roofAxis?.end) {
+      const HANDLE_HIT_PX = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+      const d1 = Math.hypot(x - roofAxis.start.x, y - roofAxis.start.y)
+      const d2 = Math.hypot(x - roofAxis.end.x,   y - roofAxis.end.y)
+      if (d1 < HANDLE_HIT_PX && d1 <= d2) {
+        e.preventDefault()
+        setRoofAxisDraft({ start: { x, y }, end: { ...roofAxis.end }, dragging: 'p1' })
+        return
+      }
+      if (d2 < HANDLE_HIT_PX) {
+        e.preventDefault()
+        setRoofAxisDraft({ start: { ...roofAxis.start }, end: { x, y }, dragging: 'p2' })
+        return
+      }
+    }
+
     // Y-lock body click: select the area (its panels). Rotation is corner-only
     // — body drag intentionally does nothing to avoid an over-eager gesture.
-    if (activeTool === 'area' && !e.ctrlKey && !e.metaKey) {
+    if (isAreaDraw && !e.ctrlKey && !e.metaKey) {
       for (let areaIdx = 0; areaIdx < rectAreas.length; areaIdx++) {
         const area = rectAreas[areaIdx]
         if (area.mode !== 'ylocked' || !area.vertices?.length) continue
@@ -188,39 +297,7 @@ export default function PanelCanvas({
       return
     }
 
-    // Roof axis tool: drag to create / re-create. If an axis exists and the
-    // user clicks near one of its endpoints, drag that endpoint instead.
-    if (activeTool === 'roofAxis') {
-      e.preventDefault()
-      const HANDLE_HIT_PX = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
-      if (roofAxis?.start && roofAxis?.end) {
-        const d1 = Math.hypot(x - roofAxis.start.x, y - roofAxis.start.y)
-        const d2 = Math.hypot(x - roofAxis.end.x,   y - roofAxis.end.y)
-        if (d1 < HANDLE_HIT_PX && d1 <= d2) {
-          setRoofAxisDraft({ start: { x, y }, end: { ...roofAxis.end }, dragging: 'p1' })
-          return
-        }
-        if (d2 < HANDLE_HIT_PX) {
-          setRoofAxisDraft({ start: { ...roofAxis.start }, end: { x, y }, dragging: 'p2' })
-          return
-        }
-      }
-      // Fresh draw: from the click point.
-      setRoofAxisDraft({ start: { x, y }, end: { x, y }, dragging: 'new' })
-      return
-    }
-
-    const hitTestPanel = (p, px, py) => {
-      const cx = p.x + p.width / 2, cy = p.y + p.height / 2
-      const rad = -(p.rotation || 0) * Math.PI / 180
-      const dx = px - cx, dy = py - cy
-      const lx = dx * Math.cos(rad) - dy * Math.sin(rad)
-      const ly = dx * Math.sin(rad) + dy * Math.cos(rad)
-      return Math.abs(lx) <= p.width / 2 && Math.abs(ly) <= p.height / 2
-    }
-    const clickedPanel = panels.find(p => hitTestPanel(p, x, y))
-
-    if (activeTool === 'area') {
+    if (isAreaDraw) {
       // Ctrl/Cmd + drag → group-areas marquee (works from any position).
       // preventDefault stops the browser from kicking in its native drag
       // (which on macOS Cmd+drag can swallow the mouseup event).
@@ -300,7 +377,7 @@ export default function PanelCanvas({
       setMousePos({ x, y })
     }
 
-    if (activeTool === 'area' && drawRectStart) {
+    if ((activeTool === 'area' || activeTool === 'roofAxis') && drawRectStart) {
       setDrawRectEnd({ x, y })
       return
     }
@@ -568,14 +645,22 @@ export default function PanelCanvas({
       const dy = drawRectEnd.y - drawRectStart.y
       if (Math.abs(dx) > 2 && Math.abs(dy) > 2 && drawPreviewPanels.length > 0) {
         const vd = drawVertical
-        const xDir = vd ? (dy >= 0 ? 'ltr' : 'rtl') : (dx >= 0 ? 'ltr' : 'rtl')
-        const yDir = vd ? (dx >= 0 ? 'btt' : 'ttb') : (dy >= 0 ? 'ttb' : 'btt')
-        const baseRotation = drawVertical ? 90 : 0
+        // Match drawPreviewPanels: drive xDir/yDir and the area's natural
+        // rotation from the drag projected into the roof-axis local frame.
+        const { localDx, localDy } = projectDrag(dx, dy)
+        const xDir = vd ? (localDy >= 0 ? 'ltr' : 'rtl') : (localDx >= 0 ? 'ltr' : 'rtl')
+        const yDir = vd ? (localDx >= 0 ? 'btt' : 'ttb') : (localDy >= 0 ? 'ttb' : 'btt')
+        const roofRotation = roofAxisFrame?.angleDeg ?? 0
+        const baseRotation = roofRotation + (vd ? 90 : 0)
         const vertices = fitPolygonToRectPanels(
           drawPreviewPanels, baseRotation, drawRectStart.x, drawRectStart.y
         )
         if (vertices) {
-          onAddRectArea?.({ vertices, rotation: 0, yDir, xDir, pivotIdx: 0, mode: 'free', areaVertical: drawVertical })
+          // `rotation` is the area-level rotation beyond the natural
+          // orientation set by `areaVertical` (see panelGridService.ts
+          // and the rotation snap in PanelCanvas). Stamp the roof-axis
+          // angle here so subsequent rotations track correctly.
+          onAddRectArea?.({ vertices, rotation: roofRotation, yDir, xDir, pivotIdx: 0, mode: 'free', areaVertical: drawVertical })
         }
       }
       setDrawRectStart(null)
@@ -959,20 +1044,31 @@ export default function PanelCanvas({
               if (Math.abs(dx) < 2 || Math.abs(dy) < 2) return null
               const cx = (drawRectStart.x + drawRectEnd.x) / 2
               const cy = (drawRectStart.y + drawRectEnd.y) / 2
+              // Rotate the outline rect to the roof-axis frame so it matches
+              // the panels rendered inside it. Width/height come from the
+              // drag projected into that frame (identity when no axis).
+              const { localDx, localDy } = projectDrag(dx, dy)
+              const rectW = Math.abs(localDx), rectH = Math.abs(localDy)
+              const rectRot = roofAxisFrame?.angleDeg ?? 0
               return (
                 <g style={{ pointerEvents: 'none' }}>
-                  <rect
-                    x={cx - Math.abs(dx)/2} y={cy - Math.abs(dy)/2}
-                    width={Math.abs(dx)} height={Math.abs(dy)}
-                    fill={CANVAS_AREA_HOVER}
-                    stroke={WARNING}
-                    strokeWidth={lineW}
-                    strokeDasharray={dashArray}
-                  />
+                  <g transform={`rotate(${rectRot} ${cx} ${cy})`}>
+                    <rect
+                      x={cx - rectW/2} y={cy - rectH/2}
+                      width={rectW} height={rectH}
+                      fill={CANVAS_AREA_HOVER}
+                      stroke={WARNING}
+                      strokeWidth={lineW}
+                      strokeDasharray={dashArray}
+                    />
+                  </g>
                   {drawPreviewPanels.map((p, i) => {
                     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2
                     const pibw = p.width * 0.012
-                    const down = drawVertical ? dx < 0 : dy >= 0
+                    // Drag direction in the roof-axis local frame so the cup
+                    // orientation matches the rotated rect (identity when no
+                    // axis is set).
+                    const down = drawVertical ? localDx < 0 : localDy >= 0
                     const r = (p.rotation || 0) * Math.PI / 180
                     const rDeg = p.rotation || 0
                     const bh = Math.min(p.width, p.height) * 0.22
@@ -1154,12 +1250,10 @@ export default function PanelCanvas({
               )
             })()}
 
-            {/* Roof axis (Set-roof-axis tool). Visible only while the tool
-                is active — either showing the committed axis with draggable
-                handles, or the WIP draft. While drafting, also project an
-                orange line through every area's centroid at the new angle so
-                the user previews how the 0° reference will affect them. */}
-            {activeTool === 'roofAxis' && (() => {
+            {/* Roof axis line. Shown whenever roof-axis mode is enabled (not
+                just while the roofAxis tool is active) — either the committed
+                axis with draggable handles, or the WIP draft mid-drag. */}
+            {roofAxisEnabled && (() => {
               const axis = roofAxisDraft ?? roofAxis
               if (!axis?.start || !axis?.end) return null
               const dx = axis.end.x - axis.start.x
@@ -1177,39 +1271,10 @@ export default function PanelCanvas({
               const axisLabel = `${axisDeg.toFixed(1)}°`
               return (
                 <g style={{ pointerEvents: 'none' }}>
-                  {/* Per-area preview lines anchored at V0 (start corner),
-                      drawn along the roof axis pointing INTO the area body.
-                      Same direction + start as the Y-lock 0° snap guide. */}
-                  {rectAreas.map((area, i) => {
-                    if (!area.vertices?.length) return null
-                    const v0 = area.vertices[area.pivotIdx ?? 0]
-                    const cxAvg = area.vertices.reduce((s, v) => s + v.x, 0) / area.vertices.length
-                    const cyAvg = area.vertices.reduce((s, v) => s + v.y, 0) / area.vertices.length
-                    // Flip the roof axis sign so the drawn line points
-                    // toward the polygon centroid (inward from V0).
-                    const sign = (ax * (cxAvg - v0.x) + ay * (cyAvg - v0.y)) >= 0 ? 1 : -1
-                    const dirX = ax * sign, dirY = ay * sign
-                    const reach = Math.max(...area.vertices.map(v => Math.hypot(v.x - v0.x, v.y - v0.y))) * 1.05
-                    const x2 = v0.x + dirX * reach, y2 = v0.y + dirY * reach
-                    return (
-                      <g key={`roofaxis-area-${i}`}>
-                        <line
-                          x1={v0.x} y1={v0.y} x2={x2} y2={y2}
-                          stroke={WARNING} strokeWidth={guideW}
-                          strokeDasharray={gd}
-                          opacity={0.75}
-                        />
-                        <text
-                          x={x2 + dirX * lineW * 4} y={y2 + dirY * lineW * 4}
-                          fill={WARNING} fontSize={labelSize} fontWeight="700"
-                          dominantBaseline="middle"
-                          textAnchor={dirX >= 0 ? 'start' : 'end'}
-                        >0°</text>
-                      </g>
-                    )
-                  })}
-                  {/* The user-drawn roof axis: same look as the area lines,
-                      label = absolute angle of the drawn line. */}
+                  {/* The user-drawn roof axis. The per-area 0° preview lines
+                      were dropped — the single axis line plus the rotation
+                      snap guide (shown while dragging near the axis) are
+                      enough now that roof-axis mode is explicit. */}
                   <line
                     x1={axis.start.x} y1={axis.start.y}
                     x2={axis.end.x}   y2={axis.end.y}

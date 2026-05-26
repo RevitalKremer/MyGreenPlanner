@@ -879,7 +879,7 @@ function App() {
                     areaGroupId: addToGroupId,
                     rowIndex: nextRowIndex,
                     areaVertical: parentArea?.areaVertical ?? false,
-                    rotation: 0,
+                    rotation: rawRect.rotation ?? 0,
                     manualTrapezoids: false,
                     manualColTrapezoids: {},
                     roofSpec: isMixed ? (parentArea?.roofSpec ?? { type: 'concrete' }) : null,
@@ -924,6 +924,8 @@ function App() {
             setRowMounting={s.setRowMounting}
             roofAxis={s.roofAxis}
             setRoofAxis={s.setRoofAxis}
+            roofAxisEnabled={s.roofAxisEnabled}
+            setRoofAxisEnabled={s.setRoofAxisEnabled}
           />
         )}
         {/* Step3 stays mounted so onPdfDataChange fires even when on step 4+.

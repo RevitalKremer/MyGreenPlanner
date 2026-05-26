@@ -135,6 +135,11 @@ class ProjectLayout(BaseModel):
     # "horizontal" reference. Y-lock 0° snap aligns to this. Null = use
     # screen-horizontal as 0°.
     roofAxis: Optional[LineSegment] = None
+    # Roof-axis mode toggle (compass icon in step 2 toolbar). When true:
+    # the axis line is rendered and newly drawn rows align to it. When
+    # false: line is hidden and row draw falls back to screen 0°. Rotation
+    # snap still targets the stored axis regardless of this flag.
+    roofAxisEnabled: bool = False
 
     # Canvas areas and panels (synced from data — rendering only)
     rectAreas: list[RectAreaLayout] = Field(default_factory=list)

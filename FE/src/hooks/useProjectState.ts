@@ -34,6 +34,8 @@ export function useProjectState() {
   const setReferenceLine = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLine: v } })
   const roofAxis = pState.layout.roofAxis ?? null
   const setRoofAxis = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofAxis: v } })
+  const roofAxisEnabled = pState.layout.roofAxisEnabled ?? false
+  const setRoofAxisEnabled = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { roofAxisEnabled: v } })
   const referenceLineLengthCm = pState.layout.referenceLineLengthCm ?? ''
   const setReferenceLineLengthCm = (v) => pDispatch({ type: A.SET_LAYOUT, payload: { referenceLineLengthCm: v } })
   const baseline = pState.layout.baseline
@@ -333,6 +335,9 @@ export function useProjectState() {
         pixelToCmRatio: layout.pixelToCmRatio ?? null,
         baseline: layout.baseline ?? null,
         roofAxis: layout.roofAxis ?? null,
+        // Existing projects with a saved roofAxis pre-date the toggle —
+        // treat them as enabled so their line stays visible after load.
+        roofAxisEnabled: layout.roofAxisEnabled ?? !!layout.roofAxis,
         panels: layout.panels ? layout.panels.map(p => {
           const areaIdx = p.area ?? p.row ?? 0
           const ra = enrichedRectAreas[areaIdx]
@@ -992,6 +997,7 @@ export function useProjectState() {
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,
     roofAxis, setRoofAxis,
+    roofAxisEnabled, setRoofAxisEnabled,
     panelFrontHeight, setPanelFrontHeight,
     panelAngle, setPanelAngle,
     isDrawingLine, setIsDrawingLine,

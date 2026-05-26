@@ -63,6 +63,8 @@ export default function Step2PanelPlacement({
   setRowMounting,
   roofAxis = null,
   setRoofAxis,
+  roofAxisEnabled = false,
+  setRoofAxisEnabled,
   areas = null,
   setAreas = null,
 }) {
@@ -695,6 +697,7 @@ export default function Step2PanelPlacement({
             drawVertical={drawVertical}
             roofAxis={roofAxis}
             setRoofAxis={setRoofAxis}
+            roofAxisEnabled={roofAxisEnabled}
             togglePanelOrientation={togglePanelOrientation}
           />
         ) : (
@@ -875,6 +878,10 @@ export default function Step2PanelPlacement({
               }
             }}
             onCancelAddRow={() => setAddRowToGroup(null)}
+            roofAxisEnabled={roofAxisEnabled}
+            setRoofAxisEnabled={setRoofAxisEnabled}
+            roofAxis={roofAxis}
+            setRoofAxis={setRoofAxis}
           />
         )}
       </div>
