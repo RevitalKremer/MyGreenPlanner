@@ -580,7 +580,9 @@ def compute_trapezoid_details(
         orientation = rs.get('installationOrientation') or 'perpendicular'
         purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
         if orientation == 'perpendicular' and purlin_dist_cm and purlin_dist_cm > 0:
-            buffer_cm = _s(settings, ov, 'purlinBufferCm')
+            # purlinBufferCm is global-scope (see migration 0028) — read from
+            # globalSettings, not the merged area/trap overrides in `ov`.
+            buffer_cm = gs.get('purlinBufferCm', settings['purlinBufferCm'])
             extension = purlin_dist_cm + buffer_cm
             extend_front = _s(settings, ov, 'extendFront')  # label: "Extend Base Beam Rear"
             extend_rear = _s(settings, ov, 'extendRear')   # label: "Extend Base Beam Front"
