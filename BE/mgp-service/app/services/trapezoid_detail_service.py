@@ -188,6 +188,13 @@ def _compute_diagonal_bracing(
     """
     Compute diagonal bracing between legs.
 
+    Default placement rule: a diagonal is added in every OTHER leg-span,
+    starting from the span adjacent to the higher (front, last) leg and
+    moving inward. So with num_spans=N, default-selected spans are
+    indices N-1, N-3, N-5, …  Spans where both legs are below skip_below_cm
+    are also skipped by default. User overrides (disabled=true/false in
+    custom_diagonals) always win.
+
     The bottom attachment (lower point) is placed diag_dist_from_leg_cm from the
     near leg along the base beam — the same tilt-direction logic as before
     (reversed for the first span in a multi-span trap, forward for all others).
@@ -225,7 +232,11 @@ def _compute_diagonal_bracing(
         h_b = legs[i + 1]['heightCm']
 
         ov_d = custom.get(str(i), {})
-        skip = h_a < skip_below_cm and h_b < skip_below_cm
+        # Default: every other span starting from the higher (front, last) leg
+        # inward — so the span adjacent to the front leg is always selected,
+        # then every second span moving rearward.
+        alt_selected = (num_spans - 1 - i) % 2 == 0
+        skip = (not alt_selected) or (h_a < skip_below_cm and h_b < skip_below_cm)
         if ov_d.get('disabled') is True:
             skip = True
         elif ov_d.get('disabled') is False:
