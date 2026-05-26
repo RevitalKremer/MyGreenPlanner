@@ -1048,7 +1048,19 @@ def trim_trapezoid(
     geom['baseBeamLength'] = _r(base_len)
     geom['baseLength'] = _r(base_len)
 
-    # Update panelFrontHeight if first line is empty (EV/EH)
+    # First-pass `compute_trapezoid_details` skips empty (EV / EH) lines when
+    # building panel_lines, so the trap's `total_panel_depth` only covers the
+    # active lines — meaning `panelRearHeightCm = panelFrontHeight + active *
+    # sin(angle)` already, before we shift anything.
+    #
+    # When the sub-trap is preceded by empty lines (first line empty), its
+    # physical front edge sits at the row's slope position past those empty
+    # lines. We need to shift BOTH `panelFrontHeight` AND `panelRearHeightCm`
+    # up by the same delta so the active panel depth is preserved.
+    #
+    # When the sub-trap is followed by empty lines (last line empty), the
+    # first-pass values already represent only the active portion — no
+    # adjustment needed on either height.
     orients = line_orientations or []
     if orients and is_empty_orientation(orients[0]):
         skipped_depth = 0
@@ -1060,19 +1072,9 @@ def trim_trapezoid(
             if li > 0:
                 skipped_depth += line_gap_cm
         sin_a = math.sin(angle * math.pi / 180)
-        geom['panelFrontHeight'] = _r(geom.get('panelFrontHeight', 0) + skipped_depth * sin_a)
-
-    # Update panelRearHeightCm if last line is empty (EV/EH)
-    if orients and is_empty_orientation(orients[-1]):
-        skipped_rear = 0
-        for o in reversed(orients):
-            if not is_empty_orientation(o):
-                break
-            is_h = o == PANEL_EH
-            skipped_rear += panel_width_cm if is_h else panel_length_cm
-            skipped_rear += line_gap_cm
-        sin_a = math.sin(angle * math.pi / 180)
-        geom['panelRearHeightCm'] = _r(geom.get('panelRearHeightCm', 0) - skipped_rear * sin_a)
+        delta = skipped_depth * sin_a
+        geom['panelFrontHeight'] = _r(geom.get('panelFrontHeight', 0) + delta)
+        geom['panelRearHeightCm'] = _r(geom.get('panelRearHeightCm', 0) + delta)
 
     # Rebase legs: shift so first leg is at position 0
     rebase_shift = rear_pos
