@@ -1777,6 +1777,74 @@ def _parse_variation_trap_id(trap_id: str) -> tuple[str, int]:
     return parent, int(suffix)
 
 
+def _ops_to_block_snapshot(
+    project,
+    ops: list[dict],
+) -> dict[str, list[dict] | None]:
+    """Apply a list of BlockOp dicts to current per-trap block state.
+
+    Returns ``{ trapId: list[{positionCm, isEnd}] }`` — write each list to
+    ``step3.customBlocks[trapId]``. (Per-trap reset is expressed by the
+    caller sending the snapshot-dict shape with an empty list; this helper
+    only handles incremental move/add/delete ops.)
+
+    The baseline for each affected trap is the trap's current customBlocks
+    entry if one exists, otherwise the last-computed blocks from
+    ``step3.computedTrapezoids[].blocks``. positionMm rounding plus the
+    50cm minimum gap make position-based addressing unambiguous.
+    """
+    data = project.data or {}
+    step3 = data.get('step3') or {}
+    existing_custom = step3.get('customBlocks') or {}
+    computed_blocks_by_trap: dict[str, list[dict]] = {
+        t.get('trapezoidId'): t.get('blocks') or []
+        for t in (step3.get('computedTrapezoids') or [])
+        if t.get('trapezoidId')
+    }
+
+    result: dict[str, list[dict]] = {}
+
+    def _ensure(trap_id: str) -> list[dict]:
+        if trap_id in result:
+            return result[trap_id]
+        baseline = existing_custom.get(trap_id) or computed_blocks_by_trap.get(trap_id) or []
+        wc = sorted(
+            (
+                {'positionCm': float(b.get('positionCm', 0)), 'isEnd': bool(b.get('isEnd', False))}
+                for b in baseline
+            ),
+            key=lambda b: b['positionCm'],
+        )
+        result[trap_id] = wc
+        return wc
+
+    eps_cm = 0.05  # mm-level precision is enough; 50cm gap >> 0.5mm
+
+    for op in ops:
+        op_type = op.get('op')
+        tid = op.get('trapezoidId')
+        if not tid:
+            continue
+        blocks = _ensure(tid)
+        if op_type == 'move':
+            from_cm = float(op.get('fromPositionMm') or 0) / 10
+            to_cm = float(op.get('toPositionMm') or 0) / 10
+            for b in blocks:
+                if abs(b['positionCm'] - from_cm) < eps_cm:
+                    b['positionCm'] = to_cm
+                    break
+            blocks.sort(key=lambda b: b['positionCm'])
+        elif op_type == 'add':
+            pos_cm = float(op.get('positionMm') or 0) / 10
+            blocks.append({'positionCm': pos_cm, 'isEnd': False})
+            blocks.sort(key=lambda b: b['positionCm'])
+        elif op_type == 'delete':
+            pos_cm = float(op.get('positionMm') or 0) / 10
+            result[tid] = [b for b in blocks if abs(b['positionCm'] - pos_cm) >= eps_cm]
+
+    return result
+
+
 def _apply_trap_extend_ops(
     project,
     ops: list[dict],
@@ -2703,6 +2771,7 @@ def _compute_all_trapezoid_details(
     stored_custom_diags: dict,
     tds,
     project_roof_spec: dict,
+    stored_custom_blocks: dict | None = None,
 ) -> tuple[dict, dict[str, int]]:
     """
     Compute structural details for all trapezoids (first pass — full trap computation).
@@ -2860,7 +2929,8 @@ def _compute_all_trapezoid_details(
         rail_offset_cm = float(line_rails.get('0', [0])[0]) if line_rails.get('0') else 0
 
         custom_diags = stored_custom_diags.get(trap_id)
-        
+        custom_blocks = (stored_custom_blocks or {}).get(trap_id)
+
         # Merge area-specific settings with trapezoid-specific config
         # Priority: trapezoid config > area settings > app defaults
         merged_overrides = {}
@@ -2885,6 +2955,7 @@ def _compute_all_trapezoid_details(
             custom_diagonals=custom_diags,
             global_settings=global_settings,
             roof_spec=roof_spec,
+            custom_blocks=custom_blocks,
         )
 
         if detail:
@@ -2929,6 +3000,7 @@ def _compute_all_trapezoid_details(
                     roof_spec=roof_spec,
                     variation_front_ext_cm=front_ext_cm,
                     variation_back_ext_cm=back_ext_cm,
+                    custom_blocks=(stored_custom_blocks or {}).get(var_id),
                 )
                 if not var_detail:
                     continue
@@ -3160,6 +3232,7 @@ def _align_blocks_across_trapezoids(
     areas: list,
     tds,
     trap_row_map: dict[str, int] | None = None,
+    pinned_trap_ids: set[str] | None = None,
 ) -> dict[str, list[str]]:
     """
     Align block positions across trapezoids that share physical base beams.
@@ -3167,6 +3240,9 @@ def _align_blocks_across_trapezoids(
     Traps share a base beam set only when they belong to the same (area, panel row);
     traps in different rows of a multi-row area sit on entirely separate bases, so
     aligning their block positions pulls phantom blocks under non-existent legs.
+
+    Pinned trap ids (traps with user-supplied customBlocks) are forwarded to
+    `align_blocks` so their block lists are not redistributed.
 
     Returns area_trap_map: {area_label: [trapId, ...]}.
     """
@@ -3182,7 +3258,7 @@ def _align_blocks_across_trapezoids(
             row_trap_map.setdefault((label, row_idx), []).append(tid)
     for (_label, _ri), trap_ids in row_trap_map.items():
         row_traps = {tid: result[tid] for tid in trap_ids if tid in result}
-        tds.align_blocks(row_traps)
+        tds.align_blocks(row_traps, pinned_trap_ids=pinned_trap_ids)
         result.update(row_traps)
     return area_trap_map
 
@@ -3239,10 +3315,14 @@ async def compute_and_save_trapezoid_details(
                     stored_custom_diags.pop(trap_id, None)
     step3['customDiagonals'] = stored_custom_diags
 
+    # Stored custom blocks (per-trap user overrides; concrete roofs only)
+    stored_custom_blocks = step3.get('customBlocks', {}) or {}
+
     # ── Compute all trapezoids (first pass — full trap computation) ────────────
     result, trap_row_map = _compute_all_trapezoid_details(
         trapezoids, areas, step2, step3, data, app_defaults,
         trapezoid_configs, stored_custom_diags, tds, project_roof_spec,
+        stored_custom_blocks=stored_custom_blocks,
     )
 
     # Persist first pass results
@@ -3261,8 +3341,14 @@ async def compute_and_save_trapezoid_details(
     # ── Align blocks across trapezoids sharing physical base beams ──────────────
     # Restrict to (area, panel row) groups — traps in different rows of a
     # multi-row area sit on separate base beams, so aligning across rows
-    # produces phantom blocks under non-existent legs.
-    _align_blocks_across_trapezoids(result, areas, tds, trap_row_map)
+    # produces phantom blocks under non-existent legs. Traps with user-
+    # supplied customBlocks are pinned: their positions seed the alignment
+    # for neighbours but are not themselves redistributed.
+    pinned_block_trap_ids = set(stored_custom_blocks.keys())
+    _align_blocks_across_trapezoids(
+        result, areas, tds, trap_row_map,
+        pinned_trap_ids=pinned_block_trap_ids,
+    )
 
     # ── Persist aligned blocks ────────────────────────────────────────────────
     for tid, detail in result.items():
@@ -3355,6 +3441,39 @@ async def save_tab(
                 cbv = step3.setdefault('customBaseVariations', {})
                 for key, vars_for_key in var_snapshot.items():
                     cbv[key] = vars_for_key
+            project.data = data
+            flag_modified(project, 'data')
+            await db.commit()
+            await db.refresh(project)
+
+        # Block overrides → step3.customBlocks (per-trap user block edits).
+        #
+        # Accept two wire shapes (mirrors bases):
+        #   - Op list: list[BlockOp] (move / add / delete)
+        #   - Snapshot dict: { trapId: [{positionCm, isEnd}, ...] }
+        # Empty list under a trapId in the snapshot dict clears that trap's
+        # override — used by the unified per-trap "Reset trap" button.
+        if 'blocks' in overrides and overrides['blocks']:
+            raw_blocks = overrides['blocks']
+            if isinstance(raw_blocks, list):
+                block_result = _ops_to_block_snapshot(project, raw_blocks)
+            else:
+                # Snapshot shape — accept as-is. Normalise so empty lists
+                # become None (drop signal) for the writer loop below.
+                block_result = {
+                    tid: (blocks if blocks else None)
+                    for tid, blocks in raw_blocks.items()
+                }
+            data = copy.deepcopy(project.data or {})
+            step3 = data.setdefault('step3', {})
+            cb = step3.setdefault('customBlocks', {})
+            for tid, blocks in block_result.items():
+                if blocks is None or len(blocks) == 0:
+                    cb.pop(tid, None)
+                else:
+                    cb[tid] = blocks
+            if not cb:
+                step3.pop('customBlocks', None)
             project.data = data
             flag_modified(project, 'data')
             await db.commit()
@@ -3467,6 +3586,7 @@ async def reset_tab(
                     trap_cfg.pop(key, None)
     elif tab == 'trapezoids':
         step3.pop('customDiagonals', None)
+        step3.pop('customBlocks', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
                 for key in ['diagDistFromLegCm', 'diagPreferredAngleDeg']:

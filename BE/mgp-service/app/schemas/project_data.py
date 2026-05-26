@@ -274,6 +274,13 @@ class Step3Data(_StrictBase):
     areaSettings: Optional[dict] = None
     customBasesOffsets: Optional[dict] = None
     customDiagonals: Optional[dict] = None
+    # User overrides for block positions, keyed by trapezoidId (concrete roofs only).
+    # Shape: `{ trapId: [{ positionCm: float, isEnd: bool }, …] }`.
+    # When set for a trap, `_compute_block_positions` skips BE placement and
+    # uses this list verbatim. `slopePositionCm` is re-derived per compute.
+    # `isEnd=true` (structural) blocks cannot be deleted by the user and are
+    # constrained to remain the outermost on drag (enforced FE-side).
+    customBlocks: Optional[dict] = None
     # User-created trap base-beam variations, keyed by parent trapezoidId.
     # Entries are USER additions only — index 0 (BE default) lives on each
     # ComputedTrapezoid.geometry.extensions[0] and is recomputed per pass.

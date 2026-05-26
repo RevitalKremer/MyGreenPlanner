@@ -497,6 +497,7 @@ def compute_trapezoid_details(
     roof_spec: dict | None = None,
     variation_front_ext_cm: float = 0.0,
     variation_back_ext_cm: float = 0.0,
+    custom_blocks: list[dict] | None = None,
 ) -> dict | None:
     """
     Compute structural details for one trapezoid.
@@ -680,6 +681,22 @@ def compute_trapezoid_details(
     # Iskurit/insulated panel: no blocks (attached to purlins with screws)
     if roof_type in ('iskurit', 'insulated_panel'):
         blocks = []
+    elif custom_blocks:
+        # User has overridden block positions for this trap. Use them verbatim;
+        # re-derive slopePositionCm from positionCm. `isEnd` is preserved as
+        # provided — structural-block invariants are enforced FE-side.
+        profile_half = beam_thick_cm / 2
+        blocks = sorted(
+            (
+                {
+                    'positionCm': _r(float(b['positionCm'])),
+                    'isEnd': bool(b.get('isEnd', False)),
+                    'slopePositionCm': _r(_base_to_slope(float(b['positionCm']), profile_half, cos_a)),
+                }
+                for b in custom_blocks
+            ),
+            key=lambda b: b['positionCm'],
+        )
     else:
         # Pass extensions through so an extra outer block lands at each
         # extended tip while the original outer blocks stay anchored to the
@@ -739,7 +756,10 @@ def compute_trapezoid_details(
     }
 
 
-def align_blocks(trap_details: dict[str, dict]) -> None:
+def align_blocks(
+    trap_details: dict[str, dict],
+    pinned_trap_ids: set[str] | None = None,
+) -> None:
     """
     Align block positions across all trapezoids in the same area.
 
@@ -748,10 +768,16 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
     merge into a unified set, then redistribute to each trapezoid — keeping only
     positions that fall within that trapezoid's beam span.
 
+    Pinned trap ids (traps with user-provided customBlocks) contribute their
+    positions to the merge but are NOT redistributed — their block list is
+    left untouched so the user's edits survive verbatim.
+
     Modifies trap_details in place (updates blocks and punches).
     """
     if len(trap_details) < 2:
         return
+
+    pinned = pinned_trap_ids or set()
 
     # Collect all block positions in global base-beam coords
     global_positions: set[float] = set()
@@ -769,6 +795,9 @@ def align_blocks(trap_details: dict[str, dict]) -> None:
 
     # Redistribute blocks to each trapezoid
     for tid, detail in trap_details.items():
+        # Pinned traps keep their user-supplied blocks; skip redistribution.
+        if tid in pinned:
+            continue
         geom = detail.get('geometry', {})
         origin = geom.get('originCm', 0)
         block_length = geom.get('blockLengthCm', 50)
