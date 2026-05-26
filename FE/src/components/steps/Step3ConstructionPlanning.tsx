@@ -22,7 +22,7 @@ export default function Step3ConstructionPlanning({
   uploadedImageData, imageSrc,
   rectAreas = [],
   areas = [], initialGlobalSettings = null, initialAreaSettings = null, initialTab = null,
-  onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onPdfDataChange,
+  onSettingsChange, onTrapConfigsChange, onCustomBasesChange, onCustomBlocksChange, onPdfDataChange,
   // Notify the host of the current queue of TrapExtendOps. App.tsx
   // mirrors it into a ref for the save flow; sessionId is stripped
   // before the payload goes over the wire.
@@ -57,6 +57,13 @@ export default function Step3ConstructionPlanning({
   // (userEditedBases was used to gate which customBasesMap entries were
   // sent to BE. Obsolete now — buildBaseOpsFromState diffs every entry
   // against beBasesData and only emits ops where they actually differ.)
+
+  // Per-trapezoid block edits (drag / add / delete in the trap-detail
+  // edit mode). Keyed by trapezoidId; values are sorted by positionCm.
+  // Seeded from beTrapezoidsData[trapId].blocks on the first user gesture
+  // (deferred to avoid sending phantom ops for unedited traps).
+  // Shape: Record<string, { positionCm: number; isEnd?: boolean }[]>
+  const [customBlocksMap, setCustomBlocksMap] = useState<Record<string, { positionCm: number; isEnd?: boolean }[]>>({})
 
   // ── Pending trap-extend ops queue ──────────────────────────────────────
   // Live state (not just a ref) so the canvas can preview each extension
@@ -250,6 +257,30 @@ export default function Step3ConstructionPlanning({
     }
     return true
   }, [settings, confirmDialog, t, applyTab])
+
+  // Exit gate for the trap-detail edit mode. Same shape as
+  // requestExitBasesEdit — dirty covers settings, diagonal handles
+  // (diagOverrides → SYNTHETIC_TAB.detail), and block edits (marked
+  // dirty in onCustomBlocksChange below).
+  const requestExitDetailEdit = useCallback(async (): Promise<boolean> => {
+    if (!settings.dirty.detail) return true
+    const choice = await confirmDialog.ask({
+      message: t('step3.editMode.exitConfirm'),
+      confirmLabel: t('step3.editMode.applyAndExit'),
+      discardLabel: t('step3.editMode.discardAndExit'),
+      cancelLabel: t('common.cancel'),
+      variant: 'warning',
+    })
+    if (choice === false) return false
+    if (choice === 'discard') {
+      setCustomBlocksMap({})
+      settings.discardDirtyParamsForTab('detail')
+      settings.markClean('detail')
+    } else {
+      await applyTab('detail')
+    }
+    return true
+  }, [settings, confirmDialog, t, applyTab])
   
   // Save initial tab to backend if it was defaulted to 'areas'
   const initialSaveRef = useRef(false)
@@ -294,6 +325,13 @@ export default function Step3ConstructionPlanning({
     // missed a key for any reason).
     onCustomBasesChange?.(customBasesMap)
   }, [customBasesMap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // Expose customBlocksMap to the host. buildBlockOpsFromState diffs
+    // against beTrapezoidsData[trapId].blocks; only entries the user has
+    // actually touched produce ops.
+    onCustomBlocksChange?.(customBlocksMap)
+  }, [customBlocksMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onSettingsChange?.(settings.globalSettings, settings.areaSettings)
@@ -453,11 +491,34 @@ export default function Step3ConstructionPlanning({
                       fullTrapGhost={fullTrapGhost}
                       paramGroup={PARAM_GROUP}
                       reverseBlockPunches={settings.globalSettings.reverseBlockPunches ?? true}
-                      onReset={() => settings.resetDetailSettings(selectedRowIdx)}
+                      onReset={() => {
+                        // Unified per-trap reset: settings + customBlocks +
+                        // diagOverrides all wiped together. resetDetailSettings
+                        // clears settings + diagOverrides and triggers a BE
+                        // tab-level reset (which also pops customBlocks); we
+                        // mirror the BE-side clear locally so the next save
+                        // doesn't re-send stale FE overrides.
+                        setCustomBlocksMap({})
+                        settings.resetDetailSettings(selectedRowIdx)
+                      }}
                       onUpdateSetting={(key, val) => settings.updateSetting(selectedRowIdx, key, val)}
                       roofType={detailRoofType}
                       purlinDistCm={detailPurlinDistCm}
                       installationOrientation={detailOrient}
+                      customBlocks={customBlocksMap[effectiveSelectedTrapId]}
+                      onCustomBlocksChange={(blocks) => {
+                        setCustomBlocksMap(prev => {
+                          const next = { ...prev }
+                          if (!blocks || blocks.length === 0) delete next[effectiveSelectedTrapId]
+                          else next[effectiveSelectedTrapId] = blocks
+                          return next
+                        })
+                        // Block edits aren't routed through setParam, so the
+                        // detail-tab dirty flag wouldn't flip on its own —
+                        // mark it explicitly so requestExitDetailEdit prompts.
+                        settings.markDirty('detail')
+                      }}
+                      onRequestExitEdit={requestExitDetailEdit}
                     />
                   )
                 })()}

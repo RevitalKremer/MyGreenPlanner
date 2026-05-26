@@ -20,6 +20,7 @@ import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
+import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
 import './App.css'
 
 const TOTAL_STEPS = 5
@@ -123,6 +124,11 @@ function App() {
   const step3SettingsRef = useRef({ globalSettings: s.step3GlobalSettings, areaSettings: s.step3AreaSettings })
   const trapConfigsRef = useRef(s.trapezoidConfigs)
   const customBasesRef = useRef({})
+  // Mirror of customBlocksMap held in Step3ConstructionPlanning. Per-trapezoid
+  // user block edits (drag / add / delete) collected in the trap-detail edit
+  // mode. Diffed against beTrapezoidsData via buildBlockOpsFromState on the
+  // trapezoids tab save.
+  const customBlocksRef = useRef<Record<string, { positionCm: number; isEnd?: boolean }[]>>({})
   // Pending step3 extend ops (TrapExtendOp[]) accumulated by drag handlers
   // in BasesPlanTab. The authoritative state lives in Step3ConstructionPlanning
   // (so the canvas can re-render with each pending op as a live preview);
@@ -478,6 +484,15 @@ function App() {
         if (Object.keys(diagOverrides).length > 0) {
           payload.overrides = payload.overrides || {}
           payload.overrides.diagonals = diagOverrides
+        }
+
+        // Block ops from the customBlocksMap diff against the BE snapshot.
+        // Reset-trap flow sends a snapshot dict `{ trapId: [] }` instead;
+        // that path is handled in the unified reset handler, not here.
+        const blockOps = buildBlockOpsFromState(customBlocksRef.current, beTrapezoidsData)
+        if (blockOps.length > 0) {
+          payload.overrides = payload.overrides || {}
+          payload.overrides.blocks = blockOps
         }
       }
 
@@ -936,6 +951,7 @@ function App() {
             onSettingsChange={(g, a) => { step3SettingsRef.current = { globalSettings: g, areaSettings: a }; s.setStep3GlobalSettings(g); s.setStep3AreaSettings(a) }}
             onTrapConfigsChange={(configs) => { trapConfigsRef.current = configs }}
             onCustomBasesChange={(map) => { customBasesRef.current = map }}
+            onCustomBlocksChange={(map) => { customBlocksRef.current = map }}
             onTrapExtendOpsChange={(ops) => { pendingTrapOpsRef.current = ops }}
             onPdfDataChange={setStep4PdfData}
             beRailsData={beRailsData}
