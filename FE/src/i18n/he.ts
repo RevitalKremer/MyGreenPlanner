@@ -114,11 +114,11 @@ const he = {
   'roofSpec.type.insulatedPanel':     'פנל מבודד',
   'roofSpec.type.mixed':              'מעורב (לפי אזור)',
   'step2.sidebar.areaRoofType':       'סוג גג',
-  'roofSpec.distanceBetweenPurlins':  'מרחק בין פתות (ס״מ)',
+  'roofSpec.distanceBetweenPurlins':  'מרחק בין פטות (ס״מ)',
   'roofSpec.distancePlaceholder':     'לדוגמה: 120',
   'roofSpec.installationOrientation': 'כיוון התקנה',
-  'roofSpec.orientation.perpendicular': 'התקנה בניצב לפתות',
-  'roofSpec.orientation.parallel':      'התקנה לאורך הפתות',
+  'roofSpec.orientation.perpendicular': 'התקנה בניצב לפטות',
+  'roofSpec.orientation.parallel':      'התקנה לאורך הפטות',
 
   // ── Image uploader ───────────────────────────────────────────────────────
   'uploader.uploadOption':     'העלה מהמכשיר',
