@@ -2965,14 +2965,25 @@ def _trim_non_full_trapezoids(
     
     Modifies result dict in place.
     """
-    # Build per-area full trap lookup
-    area_full_trap: dict[str, dict] = {}  # area label → full trap detail
+    # Build per-(area, panelRow) full trap lookup. A multi-row area can have
+    # several full traps in different rows (e.g. A1 in row 0 + A2 in row 2);
+    # a non-full sibling must be trimmed against the full trap that shares
+    # its row, otherwise the reference's leg / rail layout is structurally
+    # unrelated and `trim_trapezoid` early-returns with empty diagonals and
+    # incomplete legs (bug: A3 in row 2 trimmed against A1 in row 0).
+    area_row_full_trap: dict[tuple[str, int], dict] = {}
+    area_any_full_trap: dict[str, dict] = {}
     for a in areas:
+        label = a.get('label', '')
         for tid in a.get('trapezoidIds', []):
-            detail = result.get(tid)
-            if detail and detail.get('isFullTrap'):
-                area_full_trap[a.get('label', '')] = detail
-                break
+            d = result.get(tid)
+            if not (d and d.get('isFullTrap')):
+                continue
+            key = (label, d.get('panelRowIdx', 0))
+            if key not in area_row_full_trap:
+                area_row_full_trap[key] = d
+            if label not in area_any_full_trap:
+                area_any_full_trap[label] = d
 
     for tid, detail in result.items():
         if detail.get('isFullTrap'):
@@ -2988,7 +2999,14 @@ def _trim_non_full_trapezoids(
                 break
         if not trap_area:
             continue
-        full_trap_detail = area_full_trap.get(trap_area.get('label', ''))
+        # Prefer the full trap that shares this non-full trap's row; fall back
+        # to any full trap in the area (single-row legacy projects).
+        label = trap_area.get('label', '')
+        row_idx = detail.get('panelRowIdx', 0)
+        full_trap_detail = (
+            area_row_full_trap.get((label, row_idx))
+            or area_any_full_trap.get(label)
+        )
         if not full_trap_detail:
             continue
         full_geom = full_trap_detail.get('geometry', {})
@@ -3036,7 +3054,11 @@ def _trim_non_full_trapezoids(
         local_orients = trap_cfg_local.get('lineOrientations', [PANEL_V])
         trap_area_id = trap_area.get('id', 0)
         trap_computed_area = _get_computed_area(data, trap_area_id)
-        trap_all_line_rails = _derive_line_rails(trap_computed_area)
+        # Rails live per-row on the computed area. Use this trap's own row
+        # — defaulting to 0 here silently returns row-0 rails for a row-2
+        # sub-trap, leaving `active_rail_positions` empty and the trim
+        # early-returning with `legs: []`.
+        trap_all_line_rails = _derive_line_rails(trap_computed_area, row_index=detail.get('panelRowIdx', 0))
 
         # Build active rail positions from normalized leg railPositionCm values
         full_rail_positions = {}

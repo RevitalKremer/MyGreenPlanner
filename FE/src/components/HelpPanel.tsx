@@ -87,7 +87,7 @@ const HELP = {
       },
       {
         q: 'Settings tiers — global / area / trapezoid',
-        a: 'Global parameters apply to every area (e.g. stock lengths, edge distances). Area parameters override per-row (e.g. rail overhang, block height, lines-per-area). Trapezoid parameters override per-trap (e.g. edge offset, base spacing, base overhang). Each parameter has a "?" tooltip showing its default, min, and max.'
+        a: 'Global parameters apply to every area (e.g. stock lengths, edge distances). Area parameters override per-row (e.g. rail overhang, block punch distance, lines-per-area). Trapezoid parameters override per-trap (e.g. edge offset, base spacing, base overhang). Each parameter has a "?" tooltip showing its default, min, and max.'
       },
       {
         q: 'Apply-to-all buttons',
