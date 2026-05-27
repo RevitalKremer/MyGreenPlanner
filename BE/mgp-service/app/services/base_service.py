@@ -1339,5 +1339,3 @@ def bases_completion_for_segmented_rails(
             'offsetFromStartCm': round_to_2dp(new_pos),
         }
         row_bases.append(new_base)
-
-    return result
