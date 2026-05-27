@@ -1026,6 +1026,9 @@ def _compute_diagonals_via_rails(
     # Dedupe so a 2-base rail whose two ends are both at their Y-edge emits a
     # single brace, not A→B and B→A. Keyed by (rail, unordered base pair).
     emitted: set[tuple[str, int, int]] = set()
+    # (railId, baseIdx) junctions already carrying a diagonal endpoint — Step 2
+    # skips any pair touching one (cumulative across Step 1 + Step 2).
+    junctions: set[tuple[str, int]] = set()
 
     def emit_pair(rail: dict, outer: dict, inner: dict) -> None:
         oi = base_idx_by_id.get(outer.get('baseId'), -1)
@@ -1034,6 +1037,9 @@ def _compute_diagonals_via_rails(
         if key in emitted:
             return
         emitted.add(key)
+        rid = rail.get('railId', '')
+        junctions.add((rid, oi))
+        junctions.add((rid, ii))
         emit(rail, outer, inner)
 
     def sub_row_for(rail: dict) -> list[dict]:
@@ -1045,8 +1051,7 @@ def _compute_diagonals_via_rails(
     # Step 1 — for every rail, take its two extreme bases (first / last along
     # X). If an extreme base meets the rail at its OWN rear/front Y-edge,
     # brace it to its immediate inward neighbour at the rail's Y. A rail
-    # crossing a base's middle contributes nothing there. (Step 2 — interior
-    # spacing fill — to be reworked.)
+    # crossing a base's middle contributes nothing there.
     for rail in rails_sorted:
         sub_row = sub_row_for(rail)
         if len(sub_row) < 2:
@@ -1057,6 +1062,29 @@ def _compute_diagonals_via_rails(
         right = sub_row[-1]
         if at_y_edge(right, rail):
             emit_pair(rail, right, sub_row[-2])
+
+    # Step 2 — fill the rail ends Step 1 missed. Step 1 only braces a rail's
+    # EXTREME base; when that extreme base is a long bar passing through (not
+    # at its Y-edge here) Step 1 skips the end even though an inner base may
+    # terminate at this rail. Walk each rail's pairs L→R and add it1→it2 when
+    # (a) neither junction is already braced on this rail, AND (b) it1 or it2
+    # terminates at this rail (its own rear/front Y-edge). A rail that only
+    # crosses bases' middles (interior rail) terminates none → no diagonal.
+    for rail in rails_sorted:
+        rid = rail.get('railId', '')
+        sub_row = sub_row_for(rail)
+        n = len(sub_row)
+        if n < 2:
+            continue
+        for i in range(n - 1):
+            it1, it2 = sub_row[i], sub_row[i + 1]
+            i1 = base_idx_by_id.get(it1.get('baseId'), -1)
+            i2 = base_idx_by_id.get(it2.get('baseId'), -1)
+            if (rid, i1) in junctions or (rid, i2) in junctions:
+                continue
+            if not (at_y_edge(it1, rail) or at_y_edge(it2, rail)):
+                continue
+            emit_pair(rail, it1, it2)
 
     return diagonals
 
