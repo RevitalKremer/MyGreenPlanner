@@ -4,4 +4,4 @@ Bump this on every merge to dev or master (see CLAUDE.md §6 — Versioning).
 The /version endpoint and FastAPI app metadata both read from here.
 """
 
-__version__ = "1.9.3"
+__version__ = "1.11.0"

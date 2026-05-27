@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER, PRIMARY, ERROR, PANEL_FILL_HOVER_DELETE, CANVAS_DELETE_MARK } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -13,19 +13,25 @@ import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
-export default function DetailView({ rc, trapId = null, twinIds = [] as string[], panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null }) {
+export default function DetailView({ rc, trapId = null, twinIds = [] as string[], panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, customBlocks = null as Block[] | null, onCustomBlocksChange = null as null | ((blocks: Block[] | null) => void), onRequestExitEdit = null as null | (() => Promise<boolean>) }) {
   const { t } = useLang()
   const [showDimensions,  setShowDimensions]  = useState(true)
   const [showPunches,     setShowPunches]      = useState(true)
-  const [showDiagHandles, setShowDiagHandles]  = useState(false)
+  // Unified edit mode for the trap detail view. When on, diagonal handles are
+  // draggable / clickable, the empty beam zones accept new-block clicks, and
+  // block rects become movable / deletable. Mirrors the BasesPlanTab pattern.
+  const [editMode, setEditMode] = useState(false)
   const [showGhost,       setShowGhost]        = useState(true)
   const [showRoofLine,    setShowRoofLine]     = useState(true)
   const [rulerActive,      setRulerActive]      = useState(false)
   const [barHover,         setBarHover]         = useState(null) // { which: 'top'|'bot', svgX } | null
   const [hoverHandle,      setHoverHandle]      = useState(null) // { which, spanIndex } | null
+  const [blockHoverIdx,    setBlockHoverIdx]    = useState<number | null>(null)
+  const [blockGhostCm,     setBlockGhostCm]     = useState<number | null>(null) // hover position for add ghost
 
   const svgRef      = useRef(null)
   const diagDragRef = useRef(null) // { which, spanIndex, xA, spanW, startClientX, didDrag }
+  const blockDragRef = useRef<null | { idx: number; startClientX: number; initialPosCm: number; didDrag: boolean }>(null)
 
   const {
     zoom, setZoom, panOffset, panActive,
@@ -126,6 +132,11 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   const CROSS_RAIL_GAP_PX = crossRailEdgeDistCm * SC  // cross rail profile height in px
   const PANEL_OFFSET_PX = BEAM_THICK_PX / 2 + CROSS_RAIL_GAP_PX + PANEL_THICK_PX / 2
 
+
+  // ── Live blocks: prefer the user's customBlocks override when set so
+  //    drag/add/delete gestures render optimistically before the next BE
+  //    round-trip. Falls back to the BE-computed blocks otherwise.
+  const liveBlocks: Block[] = customBlocks ?? beDetailData?.blocks ?? []
 
   // ── Structural geometry — single source of truth (shared with DetailGhostLayer) ──
   const beLegs = beDetailData?.legs ?? []
@@ -266,6 +277,112 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
     onUpdateSetting?.('diagOverrides', { ...diagOverrides, [span.spanIndex]: entry })
   }
 
+  // ── Block edit handlers (edit-mode only) ─────────────────────────────────
+  // Live blocks are kept sorted by positionCm. The min-gap clamp is order-
+  // preserving so structural (isEnd) blocks remain outermost automatically.
+  //
+  // Structural-block overhang: a leg footprint occupies 2 × beamThickCm + the
+  // block punch offset on top of the block; the remainder is the maximum
+  // amount the block can hang OUTSIDE its outer leg without leaving the
+  // leg/punch unsupported. With defaults this is 50 − (2×4 + 9) = 33 cm.
+  const baseBeamLengthCm = geom.baseBeamLength ?? 0
+  const blockPunchCm = geom.blockPunchCm ?? 0
+  const maxStructuralOverhangCm = Math.max(0, blockLengthCm - (2 * beamThickCm + blockPunchCm))
+
+  const commitBlocks = (next: Block[] | null) => {
+    if (!onCustomBlocksChange) return
+    if (next && next.length === 0) onCustomBlocksChange(null)
+    else onCustomBlocksChange(next)
+  }
+
+  const clampedBlockPos = (sorted: Block[], idx: number, candidateCm: number): number => {
+    const target = sorted[idx]
+    const isStructural = !!target?.isEnd
+    // Left bound: respect previous-neighbour min-gap, otherwise the beam start
+    // (or, for the outermost structural block, allow the legal overhang past it).
+    const minNeighbor = idx > 0
+      ? sorted[idx - 1].positionCm + blockLengthCm
+      : (isStructural ? -maxStructuralOverhangCm : 0)
+    // Right bound: respect next-neighbour min-gap, otherwise the beam end
+    // (or, for the outermost structural block, allow the legal overhang past it).
+    const maxNeighbor = idx < sorted.length - 1
+      ? sorted[idx + 1].positionCm - blockLengthCm
+      : (isStructural
+          ? baseBeamLengthCm - blockLengthCm + maxStructuralOverhangCm
+          : baseBeamLengthCm - blockLengthCm)
+    return Math.max(minNeighbor, Math.min(maxNeighbor, candidateCm))
+  }
+
+  const deleteBlockAt = (idx: number) => {
+    const sorted = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+    if (sorted[idx]?.isEnd) return  // structural: locked
+    sorted.splice(idx, 1)
+    commitBlocks(sorted)
+  }
+
+  const startBlockDrag = (e: React.MouseEvent, idx: number) => {
+    if (!editMode) return
+    e.preventDefault()
+    e.stopPropagation()
+    const sorted = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+    blockDragRef.current = {
+      idx,
+      startClientX: e.clientX,
+      initialPosCm: sorted[idx].positionCm,
+      didDrag: false,
+    }
+    const onMove = (me: MouseEvent) => {
+      const drag = blockDragRef.current
+      if (!drag) return
+      if (Math.abs(me.clientX - drag.startClientX) > 3) drag.didDrag = true
+      if (!drag.didDrag) return
+      const deltaCm = (me.clientX - drag.startClientX) / zoom / SC
+      const next = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+      const newPos = Math.round(clampedBlockPos(next, drag.idx, drag.initialPosCm + deltaCm))
+      if (next[drag.idx].positionCm !== newPos) {
+        next[drag.idx] = { ...next[drag.idx], positionCm: newPos }
+        commitBlocks(next)
+      }
+    }
+    const onUp = () => {
+      const drag = blockDragRef.current
+      blockDragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      // Pure click on a non-structural block → delete (no drag detected).
+      if (drag && !drag.didDrag) {
+        const sorted2 = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+        if (!sorted2[drag.idx]?.isEnd) deleteBlockAt(drag.idx)
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // Convert an SVG x-coordinate on the base beam into a positionCm value.
+  const beamSvgXToPosCm = (svgX: number): number => {
+    const bbX0 = structGeo.baseBeamX0 ?? 0
+    return (svgX - bbX0) / SC
+  }
+
+  // True when a new block would fit at posCm: in-bounds and respects 50cm
+  // min-gap to existing blocks (existing structural ones remain outermost).
+  const canAddBlockAt = (posCm: number): boolean => {
+    if (posCm < 0 || posCm > baseBeamLengthCm - blockLengthCm) return false
+    for (const b of liveBlocks) {
+      if (posCm < b.positionCm + blockLengthCm && b.positionCm < posCm + blockLengthCm) return false
+    }
+    return true
+  }
+
+  const addBlockAt = (posCm: number) => {
+    if (!canAddBlockAt(posCm)) return
+    const sorted = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+    sorted.push({ positionCm: Math.round(posCm), isEnd: false })
+    sorted.sort((a, b) => a.positionCm - b.positionCm)
+    commitBlocks(sorted)
+  }
+
   const handleContainerMouseMove = (e) => handleMouseMove(e)
   const handleContainerMouseUp   = () => { stopPan() }
   const handleContainerMouseLeave = () => { stopPan() }
@@ -389,7 +506,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 variant="main"
                 geometry={structGeo}
                 beLegs={beLegs}
-                blocks={beDetailData?.blocks ?? []}
+                blocks={liveBlocks}
                 diagonals={diagonals.map((d): PositionedDiagonal => ({
                   topX: d.topX, topY: d.topY, botX: d.botX, botY: d.botY, halfCap: d.halfCap,
                 }))}
@@ -405,7 +522,9 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
               />
 
               {/* ── Block punch labels (decoration on top of block rects) ── */}
-              {showPunches && (() => {
+              {/* Hidden while in edit mode — punch labels are tied to the BE-
+                  computed block list and would drift as the user drags. */}
+              {showPunches && !editMode && (() => {
                 const blockPunches = (beDetailData?.punches ?? []).filter(p => p.origin === 'block')
                 const bw = blockLengthCm * SC
                 return (beDetailData?.blocks ?? []).map((blk, bi) => {
@@ -419,6 +538,105 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                       fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
                   )
                 })
+              })()}
+
+              {/* ── Block edit overlay (edit mode only) ───────────────────────
+                  Renders ON TOP of the block rects drawn by TrapStructure:
+                    - per-block drag handle (click = delete for non-structural)
+                    - structural-block marker (amber outline, locked from delete)
+                    - empty-beam click target + ghost-preview rect for adding
+              */}
+              {editMode && (() => {
+                const bw = blockLengthCm * SC
+                const bbX0 = structGeo.baseBeamX0
+                const bbW = baseBeamLengthCm * SC
+                const sorted = liveBlocks.slice().sort((a, b) => a.positionCm - b.positionCm)
+                const handleBeamMove = (e: React.MouseEvent) => {
+                  if (blockDragRef.current) return
+                  const rect = svgRef.current?.getBoundingClientRect()
+                  if (!rect) return
+                  const svgX = (e.clientX - rect.left) / zoom
+                  const beamCm = beamSvgXToPosCm(svgX) - blockLengthCm / 2  // centre the ghost on the cursor
+                  const snapped = Math.round(beamCm)
+                  setBlockGhostCm(canAddBlockAt(snapped) ? snapped : null)
+                }
+                const handleBeamLeave = () => setBlockGhostCm(null)
+                const handleBeamClick = (e: React.MouseEvent) => {
+                  const rect = svgRef.current?.getBoundingClientRect()
+                  if (!rect) return
+                  const svgX = (e.clientX - rect.left) / zoom
+                  const beamCm = beamSvgXToPosCm(svgX) - blockLengthCm / 2
+                  addBlockAt(Math.round(beamCm))
+                  setBlockGhostCm(null)
+                }
+                return (
+                  <g>
+                    {/* Beam click target — sits BENEATH the block rects so a click
+                        ON a block goes to the drag/delete handler, not to add. */}
+                    <rect x={bbX0} y={blockTopY} width={bbW} height={blockH}
+                      fill="transparent" style={{ cursor: blockGhostCm != null ? 'copy' : 'default' }}
+                      onMouseMove={handleBeamMove}
+                      onMouseLeave={handleBeamLeave}
+                      onClick={handleBeamClick} />
+                    {/* Ghost preview at hover position */}
+                    {blockGhostCm != null && (
+                      <rect x={bbX0 + blockGhostCm * SC} y={blockTopY}
+                        width={bw} height={blockH}
+                        fill={PRIMARY} fillOpacity={0.18}
+                        stroke={PRIMARY} strokeDasharray="4 3" strokeWidth="1.5"
+                        pointerEvents="none" />
+                    )}
+                    {/* Per-block interaction handles */}
+                    {sorted.map((blk, idx) => {
+                      const bx = bbX0 + blk.positionCm * SC
+                      const isHovered = blockHoverIdx === idx
+                      const isStructural = !!blk.isEnd
+                      return (
+                        <g key={`blk-edit-${idx}`}
+                          onMouseEnter={() => setBlockHoverIdx(idx)}
+                          onMouseLeave={() => setBlockHoverIdx(prev => prev === idx ? null : prev)}>
+                          {/* Drag-grip rect on top of the block — handles drag-to-move
+                              and pure-click-to-delete (non-structural only). */}
+                          <rect x={bx} y={blockTopY} width={bw} height={blockH}
+                            fill="transparent"
+                            style={{ cursor: isStructural ? 'grab' : (isHovered ? 'grab' : 'grab') }}
+                            onMouseDown={(e) => startBlockDrag(e, idx)}>
+                            <title>
+                              {isStructural
+                                ? (t('step3.editMode.blockStructural') || 'Structural block — cannot delete (drag to move)')
+                                : (t('step3.editMode.blockHint') || 'Drag to move, click to delete')}
+                            </title>
+                          </rect>
+                          {/* Structural marker — amber outline */}
+                          {isStructural && (
+                            <rect x={bx + 1} y={blockTopY + 1} width={bw - 2} height={blockH - 2}
+                              fill="none" stroke={AMBER_DARK} strokeWidth="2.5"
+                              pointerEvents="none" />
+                          )}
+                          {/* Delete affordance on hover (non-structural only).
+                              Matches the step 2 panel-delete L&D: red translucent
+                              overlay + ERROR border + central ✕ in a red disc. */}
+                          {!isStructural && isHovered && (() => {
+                            const cxCenter = bx + bw / 2
+                            const cyCenter = blockTopY + blockH / 2
+                            const markR = Math.min(bw, blockH) * 0.3
+                            return (
+                              <g pointerEvents="none">
+                                <rect x={bx} y={blockTopY} width={bw} height={blockH}
+                                  fill={PANEL_FILL_HOVER_DELETE} stroke={ERROR} strokeWidth="2" />
+                                <circle cx={cxCenter} cy={cyCenter} r={markR}
+                                  fill={CANVAS_DELETE_MARK} />
+                                <text x={cxCenter} y={cyCenter}
+                                  textAnchor="middle" dominantBaseline="central"
+                                  fontSize={markR * 1.3} fontWeight="700" fill="white">×</text>
+                              </g>
+                            )
+                          })()}
+                        </g>
+                      )
+                    })}
+                  </g>
+                )
               })()}
 
               {/* ── Double-leg ×2 markers (decoration on top of leg rects) ── */}
@@ -677,7 +895,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 return <DetailPunchSketch which="bot" ry={blockBotY + 150}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={points} activeDiags={activeDiags}
-                  showDiagHandles={showDiagHandles} printMode={printMode}
+                  showDiagHandles={editMode} printMode={printMode}
                   barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
@@ -695,7 +913,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={points} activeDiags={activeDiags}
-                  showDiagHandles={showDiagHandles} printMode={printMode}
+                  showDiagHandles={editMode} printMode={printMode}
                   barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
@@ -744,18 +962,60 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
 
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
-        layers={[
+        layers={editMode ? [] : [
           { label: t('step3.layer.punches'),       checked: showPunches,      setter: setShowPunches      },
           { label: t('step3.layer.dimensions'),   checked: showDimensions,  setter: setShowDimensions  },
-          { label: t('step3.layer.editBar'),      checked: showDiagHandles, setter: setShowDiagHandles  },
           { label: t('step3.layer.roofLine'),   checked: showRoofLine,    setter: setShowRoofLine     },
           ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),
         ]}
-        actions={[
+        summary={editMode ? (
+          <span>{t('step3.editMode.detailHint') || 'Drag handles to move; click empty beam to add a block, ✕ to remove. Drag diagonal endpoints to reposition.'}</span>
+        ) : null}
+        actions={editMode ? [
+          { label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 8.5l3 3 7-7" />
+                </svg>
+                {t('step3.editMode.exit')}
+              </span>
+            ),
+            onClick: async () => {
+              // Host (Step3) gates the exit on unsaved edits: prompts user
+              // to apply / discard / cancel. Returns false to keep edit mode
+              // open. Matches the BasesPlanTab exit-confirm flow.
+              if (onRequestExitEdit) {
+                const ok = await onRequestExitEdit()
+                if (!ok) return
+              }
+              setEditMode(false)
+            },
+            style: {
+              color: 'white', background: PRIMARY, border: `1px solid ${PRIMARY}`,
+              padding: '0.45rem 0.6rem', fontSize: '0.78rem', fontWeight: 700,
+            } },
+          { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'),
+            onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) },
+            style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
+        ] : [
+          { label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M11.5 1.5l3 3-9 9H2.5v-3z" />
+                  <path d="M10 3l3 3" />
+                </svg>
+                {t('step3.editMode.detailEnter') || 'Edit trap'}
+              </span>
+            ),
+            onClick: () => setEditMode(true),
+            style: {
+              color: 'white', background: PRIMARY, border: `1px solid ${PRIMARY}`,
+              padding: '0.45rem 0.6rem', fontSize: '0.78rem', fontWeight: 700,
+            } },
+          // Unified "Reset to defaults" wipes settings + diagOverrides +
+          // customBlocks for the selected trap. The former "Reset handles"
+          // action was redundant once the unified reset clears diagOverrides.
           ...(onReset ? [{ label: t('step3.layer.resetDefaults'), onClick: onReset, style: { color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` } }] : []),
-          ...(Object.keys(diagOverrides).length > 0
-            ? [{ label: t('step3.layer.resetHandles'), onClick: () => onUpdateSetting?.('diagOverrides', {}), style: { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } }]
-            : []),
           { label: rulerActive ? t('step3.layer.rulerOn') : t('step3.layer.ruler'), onClick: () => { if (rulerActive) RulerTool._clear?.(); setRulerActive(v => !v) }, style: rulerActive ? { color: BLUE, background: BLUE_BG, border: `1px solid ${BLUE_BORDER}` } : {} },
         ]}
       />}

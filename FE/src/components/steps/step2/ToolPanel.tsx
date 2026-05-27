@@ -25,9 +25,28 @@ export default function ToolPanel({
   addRowToGroup,
   onAddRowToArea,
   onCancelAddRow,
+  roofAxisEnabled = false,
+  setRoofAxisEnabled,
+  roofAxis,
+  setRoofAxis,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Roof-axis angle (screen deg, normalised to ±90). Used to decide whether
+  // the line has been tilted away from the default 0° — the reset button
+  // only matters then.
+  const roofAxisAngleDeg = (() => {
+    if (!roofAxis?.start || !roofAxis?.end) return 0
+    const dx = roofAxis.end.x - roofAxis.start.x
+    const dy = roofAxis.end.y - roofAxis.start.y
+    if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return 0
+    let deg = Math.atan2(dy, dx) * 180 / Math.PI
+    while (deg > 90) deg -= 180
+    while (deg <= -90) deg += 180
+    return deg
+  })()
+  const roofAxisTilted = Math.abs(roofAxisAngleDeg) > 0.05
 
   const toolBtnStyle = (tool): React.CSSProperties => ({
     flex: 1,
@@ -58,7 +77,7 @@ export default function ToolPanel({
   }
 
   return (
-    <div style={{
+    <div data-step2-toolpanel style={{
       position: 'absolute', top: '20px', left: '20px',
       width: collapsed ? '32px' : '225px', minHeight: '36px', overflow: 'hidden',
       maxHeight: collapsed ? 'none' : 'calc(100vh - 120px)', overflowY: collapsed ? 'hidden' : 'auto',
@@ -294,14 +313,27 @@ export default function ToolPanel({
           >📏</button>
           <button
             onClick={() => {
-              if (activeTool === 'roofAxis') {
-                handleToolChange((editModeProp ?? 'area') === 'area' ? 'area' : 'move')
-              } else {
+              if (!roofAxisEnabled) {
+                // OFF → ON: enable mode and switch to the roofAxis tool so
+                // the user can drag to adjust. PanelCanvas seeds a default
+                // centred horizontal line if none exists.
+                setRoofAxisEnabled?.(true)
                 handleToolChange('roofAxis')
+              } else if (activeTool !== 'roofAxis') {
+                // Mode on but the user is on another tool (e.g. drawing
+                // rows) — bring the roofAxis tool back to allow editing
+                // without disabling mode.
+                handleToolChange('roofAxis')
+              } else {
+                // ON + tool active → OFF: hide the line and drop back to
+                // the previous tool. The stored axis stays in state so the
+                // rotation snap keeps targeting it.
+                setRoofAxisEnabled?.(false)
+                handleToolChange((editModeProp ?? 'area') === 'area' ? 'area' : 'move')
               }
             }}
             title={t('step2.tool.roofAxisTitle')}
-            style={{ flex: 1, padding: '0.4rem 0.2rem', background: activeTool === 'roofAxis' ? BLUE_BG : WHITE, color: activeTool === 'roofAxis' ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${activeTool === 'roofAxis' ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
+            style={{ flex: 1, padding: '0.4rem 0.2rem', background: roofAxisEnabled ? BLUE_BG : WHITE, color: roofAxisEnabled ? BLUE : TEXT_VERY_LIGHT, border: `1px solid ${roofAxisEnabled ? BLUE_BORDER : BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem' }}
           >🧭</button>
         </div>
         {activeTool === 'measure' && (
@@ -309,7 +341,7 @@ export default function ToolPanel({
             {t('step2.tool.measureHint')}
           </div>
         )}
-        {activeTool === 'roofAxis' && (
+        {roofAxisEnabled && (
           <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center' }}>
             {t('step2.tool.roofAxisHint')}
           </div>
@@ -317,6 +349,14 @@ export default function ToolPanel({
         {distanceMeasurement?.p2 && (
           <button onClick={() => setDistanceMeasurement(null)} style={{ width: '100%', padding: '0.4rem', background: BLUE_BG, color: BLUE, border: `1px solid ${BLUE_BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem' }}>
             {t('step2.tool.clearRuler')}
+          </button>
+        )}
+        {roofAxisEnabled && roofAxisTilted && (
+          // Only offered once the line is tilted off 0°. Reset clears the
+          // stored axis; PanelCanvas re-seeds the default centred-bottom
+          // (0°) line on the next render.
+          <button onClick={() => setRoofAxis?.(null)} style={{ width: '100%', padding: '0.4rem', background: BLUE_BG, color: BLUE, border: `1px solid ${BLUE_BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem' }}>
+            {t('step2.tool.resetRoofAxis')}
           </button>
         )}
       </div>

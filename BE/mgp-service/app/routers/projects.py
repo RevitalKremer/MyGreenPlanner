@@ -129,6 +129,43 @@ BaseOp = Annotated[
 ]
 
 
+# ── Per-block ops ──────────────────────────────────────────────────────────
+#
+# Blocks are trap-scoped (one block list per trapezoid), so each op carries a
+# single trapezoidId — no targets-list aggregation needed. Blocks have no
+# stable id (the BE re-emits them each compute), so move/delete identify the
+# affected block by its current positionMm. mm-precision rounding plus the
+# 50cm minimum gap make position-based addressing unambiguous.
+#
+# Per-trap reset uses the legacy snapshot dict shape `{ [trapId]: [] }`
+# (mirrors bases). The unified "Reset trap" button in the FE clears
+# customBlocks, customDiagonals, and trap settings in one save.
+
+class BlockMoveOp(BaseModel):
+    op: Literal['move'] = 'move'
+    trapezoidId: str
+    fromPositionMm: int
+    toPositionMm: int
+
+
+class BlockAddOp(BaseModel):
+    op: Literal['add'] = 'add'
+    trapezoidId: str
+    positionMm: int
+
+
+class BlockDeleteOp(BaseModel):
+    op: Literal['delete'] = 'delete'
+    trapezoidId: str
+    positionMm: int
+
+
+BlockOp = Annotated[
+    BlockMoveOp | BlockAddOp | BlockDeleteOp,
+    Field(discriminator='op'),
+]
+
+
 class TabOverrides(BaseModel):
     """User edit-mode overrides for a tab."""
     rails: Optional[dict] = None       # { areaLabel: { lineIdx: [positions] } }
@@ -140,6 +177,11 @@ class TabOverrides(BaseModel):
     traps: Optional[list[TrapExtendOp]] = None
     # New op-based wire format for trap base-beam extensions. See TrapExtendOp.
     diagonals: Optional[dict] = None   # { trapId: { spanId: {topDistFromLegCm, botDistFromLegCm} | {disabled: true} } }
+    blocks: Optional[list[BlockOp] | dict] = None
+    # Either a list of BlockOp (op-based wire format for user block edits in
+    # the trap-detail view) OR the snapshot dict `{ trapId: [{positionCm, isEnd}, ...] }`.
+    # Empty list under a trapId in the snapshot dict clears that trap's
+    # override (per-trap reset).
 
 class SaveTabRequest(BaseModel):
     """Unified save request for all tabs."""
@@ -381,6 +423,13 @@ def _extract_payload_data(payload: Optional[SaveTabRequest]) -> tuple[dict | Non
                 overrides['traps'] = [op.model_dump() for op in payload.overrides.traps]
             if payload.overrides.diagonals:
                 overrides['diagonals'] = payload.overrides.diagonals
+            if payload.overrides.blocks:
+                # blocks may be a snapshot dict OR a list of BlockOp; pass through
+                # the raw shape and let the service layer dispatch on type.
+                b = payload.overrides.blocks
+                overrides['blocks'] = (
+                    [op.model_dump() for op in b] if isinstance(b, list) else b
+                )
 
         # Legacy trapezoidConfigs (only for backward compatibility)
         if payload.trapezoidConfigs:

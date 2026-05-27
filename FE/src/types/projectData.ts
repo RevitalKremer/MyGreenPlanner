@@ -150,7 +150,9 @@ export interface Leg {
 export interface Block {
   positionCm: number
   isEnd: boolean
-  slopePositionCm: number
+  // Re-derived by the BE from positionCm + slope angle; absent on user-added
+  // blocks until the next save round-trip.
+  slopePositionCm?: number
 }
 
 export interface Punch {
