@@ -297,6 +297,17 @@ function App() {
       }
       return next
     })
+
+    // Re-sync the BE-normalized drag-edit override snapshots into the reducer.
+    // These (customBasesOffsets / customDiagonals) aren't read for rendering,
+    // but they ride the full-project save payload (getProjectData spreads all
+    // of data.step3). The BE renumbers/normalizes them on each recompute, so
+    // without this a later full save would write a STALE copy back over the
+    // server's truth. Mirror exactly what the server holds (absent → {}).
+    s.patchStep3({
+      customBasesOffsets: step3.customBasesOffsets ?? {},
+      customDiagonals: step3.customDiagonals ?? {},
+    })
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
