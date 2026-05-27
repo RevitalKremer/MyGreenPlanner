@@ -53,6 +53,11 @@ export const initialProjectState = {
     // define the roof's "horizontal" reference. Y-lock 0° snap rotates to
     // align with this. Null = use screen-horizontal as 0°.
     roofAxis: null,
+    // Roof-axis mode toggle (compass icon). When true: axis line is rendered
+    // and newly drawn rows align to it. When false: line is hidden and
+    // draws fall back to screen 0°. Rotation snap still uses the stored
+    // axis regardless of this flag.
+    roofAxisEnabled: false,
   },
 
   // ── Mirrors DB `data` JSONB column ──

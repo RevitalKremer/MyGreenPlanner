@@ -63,6 +63,8 @@ export default function Step2PanelPlacement({
   setRowMounting,
   roofAxis = null,
   setRoofAxis,
+  roofAxisEnabled = false,
+  setRoofAxisEnabled,
   areas = null,
   setAreas = null,
 }) {
@@ -101,7 +103,7 @@ export default function Step2PanelPlacement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPanels])
 
-  // ── Auto-recalc trapezoids with 1s debounce ──
+  // ── Auto-recalc trapezoids with 600ms debounce ──
   // Build a fingerprint per area from panel positions/orientations + area vertices.
   // When it changes for a specific area, debounce and recalc that area's trapezoids.
   // Uses a ref-based timer so that unrelated re-renders don't cancel pending recalcs.
@@ -125,7 +127,7 @@ export default function Step2PanelPlacement({
         pendingRecalcRef.current[areaIdx] = setTimeout(() => {
           delete pendingRecalcRef.current[areaIdx]
           refreshAreaTrapezoids(areaIdx)
-        }, 1000)
+        }, 600)
       }
     }
     prevFingerprintRef.current = fp
@@ -695,6 +697,7 @@ export default function Step2PanelPlacement({
             drawVertical={drawVertical}
             roofAxis={roofAxis}
             setRoofAxis={setRoofAxis}
+            roofAxisEnabled={roofAxisEnabled}
             togglePanelOrientation={togglePanelOrientation}
           />
         ) : (
@@ -875,6 +878,10 @@ export default function Step2PanelPlacement({
               }
             }}
             onCancelAddRow={() => setAddRowToGroup(null)}
+            roofAxisEnabled={roofAxisEnabled}
+            setRoofAxisEnabled={setRoofAxisEnabled}
+            roofAxis={roofAxis}
+            setRoofAxis={setRoofAxis}
           />
         )}
       </div>
