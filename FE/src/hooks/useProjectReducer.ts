@@ -21,6 +21,7 @@ export const A = Object.freeze({
   // Step 3
   SET_STEP3_GLOBAL:       'SET_STEP3_GLOBAL',
   SET_STEP3_AREA:         'SET_STEP3_AREA',
+  PATCH_STEP3:            'PATCH_STEP3',
   // Step 4
   SET_PLAN_APPROVAL:      'SET_PLAN_APPROVAL',
   // Step 5
@@ -192,6 +193,14 @@ export function projectReducer(state, action) {
       return {
         ...state,
         data: { ...state.data, step3: { ...state.data.step3, areaSettings: action.value } },
+      }
+
+    // Shallow-merge a partial patch into step3 (e.g. re-syncing the BE's
+    // normalized drag-edit override stores after a recompute).
+    case A.PATCH_STEP3:
+      return {
+        ...state,
+        data: { ...state.data, step3: { ...state.data.step3, ...action.value } },
       }
 
     // ── Step 4 ──

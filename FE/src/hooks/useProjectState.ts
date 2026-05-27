@@ -122,6 +122,10 @@ export function useProjectState() {
   const setStep3GlobalSettings = (v) => pDispatch({ type: A.SET_STEP3_GLOBAL, value: v })
   const step3AreaSettings = pState.data.step3.areaSettings
   const setStep3AreaSettings = (v) => pDispatch({ type: A.SET_STEP3_AREA, value: v })
+  // Shallow-merge a partial patch into step3 (used to re-sync the BE's
+  // normalized drag-edit override stores — customBasesOffsets / customDiagonals
+  // — so a later full-project save doesn't write a stale copy back).
+  const patchStep3 = (patch) => pDispatch({ type: A.PATCH_STEP3, value: patch })
   const step4PlanApproval = pState.data.step4.planApproval
   const setStep4PlanApproval = (v) => pDispatch({ type: A.SET_PLAN_APPROVAL, value: v })
   const step5BomDeltas = pState.data.step5.bomDeltas
@@ -1023,6 +1027,7 @@ export function useProjectState() {
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,
+    patchStep3,
     // Step 5 (plan approval)
     step4PlanApproval, setStep4PlanApproval,
     // Step 6 (BOM / PDF)
