@@ -951,15 +951,20 @@ def _compute_diagonals_via_rails(
     tol = 0.5  # cm — tolerance for the strict-inequality intersection check
 
     def intersects(base: dict, rail: dict) -> bool:
-        # Y-only intersection: a rail's Y defines the diagonal's Y level. A
-        # base participates in this rail's sub-row when its Y-span covers
-        # that Y. Rail X-span isn't relevant here — irregular shapes (stair-
-        # step, L) have short rails that don't reach every base on their
-        # line, but those bases still have a leg at the rail's Y level via
-        # the area's structural frame.
+        # A base belongs to a rail's sub-row only when the rail physically
+        # crosses it: the rail's Y lies in the base's Y-span AND the base's X
+        # lies within the rail's X-span. The X check matters for shapes with
+        # separate columns at the same depth (e.g. the two towers of a U/M
+        # shape) — without it a rail in one tower would wrongly pair with the
+        # other tower's bases at the same Y, producing gap-spanning diagonals.
         ry = rail_y(rail)
         by_rear, by_front = base_y_range(base)
-        return by_rear - tol <= ry <= by_front + tol
+        if not (by_rear - tol <= ry <= by_front + tol):
+            return False
+        bx = base.get('offsetFromStartCm', 0)
+        rx0 = rail.get('startCm', 0)
+        rx1 = rx0 + rail.get('lengthCm', 0)
+        return rx0 - tol <= bx <= rx1 + tol
 
     # Map each base in row_bases to its index so emitted indices align with
     # the stored array regardless of sort order.
@@ -970,15 +975,7 @@ def _compute_diagonals_via_rails(
             base_idx_by_id[bid] = i
 
     bases_sorted = sorted(row_bases, key=lambda b: b.get('offsetFromStartCm', 0))
-    overall_n = len(bases_sorted)
-
     rails_sorted = sorted(rails, key=rail_y)
-    if len(rails_sorted) < 2:
-        external_rails = rails_sorted
-        internal_rails: list[dict] = []
-    else:
-        external_rails = [rails_sorted[0], rails_sorted[-1]]
-        internal_rails = rails_sorted[1:-1]
 
     diagonals: list[dict] = []
 
@@ -1012,29 +1009,9 @@ def _compute_diagonals_via_rails(
             'diagLengthMm': round(math.sqrt(horiz_mm ** 2 + vert_mm ** 2)),
         })
 
-    # Pass 1 — external rails: full outer+alternating pair selection
-    for rail in external_rails:
-        sub_row = [b for b in bases_sorted if intersects(b, rail)]
-        n = len(sub_row)
-        for lo, hi in _rail_select_subrow_pairs(n):
-            # Orient outer→inner: row-end pairs put the row-edge index first.
-            if lo == 0 and hi == 1:
-                outer_idx, inner_idx = 0, 1
-            elif lo == n - 2 and hi == n - 1:
-                outer_idx, inner_idx = n - 1, n - 2
-            else:
-                outer_idx, inner_idx = lo, hi
-            emit(rail, sub_row[outer_idx], sub_row[inner_idx])
-
-    # Pass 2 — internal rails: brace only at rail-base intersections that
-    # sit at the base's REAR or FRONT Y-edge (= this rail is the first or
-    # last intersecting rail for that base). For a "long" base spanning the
-    # full area depth, both Y-edges land on the external rails, so internal
-    # rails see only its middle and emit nothing. For a "short" partial
-    # base, an internal rail catches the Y-edge and pulls in a brace pair
-    # against the X-adjacent neighbour at the same Y level. Duplicate pairs
-    # (e.g. when both bases of an adjacent pair are at Y-edges here) are
-    # dropped so each rail-pair is emitted once.
+    # Per base, the rails it intersects (sorted by Y). The first/last entry
+    # is the base's rear/front Y-edge; any rail between them crosses the
+    # base's middle.
     rails_per_base: dict[str, list[dict]] = {}
     for b in bases_sorted:
         bid = b.get('baseId')
@@ -1042,38 +1019,72 @@ def _compute_diagonals_via_rails(
             continue
         rails_per_base[bid] = [r for r in rails_sorted if intersects(b, r)]
 
-    emitted_pair_keys: set[tuple[int, int, str]] = set()
-    for rail in internal_rails:
-        rail_id = rail.get('railId', '')
-        for i, base in enumerate(bases_sorted):
-            base_rails = rails_per_base.get(base.get('baseId'), [])
-            if not base_rails or rail not in base_rails:
+    def at_y_edge(base: dict, rail: dict) -> bool:
+        br = rails_per_base.get(base.get('baseId'), [])
+        return bool(br) and (rail is br[0] or rail is br[-1])
+
+    # Dedupe so a 2-base rail whose two ends are both at their Y-edge emits a
+    # single brace, not A→B and B→A. Keyed by (rail, unordered base pair).
+    emitted: set[tuple[str, int, int]] = set()
+    # (railId, baseIdx) junctions already carrying a diagonal endpoint — Step 2
+    # skips any pair touching one (cumulative across Step 1 + Step 2).
+    junctions: set[tuple[str, int]] = set()
+
+    def emit_pair(rail: dict, outer: dict, inner: dict) -> None:
+        oi = base_idx_by_id.get(outer.get('baseId'), -1)
+        ii = base_idx_by_id.get(inner.get('baseId'), -1)
+        key = (rail.get('railId', ''), min(oi, ii), max(oi, ii))
+        if key in emitted:
+            return
+        emitted.add(key)
+        rid = rail.get('railId', '')
+        junctions.add((rid, oi))
+        junctions.add((rid, ii))
+        emit(rail, outer, inner)
+
+    def sub_row_for(rail: dict) -> list[dict]:
+        return sorted(
+            (b for b in bases_sorted if intersects(b, rail)),
+            key=lambda b: b.get('offsetFromStartCm', 0),
+        )
+
+    # Step 1 — for every rail, take its two extreme bases (first / last along
+    # X). If an extreme base meets the rail at its OWN rear/front Y-edge,
+    # brace it to its immediate inward neighbour at the rail's Y. A rail
+    # crossing a base's middle contributes nothing there.
+    for rail in rails_sorted:
+        sub_row = sub_row_for(rail)
+        if len(sub_row) < 2:
+            continue
+        left = sub_row[0]
+        if at_y_edge(left, rail):
+            emit_pair(rail, left, sub_row[1])
+        right = sub_row[-1]
+        if at_y_edge(right, rail):
+            emit_pair(rail, right, sub_row[-2])
+
+    # Step 2 — fill the rail ends Step 1 missed. Step 1 only braces a rail's
+    # EXTREME base; when that extreme base is a long bar passing through (not
+    # at its Y-edge here) Step 1 skips the end even though an inner base may
+    # terminate at this rail. Walk each rail's pairs L→R and add it1→it2 when
+    # (a) neither junction is already braced on this rail, AND (b) it1 or it2
+    # terminates at this rail (its own rear/front Y-edge). A rail that only
+    # crosses bases' middles (interior rail) terminates none → no diagonal.
+    for rail in rails_sorted:
+        rid = rail.get('railId', '')
+        sub_row = sub_row_for(rail)
+        n = len(sub_row)
+        if n < 2:
+            continue
+        for i in range(n - 1):
+            it1, it2 = sub_row[i], sub_row[i + 1]
+            i1 = base_idx_by_id.get(it1.get('baseId'), -1)
+            i2 = base_idx_by_id.get(it2.get('baseId'), -1)
+            if (rid, i1) in junctions or (rid, i2) in junctions:
                 continue
-            at_rear_edge = rail is base_rails[0]
-            at_front_edge = rail is base_rails[-1]
-            if not (at_rear_edge or at_front_edge):
+            if not (at_y_edge(it1, rail) or at_y_edge(it2, rail)):
                 continue
-            for j in (i - 1, i + 1):
-                if not (0 <= j < overall_n):
-                    continue
-                neighbor = bases_sorted[j]
-                if rail not in rails_per_base.get(neighbor.get('baseId'), []):
-                    # Neighbor doesn't reach this rail's Y — can't form a
-                    # rail-parallel diagonal between them.
-                    continue
-                lo, hi = (i, j) if i < j else (j, i)
-                key = (lo, hi, rail_id)
-                if key in emitted_pair_keys:
-                    continue
-                emitted_pair_keys.add(key)
-                # Outer (start, cyan anchor) is the in-row NEIGHBOUR — the
-                # base whose shape continues at this rail's Y. Inner (end,
-                # shifted in the FE) is the Y-edge base, where the brace
-                # tilts toward the corner being anchored. Putting the cyan
-                # endpoint on the continuous side and the tilt on the
-                # shape-edge corner matches the "opposite direction" the
-                # user flagged on the previous orientation.
-                emit(rail, neighbor, base)
+            emit_pair(rail, it1, it2)
 
     return diagonals
 
