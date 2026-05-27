@@ -751,98 +751,6 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
     return result
 
 
-def _compute_trap_x_range(
-    panel_grid: dict, trapezoid_id: str, trap_ids: list[str],
-    trapezoids: dict, panel_width_cm: float, panel_length_cm: float, panel_gap_cm: float,
-) -> tuple[float | None, float | None]:
-    """
-    Compute the X extent (start, end cm) for one trapezoid within an area.
-    For single-trap areas returns (None, None) — use full area frame.
-    For multi-trap areas, scans columns of the row's reference (first
-    non-empty) line and only counts columns where the per-line cell
-    pattern exactly matches the trap's lineOrientations. This is the
-    same signature rule used by `_match_trap_by_signature`, so the X
-    extent reported here lines up with the trap assignment that the
-    downstream `_reassign_row_base_traps_by_signature` pass applies.
-
-    Without this, a multi-sub-trap row where every line has REAL_PANELS
-    along its full width (e.g. line 0 = V V V V EV EV, line 1 = V V V V
-    V V) would report every trap as spanning the full row — and
-    `consolidate_area_bases` would then cull a sub-trap's user-placed
-    bases whenever the "primary" trap (first in trap_ids) reports an
-    overlapping range.
-    """
-    if len(trap_ids) <= 1:
-        return None, None
-
-    rows = panel_grid.get('rows', [])
-    if not rows:
-        return None, None
-
-    row_positions = panel_grid.get('rowPositions') or {}
-    short_cm = panel_width_cm
-    long_cm = panel_length_cm
-
-    trap_cfg = trapezoids.get(trapezoid_id, {})
-    line_orients = trap_cfg.get('lineOrientations', [])
-    if not line_orients:
-        return None, None
-
-    # Reference line: the trap's first non-empty line. Its column pitch
-    # drives the X axis. We assume all non-empty lines of a row share a
-    # consistent column layout — true for the FE's current panelGrid
-    # generator.
-    ref_li = next(
-        (li for li, orient in enumerate(line_orients)
-         if not is_empty_orientation(orient) and li < len(rows)),
-        None,
-    )
-    if ref_li is None:
-        return None, None
-    ref_orient = line_orients[ref_li]
-    ref_is_h = ref_orient == PANEL_H
-    ref_along = long_cm if ref_is_h else short_cm
-    ref_pitch = ref_along + panel_gap_cm
-    if ref_pitch <= 0:
-        return None, None
-
-    ref_cells = rows[ref_li]
-    ref_positions = row_positions.get(str(ref_li))
-    n_cols = max(len(rows[li]) for li in range(len(rows))) if rows else 0
-
-    x_min = float('inf')
-    x_max = float('-inf')
-    for col in range(n_cols):
-        # Build the per-line signature at this column. Out-of-range or
-        # implicit-empty entries pad to the line's empty code (EV / EH)
-        # so a column with a shorter line still matches an explicit-
-        # empty trap signature.
-        sig: list[str] = []
-        for li, orient in enumerate(line_orients):
-            cells = rows[li] if li < len(rows) else []
-            empty_code = PANEL_EH if (orient == PANEL_H or orient == PANEL_EH) else PANEL_EV
-            sig.append(cells[col] if col < len(cells) else empty_code)
-        if sig != list(line_orients):
-            continue
-
-        # Column matches — accumulate its X extent. Prefer stored
-        # rowPositions for the reference line if available; else fall
-        # back to uniform `col * pitch`.
-        if ref_positions and col < len(ref_positions):
-            x = ref_positions[col]
-        elif col < len(ref_cells):
-            x = col * ref_pitch
-        else:
-            continue
-        x_min = min(x_min, x)
-        x_max = max(x_max, x + ref_along)
-
-    if x_min == float('inf'):
-        return None, None
-
-    return x_min, x_max
-
-
 def _build_base_inputs(
     data: dict, area: dict, area_idx: int, app_defaults: dict,
     trapezoid_id: str, trapezoid_configs: dict | None = None,
@@ -1281,89 +1189,58 @@ def _compute_row_default_bases(
     app_defaults: dict, roof_spec: dict,
     trapezoid_configs: dict | None,
     panel_grid: dict, row_idx: int,
+    rails_for_row: list[dict],
 ) -> tuple[list, dict[str, dict | None]]:
-    """Compute DEFAULT base positions for one panel row across all
-    sub-trapezoids. No user overrides are applied here — those are
-    handled by `_apply_persisted_position_overrides`.
+    """Compute DEFAULT base positions for one panel row in a SINGLE pass.
 
-    Returns ``(row_bases, bases_data_map)``. `row_bases` is the
-    concatenation of each sub-trap's consolidated bases in trap_ids
-    order; baseIds at this point are PER-SUB-TRAP (`B1..BN` restart
-    inside each sub-trap) and the trapezoidId on each base reflects the
-    sub-trap that produced it — `_finalize_row_bases` handles
-    renumbering and signature-based reassignment.
+    Rail-driven placement (see `base_service.compute_row_bases`): bases land
+    at the row's distinct rail endpoints + spacing fill — one pass over the
+    whole row, no per-sub-trap loop or cross-trap consolidation.
+    ``trapezoidId`` is left blank here and stamped by `_finalize_row_bases`'
+    signature pass.
+
+    Returns ``(row_bases, bases_data_map)``. `bases_data_map` carries the
+    row-level frame metadata (rear/front leg depth, base extents) keyed by
+    EVERY trap_id so the external-diagonal interpolation lookup still resolves.
     """
     step2 = data.get('step2', {})
+    area_id = area.get('id', area_idx + 1)
+    line_rails = _derive_line_rails(_get_computed_area(data, area_id), row_index=row_idx)
 
-    bases_data_map: dict[str, dict | None] = {}
-    for trap_id in trap_ids:
-        trap_start, trap_end = _compute_trap_x_range(
-            panel_grid, trap_id, trap_ids, trapezoids,
-            step2['panelWidthCm'], step2['panelLengthCm'],
-            app_defaults['panelGapCm'],
-        )
+    # edgeOffsetMm (rail-end-to-base inset), baseOverhang + spacing are
+    # trap-scope but uniform per row in practice — read them off the
+    # primary sub-trap.
+    step3 = data.get('step3', {})
+    persisted_traps = step3.get('trapezoidConfigs') or {}
+    primary = trap_ids[0] if trap_ids else ''
+    trap_cfg = {
+        **(persisted_traps.get(primary) or {}),
+        **((trapezoid_configs or {}).get(primary, {})),
+    }
+    edge_offset_cm = trap_cfg.get('edgeOffsetMm', app_defaults['edgeOffsetMm']) / 10
+    base_overhang_cm = trap_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
+    spacing_mm = trap_cfg.get('spacingMm', app_defaults['spacingMm'])
 
-        effective_configs = dict(trapezoid_configs or {})
-        if trap_id not in effective_configs:
-            effective_configs[trap_id] = {}
+    row_meta = bs.compute_row_bases(
+        rails_for_row=rails_for_row,
+        panel_grid=panel_grid,
+        panel_width_cm=step2['panelWidthCm'],
+        panel_length_cm=step2['panelLengthCm'],
+        line_rails=line_rails,
+        edge_offset_cm=edge_offset_cm,
+        base_overhang_cm=base_overhang_cm,
+        spacing_mm=spacing_mm,
+        panel_gap_cm=app_defaults['panelGapCm'],
+        line_gap_cm=app_defaults['lineGapCm'],
+        roof_spec=roof_spec,
+    )
+    if not row_meta:
+        return [], {}
 
-        inputs = _build_base_inputs(
-            data, area, area_idx, app_defaults, trap_id, effective_configs,
-            trap_start, trap_end, roof_spec,
-            panel_grid=panel_grid, row_index=row_idx,
-        )
-        bases_data_map[trap_id] = bs.compute_area_bases(**inputs)
-
-    consolidated = bs.consolidate_area_bases(trap_ids, bases_data_map)
-    row_bases: list[dict] = []
-    for trap_id in trap_ids:
-        row_bases.extend(consolidated.get(trap_id, []))
-
+    row_bases = row_meta['bases']
+    keys = trap_ids or [primary]
+    bases_data_map: dict[str, dict | None] = {tid: row_meta for tid in keys}
     return row_bases, bases_data_map
-
-
-def _dedupe_subtrap_boundary_bases(
-    row_bases: list[dict], spacing_mm: float,
-) -> None:
-    """Remove redundant edge bases at sub-trap boundaries.
-
-    Per-sub-trap default placement (see `_compute_row_default_bases`)
-    places an edge base `edgeOffsetMm` in from each sub-trap's frame
-    edge. When two sub-traps meet at a panel boundary, both place an
-    edge base just inside that boundary — leaving two bases within
-    ~`spacing_mm/2` of each other where structurally only one is
-    needed. Keep the first; drop the second.
-
-    Threshold is `spacing_mm / 2`: smaller than that and the two
-    edge bases serve the same structural purpose (covering the panel-
-    boundary load). Bases farther apart than that are intentional row
-    spacing and stay. Runs on DEFAULT positions only — user overrides
-    are layered on afterwards, so deliberate close-placements (e.g. a
-    user adding a base 10 cm from another) survive untouched.
-
-    Hook-anchor bases (frameless / virtual) are left alone — they
-    aren't structural base bars and don't compete for the same anchor
-    point.
-    """
-    if len(row_bases) < 2 or spacing_mm <= 0:
-        return
-    threshold_cm = (spacing_mm / 2) / 10
-    row_bases.sort(key=lambda b: b.get('offsetFromStartCm', 0))
-    keep: list[dict] = []
-    for b in row_bases:
-        if (b.get('hookOffsets') or []):
-            keep.append(b)
-            continue
-        if keep:
-            prev = keep[-1]
-            if (prev.get('hookOffsets') or []):
-                keep.append(b)
-                continue
-            gap = b.get('offsetFromStartCm', 0) - prev.get('offsetFromStartCm', 0)
-            if gap < threshold_cm:
-                continue
-        keep.append(b)
-    row_bases[:] = keep
 
 
 def _apply_persisted_position_overrides(
@@ -1619,9 +1496,9 @@ def _ops_to_base_snapshot(project, ops: list) -> tuple[dict, dict, dict]:
     snapshot: dict[str, list[int]] = {}
     var_snapshot: dict[str, list[int]] = {}
     # (area_id, row_idx, base_id) → (snapshot_key, idx_in_sorted_offsets).
-    # baseIds are assigned globally per (area, row) by
-    # consolidate_area_bases (renumbered B1..BN across every sub-trap in
-    # the row), so this triple is unique.
+    # baseIds are renumbered globally per (area, row) by
+    # `_finalize_row_bases` (B1..BN sorted by offset), so this triple is
+    # unique.
     base_lookup: dict[tuple[str, int, str], tuple[str, int]] = {}
 
     # Legacy baseVariations[areaId][baseId] = idx — used to seed the
@@ -2353,21 +2230,20 @@ async def compute_and_save_bases(
                 # area). Keep the full list so we at least produce bases.
                 row_trap_ids = trap_ids
 
-            # Pure DEFAULT base positions for this row. No user
-            # overrides; those get layered on by the override pass below.
+            # Per-row computed rails feed the rail-endpoint placement.
+            row_rails_all = (_get_computed_area(data, area_id) or {}).get('rails', {})
+            rails_for_row = (row_rails_all.get(row_idx)
+                             or row_rails_all.get(str(row_idx)) or [])
+
+            # Pure DEFAULT base positions for this row (single rail-driven
+            # pass). No user overrides; those get layered on below.
             row_bases, bases_data_map = _compute_row_default_bases(
                 bs, data, area, i,
                 row_trap_ids, trapezoids,
                 app_defaults, roof_spec,
                 trapezoid_configs,
                 panel_grid=pg, row_idx=row_idx,
-            )
-            # Multi-sub-trap rows produce a pair of redundant edge bases
-            # at each sub-trap boundary (each sub-trap independently
-            # places one `edgeOffsetMm` inside its frame). Collapse such
-            # pairs before user overrides are layered on.
-            _dedupe_subtrap_boundary_bases(
-                row_bases, app_defaults.get('spacingMm', 2000),
+                rails_for_row=rails_for_row,
             )
             all_row_bases[row_idx] = row_bases
             if not first_bases_data_map:
@@ -2378,6 +2254,29 @@ async def compute_and_save_bases(
             line_rears_cm = bs.line_rear_edges_cm(
                 pg, step2['panelWidthCm'], step2['panelLengthCm'],
                 app_defaults['lineGapCm'],
+            )
+
+            row_ang = pr.get('angleDeg')
+            if row_ang is None:
+                row_ang = area.get('angleDeg')
+            row_fh = pr.get('frontHeightCm')
+            if row_fh is None:
+                row_fh = area.get('frontHeightCm')
+
+            # Stamp trapezoidId on the default bases BEFORE applying overrides.
+            # The rail-driven placement leaves trapezoidId blank (it's the
+            # finalize signature pass that assigns it), but
+            # `_apply_persisted_position_overrides` groups bases by
+            # trapezoidId to match the stored `{trapId}:{rowIdx}` snapshot —
+            # blank trapIds would never match, silently dropping every base
+            # edit. Run the same signature reassignment up front; finalize
+            # re-runs it idempotently after add/delete reconciliation.
+            _reassign_row_base_traps_by_signature(
+                row_bases, pg, row_trap_ids, trapezoids,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
+                label, row_idx,
+                row_angle_deg=row_ang, row_front_height_cm=row_fh,
             )
 
             # Apply persisted user position overrides. The snapshot
@@ -2392,14 +2291,7 @@ async def compute_and_save_bases(
 
             # Finalize: trap reassignment, completion, baseId renumber,
             # rebuild consolidated.
-            row_ang = pr.get('angleDeg')
-            if row_ang is None:
-                row_ang = area.get('angleDeg')
-            row_fh = pr.get('frontHeightCm')
-            if row_fh is None:
-                row_fh = area.get('frontHeightCm')
-            row_rails = (_get_computed_area(data, area_id) or {}).get('rails', {})
-            rails_for_row = row_rails.get(row_idx) or row_rails.get(str(row_idx)) or []
+            # rails_for_row already fetched above for default placement.
             # Per-line rails for the per-base depth recompute. Same
             # shape `compute_area_bases` consumes from line_rails.
             line_rails_dict = _derive_line_rails(

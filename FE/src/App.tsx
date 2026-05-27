@@ -27,6 +27,12 @@ const TOTAL_STEPS = 5
 
 const LOGIN_REQUIRED_STEP = 3   // step 3+ (construction planning, approval, export) require login
 
+// Trap-scope schema params persisted server-side under step3.trapezoidConfigs
+// (mirrors BE TRAP_SCHEMA_PARAM_KEYS). On every BE result these are re-synced
+// authoritatively — stripped then re-applied from the server — so an unsaved
+// optimistic edit can't outlive the server's truth. Keep in sync with the BE.
+const TRAP_SCHEMA_PARAM_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'extendFront', 'extendRear']
+
 function App() {
   const s = useProjectState()
   const auth = useAuth()
@@ -248,39 +254,60 @@ function App() {
     // fall back to one group per trap on the consumer side.
     setBeTrapezoidGroups(step3.trapezoidGroups ?? [])
 
-    // ── Defensive sync of user-editable settings ────────────────────────
-    // The BE persists / normalises these; without syncing, a server-side
-    // mutation (e.g. reset_tab stripping keys, future clamping) would stay
-    // invisible until project reload. Skipping when the field is absent so
-    // partial responses don't wipe FE state we still want.
-    if (step3.globalSettings !== undefined) {
-      s.setStep3GlobalSettings(step3.globalSettings ?? {})
-      step3SettingsRef.current = {
-        ...step3SettingsRef.current,
-        globalSettings: step3.globalSettings ?? {},
-      }
+    // ── Authoritative sync of user-editable settings ────────────────────
+    // The BE is the source of truth: every applyBeResult caller (load,
+    // construction-data, saveTab, resetTab, updateStep) returns the FULL
+    // project data, so these fields reflect exactly what the server kept.
+    // Replace unconditionally (absent → {}) so a server-side mutation
+    // (reset_tab stripping keys, clamping) or an unsaved optimistic edit can
+    // never outlive the server's truth.
+    s.setStep3GlobalSettings(step3.globalSettings ?? {})
+    s.setStep3AreaSettings(step3.areaSettings ?? {})
+    step3SettingsRef.current = {
+      ...step3SettingsRef.current,
+      globalSettings: step3.globalSettings ?? {},
+      areaSettings: step3.areaSettings ?? {},
     }
-    if (step3.areaSettings !== undefined) {
-      s.setStep3AreaSettings(step3.areaSettings ?? {})
-      step3SettingsRef.current = {
-        ...step3SettingsRef.current,
-        areaSettings: step3.areaSettings ?? {},
-      }
-    }
-    // Trap-scope schema params are now persisted under step3.trapezoidConfigs
-    // (new in this version of the BE). Merge them into FE trapezoidConfigs,
-    // preserving FE-only fields (angle / frontHeight / lineOrientations come
-    // through step2.areas[].trapezoids[], not this map).
-    const persistedTraps = step3.trapezoidConfigs
-    if (persistedTraps && typeof persistedTraps === 'object') {
-      s.setTrapezoidConfigs(prev => {
-        const next: Record<string, any> = { ...(prev || {}) }
-        for (const [trapId, cfg] of Object.entries(persistedTraps as Record<string, any>)) {
-          next[trapId] = { ...(next[trapId] || {}), ...(cfg || {}) }
+    // Authoritatively re-sync trap-scope SCHEMA params from the server.
+    // `step3.trapezoidConfigs` is the BE's source of truth for these keys;
+    // a key ABSENT there means "default", so we STRIP any stale optimistic
+    // override the FE still holds, then re-apply whatever the server kept.
+    // (Mirrors the full-replace of global/area settings above — an additive
+    // merge could never pull a value back down to the server default, which
+    // is why an unsaved edit used to survive step navigation.) FE-only fields
+    // (angle / frontHeight / lineOrientations) come from step2.areas[]
+    // .trapezoids[], not this map, so they're preserved.
+    const persistedTraps = (step3.trapezoidConfigs && typeof step3.trapezoidConfigs === 'object')
+      ? step3.trapezoidConfigs as Record<string, any>
+      : {}
+    s.setTrapezoidConfigs(prev => {
+      const next: Record<string, any> = {}
+      for (const [trapId, cfg] of Object.entries((prev || {}) as Record<string, any>)) {
+        const cleaned: Record<string, any> = { ...cfg }
+        TRAP_SCHEMA_PARAM_KEYS.forEach(k => delete cleaned[k])
+        const serverCfg = persistedTraps[trapId] || {}
+        for (const k of TRAP_SCHEMA_PARAM_KEYS) {
+          if (serverCfg[k] !== undefined) cleaned[k] = serverCfg[k]
         }
-        return next
-      })
-    }
+        next[trapId] = cleaned
+      }
+      // Server traps not present in prev (rare) — seed with their schema params.
+      for (const [trapId, cfg] of Object.entries(persistedTraps)) {
+        if (!next[trapId]) next[trapId] = { ...cfg }
+      }
+      return next
+    })
+
+    // Re-sync the BE-normalized drag-edit override snapshots into the reducer.
+    // These (customBasesOffsets / customDiagonals) aren't read for rendering,
+    // but they ride the full-project save payload (getProjectData spreads all
+    // of data.step3). The BE renumbers/normalizes them on each recompute, so
+    // without this a later full save would write a STALE copy back over the
+    // server's truth. Mirror exactly what the server holds (absent → {}).
+    s.patchStep3({
+      customBasesOffsets: step3.customBasesOffsets ?? {},
+      customDiagonals: step3.customDiagonals ?? {},
+    })
   }
 
   // Build tab-specific payload to send only relevant settings and overrides
