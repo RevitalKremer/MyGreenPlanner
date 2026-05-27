@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 # / consolidation pipeline.
 LENGTH_TRANSITION_TOL_CM = 1.0
 
+# Two rail endpoints closer than this (cm) collapse to a single base. Covers
+# the V-line-end / H-line-end mis-alignment seam where adjacent blocks of
+# different panel orientation don't share an exact X edge. The surviving base
+# is the one covering MORE panel lines (the longer beam). 0.5 m.
+BASE_DEDUPE_TOL_CM = 50.0
+
 
 # ── Edge-offset tolerance optimisation ────────────────────────────────────────
 
@@ -116,6 +122,39 @@ def build_line_infos(
     return line_infos
 
 
+def _active_lines_at_x(
+    base_x: float,
+    panel_grid: dict,
+    line_infos: dict[int, dict],
+    panel_width_cm: float,
+    panel_length_cm: float,
+    panel_gap_cm: float,
+) -> list[int]:
+    """Line indices whose real panels cover X position ``base_x``.
+
+    A line is active for this X only if a real panel sits there (within
+    ``panel_gap_cm`` tolerance, so a base in the standard inter-panel gap
+    still counts). Used both to decide a base's depth span and to rank
+    rail-endpoint coverage during placement dedupe.
+    """
+    rows = panel_grid.get('rows', [])
+    row_positions = panel_grid.get('rowPositions') or {}
+    active_lines: list[int] = []
+    for li, cells in enumerate(rows):
+        orient = infer_row_orientation(cells)
+        if not orient or li not in line_infos:
+            continue
+        panel_along_cm = panel_width_cm if orient == PANEL_V else panel_length_cm
+        stored = row_positions.get(str(li))
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
+        if not positions:
+            continue
+        tol = panel_gap_cm
+        if any(p - tol <= base_x <= p + panel_along_cm + tol for p in positions):
+            active_lines.append(li)
+    return active_lines
+
+
 def assign_base_depth(
     base: dict,
     panel_grid: dict,
@@ -143,28 +182,10 @@ def assign_base_depth(
     every line's real-panel extent). Defaults to a zero-length record
     when no fallback is provided.
     """
-    rows = panel_grid.get('rows', [])
-    row_positions = panel_grid.get('rowPositions') or {}
     base_x = base.get('offsetFromStartCm', 0)
-    short_cm = panel_width_cm
-    long_cm = panel_length_cm
-
-    active_lines: list[int] = []
-    for li, cells in enumerate(rows):
-        orient = infer_row_orientation(cells)
-        if not orient or li not in line_infos:
-            continue
-        panel_along_cm = short_cm if orient == PANEL_V else long_cm
-        stored = row_positions.get(str(li))
-        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
-        if not positions:
-            continue
-        # The base is "active" on this line only if there's a real
-        # panel at the base's column. Tolerance = panel_gap_cm so a
-        # base sitting in the standard inter-panel gap still counts.
-        tol = panel_gap_cm
-        if any(p - tol <= base_x <= p + panel_along_cm + tol for p in positions):
-            active_lines.append(li)
+    active_lines = _active_lines_at_x(
+        base_x, panel_grid, line_infos, panel_width_cm, panel_length_cm, panel_gap_cm,
+    )
 
     if active_lines:
         b_rear_idx = min(active_lines)
@@ -371,6 +392,183 @@ def compute_area_bases(
         'effectiveBasesSettings': {
             'maxEdgeOffsetMm': max_edge_offset_mm,
             'edgeOffsetClamped': edge_offset_mm > max_edge_offset_mm,
+            'maxSpacingMm': max_spacing_mm,
+            'spacingClamped': spacing_mm > max_spacing_mm,
+        },
+    }
+
+
+def compute_row_bases(
+    rails_for_row: list[dict],
+    panel_grid: dict,
+    panel_width_cm: float,
+    panel_length_cm: float,
+    line_rails: dict[str, list[float]],
+    edge_offset_cm: float,
+    base_overhang_cm: float,
+    spacing_mm: float,
+    panel_gap_cm: float,
+    line_gap_cm: float,
+    roof_spec: dict | None = None,
+) -> dict | None:
+    """Compute the DEFAULT base layout for one whole panel ROW.
+
+    Replaces the per-sub-trap even-spacing placement with a rail-driven one:
+
+      Phase 1 — place a base at each rail's two X endpoints, inset from the
+                tip by ``edge_offset_cm`` (the rail-end-to-base distance, i.e.
+                ``edgeOffsetMm``). Endpoints within ``BASE_DEDUPE_TOL_CM``
+                collapse to a single base, keeping the one that covers MORE
+                panel lines (the longer beam).
+      Phase 2 — sort by X and fill any gap wider than ``spacing`` with evenly
+                spaced intermediate bases.
+      Depth   — each base's rear/front depth (``startCm`` / ``lengthCm``) is
+                derived from the panel lines covering its X via
+                ``assign_base_depth`` (uniform ``base_overhang_cm``).
+
+    No sub-trap awareness: ``trapezoidId`` is stamped later by the row
+    finalizer's signature pass. Returns a dict shaped like
+    ``compute_area_bases`` (bases + row frame metadata) or None.
+    """
+    if not rails_for_row:
+        return None
+
+    line_infos = build_line_infos(panel_grid, panel_width_cm, panel_length_cm, line_gap_cm)
+    active_line_idxs = sorted(line_infos.keys())
+    if not active_line_idxs:
+        return None
+
+    # ── Parallel purlin spacing snap (iskurit / insulated_panel) ───────────
+    rs = roof_spec or {}
+    roof_type = rs.get('type', 'concrete')
+    if roof_type in ('iskurit', 'insulated_panel'):
+        orientation = rs.get('installationOrientation')
+        purlin_dist_cm = rs.get('distanceBetweenPurlinsCm')
+        if orientation == 'parallel' and purlin_dist_cm and purlin_dist_cm > 0:
+            purlin_dist_mm = purlin_dist_cm * 10
+            n = max(1, math.floor(spacing_mm / purlin_dist_mm))
+            spacing_mm = n * purlin_dist_mm
+    spacing_cm = spacing_mm / 10
+
+    def coverage_at(x: float) -> int:
+        return len(_active_lines_at_x(
+            x, panel_grid, line_infos, panel_width_cm, panel_length_cm, panel_gap_cm,
+        ))
+
+    # ── Phase 1: rail-endpoint bases, tolerance dedupe (keep more coverage) ─
+    candidates: list[float] = []
+    for r in rails_for_row:
+        start = r.get('startCm', 0)
+        length = r.get('lengthCm', 0)
+        candidates.append(round_to_2dp(start + edge_offset_cm))
+        candidates.append(round_to_2dp(start + length - edge_offset_cm))
+    candidates.sort()
+
+    def pick_winner(cluster: list[float]) -> float:
+        # Most covering lines wins; tie → rear-most (smallest X) for stability.
+        return max(cluster, key=lambda x: (coverage_at(x), -x))
+
+    phase1_xs: list[float] = []
+    cluster: list[float] = []
+    for x in candidates:
+        if cluster and x - cluster[-1] <= BASE_DEDUPE_TOL_CM:
+            cluster.append(x)
+        else:
+            if cluster:
+                phase1_xs.append(pick_winner(cluster))
+            cluster = [x]
+    if cluster:
+        phase1_xs.append(pick_winner(cluster))
+
+    # ── Phase 2: spacing fill (gaps measured from the prior shared edge) ────
+    xs: list[float] = []
+    for i, x in enumerate(phase1_xs):
+        if i == 0:
+            xs.append(x)
+            continue
+        prev = phase1_xs[i - 1]
+        gap = x - prev
+        if spacing_cm > 0 and gap > spacing_cm + 1e-6:
+            n = math.ceil(gap / spacing_cm)
+            for k in range(1, n):
+                xs.append(round_to_2dp(prev + k * gap / n))
+        xs.append(x)
+
+    # ── Row frame metadata (rear/front leg depth, base extents) ────────────
+    rear_idx = active_line_idxs[0]
+    front_idx = active_line_idxs[-1]
+    rear_line = line_infos[rear_idx]
+    front_line = line_infos[front_idx]
+    rear_rails = line_rails.get(str(rear_idx), [])
+    front_rails = line_rails.get(str(front_idx), [])
+    rear_leg_depth_cm = rear_line['rearEdgeCm'] + (rear_rails[0] if rear_rails else 0)
+    front_leg_depth_cm = front_line['rearEdgeCm'] + (
+        front_rails[-1] if front_rails else front_line['depthCm']
+    )
+    base_top_depth_cm = rear_leg_depth_cm - base_overhang_cm
+    base_bottom_depth_cm = front_leg_depth_cm + base_overhang_cm
+    base_length_cm = base_bottom_depth_cm - base_top_depth_cm
+
+    # ── Build bases + per-base depth ───────────────────────────────────────
+    bases: list[dict] = []
+    for i, x in enumerate(xs):
+        base = {
+            'baseId': f'B{i + 1}',
+            'offsetFromStartCm': round_to_2dp(x),
+            'trapezoidId': '',
+        }
+        assign_base_depth(
+            base, panel_grid, line_infos, line_rails,
+            panel_width_cm, panel_length_cm, panel_gap_cm, base_overhang_cm,
+            fallback_panel_line_idx=rear_idx,
+            fallback_start_cm=base_top_depth_cm - rear_line['rearEdgeCm'],
+            fallback_length_cm=base_length_cm,
+        )
+        bases.append(base)
+
+    # Row X extent from panel positions (for the FE spacing/edge clamps).
+    auto_start = float('inf')
+    auto_end = float('-inf')
+    for li, cells in enumerate(panel_grid.get('rows', [])):
+        orient = infer_row_orientation(cells)
+        if not orient:
+            continue
+        panel_along_cm = panel_width_cm if orient == PANEL_V else panel_length_cm
+        stored = (panel_grid.get('rowPositions') or {}).get(str(li))
+        positions = stored if stored else default_panel_positions(cells, panel_along_cm, panel_gap_cm)
+        if not positions:
+            continue
+        auto_start = min(auto_start, positions[0])
+        auto_end = max(auto_end, positions[-1] + panel_along_cm)
+    frame_start_cm = auto_start if auto_start != float('inf') else 0.0
+    frame_end_cm = auto_end if auto_end != float('-inf') else 0.0
+    frame_length_cm = max(0.0, frame_end_cm - frame_start_cm)
+    frame_length_mm = round(frame_length_cm * 10)
+
+    # Largest realised gap between consecutive bases → reported spacing.
+    actual_spacing_mm = 0
+    if len(bases) > 1:
+        gaps = [bases[i + 1]['offsetFromStartCm'] - bases[i]['offsetFromStartCm']
+                for i in range(len(bases) - 1)]
+        actual_spacing_mm = round(max(gaps) * 10) if gaps else 0
+
+    max_spacing_mm = frame_length_mm  # no edge offset in the new model
+
+    return {
+        'trapezoidId': '',
+        'bases': bases,
+        'frameStartCm': round_to_2dp(frame_start_cm),
+        'frameLengthCm': round_to_2dp(frame_length_cm),
+        'rearLegDepthCm': round_to_2dp(rear_leg_depth_cm),
+        'frontLegDepthCm': round_to_2dp(front_leg_depth_cm),
+        'baseTopDepthCm': round_to_2dp(base_top_depth_cm),
+        'baseBottomDepthCm': round_to_2dp(base_bottom_depth_cm),
+        'baseLengthCm': round_to_2dp(base_length_cm),
+        'actualSpacingMm': actual_spacing_mm,
+        'baseCount': len(bases),
+        'effectiveBasesSettings': {
+            'maxEdgeOffsetMm': round(frame_length_mm / 2.0, 1),
+            'edgeOffsetClamped': False,
             'maxSpacingMm': max_spacing_mm,
             'spacingClamped': spacing_mm > max_spacing_mm,
         },
@@ -1040,8 +1238,8 @@ def bases_completion_for_segmented_rails(
     each end of the segment's panel-column frame, which means the existing
     single base may also be relocated to the closest std position.
 
-    Runs after `compute_area_bases` + `consolidate_area_bases` + signature
-    reassignment, so the base list reflects the final per-row layout. The
+    Runs after `compute_row_bases` + signature reassignment, so the base
+    list reflects the final per-row layout. The
     new base inherits trapezoidId / panelLineIdx / startCm / lengthCm from
     the existing base in the segment (same column → same depth properties).
 
@@ -1141,68 +1339,5 @@ def bases_completion_for_segmented_rails(
             'offsetFromStartCm': round_to_2dp(new_pos),
         }
         row_bases.append(new_base)
-
-
-# ── Consolidation ─────────────────────────────────────────────────────────────
-
-def consolidate_area_bases(
-    trap_ids: list[str],
-    bases_data_map: dict[str, dict | None],
-) -> dict[str, list[dict]]:
-    """
-    Remove bases from shallower trapezoids where they fall within a deeper
-    trapezoid's X extent.  Returns { trapId: [BaseData, ...] }.
-    """
-    result: dict[str, list[dict]] = {}
-    for trap_id, bd in bases_data_map.items():
-        if bd:
-            result[trap_id] = list(bd['bases'])
-
-    if len(trap_ids) <= 1:
-        return result
-
-    # Metadata per trap
-    trap_infos = []
-    for trap_id in trap_ids:
-        bd = bases_data_map.get(trap_id)
-        if not bd:
-            continue
-        trap_infos.append({
-            'trapId': trap_id,
-            'xMin': bd['frameStartCm'],
-            'xMax': bd['frameStartCm'] + bd['frameLengthCm'],
-            'depth': bd['baseLengthCm'],
-        })
-
-    # Build an order map so earlier traps win ties
-    trap_order = {tid: idx for idx, tid in enumerate(trap_ids)}
-
-    def _b_wins(info_a: dict, info_b: dict) -> bool:
-        """Return True if trap B should eliminate trap A's overlapping bases."""
-        if info_b['depth'] > info_a['depth']:
-            return True
-        if info_b['depth'] < info_a['depth']:
-            return False
-        # Equal depth — wider range wins
-        width_a = info_a['xMax'] - info_a['xMin']
-        width_b = info_b['xMax'] - info_b['xMin']
-        if width_b > width_a:
-            return True
-        if width_b < width_a:
-            return False
-        # Equal depth and width — earlier trap in list wins (later loses)
-        return trap_order.get(info_b['trapId'], 999) < trap_order.get(info_a['trapId'], 999)
-
-    for info_a in trap_infos:
-        result[info_a['trapId']] = [
-            base for base in result.get(info_a['trapId'], [])
-            if not any(
-                info_b['trapId'] != info_a['trapId']
-                and base['offsetFromStartCm'] > info_b['xMin']
-                and base['offsetFromStartCm'] < info_b['xMax']
-                and _b_wins(info_a, info_b)
-                for info_b in trap_infos
-            )
-        ]
 
     return result
