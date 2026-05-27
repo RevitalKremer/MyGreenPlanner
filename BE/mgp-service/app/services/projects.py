@@ -2256,6 +2256,29 @@ async def compute_and_save_bases(
                 app_defaults['lineGapCm'],
             )
 
+            row_ang = pr.get('angleDeg')
+            if row_ang is None:
+                row_ang = area.get('angleDeg')
+            row_fh = pr.get('frontHeightCm')
+            if row_fh is None:
+                row_fh = area.get('frontHeightCm')
+
+            # Stamp trapezoidId on the default bases BEFORE applying overrides.
+            # The rail-driven placement leaves trapezoidId blank (it's the
+            # finalize signature pass that assigns it), but
+            # `_apply_persisted_position_overrides` groups bases by
+            # trapezoidId to match the stored `{trapId}:{rowIdx}` snapshot —
+            # blank trapIds would never match, silently dropping every base
+            # edit. Run the same signature reassignment up front; finalize
+            # re-runs it idempotently after add/delete reconciliation.
+            _reassign_row_base_traps_by_signature(
+                row_bases, pg, row_trap_ids, trapezoids,
+                step2['panelWidthCm'], step2['panelLengthCm'],
+                app_defaults['panelGapCm'],
+                label, row_idx,
+                row_angle_deg=row_ang, row_front_height_cm=row_fh,
+            )
+
             # Apply persisted user position overrides. The snapshot
             # `customBasesOffsets` is updated by save_tab from the
             # incoming ops payload (via `_ops_to_base_snapshot`); we
@@ -2268,12 +2291,6 @@ async def compute_and_save_bases(
 
             # Finalize: trap reassignment, completion, baseId renumber,
             # rebuild consolidated.
-            row_ang = pr.get('angleDeg')
-            if row_ang is None:
-                row_ang = area.get('angleDeg')
-            row_fh = pr.get('frontHeightCm')
-            if row_fh is None:
-                row_fh = area.get('frontHeightCm')
             # rails_for_row already fetched above for default placement.
             # Per-line rails for the per-base depth recompute. Same
             # shape `compute_area_bases` consumes from line_rails.
