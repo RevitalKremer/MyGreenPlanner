@@ -42,6 +42,16 @@ const he = {
   'nav.next':   'הבא →',
   'nav.finish': 'סיום',
   'nav.signIn': 'התחבר כדי להמשיך →',
+  'nav.blocker.header':                   'חסר לפני המשך:',
+  'nav.blocker.step1.roofPolygon':        'יש לסמן את קו הגג',
+  'nav.blocker.step1.referenceLine':      'יש לצייר קו ייחוס',
+  'nav.blocker.step1.referenceLength':    'יש להזין את אורך קו הייחוס',
+  'nav.blocker.step2.noAreas':            'יש להגדיר לפחות אזור אחד',
+  'nav.blocker.step2.areaLabel':          'שם האזור לא יכול להיות ריק',
+  'nav.blocker.step2.angle':              'יש להזין זווית התקנה (A) תקינה לכל אזור/שורה',
+  'nav.blocker.step2.frontHeight':        'יש להזין גובה חזית (H) תקין לכל אזור/שורה',
+  'nav.blocker.step2.purlinDistance':     'יש להזין מרחק בין פטות',
+  'nav.blocker.step4.consent':            'יש לאשר את התוכנית כדי להמשיך',
 
   // ── מסך סיום חגיגי ──────────────────────────────────────────────────────
   'finish.title':    'הפרויקט הושלם!',
