@@ -87,7 +87,15 @@ def _validate_step2_for_advance(data: dict, project_roof_spec: dict | None) -> l
     for area_idx, area in enumerate(areas):
         spec = resolve_roof_spec(project_roof_spec, area)
         area_type = spec.get('type', 'concrete')
-        area_label = area.get('label') or str(area_idx)
+        raw_label = area.get('label')
+        area_label = raw_label if isinstance(raw_label, str) and raw_label.strip() else str(area_idx)
+
+        if not isinstance(raw_label, str) or not raw_label.strip():
+            errors.append({
+                'code': 'area.label.empty',
+                'field': f'areas[{area_idx}].label',
+                'params': {'areaIdx': area_idx},
+            })
 
         if is_frameless_roof_type(area_type):
             continue  # frameless areas (tiles, flat_installation) have no construction frame → a/h irrelevant

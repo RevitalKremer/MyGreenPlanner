@@ -32,6 +32,7 @@ export default function PanelCanvas({
   rectAreas = [],
   setRectAreas,
   onAddRectArea,
+  onDeleteArea,
   cmPerPixel,
   panelSpec,
   rebuildPanelGrid,
@@ -324,6 +325,13 @@ export default function PanelCanvas({
         setPanels(newPanels)
         rebuildPanelGrid?.(newPanels)
         setSelectedPanels([])
+        // If the deleted panel was the last non-empty one in its area,
+        // remove the (now-empty) area too — empty areas just clutter the
+        // canvas and block step3.
+        const areaKey = clickedPanel.area ?? clickedPanel.row
+        if (areaKey != null && !newPanels.some(p => !p.isEmpty && (p.area ?? p.row) === areaKey)) {
+          onDeleteArea?.(areaKey)
+        }
       } else startPan(e)
       return
     }

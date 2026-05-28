@@ -100,8 +100,10 @@ export default function Step3ConstructionPlanning({
       const gk = p.areaGroupKey ?? p.area ?? 0
       if (seen.has(gk)) continue
       seen.add(gk)
-      const tid = p.trapezoidId
-      const matched = areas.find(a => a.trapezoidIds?.includes(tid)) ?? areaByLabel[tid?.replace(/\d+$/, '')]
+      // Legacy projects may have non-string trapezoidId from before the
+      // empty-label gates — coerce defensively so render doesn't crash.
+      const tid = typeof p.trapezoidId === 'string' ? p.trapezoidId : null
+      const matched = areas.find(a => a.trapezoidIds?.includes(tid)) ?? (tid ? areaByLabel[tid.replace(/\d+$/, '')] : undefined)
       if (matched) map[gk] = matched
       else if (areas[gk]) map[gk] = areas[gk]
     }

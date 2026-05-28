@@ -2,6 +2,13 @@
 import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry'
 import { PANEL_H, PANEL_V } from './panelCodes.js'
 
+// Stable string identifier for an area — used as a key in panelGrid,
+// rowMounting, trapezoidId, etc. (all string-keyed). When the user clears
+// the area label, the fallback resolves to `area.id` (numeric), so we
+// coerce with String() to keep the invariant.
+export const getAreaLabel = (area, areaIdx) =>
+  String(area?.label || area?.id || `area-${areaIdx}`)
+
 /**
  * Generate panel layout based on refined area, baseline, and panel configuration
  * @param {Object} refinedArea - Contains polygon, pixelToCmRatio, and panelConfig

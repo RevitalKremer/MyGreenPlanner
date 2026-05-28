@@ -42,6 +42,16 @@ const en = {
   'nav.next':   'Next →',
   'nav.finish': 'Finish',
   'nav.signIn': 'Sign In to Continue →',
+  'nav.blocker.header':                   'Missing before continuing:',
+  'nav.blocker.step1.roofPolygon':        'Mark the roof outline',
+  'nav.blocker.step1.referenceLine':      'Draw a reference line',
+  'nav.blocker.step1.referenceLength':    'Set the reference line length',
+  'nav.blocker.step2.noAreas':            'Define at least one area',
+  'nav.blocker.step2.areaLabel':          'Area label cannot be empty',
+  'nav.blocker.step2.angle':              'Set a valid mounting angle (A) for each area/row',
+  'nav.blocker.step2.frontHeight':        'Set a valid front height (H) for each area/row',
+  'nav.blocker.step2.purlinDistance':     'Set the distance between purlins',
+  'nav.blocker.step4.consent':            'Confirm plan approval to continue',
 
   // ── Finish celebration ──────────────────────────────────────────────────
   'finish.title':    'Project Complete!',

@@ -889,55 +889,69 @@ export function useProjectState() {
     }
   }
 
-  const canProceedToNextStep = () => {
+  // Enumerate what is preventing advancement to the next step. Returns an
+  // array of i18n keys; an empty array means the user can proceed.
+  // canProceedToNextStep() is derived from this.
+  const getNextStepBlockers = (): string[] => {
+    const blockers: string[] = []
     switch (currentStep) {
-      case 1: return (
-        roofPolygon !== null &&
-        referenceLine !== null &&
-        referenceLineLengthCm !== '' &&
-        parseFloat(referenceLineLengthCm) > 0
-      )
+      case 1: {
+        if (roofPolygon === null) blockers.push('nav.blocker.step1.roofPolygon')
+        if (referenceLine === null) blockers.push('nav.blocker.step1.referenceLine')
+        if (referenceLineLengthCm === '' || !(parseFloat(referenceLineLengthCm) > 0)) {
+          blockers.push('nav.blocker.step1.referenceLength')
+        }
+        break
+      }
       case 2: {
         const roofType = currentProject?.roofSpec?.type || 'concrete'
-        if (rectAreas.length === 0) return false
-        if (allAreasFrameless(roofType, [])) return true
+        if (rectAreas.length === 0) { blockers.push('nav.blocker.step2.noAreas'); break }
+        if (rectAreas.some((a: any) => typeof a.label !== 'string' || a.label.trim() === '')) {
+          blockers.push('nav.blocker.step2.areaLabel')
+        }
+        if (allAreasFrameless(roofType, [])) break
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
         const inFh  = (v) => v != null && v >= fhLim.min  && v <= fhLim.max
         const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
-        // Per-area a/h (with global fallback) + per-area purlin distance for mixed
-        const areasOk = rectAreas.every(a => {
-          if (isAreaFrameless(roofType, a)) return true
+        let angBad = false, fhBad = false, purlinBad = false
+        for (const a of rectAreas) {
+          if (isAreaFrameless(roofType, a)) continue
           const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
           const ang = a.angle !== '' ? a.angle : defaultAng
-          if (!(fh !== '' && inFh(parseFloat(fh)) && ang !== '' && inAng(parseFloat(ang)))) return false
+          if (!(ang !== '' && inAng(parseFloat(ang)))) angBad = true
+          if (!(fh  !== '' && inFh (parseFloat(fh )))) fhBad  = true
           if (roofType === 'mixed') {
             const t = a.roofSpec?.type
-            if (t === 'iskurit' || t === 'insulated_panel') {
-              if (!(a.roofSpec?.distanceBetweenPurlinsCm > 0)) return false
+            if ((t === 'iskurit' || t === 'insulated_panel') && !(a.roofSpec?.distanceBetweenPurlinsCm > 0)) {
+              purlinBad = true
             }
           }
-          return true
-        })
-        if (!areasOk) return false
-        // Per-row a/h overrides: any explicit row override must stay within bounds
+        }
         for (const rows of Object.values(rowMounting || {}) as any[][]) {
           for (const r of (rows || [])) {
             if (!r) continue
-            if (r.angleDeg != null && !inAng(r.angleDeg)) return false
-            if (r.frontHeightCm != null && !inFh(r.frontHeightCm)) return false
+            if (r.angleDeg != null && !inAng(r.angleDeg)) angBad = true
+            if (r.frontHeightCm != null && !inFh(r.frontHeightCm)) fhBad = true
           }
         }
-        return true
+        if (angBad) blockers.push('nav.blocker.step2.angle')
+        if (fhBad)  blockers.push('nav.blocker.step2.frontHeight')
+        if (purlinBad) blockers.push('nav.blocker.step2.purlinDistance')
+        break
       }
-      case 3: return true
-      case 4: return !!(step4PlanApproval?.strictConsent)
-      case 5: return true
-      default: return false
+      case 4: {
+        if (!step4PlanApproval?.strictConsent) blockers.push('nav.blocker.step4.consent')
+        break
+      }
+      // step 3 and 5: no client-side blockers
     }
+    return blockers
   }
+
+  const canProceedToNextStep = () => getNextStepBlockers().length === 0
 
   // ── Computed image source (handles both base64 and imageRef) ──
   const [imageSrc, setImageSrc] = useState(null)
@@ -1063,5 +1077,6 @@ export function useProjectState() {
     handleBack,
     resetStepData,
     canProceedToNextStep,
+    getNextStepBlockers,
   }
 }
