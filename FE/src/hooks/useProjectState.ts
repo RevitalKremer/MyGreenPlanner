@@ -900,6 +900,8 @@ export function useProjectState() {
       case 2: {
         const roofType = currentProject?.roofSpec?.type || 'concrete'
         if (rectAreas.length === 0) return false
+        // Area label must be non-empty (BE rejects empty labels for step3)
+        if (rectAreas.some((a: any) => typeof a.label !== 'string' || a.label.trim() === '')) return false
         if (allAreasFrameless(roofType, [])) return true
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''

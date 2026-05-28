@@ -9,6 +9,7 @@
 
 import { computePolygonPanels } from '../utils/rectPanelService'
 import { buildPanelGrid } from '../utils/panelGridService'
+import { getAreaLabel } from '../utils/panelUtils'
 import { computePanelBackHeight } from '../utils/trapezoidGeometry'
 import { isAreaFrameless } from '../utils/roofSpecUtils'
 import { PANEL_V, PANEL_H, PANEL_EH, PANEL_EV } from '../utils/panelCodes.js'
@@ -94,7 +95,7 @@ export function computePanelsAction({
     })
     rectAreas.forEach((area, areaIdx) => {
       if (areaIdx === onlyAreaIdx) return
-      const areaLabel = area.label || area.id || `area-${areaIdx}`
+      const areaLabel = getAreaLabel(area, areaIdx)
       if (panelGrid[areaLabel]) {
         if (!newPanelGrid[areaLabel]) newPanelGrid[areaLabel] = []
         // Merge: preserve existing rows' grids
@@ -141,7 +142,7 @@ export function computePanelsAction({
   const newRowMounting = {}
   rectAreas.forEach((area, areaIdx) => {
     if (onlyAreaIdx !== undefined && areaIdx !== onlyAreaIdx) return
-    const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const areaLabel = getAreaLabel(area, areaIdx)
     // Explicit empty-string check — area.angle='0' is a real user choice, not
     // a missing value, so `|| panelAngle` would wrongly override it.
     const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
@@ -496,7 +497,7 @@ export function refreshAreaTrapezoidsAction({
 }) {
   if (!area || area.manualTrapezoids || !area.vertices?.length) return null
 
-  const areaLabel = area.label || area.id || `area-${areaIdx}`
+  const areaLabel = getAreaLabel(area, areaIdx)
 
   // Find all rectArea indices in the same group
   const groupId = area.areaGroupId
@@ -612,7 +613,7 @@ export function reSyncLoadedPanelColsAction({
 
   const newGrid = {}
   rectAreas.forEach((area, areaIdx) => {
-    const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const areaLabel = getAreaLabel(area, areaIdx)
     const rowIdx = area.rowIndex ?? 0
     const computed = computePolygonPanels(area, ratio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     const areaFiltered = next.filter(p => p.area === areaIdx)
@@ -640,7 +641,7 @@ export function rebuildPanelGridAction({
   const pixelToCmRatio = parseFloat(referenceLineLengthCm) / pixelLength
   const newGrid = {}
   rectAreas.forEach((area, areaIdx) => {
-    const areaLabel = area.label || area.id || `area-${areaIdx}`
+    const areaLabel = getAreaLabel(area, areaIdx)
     const rowIdx = area.rowIndex ?? 0
     const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     const areaFiltered = panels.filter(p => p.area === areaIdx)
