@@ -689,6 +689,7 @@ export default function Step2PanelPlacement({
             rectAreas={rectAreas}
             setRectAreas={setRectAreas}
             onAddRectArea={handleAddRectArea}
+            onDeleteArea={handleDeleteArea}
             cmPerPixel={cmPerPixel}
             panelSpec={panelSpec}
             rebuildPanelGrid={rebuildPanelGrid}
