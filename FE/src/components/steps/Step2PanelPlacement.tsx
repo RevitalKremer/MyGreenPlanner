@@ -446,6 +446,36 @@ export default function Step2PanelPlacement({
       const groupRows = newRectAreas.filter(a => a.areaGroupId === groupId)
       let nextRowIndex = Math.max(...groupRows.map(a => a.rowIndex ?? 0), -1) + 1
       const inheritedClean = { manualTrapezoids: false, manualColTrapezoids: {} }
+
+      // Front-height derivation: a sub-area positioned UP the slope from the
+      // parent's front gets a higher frontHeight. Formula:
+      //   subAreaFrontHeight = parent.frontHeight + delta_along_slope * sin(angle)
+      // where delta_along_slope is the screen distance (cm) from the parent's
+      // front line to the sub-area's front line, taken in the slope-back
+      // direction (yDir-aware). Only applied to horizontal areas for now —
+      // vertical-area H derivation is a separate TODO.
+      const parentAngleDeg = parseFloat(parentArea.angle ?? '0') || 0
+      const parentAngleRad = parentAngleDeg * Math.PI / 180
+      const parentFrontHeightVal = parseFloat(parentArea.frontHeight ?? '0') || 0
+      const yDir = parentArea.yDir ?? 'ttb'
+      const av = !!parentArea?.areaVertical
+      const frontPosOf = (ps: any[]) => {
+        if (av) return yDir === 'btt'
+          ? Math.max(...ps.map((p: any) => p.x + p.width))
+          : Math.min(...ps.map((p: any) => p.x))
+        return yDir === 'btt'
+          ? Math.max(...ps.map((p: any) => p.y + p.height))
+          : Math.min(...ps.map((p: any) => p.y))
+      }
+      const areaPanelsForFH = panels.filter(p => p.area === areaIdx && !p.isEmpty)
+      const parentFrontPos = areaPanelsForFH.length > 0 ? frontPosOf(areaPanelsForFH) : 0
+      const yDirSign = yDir === 'btt' ? -1 : 1
+      const computeFrontHeight = (subPanels: any[]) => {
+        if (parentAngleRad === 0 || subPanels.length === 0) return parentFrontHeightVal
+        const subFrontPos = frontPosOf(subPanels)
+        const deltaPx = (subFrontPos - parentFrontPos) * yDirSign
+        return parentFrontHeightVal + deltaPx * (cmPerPixel ?? 1) * Math.sin(parentAngleRad)
+      }
       const remapForThisArea: RemapEntry[] = []
       const remapEntryFor = (subRow: MutationSubRow, targetIdx: number): RemapEntry => {
         const origCols = new Set<number>(subRow.panels.map(p => p.col ?? 0))
@@ -457,13 +487,19 @@ export default function Step2PanelPlacement({
           minOrigRow: Math.min(...origRows),
         }
       }
-      // First sub-row → shrink parent in place; remaining → append
+      // First sub-row → shrink parent in place; remaining → append.
+      // The first sub-row contains the parent's front line (delta=0), so its
+      // frontHeight equals the user-defined parent value — keep it as a
+      // user-defined row. Appended sub-rows are positioned UP the slope and
+      // get derived frontHeight + frontHeightDerived: true flag so the BE
+      // (and FE-side gating) treats them as view-only.
       const firstSubRow = sorted[0]
       const firstBbox = bboxFromColsAndPanels(firstSubRow, colCenters, !!parentArea?.areaVertical)
       newRectAreas[areaIdx] = {
         ...newRectAreas[areaIdx],
         vertices: verticesMatchingParent(parentArea.vertices, firstBbox),
         preferredOrientations: preferredOrientationsOf(firstSubRow),
+        frontHeight: computeFrontHeight(firstSubRow.panels),
         ...inheritedClean,
       }
       firstSubRow.panels.forEach(p => panelReassignments.set(p.id, areaIdx))
@@ -477,6 +513,8 @@ export default function Step2PanelPlacement({
           areaGroupId: groupId,
           rowIndex: nextRowIndex++,
           preferredOrientations: preferredOrientationsOf(subRow),
+          frontHeight: computeFrontHeight(subRow.panels),
+          frontHeightDerived: true,
           ...inheritedClean,
         }
         const newAreaIdx = newRectAreas.length
@@ -523,8 +561,59 @@ export default function Step2PanelPlacement({
         bboxX: xs.length ? `${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}` : '?',
         bboxY: ys.length ? `${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}` : '?',
         preferredOrientations: a.preferredOrientations,
+        frontHeight: a.frontHeight,
+        angle: a.angle,
       }
     }))
+
+    // Sync rowMounting and trapezoidConfigs for affected sub-areas so the
+    // sidebar's row list (reads rowMounting) and traps list (reads
+    // trapezoidConfigs) show the derived front-height values without
+    // requiring a full polygon-fill recompute.
+    const affectedIdxs = new Set<number>()
+    mutations.forEach(({ areaIdx }) => affectedIdxs.add(areaIdx))
+    for (let i = rectAreas.length; i < newRectAreas.length; i++) affectedIdxs.add(i)
+
+    const newRowMounting = { ...(rowMounting ?? {}) }
+    const newTrapezoidConfigs = { ...(trapezoidConfigs ?? {}) }
+    const newPanelsArr = panels.map(p => {
+      const newArea = panelReassignments.get(p.id)
+      return newArea !== undefined ? { ...p, area: newArea } : p
+    })
+
+    for (const idx of affectedIdxs) {
+      const a = newRectAreas[idx]
+      if (!a) continue
+      const areaLabelStr = String(a.label || a.id || `area-${idx}`)
+      const ri = a.rowIndex ?? 0
+      const angle = parseFloat(a.angle ?? '0') || 0
+      const frontHeight = parseFloat(a.frontHeight ?? '0') || 0
+      // rowMounting represents USER-DEFINED rows only. Skip derived rows so
+      // BE knows to recompute their H. The sidebar's display falls back to
+      // rectArea.frontHeight (which we DO populate above).
+      if (!a.frontHeightDerived) {
+        if (!newRowMounting[areaLabelStr]) newRowMounting[areaLabelStr] = []
+        newRowMounting[areaLabelStr] = [...newRowMounting[areaLabelStr]]
+        newRowMounting[areaLabelStr][ri] = { angleDeg: angle, frontHeightCm: frontHeight }
+      }
+      // trapezoidConfigs: refresh the a/h of trapIds touching this sub-area
+      // so the trap detail panel reflects the new value (even for derived
+      // rows — display only, BE owns the source of truth).
+      const subPanels = newPanelsArr.filter((p: any) => p.area === idx && !p.isEmpty)
+      const trapIdsSet = new Set<string>()
+      for (const p of subPanels as any[]) {
+        if (typeof p.trapezoidId === 'string') trapIdsSet.add(p.trapezoidId)
+      }
+      for (const tid of trapIdsSet) {
+        if (newTrapezoidConfigs[tid]) {
+          newTrapezoidConfigs[tid] = {
+            ...newTrapezoidConfigs[tid],
+            angle, frontHeight,
+            lineOrientations: a.preferredOrientations || newTrapezoidConfigs[tid].lineOrientations,
+          }
+        }
+      }
+    }
 
     // Suppress the auto-recompute that fires on rectAreas change — we've
     // already curated the panel list (originals preserved, area field
@@ -532,12 +621,11 @@ export default function Step2PanelPlacement({
     // positions and re-fill deleted cells.
     skipNextRecompute?.()
     setRectAreas(newRectAreas)
-    setPanels(panels.map(p => {
-      const newArea = panelReassignments.get(p.id)
-      return newArea !== undefined ? { ...p, area: newArea } : p
-    }))
+    setPanels(newPanelsArr)
+    setRowMounting?.(newRowMounting)
+    setTrapezoidConfigs?.(newTrapezoidConfigs)
     console.log('[recalc-rows] done')
-  }, [rectAreas, panels, appDefaults, cmPerPixel, setRectAreas, setPanels, deletedPanelKeys, setDeletedPanelKeys, skipNextRecompute])
+  }, [rectAreas, panels, appDefaults, cmPerPixel, setRectAreas, setPanels, deletedPanelKeys, setDeletedPanelKeys, skipNextRecompute, rowMounting, setRowMounting, trapezoidConfigs, setTrapezoidConfigs])
 
   const handleDeleteArea = useCallback((areaKey) => {
     // After deletion, indices shift: next area lands at same index, or previous if it was last
