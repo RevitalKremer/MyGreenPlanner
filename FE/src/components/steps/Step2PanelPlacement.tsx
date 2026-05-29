@@ -87,7 +87,8 @@ export default function Step2PanelPlacement({
   const [drawVertical, setDrawVertical] = useState(false)
   const [showHGridlines, setShowHGridlines] = useState(false)
   const [showVGridlines, setShowVGridlines] = useState(false)
-  const [snapToGridlines, setSnapToGridlines] = useState(false)
+  // Snap defaults ON — it's a behaviour, decoupled from gridline visibility.
+  const [snapToGridlines, setSnapToGridlines] = useState(true)
   // Multi-row: when set, the next drawn area will be added to this areaGroupId
   const [addRowToGroup, setAddRowToGroup] = useState(null)
 
@@ -913,7 +914,10 @@ export default function Step2PanelPlacement({
   // ── Tool helpers ─────────────────────────────────────────────────────────────
 
   const handleToolChange = (tool) => {
-    const keepSelection = (tool === 'move' || tool === 'rotate') &&
+    // Selecting Move always clears selection (matches Delete tool behaviour).
+    // Rotate still keeps selection when toggling Move↔Rotate so users can
+    // rotate the panels they had selected for moving.
+    const keepSelection = tool === 'rotate' &&
                           (activeTool === 'move' || activeTool === 'rotate')
     setActiveTool(tool)
     // Update editMode only for tools that own a tab. Overlay tools like the
@@ -1256,6 +1260,7 @@ export default function Step2PanelPlacement({
             rebuildPanelGrid={rebuildPanelGrid}
             recordPanelDeletion={recordPanelDeletion}
             panelGapCm={appDefaults?.panelGapCm}
+            lineGapCm={appDefaults?.lineGapCm}
             drawVertical={drawVertical}
             roofAxis={roofAxis}
             setRoofAxis={setRoofAxis}
