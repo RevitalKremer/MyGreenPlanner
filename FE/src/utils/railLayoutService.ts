@@ -388,13 +388,33 @@ export function computeRowRailLayout(rowPanels: PanelLayout[], pixelToCmRatio: n
     const lineMaxY = Math.max(...lineRects.map(r => r.localY + r.height))
     const lineDepthPx = lineMaxY - lineMinY
 
-    // Rail y-positions: from lineRails config or fall back to default symmetric placement
+    // Rail y-positions: from lineRails config or fall back to default symmetric placement.
+    // Fallback chain when this lineIdx isn't keyed in lineRails:
+    //   1. If lineRails has any populated entry (e.g. a Recalc-split sub-row whose BE
+    //      rails were keyed under lineIdx=0 while panels carry the parent's original
+    //      line index), use the first available entry — the offsets are valid for
+    //      this row regardless of label mismatch.
+    //   2. Otherwise compute from railSpacingV/H. spacing=0 would collapse both rails
+    //      to the panel midpoint, so guard against that with a panelDepth-based default.
     let railYPositions: number[]
     if (lineRails && lineRails[lineIdx] && (lineRails[lineIdx] as number[]).length >= 2) {
       railYPositions = (lineRails[lineIdx] as number[]).map(offsetCm => lineMaxY - offsetCm / pixelToCmRatio)
+    } else if (lineRails) {
+      const firstAvail = Object.values(lineRails).find(arr => Array.isArray(arr) && arr.length >= 2) as number[] | undefined
+      if (firstAvail) {
+        railYPositions = firstAvail.map(offsetCm => lineMaxY - offsetCm / pixelToCmRatio)
+      } else {
+        const spacing = orientation === 'LANDSCAPE' ? (railSpacingH ?? 0) : (railSpacingV ?? 0)
+        const offsetPx = spacing > 0
+          ? Math.max(0, (lineDepthPx - spacing / pixelToCmRatio) / 2)
+          : lineDepthPx * 0.2
+        railYPositions = [lineMinY + offsetPx, lineMaxY - offsetPx]
+      }
     } else {
       const spacing = orientation === 'LANDSCAPE' ? (railSpacingH ?? 0) : (railSpacingV ?? 0)
-      const offsetPx = Math.max(0, (lineDepthPx - spacing / pixelToCmRatio) / 2)
+      const offsetPx = spacing > 0
+        ? Math.max(0, (lineDepthPx - spacing / pixelToCmRatio) / 2)
+        : lineDepthPx * 0.2
       railYPositions = [lineMinY + offsetPx, lineMaxY - offsetPx]
     }
 

@@ -696,8 +696,13 @@ export default function Step2PanelPlacement({
       if (!maps) return p
       const newRow = maps.rows.get(p.row ?? 0) ?? p.row
       const newCol = maps.cols.get(p.col ?? 0) ?? p.col
+      // p.line mirrors p.row in rectPanelService.ts — remap both so railLayoutService
+      // (which keys lineGroups by p.line) lines up with BE rails keyed by the sub-area's
+      // local lineIdx. Without this, sub-rows fall to the default-spacing branch with
+      // spacing=0 and both rails collapse to the panel midpoint, rendering as one rail.
+      const newLine = maps.rows.get(p.line ?? p.row ?? 0) ?? p.line ?? newRow
       const newCoveredCols = p.coveredCols?.map((c: number) => maps.cols.get(c) ?? c) ?? undefined
-      return { ...p, row: newRow, col: newCol, ...(newCoveredCols ? { coveredCols: newCoveredCols } : {}) }
+      return { ...p, row: newRow, line: newLine, col: newCol, ...(newCoveredCols ? { coveredCols: newCoveredCols } : {}) }
     })
 
     // Suppress the auto-recompute that fires on rectAreas change — we've
