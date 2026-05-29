@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, WHITE, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG } from '../../../styles/colors'
+import { PRIMARY, TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, WHITE, BORDER_LIGHT, BORDER_FAINT, BORDER, BORDER_MID, BG_SUBTLE, BG_FAINT, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, ERROR, ERROR_DARK, ERROR_BG, WARNING_DARK, WARNING_BG } from '../../../styles/colors'
 import { useLang } from '../../../i18n/LangContext'
 
 const NUDGE_CM = 2.5
@@ -29,6 +29,8 @@ export default function ToolPanel({
   setRoofAxisEnabled,
   roofAxis,
   setRoofAxis,
+  hasRotations = false,
+  onRecalcRows,
 }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
@@ -121,6 +123,25 @@ export default function ToolPanel({
               <button style={modeTabStyle('panel')} onClick={() => onSetEditMode('panel')}>{t('step2.tool.modePanels')}</button>
             </div>
 
+            {/* Recalc rows — visible in BOTH modes whenever the layout has
+                voids (deleted middle cells or rotation-induced displacement).
+                Styled to match step3's "Apply changes" dirty-state button. */}
+            {hasRotations && (
+              <button
+                onClick={() => onRecalcRows?.()}
+                style={{
+                  width: '100%', padding: '0.45rem 0.6rem', marginBottom: '0.5rem',
+                  background: WARNING_DARK, color: WHITE,
+                  border: `1px solid ${WARNING_DARK}`, boxShadow: `0 0 0 3px ${WARNING_BG}`,
+                  borderRadius: '7px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                }}
+                title={t('step2.tool.recalcRowsTitle')}
+              >
+                {t('step2.tool.recalcRows')}
+              </button>
+            )}
+
             {/* ── Area mode ── */}
             {editMode === 'area' && (
               <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -210,6 +231,7 @@ export default function ToolPanel({
                     <span>＋</span>{toolLabel(t('step2.tool.add'))}
                   </button>
                 </div>
+
 
                 {/* Context panel */}
                 <div style={{ minHeight: '80px', marginBottom: '0.75rem', padding: '0.65rem', background: BG_FAINT, borderRadius: '8px', border: `1px solid ${BG_MID}` }}>

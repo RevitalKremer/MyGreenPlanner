@@ -876,6 +876,9 @@ function App() {
             rebuildPanelGrid={s.rebuildPanelGrid}
             recordPanelDeletion={s.recordPanelDeletion}
             clearDeletedPanelsForArea={s.clearDeletedPanelsForArea}
+            deletedPanelKeys={s.deletedPanelKeys}
+            setDeletedPanelKeys={s.setDeletedPanelKeys}
+            skipNextRecompute={s.skipNextRecompute}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}

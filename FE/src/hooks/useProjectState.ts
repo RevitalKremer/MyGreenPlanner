@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
-import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
+import { generatePanelLayout, createManualPanel, hasVoidAreas } from '../utils/panelUtils'
 import { createProject, updateProject, uploadProjectImage, getProjectImageUrl } from '../services/projectsApi'
 import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
@@ -909,6 +909,7 @@ export function useProjectState() {
         if (rectAreas.some((a: any) => typeof a.label !== 'string' || a.label.trim() === '')) {
           blockers.push('nav.blocker.step2.areaLabel')
         }
+        if (hasVoidAreas(panels)) blockers.push('nav.blocker.step2.recalcRows')
         if (allAreasFrameless(roofType, [])) break
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
@@ -1038,6 +1039,12 @@ export function useProjectState() {
     rebuildPanelGrid,
     recordPanelDeletion,
     clearDeletedPanelsForArea,
+    deletedPanelKeys,
+    setDeletedPanelKeys,
+    // Suppress the next auto-recompute. Call BEFORE setRectAreas in handlers
+    // that manage panel state themselves and don't want polygon-fill to
+    // regenerate panels.
+    skipNextRecompute: () => { skipRecomputeRef.current = 'manual' },
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,

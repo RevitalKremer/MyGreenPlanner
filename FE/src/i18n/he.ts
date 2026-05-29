@@ -51,6 +51,7 @@ const he = {
   'nav.blocker.step2.angle':              'יש להזין זווית התקנה (A) תקינה לכל אזור/שורה',
   'nav.blocker.step2.frontHeight':        'יש להזין גובה חזית (H) תקין לכל אזור/שורה',
   'nav.blocker.step2.purlinDistance':     'יש להזין מרחק בין פטות',
+  'nav.blocker.step2.recalcRows':         'יש ללחוץ "חשב מחדש שורות" כדי לפתור חורים בפריסה',
   'nav.blocker.step4.consent':            'יש לאשר את התוכנית כדי להמשיך',
 
   // ── מסך סיום חגיגי ──────────────────────────────────────────────────────
@@ -245,6 +246,8 @@ const he = {
   'step2.tool.rotateArea90Title': 'סובב אזור נבחר ב-90°',
   'step2.tool.addRow':            'הוסף שורה',
   'step2.tool.cancelAddRow':      'ביטול',
+  'step2.tool.recalcRows':        '↻ חשב מחדש שורות',
+  'step2.tool.recalcRowsTitle':   'פצל שורות לפי חורים / פנלים מסובבים',
   'step2.tool.drawRowHint':       'צייר שורה חדשה על הקנבס',
   'step2.tool.drawVerticalOn':   'V-Draw',
   'step2.tool.drawVerticalOff':  'V-Draw',

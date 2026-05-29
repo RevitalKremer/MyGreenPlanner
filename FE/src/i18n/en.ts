@@ -51,6 +51,7 @@ const en = {
   'nav.blocker.step2.angle':              'Set a valid mounting angle (A) for each area/row',
   'nav.blocker.step2.frontHeight':        'Set a valid front height (H) for each area/row',
   'nav.blocker.step2.purlinDistance':     'Set the distance between purlins',
+  'nav.blocker.step2.recalcRows':         'Click "Recalc rows" to resolve voids in the layout',
   'nav.blocker.step4.consent':            'Confirm plan approval to continue',
 
   // ── Finish celebration ──────────────────────────────────────────────────
@@ -246,6 +247,8 @@ const en = {
   'step2.tool.rotateArea90Title': 'Rotate selected area 90°',
   'step2.tool.addRow':            'Add Row',
   'step2.tool.cancelAddRow':      'Cancel',
+  'step2.tool.recalcRows':        '↻ Recalc rows',
+  'step2.tool.recalcRowsTitle':   'Split rows by voids / rotated panels',
   'step2.tool.drawRowHint':       'Draw a new row on the canvas',
   'step2.tool.drawVerticalOn':   'V-Draw',
   'step2.tool.drawVerticalOff':  'V-Draw',

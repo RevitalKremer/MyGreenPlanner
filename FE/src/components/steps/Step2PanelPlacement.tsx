@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   computePanelBackHeight,
 } from '../../utils/trapezoidGeometry'
-import { panelInsideRoof } from '../../utils/panelUtils'
+import { panelInsideRoof, hasVoidAreas } from '../../utils/panelUtils'
 import { computePolygonPanels } from '../../utils/rectPanelService'
 import { PANEL_V, PANEL_H } from '../../utils/panelCodes'
 import { allAreasFrameless } from '../../utils/roofSpecUtils'
@@ -56,6 +56,9 @@ export default function Step2PanelPlacement({
   rebuildPanelGrid,
   recordPanelDeletion,
   clearDeletedPanelsForArea,
+  deletedPanelKeys,
+  setDeletedPanelKeys,
+  skipNextRecompute,
   appDefaults,
   paramLimits = {} as Record<string, any>,
   roofType,
@@ -159,6 +162,382 @@ export default function Step2PanelPlacement({
     onAddRectArea?.({ ...area, mode: isAllLocked ? 'ylocked' : 'free' }, groupId)
     if (groupId) setAddRowToGroup(null)  // reset after use
   }, [rectAreas, onAddRectArea, addRowToGroup])
+
+  // Recalc rows: PHASE 1 algorithm
+  //   Step 1: identify columns containing rotated panels
+  //   Step 2: remove those columns from the row → remaining contiguous column
+  //           ranges each become a new sub-row (clean axis-aligned grid)
+  //   Step 3: for each removed rotated-column range, split its panels by
+  //           vertical voids (gaps > lineGap) → each contiguous group is a
+  //           new sub-row
+  // Detection + logs only for now; state mutation lands next.
+  const handleRecalcRows = useCallback(() => {
+    console.log('[recalc-rows] start')
+    const lineGapPx = cmPerPixel ? (appDefaults?.lineGapCm ?? 5) / cmPerPixel : 8
+    const colsOf = (p: any) => (p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0])
+    const orientOf = (p: any) => p.heightCm > p.widthCm ? PANEL_V : PANEL_H
+    // Collected per-area mutations: each entry says "split this area's panels
+    // into these sub-rows". Applied atomically after detection.
+    type MutationSubRow = { kind: 'clean' | 'rotated'; colRange: string; firstCol: number; panels: any[] }
+    const mutations: { areaIdx: number; parentArea: any; subRows: MutationSubRow[]; colCenters: Map<number, number> }[] = []
+
+    rectAreas.forEach((area, areaIdx) => {
+      const areaPanels = panels.filter(p => p.area === areaIdx && !p.isEmpty)
+      if (areaPanels.length === 0) return
+      // Axis selection: for axis-aligned vertical areas (areaVertical=true,
+      // effectiveRotation=90°), cols are laid out along screen Y and lines
+      // along screen X. For horizontal areas, vice versa. (Arbitrary rotations
+      // are not handled in phase 1.)
+      const av = !!area?.areaVertical
+      const colCenterOf = (p: any) => av ? p.y + p.height / 2 : p.x + p.width / 2
+      const colStartOf  = (p: any) => av ? p.y : p.x
+      const colEndOf    = (p: any) => av ? p.y + p.height : p.x + p.width
+      const rowStartOf  = (p: any) => av ? p.x : p.y
+      const rowEndOf    = (p: any) => av ? p.x + p.width : p.y + p.height
+
+      // Per-line majority orientation = expected orientation for the row
+      const lineGroups = new Map<number, any[]>()
+      areaPanels.forEach(p => {
+        const ln = p.row ?? 0
+        if (!lineGroups.has(ln)) lineGroups.set(ln, [])
+        lineGroups.get(ln)!.push(p)
+      })
+      const lineExpected = new Map<number, string>()
+      for (const [ln, ps] of lineGroups) {
+        const vCount = ps.filter(p => p.heightCm > p.widthCm).length
+        lineExpected.set(ln, vCount >= ps.length / 2 ? PANEL_V : PANEL_H)
+      }
+
+      // Step 1: identify rotated panels and the columns they sit in.
+      // togglePanelOrientation swaps W/H but doesn't update coveredCols, so a
+      // rotated H panel still reports coveredCols=[1] even though it now
+      // physically spans cols 1–2. Determine column coverage GEOMETRICALLY by
+      // overlapping x-ranges against neighbour panels' cols.
+      const rotatedPanels = areaPanels.filter(p => orientOf(p) !== lineExpected.get(p.row ?? 0))
+
+      // A col has a "middle void" if there's a gap > 1 between consecutive
+      // line indices WITHIN that col's own min/max. Use coveredCols — a
+      // multi-col panel at line N "fills" all the cols it covers at that
+      // line. Together with anchored panels in the same col, this gives the
+      // true stack used for void detection.
+      const colLines = new Map<number, Set<number>>()
+      areaPanels.forEach(p => {
+        const ln = p.row ?? 0
+        colsOf(p).forEach((c: number) => {
+          if (!colLines.has(c)) colLines.set(c, new Set())
+          colLines.get(c)!.add(ln)
+        })
+      })
+      const voidCols = new Set<number>()
+      for (const [col, linesSet] of colLines) {
+        const sorted = [...linesSet].sort((a, b) => a - b)
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i] - sorted[i - 1] > 1) { voidCols.add(col); break }
+        }
+      }
+
+      // Nothing to do for this area if no rotations and no voids
+      if (rotatedPanels.length === 0 && voidCols.size === 0) return
+
+      const rotatedXRanges = rotatedPanels.map(p => ({ x1: colStartOf(p), x2: colEndOf(p) }))
+      // Canonical col → center map (in col axis — screen-x for horizontal
+      // areas, screen-y for vertical). Derived only from single-col panels;
+      // multi-col panels would skew the center.
+      const colCenters = new Map<number, number>()
+      areaPanels.forEach(p => {
+        const cs = colsOf(p)
+        if (cs.length !== 1) return
+        if (!colCenters.has(cs[0])) colCenters.set(cs[0], colCenterOf(p))
+      })
+      // TEMP DEBUG: rotation geometry + derived col centers (axis-aware)
+      console.log(`  area ${areaIdx} (${area.label}) areaVertical=${av}`)
+      console.log('  rotated panel geometry:', rotatedPanels.map(p => ({
+        id: p.id, col: p.col, coveredCols: p.coveredCols, line: p.row,
+        xRange: `[${p.x.toFixed(1)}..${(p.x + p.width).toFixed(1)}]`,
+        yRange: `[${p.y.toFixed(1)}..${(p.y + p.height).toFixed(1)}]`,
+        colAxisRange: `[${colStartOf(p).toFixed(1)}..${colEndOf(p).toFixed(1)}]`,
+      })))
+      console.log('  canonical col centers (col axis):', [...colCenters.entries()].sort((a, b) => a[0] - b[0]))
+      // A col is "rotated" iff its canonical center is INSIDE the H's x range
+      const rotatedCols = new Set<number>()
+      for (const [col, cx] of colCenters) {
+        if (rotatedXRanges.some(r => cx > r.x1 && cx < r.x2)) rotatedCols.add(col)
+      }
+
+      const omittedCols = new Set<number>([...rotatedCols, ...voidCols])
+      const allCols = new Set<number>()
+      areaPanels.forEach(p => colsOf(p).forEach((c: number) => allCols.add(c)))
+      const cleanCols = [...allCols].filter(c => !omittedCols.has(c)).sort((a, b) => a - b)
+      const rotCols = [...omittedCols].sort((a, b) => a - b)
+
+      console.log(`[recalc-rows] area ${areaIdx} (${area.label}): ${rotatedPanels.length} rotated panel(s); rotated cols [${[...rotatedCols].sort((a, b) => a - b).join(',')}], void cols [${[...voidCols].sort((a, b) => a - b).join(',')}], omitted [${rotCols.join(',')}]`)
+
+      // Helper: group an ordered list of column indices into contiguous ranges
+      const groupContiguous = (cols: number[]) => {
+        const out: number[][] = []
+        let run: number[] = []
+        for (const c of cols) {
+          if (run.length === 0 || c === run[run.length - 1] + 1) run.push(c)
+          else { out.push(run); run = [c] }
+        }
+        if (run.length > 0) out.push(run)
+        return out
+      }
+
+      // Each panel belongs to the row containing its anchor col (p.col, =
+      // min(coveredCols) for left-anchored multi-col panels). A panel that
+      // visually spans into another row's column still lives in its anchor
+      // col's row — no double-counting.
+      const belongsTo = (p: any, range: number[]) => range.includes(p.col ?? 0)
+
+      // Build sub-rows with their actual panels (for mutation)
+      type SubRow = { kind: 'clean' | 'rotated'; colRange: string; firstCol: number; panels: any[] }
+      const subRows: SubRow[] = []
+
+      // Step 2: clean column ranges → one new sub-row each. Panels assigned
+      // by anchor col (p.col). ALL panels — including multi-col ones — stay
+      // in their anchor col's sub-row. The skipNextRecompute() call before
+      // setRectAreas prevents polygon-fill from regenerating panels, so the
+      // original panel positions (including multi-col spans) are preserved.
+      const cleanRanges = groupContiguous(cleanCols)
+      cleanRanges.forEach(range => {
+        const ps = areaPanels.filter(p => belongsTo(p, range))
+        if (ps.length === 0) return
+        subRows.push({ kind: 'clean', colRange: `${range[0]}-${range[range.length - 1]}`, firstCol: range[0], panels: ps })
+      })
+      console.log(`  → step 2: ${subRows.filter(s => s.kind === 'clean').length} clean row(s)`,
+        subRows.filter(s => s.kind === 'clean').map(s => ({ colRange: s.colRange, panelCount: s.panels.length })))
+
+      // Step 3: rotated column ranges → split each by void along the ROW axis
+      // (screen-y for horizontal areas, screen-x for vertical).
+      const rotRanges = groupContiguous(rotCols)
+      rotRanges.forEach(range => {
+        const rangePanels = areaPanels
+          .filter(p => belongsTo(p, range))
+          .sort((a, b) => rowStartOf(a) - rowStartOf(b))
+        let group: any[] = []
+        const flush = () => {
+          if (group.length === 0) return
+          subRows.push({
+            kind: 'rotated',
+            colRange: `${range[0]}-${range[range.length - 1]}`,
+            firstCol: range[0],
+            panels: group,
+          })
+          group = []
+        }
+        for (const p of rangePanels) {
+          if (group.length === 0) { group.push(p); continue }
+          const maxEnd = group.reduce((m, x) => Math.max(m, rowEndOf(x)), -Infinity)
+          const gap = rowStartOf(p) - maxEnd
+          if (gap <= lineGapPx + 2) group.push(p)
+          else { flush(); group.push(p) }
+        }
+        flush()
+      })
+      console.log(`  → step 3: ${subRows.filter(s => s.kind === 'rotated').length} rotated row(s) (split by void)`,
+        subRows.filter(s => s.kind === 'rotated').map(s => ({
+          colRange: s.colRange,
+          panelCount: s.panels.length,
+          lines: s.panels.map(p => ({ line: p.row, orient: orientOf(p) })),
+        })))
+
+      mutations.push({ areaIdx, parentArea: area, subRows, colCenters })
+    })
+
+    if (mutations.length === 0) {
+      console.log('[recalc-rows] done — no changes needed')
+      return
+    }
+
+    // ─── Apply mutations ─────────────────────────────────────────────────
+    // Bbox X range comes from canonical col centers — tight, won't bleed into
+    // adjacent cols (e.g. when a multi-col panel anchors at col 0 but spans
+    // into col 1, the col 0 sub-row's x range stays at col 0's edges).
+    // Axis-aware bbox. For horizontal areas: col axis = screen-x, row axis =
+    // screen-y. For vertical areas: col axis = screen-y, row axis = screen-x.
+    // colCenters values are in the area's col axis; bbox returned in screen.
+    const bboxFromColsAndPanels = (subRow: MutationSubRow, colCenters: Map<number, number>, areaVertical: boolean) => {
+      const sortedCenters = [...colCenters.entries()].sort((a, b) => a[0] - b[0])
+      const fallbackPanelDim = areaVertical ? (subRow.panels[0]?.height ?? 50) : (subRow.panels[0]?.width ?? 50)
+      const colWidth = sortedCenters.length >= 2
+        ? Math.abs(sortedCenters[1][1] - sortedCenters[0][1])
+        : fallbackPanelDim
+      // Use coveredCols so multi-col panels (e.g. an H spanning 2 cols)
+      // extend the sub-row's bbox to cover their full extent — otherwise the
+      // bbox is too narrow and polygon-fill places the panel at the start
+      // corner, making it look "aligned to left".
+      const subCols = [...new Set(
+        subRow.panels.flatMap((p: any) => p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0])
+      )] as number[]
+      const colCenterVals = subCols.map(c => colCenters.get(c)).filter((x): x is number => x !== undefined)
+      // Col-axis extent (along col axis)
+      let colMin: number, colMax: number
+      if (colCenterVals.length === 0) {
+        if (areaVertical) {
+          colMin = Math.min(...subRow.panels.map(p => p.y))
+          colMax = Math.max(...subRow.panels.map(p => p.y + p.height))
+        } else {
+          colMin = Math.min(...subRow.panels.map(p => p.x))
+          colMax = Math.max(...subRow.panels.map(p => p.x + p.width))
+        }
+      } else {
+        colMin = Math.min(...colCenterVals) - colWidth / 2
+        colMax = Math.max(...colCenterVals) + colWidth / 2
+      }
+      // Row-axis extent (along row axis)
+      let rowMin = Infinity, rowMax = -Infinity
+      for (const p of subRow.panels) {
+        if (areaVertical) {
+          rowMin = Math.min(rowMin, p.x)
+          rowMax = Math.max(rowMax, p.x + p.width)
+        } else {
+          rowMin = Math.min(rowMin, p.y)
+          rowMax = Math.max(rowMax, p.y + p.height)
+        }
+      }
+      // Map col/row axes back to screen X/Y
+      const minX = areaVertical ? rowMin : colMin
+      const maxX = areaVertical ? rowMax : colMax
+      const minY = areaVertical ? colMin : rowMin
+      const maxY = areaVertical ? colMax : rowMax
+      return { minX, minY, maxX, maxY }
+    }
+
+    // Match parent vertex ordering so pivotIdx/yDir/xDir stay consistent
+    // (axis-aligned assumption — for rotated areas we'd need local frame).
+    const verticesMatchingParent = (parentVerts: any[], bbox: { minX: number; minY: number; maxX: number; maxY: number }) => {
+      const pMinX = Math.min(...parentVerts.map((v: any) => v.x))
+      const pMinY = Math.min(...parentVerts.map((v: any) => v.y))
+      return parentVerts.map((v: any) => ({
+        x: v.x === pMinX ? bbox.minX : bbox.maxX,
+        y: v.y === pMinY ? bbox.minY : bbox.maxY,
+      }))
+    }
+
+    // Sub-row's preferredOrientations — sorted by line index ascending so
+    // polygon-fill produces panels matching the existing layout (incl. the
+    // rotated H sitting where the V used to be).
+    const preferredOrientationsOf = (subRow: MutationSubRow) => {
+      const byLine = new Map<number, string>()
+      for (const p of subRow.panels) {
+        const ln = p.row ?? 0
+        if (!byLine.has(ln)) byLine.set(ln, p.heightCm > p.widthCm ? PANEL_V : PANEL_H)
+      }
+      const lines = [...byLine.keys()].sort((a, b) => a - b)
+      return lines.map(l => byLine.get(l)!)
+    }
+
+    const newRectAreas = [...rectAreas]
+    const panelReassignments = new Map<number, number>()
+    let nextId = Math.min(0, ...newRectAreas.map(a => a.id ?? 0)) - 1
+    // Carries enough info per new sub-area to remap deletedPanelKeys after the
+    // sub-areas are placed: target index, the original cols/rows it covers,
+    // and the minOrigCol/minOrigRow to subtract for the new grid.
+    type RemapEntry = { areaIdx: number; origCols: Set<number>; origRows: Set<number>; minOrigCol: number; minOrigRow: number }
+    const remapTable: Array<{ originalAreaIdx: number; subAreaInfo: RemapEntry[] }> = []
+
+    mutations.forEach(({ areaIdx, parentArea, subRows, colCenters }) => {
+      if (subRows.length === 0) return
+      // Ensure parent has an areaGroupId — promotes a standalone area into a group
+      const groupId = parentArea.areaGroupId ?? parentArea.id ?? -(areaIdx + 1)
+      newRectAreas[areaIdx] = { ...newRectAreas[areaIdx], areaGroupId: groupId }
+      const sorted = [...subRows].sort((a, b) => a.firstCol - b.firstCol)
+      const groupRows = newRectAreas.filter(a => a.areaGroupId === groupId)
+      let nextRowIndex = Math.max(...groupRows.map(a => a.rowIndex ?? 0), -1) + 1
+      const inheritedClean = { manualTrapezoids: false, manualColTrapezoids: {} }
+      const remapForThisArea: RemapEntry[] = []
+      const remapEntryFor = (subRow: MutationSubRow, targetIdx: number): RemapEntry => {
+        const origCols = new Set<number>(subRow.panels.map(p => p.col ?? 0))
+        const origRows = new Set<number>(subRow.panels.map(p => p.row ?? 0))
+        return {
+          areaIdx: targetIdx,
+          origCols, origRows,
+          minOrigCol: Math.min(...origCols),
+          minOrigRow: Math.min(...origRows),
+        }
+      }
+      // First sub-row → shrink parent in place; remaining → append
+      const firstSubRow = sorted[0]
+      const firstBbox = bboxFromColsAndPanels(firstSubRow, colCenters, !!parentArea?.areaVertical)
+      newRectAreas[areaIdx] = {
+        ...newRectAreas[areaIdx],
+        vertices: verticesMatchingParent(parentArea.vertices, firstBbox),
+        preferredOrientations: preferredOrientationsOf(firstSubRow),
+        ...inheritedClean,
+      }
+      firstSubRow.panels.forEach(p => panelReassignments.set(p.id, areaIdx))
+      remapForThisArea.push(remapEntryFor(firstSubRow, areaIdx))
+      sorted.slice(1).forEach(subRow => {
+        const bbox = bboxFromColsAndPanels(subRow, colCenters, !!parentArea?.areaVertical)
+        const newArea = {
+          ...parentArea,
+          vertices: verticesMatchingParent(parentArea.vertices, bbox),
+          id: nextId--,
+          areaGroupId: groupId,
+          rowIndex: nextRowIndex++,
+          preferredOrientations: preferredOrientationsOf(subRow),
+          ...inheritedClean,
+        }
+        const newAreaIdx = newRectAreas.length
+        newRectAreas.push(newArea)
+        subRow.panels.forEach(p => panelReassignments.set(p.id, newAreaIdx))
+        remapForThisArea.push(remapEntryFor(subRow, newAreaIdx))
+      })
+      remapTable.push({ originalAreaIdx: areaIdx, subAreaInfo: remapForThisArea })
+    })
+
+    // Remap deletedPanelKeys: each original deletion is keyed `row_col` within
+    // the original area's grid. After splitting, the new sub-area's grid is
+    // 0-indexed from its own min row/col, so we remap `row-minOrigRow_col-minOrigCol`
+    // into the target sub-area's bucket. Without this remap, the auto-recompute
+    // on setRectAreas refills previously-deleted cells.
+    const newDeletedPanelKeys: Record<number, string[]> = { ...(deletedPanelKeys ?? {}) }
+    remapTable.forEach(({ originalAreaIdx, subAreaInfo }) => {
+      const origKeys = newDeletedPanelKeys[originalAreaIdx] || []
+      if (origKeys.length === 0) return
+      // Clear original area's keys — they refer to the pre-split grid.
+      // Sub-areas inherit the relevant ones below.
+      delete newDeletedPanelKeys[originalAreaIdx]
+      for (const k of origKeys) {
+        const [origRow, origCol] = k.split('_').map(Number)
+        const target = subAreaInfo.find(e => e.origCols.has(origCol) && e.origRows.has(origRow))
+        if (!target) continue  // deletion fell outside all sub-areas (shouldn't happen normally)
+        const newKey = `${origRow - target.minOrigRow}_${origCol - target.minOrigCol}`
+        if (!newDeletedPanelKeys[target.areaIdx]) newDeletedPanelKeys[target.areaIdx] = []
+        if (!newDeletedPanelKeys[target.areaIdx].includes(newKey)) {
+          newDeletedPanelKeys[target.areaIdx] = [...newDeletedPanelKeys[target.areaIdx], newKey]
+        }
+      }
+    })
+    console.log('[recalc-rows] deletedPanelKeys remap:', { before: deletedPanelKeys, after: newDeletedPanelKeys })
+    setDeletedPanelKeys?.(newDeletedPanelKeys)
+
+    console.log(`[recalc-rows] applying: ${newRectAreas.length - rectAreas.length} new rectArea(s); ${panelReassignments.size} panel(s) reassigned`)
+    console.log('[recalc-rows] new rectAreas:', newRectAreas.map((a, i) => {
+      const xs = (a.vertices ?? []).map((v: any) => v.x).filter((v: any) => typeof v === 'number')
+      const ys = (a.vertices ?? []).map((v: any) => v.y).filter((v: any) => typeof v === 'number')
+      return {
+        idx: i, id: a.id, groupId: a.areaGroupId, rowIndex: a.rowIndex,
+        areaVertical: !!a.areaVertical,
+        bboxX: xs.length ? `${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}` : '?',
+        bboxY: ys.length ? `${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}` : '?',
+        preferredOrientations: a.preferredOrientations,
+      }
+    }))
+
+    // Suppress the auto-recompute that fires on rectAreas change — we've
+    // already curated the panel list (originals preserved, area field
+    // reassigned). Polygon-fill regeneration would clobber multi-col panel
+    // positions and re-fill deleted cells.
+    skipNextRecompute?.()
+    setRectAreas(newRectAreas)
+    setPanels(panels.map(p => {
+      const newArea = panelReassignments.get(p.id)
+      return newArea !== undefined ? { ...p, area: newArea } : p
+    }))
+    console.log('[recalc-rows] done')
+  }, [rectAreas, panels, appDefaults, cmPerPixel, setRectAreas, setPanels, deletedPanelKeys, setDeletedPanelKeys, skipNextRecompute])
 
   const handleDeleteArea = useCallback((areaKey) => {
     // After deletion, indices shift: next area lands at same index, or previous if it was last
@@ -883,6 +1262,8 @@ export default function Step2PanelPlacement({
             setRoofAxisEnabled={setRoofAxisEnabled}
             roofAxis={roofAxis}
             setRoofAxis={setRoofAxis}
+            hasRotations={hasVoidAreas(panels)}
+            onRecalcRows={handleRecalcRows}
           />
         )}
       </div>

@@ -2,6 +2,37 @@
 import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry'
 import { PANEL_H, PANEL_V } from './panelCodes.js'
 
+// True if any column in any area has a "middle void" — a gap in its line
+// indices where a panel above AND a panel below exist but the line between
+// them is empty. Uses coveredCols (multi-col panels fill all cols they
+// cover at their line). This covers deletions that leave a hole in a
+// column AND rotation-induced displacements (the rotated panel pushes out
+// a neighbour, leaving its line index empty). Trailing empties (above
+// topmost / below bottommost) are EV/EH, NOT voids.
+export const hasVoidAreas = (panels) => {
+  const colLinesByArea = new Map()  // `${area}_${panelRowIdx}` → Map<col, Set<line>>
+  for (const p of panels || []) {
+    if (p.isEmpty) continue
+    const areaKey = `${p.area}_${p.panelRowIdx ?? 0}`
+    if (!colLinesByArea.has(areaKey)) colLinesByArea.set(areaKey, new Map())
+    const colMap = colLinesByArea.get(areaKey)
+    const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
+    for (const c of cols) {
+      if (!colMap.has(c)) colMap.set(c, new Set())
+      colMap.get(c).add(p.row ?? 0)
+    }
+  }
+  for (const colMap of colLinesByArea.values()) {
+    for (const linesSet of colMap.values()) {
+      const sorted = [...linesSet].sort((a, b) => a - b)
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] - sorted[i - 1] > 1) return true
+      }
+    }
+  }
+  return false
+}
+
 // Stable string identifier for an area — used as a key in panelGrid,
 // rowMounting, trapezoidId, etc. (all string-keyed). When the user clears
 // the area label, the fallback resolves to `area.id` (numeric), so we
