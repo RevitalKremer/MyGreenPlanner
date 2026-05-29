@@ -2,15 +2,15 @@
 import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry'
 import { PANEL_H, PANEL_V } from './panelCodes.js'
 
-// True if any column in any area has a "middle void" — a gap in its line
-// indices where a panel above AND a panel below exist but the line between
-// them is empty. Uses coveredCols (multi-col panels fill all cols they
-// cover at their line). This covers deletions that leave a hole in a
-// column AND rotation-induced displacements (the rotated panel pushes out
-// a neighbour, leaving its line index empty). Trailing empties (above
-// topmost / below bottommost) are EV/EH, NOT voids.
+// True if any area needs a "Recalc rows" — either:
+//   (a) middle void: a column has a gap in its line indices (panel above
+//       AND below an empty line). Trailing empties are EV/EH, not voids.
+//   (b) mixed orientations within a line: a rotated panel sits in a line
+//       whose majority is the other orientation. It can't be represented
+//       as EV/EH so it counts as a logical void requiring re-tiling.
 export const hasVoidAreas = (panels) => {
   const colLinesByArea = new Map()  // `${area}_${panelRowIdx}` → Map<col, Set<line>>
+  const lineOrientsByArea = new Map()  // `${area}_${panelRowIdx}_${line}` → Set<orient>
   for (const p of panels || []) {
     if (p.isEmpty) continue
     const areaKey = `${p.area}_${p.panelRowIdx ?? 0}`
@@ -21,7 +21,13 @@ export const hasVoidAreas = (panels) => {
       if (!colMap.has(c)) colMap.set(c, new Set())
       colMap.get(c).add(p.row ?? 0)
     }
+    // (b) per-line orientation tracking
+    const lineKey = `${p.area}_${p.panelRowIdx ?? 0}_${p.row ?? 0}`
+    if (!lineOrientsByArea.has(lineKey)) lineOrientsByArea.set(lineKey, new Set())
+    const orient = (p.heightCm ?? 0) > (p.widthCm ?? 0) ? PANEL_V : PANEL_H
+    lineOrientsByArea.get(lineKey).add(orient)
   }
+  // (a) middle voids
   for (const colMap of colLinesByArea.values()) {
     for (const linesSet of colMap.values()) {
       const sorted = [...linesSet].sort((a, b) => a - b)
@@ -29,6 +35,10 @@ export const hasVoidAreas = (panels) => {
         if (sorted[i] - sorted[i - 1] > 1) return true
       }
     }
+  }
+  // (b) mixed orientations in any line
+  for (const orientSet of lineOrientsByArea.values()) {
+    if (orientSet.size > 1) return true
   }
   return false
 }
