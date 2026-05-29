@@ -44,8 +44,11 @@ export default function TrapezoidConfigEditor({
   const groupLabel = area?.label
   const rowEntry = (rowMounting?.[groupLabel] || [])[rowIdx]
   // Row a/h is the source of truth for trap a/h. Editing here writes to the row.
+  // For derived rows (no rowMounting entry), fall back to the rectArea's
+  // frontHeight — set by Recalc rows from slope geometry.
   const angle = rowEntry?.angleDeg ?? defaultAngle
-  const frontHeight = rowEntry?.frontHeightCm ?? defaultFrontHeight
+  const frontHeight = rowEntry?.frontHeightCm
+    ?? (area?.frontHeightDerived ? (parseFloat(area?.frontHeight) || defaultFrontHeight) : defaultFrontHeight)
   const backHeight = override.backHeight ?? globalCfg.backHeight ?? 0
 
   const updateRow = (patch) => {

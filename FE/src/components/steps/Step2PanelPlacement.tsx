@@ -506,6 +506,12 @@ export default function Step2PanelPlacement({
       remapForThisArea.push(remapEntryFor(firstSubRow, areaIdx))
       sorted.slice(1).forEach(subRow => {
         const bbox = bboxFromColsAndPanels(subRow, colCenters, !!parentArea?.areaVertical)
+        const subFh = computeFrontHeight(subRow.panels)
+        // Sub-rows whose derived H equals the parent's H (typically those at
+        // the same slope position as the parent's front line) stay as
+        // user-defined — they're not constrained by geometry, the user can
+        // edit them freely.
+        const isDerived = Math.abs(subFh - parentFrontHeightVal) > 0.5
         const newArea = {
           ...parentArea,
           vertices: verticesMatchingParent(parentArea.vertices, bbox),
@@ -513,8 +519,8 @@ export default function Step2PanelPlacement({
           areaGroupId: groupId,
           rowIndex: nextRowIndex++,
           preferredOrientations: preferredOrientationsOf(subRow),
-          frontHeight: computeFrontHeight(subRow.panels),
-          frontHeightDerived: true,
+          frontHeight: subFh,
+          ...(isDerived ? { frontHeightDerived: true } : {}),
           ...inheritedClean,
         }
         const newAreaIdx = newRectAreas.length

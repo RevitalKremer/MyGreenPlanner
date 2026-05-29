@@ -495,7 +495,11 @@ export default function RowSidebar({
                             const aDefault = parseFloat(panelAngle) || 0
                             const fhDefault = parseFloat(panelFrontHeight) || 0
                             const rowAng = rowEntry.angleDeg ?? aDefault
-                            const rowFh = rowEntry.frontHeightCm ?? fhDefault
+                            // For derived rows (no rowMounting entry), fall back to the
+                            // rectArea's stored frontHeight so the rows-list value matches
+                            // the detail panel.
+                            const rowFh = rowEntry.frontHeightCm
+                              ?? (rowRa?.frontHeightDerived ? (parseFloat(rowRa?.frontHeight) || fhDefault) : fhDefault)
                             return (
                               <div
                                 key={ri}
