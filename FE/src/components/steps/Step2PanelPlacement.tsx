@@ -568,6 +568,7 @@ export default function Step2PanelPlacement({
         bboxY: ys.length ? `${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}` : '?',
         preferredOrientations: a.preferredOrientations,
         frontHeight: a.frontHeight,
+        frontHeightDerived: !!a.frontHeightDerived,
         angle: a.angle,
       }
     }))
@@ -582,9 +583,15 @@ export default function Step2PanelPlacement({
 
     const newRowMounting = { ...(rowMounting ?? {}) }
     const newTrapezoidConfigs = { ...(trapezoidConfigs ?? {}) }
+    // Reassign each panel to its new sub-area AND update panelRowIdx to match
+    // the sub-area's rowIndex — without this, downstream lookups (e.g. the
+    // trap editor's rowMounting lookup keyed by panelRowIdx) still resolve
+    // against the pre-split row.
     const newPanelsArr = panels.map(p => {
-      const newArea = panelReassignments.get(p.id)
-      return newArea !== undefined ? { ...p, area: newArea } : p
+      const newAreaIdx = panelReassignments.get(p.id)
+      if (newAreaIdx === undefined) return p
+      const newAreaRowIdx = newRectAreas[newAreaIdx]?.rowIndex ?? p.panelRowIdx ?? 0
+      return { ...p, area: newAreaIdx, panelRowIdx: newAreaRowIdx }
     })
 
     for (const idx of affectedIdxs) {
