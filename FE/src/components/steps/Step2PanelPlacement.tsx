@@ -155,6 +155,38 @@ export default function Step2PanelPlacement({
     setRectAreas(prev => prev.map(a => ({ ...a, mode: newLocked ? 'ylocked' : 'free' })))
   }
 
+  // Reactive recompute for Recalc-created derived rows: whenever the anchor
+  // row's a/h changes (rowMounting edit, applyDefaultsToAll, etc.), update
+  // the derived rectArea's frontHeight. Each derived rectArea carries:
+  //   - anchorRowIndex: the rowIndex of its anchor in the same group
+  //   - deltaAlongSlopeCm: slope-axis distance from anchor's front to here
+  // Formula: derived.H = anchor.H + deltaAlongSlopeCm × sin(anchor.angle)
+  useEffect(() => {
+    if (!setRectAreas || !rectAreas?.length) return
+    let needsUpdate = false
+    const next = rectAreas.map((ra: any) => {
+      if (!ra?.frontHeightDerived || ra.anchorRowIndex == null) return ra
+      const groupId = ra.areaGroupId
+      const anchor = rectAreas.find((r: any) => r.areaGroupId === groupId && r.rowIndex === ra.anchorRowIndex)
+      if (!anchor) return ra
+      const anchorLabel = anchor.label || String(anchor.id ?? '')
+      const anchorRm = (rowMounting?.[anchorLabel] || [])[ra.anchorRowIndex] || {}
+      const anchorH = anchorRm.frontHeightCm ?? parseFloat(anchor.frontHeight ?? '0') ?? 0
+      const anchorAng = anchorRm.angleDeg ?? parseFloat(anchor.angle ?? '0') ?? 0
+      const delta = ra.deltaAlongSlopeCm ?? 0
+      const newH = anchorH + delta * Math.sin((anchorAng * Math.PI) / 180)
+      const currH = parseFloat(ra.frontHeight ?? '0') || 0
+      const currAng = parseFloat(ra.angle ?? '0') || 0
+      const hChanged = Math.abs(newH - currH) > 0.05
+      const angChanged = Math.abs(anchorAng - currAng) > 0.05
+      if (!hChanged && !angChanged) return ra
+      needsUpdate = true
+      return { ...ra, frontHeight: newH, angle: anchorAng }
+    })
+    if (needsUpdate) setRectAreas(next)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowMounting])
+
   const handleAddRectArea = useCallback((area) => {
     pendingNewAreaIdxRef.current = rectAreas.length
     const isAllLocked = rectAreas.length > 0 && rectAreas.every(a => a.mode === 'ylocked')
@@ -470,11 +502,17 @@ export default function Step2PanelPlacement({
       const areaPanelsForFH = panels.filter(p => p.area === areaIdx && !p.isEmpty)
       const parentFrontPos = areaPanelsForFH.length > 0 ? frontPosOf(areaPanelsForFH) : 0
       const yDirSign = yDir === 'btt' ? -1 : 1
-      const computeFrontHeight = (subPanels: any[]) => {
-        if (parentAngleRad === 0 || subPanels.length === 0) return parentFrontHeightVal
+      // Return both the final H and the slope-axis delta in cm. The delta is
+      // stored on derived rectAreas so reactive recompute (when anchor's a/h
+      // changes) is a simple multiply-by-sin without re-reading vertices.
+      const computeFrontHeightAndDelta = (subPanels: any[]) => {
+        if (parentAngleRad === 0 || subPanels.length === 0) {
+          return { fh: parentFrontHeightVal, deltaCm: 0 }
+        }
         const subFrontPos = frontPosOf(subPanels)
         const deltaPx = (subFrontPos - parentFrontPos) * yDirSign
-        return parentFrontHeightVal + deltaPx * (cmPerPixel ?? 1) * Math.sin(parentAngleRad)
+        const deltaCm = deltaPx * (cmPerPixel ?? 1)
+        return { fh: parentFrontHeightVal + deltaCm * Math.sin(parentAngleRad), deltaCm }
       }
       const remapForThisArea: RemapEntry[] = []
       const remapEntryFor = (subRow: MutationSubRow, targetIdx: number): RemapEntry => {
@@ -499,14 +537,18 @@ export default function Step2PanelPlacement({
         ...newRectAreas[areaIdx],
         vertices: verticesMatchingParent(parentArea.vertices, firstBbox),
         preferredOrientations: preferredOrientationsOf(firstSubRow),
-        frontHeight: computeFrontHeight(firstSubRow.panels),
+        frontHeight: computeFrontHeightAndDelta(firstSubRow.panels).fh,
         ...inheritedClean,
       }
       firstSubRow.panels.forEach(p => panelReassignments.set(p.id, areaIdx))
       remapForThisArea.push(remapEntryFor(firstSubRow, areaIdx))
+      // The anchor row is the first sub-row (parent in place — it kept the
+      // user-defined H). Derived rows reference it so the FE can recompute
+      // their H reactively when the anchor's a/h changes.
+      const anchorRowIndex = newRectAreas[areaIdx].rowIndex ?? 0
       sorted.slice(1).forEach(subRow => {
         const bbox = bboxFromColsAndPanels(subRow, colCenters, !!parentArea?.areaVertical)
-        const subFh = computeFrontHeight(subRow.panels)
+        const { fh: subFh, deltaCm } = computeFrontHeightAndDelta(subRow.panels)
         // Sub-rows whose derived H equals the parent's H (typically those at
         // the same slope position as the parent's front line) stay as
         // user-defined — they're not constrained by geometry, the user can
@@ -520,7 +562,7 @@ export default function Step2PanelPlacement({
           rowIndex: nextRowIndex++,
           preferredOrientations: preferredOrientationsOf(subRow),
           frontHeight: subFh,
-          ...(isDerived ? { frontHeightDerived: true } : {}),
+          ...(isDerived ? { frontHeightDerived: true, anchorRowIndex, deltaAlongSlopeCm: deltaCm } : {}),
           ...inheritedClean,
         }
         const newAreaIdx = newRectAreas.length
@@ -628,15 +670,49 @@ export default function Step2PanelPlacement({
       }
     }
 
+    // Remap each panel's row/col to LOCAL-to-sub-area indices (0-based).
+    // panel.row/col were inherited from the parent area's grid; the new
+    // sub-area's grid has its own 0-based axes. Without this remap,
+    // buildPanelGrid (which keys filtered panels by row/col) wouldn't
+    // recognize them and would emit all EV/EH ghost slots.
+    const remapMaps = new Map<number, { rows: Map<number, number>; cols: Map<number, number> }>()
+    for (const idx of affectedIdxs) {
+      const subPanels = newPanelsArr.filter((p: any) => p.area === idx && !p.isEmpty)
+      if (subPanels.length === 0) continue
+      const uniqueRows = [...new Set(subPanels.map((p: any) => p.row ?? 0))].sort((a, b) => (a as number) - (b as number)) as number[]
+      const colSet = new Set<number>()
+      subPanels.forEach((p: any) => {
+        const cs = (p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]) as number[]
+        cs.forEach(c => colSet.add(c))
+      })
+      const uniqueCols = [...colSet].sort((a, b) => a - b)
+      remapMaps.set(idx, {
+        rows: new Map(uniqueRows.map((r, i) => [r, i])),
+        cols: new Map(uniqueCols.map((c, i) => [c, i])),
+      })
+    }
+    const remappedPanels = newPanelsArr.map((p: any) => {
+      const maps = remapMaps.get(p.area)
+      if (!maps) return p
+      const newRow = maps.rows.get(p.row ?? 0) ?? p.row
+      const newCol = maps.cols.get(p.col ?? 0) ?? p.col
+      const newCoveredCols = p.coveredCols?.map((c: number) => maps.cols.get(c) ?? c) ?? undefined
+      return { ...p, row: newRow, col: newCol, ...(newCoveredCols ? { coveredCols: newCoveredCols } : {}) }
+    })
+
     // Suppress the auto-recompute that fires on rectAreas change — we've
     // already curated the panel list (originals preserved, area field
     // reassigned). Polygon-fill regeneration would clobber multi-col panel
     // positions and re-fill deleted cells.
     skipNextRecompute?.()
     setRectAreas(newRectAreas)
-    setPanels(newPanelsArr)
+    setPanels(remappedPanels)
     setRowMounting?.(newRowMounting)
     setTrapezoidConfigs?.(newTrapezoidConfigs)
+    // Rebuild panelGrid for the new multi-row structure. Pass newRectAreas
+    // explicitly so the rebuild sees the post-Recalc layout — closured
+    // rectAreas inside the hook still points at pre-Recalc state.
+    rebuildPanelGrid?.(remappedPanels, { rectAreas: newRectAreas })
     console.log('[recalc-rows] done')
   }, [rectAreas, panels, appDefaults, cmPerPixel, setRectAreas, setPanels, deletedPanelKeys, setDeletedPanelKeys, skipNextRecompute, rowMounting, setRowMounting, trapezoidConfigs, setTrapezoidConfigs])
 

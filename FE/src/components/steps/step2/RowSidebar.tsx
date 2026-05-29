@@ -170,7 +170,9 @@ export default function RowSidebar({
 
   // "Apply to all rows" — write current default a/h to every USER-DEFINED row.
   // Derived rows (rectArea.frontHeightDerived = true, created by Recalc rows)
-  // are skipped — their H is geometrically constrained, not user-editable.
+  // are skipped — their H is geometrically constrained. The reactive
+  // useEffect in Step2PanelPlacement will recompute their frontHeight from
+  // the anchor's new H + slope geometry.
   const applyDefaultsToAll = () => {
     const fh = panelFrontHeight ?? ''
     const ang = panelAngle ?? ''
@@ -181,13 +183,26 @@ export default function RowSidebar({
     if (setRowMounting) {
       const fhNum = parseFloat(fh)
       const angNum = parseFloat(ang)
+      // Build a quick lookup: "label_rowIndex" → isDerived
+      const derivedKeys = new Set<string>()
+      ;(rectAreas || []).forEach((a: any) => {
+        if (a.frontHeightDerived) {
+          const lbl = a.label || (a.id != null ? String(a.id) : '')
+          derivedKeys.add(`${lbl}_${a.rowIndex ?? 0}`)
+        }
+      })
       setRowMounting(prev => {
         const next = {};
         (Object.entries(prev || {}) as [string, any[]][]).forEach(([label, rows]) => {
-          next[label] = (rows || []).map(r => ({
-            angleDeg: isNaN(angNum) ? r?.angleDeg : angNum,
-            frontHeightCm: isNaN(fhNum) ? r?.frontHeightCm : fhNum,
-          }))
+          next[label] = (rows || []).map((r, ri) => {
+            // Don't write a rowMounting entry for derived rows — they should
+            // remain "missing" so the display falls back to rectArea.frontHeight.
+            if (derivedKeys.has(`${label}_${ri}`)) return r
+            return {
+              angleDeg: isNaN(angNum) ? r?.angleDeg : angNum,
+              frontHeightCm: isNaN(fhNum) ? r?.frontHeightCm : fhNum,
+            }
+          })
         })
         return next
       })
@@ -495,11 +510,13 @@ export default function RowSidebar({
                             const aDefault = parseFloat(panelAngle) || 0
                             const fhDefault = parseFloat(panelFrontHeight) || 0
                             const rowAng = rowEntry.angleDeg ?? aDefault
-                            // For derived rows (no rowMounting entry), fall back to the
-                            // rectArea's stored frontHeight so the rows-list value matches
-                            // the detail panel.
-                            const rowFh = rowEntry.frontHeightCm
-                              ?? (rowRa?.frontHeightDerived ? (parseFloat(rowRa?.frontHeight) || fhDefault) : fhDefault)
+                            // Derived rows source frontHeight from rectArea.frontHeight (the
+                            // reactive recompute in Step2PanelPlacement keeps it in sync with
+                            // the anchor row). rowMounting may carry a stale slot from older
+                            // projects, so we explicitly bypass it for derived rows.
+                            const rowFh = rowRa?.frontHeightDerived
+                              ? (parseFloat(rowRa?.frontHeight) || fhDefault)
+                              : (rowEntry.frontHeightCm ?? fhDefault)
                             return (
                               <div
                                 key={ri}

@@ -498,6 +498,16 @@ export function useProjectState() {
         : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
 
       const areaRowMounting = (d.step2.rowMounting || {})[groupLabel] || []
+      // Per-row rectArea lookup: in multi-row areas, each row is its own
+      // rectArea with the same areaGroupId and a distinct rowIndex. Used to
+      // fall back to derived frontHeight when rowMounting is absent (Recalc-
+      // created rows are tracked via rectArea.frontHeight, not rowMounting,
+      // since they're meant to be BE-recomputed in phase 2).
+      const groupRectAreas = rectAreas.filter(r =>
+        (typeof areaId === 'number' && r.areaGroupId === areaId) || r.label === groupLabel
+      )
+      const rectAreaForRow = (ri) =>
+        groupRectAreas.find(r => (r.rowIndex ?? 0) === ri) ?? ra
       return {
         ...a,
         label: groupLabel,
@@ -507,14 +517,22 @@ export function useProjectState() {
         // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
         // Serialize whatever is on the (first) rectArea of the group.
         roofSpec: ra?.roofSpec ?? null,
-        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => (
-          pg == null ? null : {
-            rowIndex: ri,
-            panelGrid: pg,
-            angleDeg: areaRowMounting[ri]?.angleDeg ?? null,
-            frontHeightCm: areaRowMounting[ri]?.frontHeightCm ?? null,
-          }
-        )).filter(Boolean),
+        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => {
+          if (pg == null) return null
+          const rRa = rectAreaForRow(ri)
+          const rmEntry = areaRowMounting[ri]
+          // Prefer rowMounting (user-defined). For DERIVED rows (Recalc-
+          // created sub-rows), send null — the BE recomputes from slope
+          // geometry and the anchor row's H.
+          // FE computes derived rows' frontHeight in handleRecalcRows; the
+          // value lives on the rectArea. Fall back to it so the BE receives
+          // a complete row spec (no null frontHeightCm).
+          const angleDeg = rmEntry?.angleDeg
+            ?? (rRa?.angle !== '' && rRa?.angle != null ? parseFloat(rRa.angle) : null)
+          const frontHeightCm = rmEntry?.frontHeightCm
+            ?? (rRa?.frontHeight !== '' && rRa?.frontHeight != null ? parseFloat(rRa.frontHeight) : null)
+          return { rowIndex: ri, panelGrid: pg, angleDeg, frontHeightCm }
+        }).filter(Boolean),
       }
     })
     const { trapezoidConfigs: _tc, panelGrid: _pg, rowMounting: _rm, ...step2Rest } = d.step2
@@ -788,9 +806,14 @@ export function useProjectState() {
     setTrapezoidConfigs(currentTrapConfigs)
   }
 
-  const rebuildPanelGrid = (updatedPanels) => {
+  const rebuildPanelGrid = (updatedPanels, opts = {} as { rectAreas?: any[] }) => {
     const newGrid = rebuildPanelGridAction({
-      referenceLine, referenceLineLengthCm, rectAreas, panels: updatedPanels, panelSpec, appDefaults,
+      referenceLine, referenceLineLengthCm,
+      // Allow caller (e.g. Recalc rows) to pass in a fresh rectAreas array —
+      // the closured `rectAreas` won't reflect setRectAreas() calls that
+      // happen in the same event tick.
+      rectAreas: opts.rectAreas ?? rectAreas,
+      panels: updatedPanels, panelSpec, appDefaults,
     })
     if (newGrid) setPanelGrid(newGrid)
   }
