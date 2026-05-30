@@ -312,6 +312,15 @@ export function useProjectState() {
         // areaGroupId = BE-assigned numeric area ID (stable across saves)
         const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
         const rowIndex = ra.rowIndex ?? derivedRowIndex
+        // preferredOrientations isn't saved on layout.rectAreas — restore it
+        // from this sub-row's panelGrid (first cell per row gives the line
+        // orientation). Without this, computePolygonPanels falls back to
+        // defaults on reload and rebuilds the wrong grid for mixed H/V rows.
+        const subRow = s2a.panelRows?.find((pr: any) => pr.rowIndex === rowIndex)
+        const gridRows = subRow?.panelGrid?.rows
+        const preferredOrientations = Array.isArray(gridRows) && gridRows.length > 0
+          ? gridRows.map((r: any) => Array.isArray(r) && r.length > 0 ? r[0] : null).filter((o: any) => o)
+          : undefined
         return {
           ...ra,
           // id stays immutable (row identity) — don't overwrite with group id
@@ -320,6 +329,7 @@ export function useProjectState() {
           angle: String(s2a.angleDeg ?? ''),
           areaGroupId: numericGroupId,
           rowIndex,
+          ...(preferredOrientations?.length ? { preferredOrientations } : {}),
           // Mirror the step2 area's per-area roof spec onto every rectArea in
           // the group. Only meaningful for projects with roof_spec.type='mixed';
           // non-mixed projects ignore this field entirely.

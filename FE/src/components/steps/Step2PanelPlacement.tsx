@@ -434,13 +434,20 @@ export default function Step2PanelPlacement({
         subRow.panels.flatMap((p: any) => p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0])
       )] as number[]
       const colCenterVals = subCols.map(c => colCenters.get(c)).filter((x): x is number => x !== undefined)
+      // Union of col-center bbox and actual panel envelope. The col-center
+      // computation is tight (won't bleed into adjacent cols) but misses cols
+      // not represented in colCenters and panels wider than canonical colWidth
+      // (e.g. an H panel covering 2 cols when colCenters has only V refs).
+      // Taking max with the panel envelope guarantees every panel fits.
+      const panelColMin = Math.min(...subRow.panels.map(frame.colStartOf))
+      const panelColMax = Math.max(...subRow.panels.map(frame.colEndOf))
       let colMin: number, colMax: number
       if (colCenterVals.length === 0) {
-        colMin = Math.min(...subRow.panels.map(frame.colStartOf))
-        colMax = Math.max(...subRow.panels.map(frame.colEndOf))
+        colMin = panelColMin
+        colMax = panelColMax
       } else {
-        colMin = Math.min(...colCenterVals) - colWidth / 2
-        colMax = Math.max(...colCenterVals) + colWidth / 2
+        colMin = Math.min(Math.min(...colCenterVals) - colWidth / 2, panelColMin)
+        colMax = Math.max(Math.max(...colCenterVals) + colWidth / 2, panelColMax)
       }
       const rowMin = Math.min(...subRow.panels.map(frame.rowStartOf))
       const rowMax = Math.max(...subRow.panels.map(frame.rowEndOf))
