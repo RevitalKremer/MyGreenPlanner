@@ -342,12 +342,11 @@ export default function RailsOverlay({
         const ex = ox + ux * maxT, ey = oy + uy * maxT
         const [x1, y1] = toSvg(sx, sy)
         const [x2, y2] = toSvg(ex, ey)
-        const widthPx = Math.max(3, 5 / zoom)
+        const railProfile = railProfileFor(areaIdx)
         out.push(
           <line key={`cr-${areaIdx}-${cr.railId}`}
             x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke={RAIL_STROKE} strokeWidth={widthPx} strokeLinecap="round"
-            opacity={0.9}
+            stroke={RAIL_STROKE} strokeWidth={railProfile} strokeLinecap="square"
             style={{ pointerEvents: 'none' }}
           />
         )
@@ -387,7 +386,6 @@ export default function RailsOverlay({
             const sweepLen = Math.sqrt(sweepDx * sweepDx + sweepDy * sweepDy)
             const uxs = sweepDx / sweepLen, uys = sweepDy / sweepLen
             const ang = Math.atan2(sweepDy, sweepDx) * 180 / Math.PI
-            const railProfile = railProfileFor(areaIdx)
             const connW = Math.max(3, 6 / zoom)
             const connH = Math.max(6, railProfile + 6 / zoom)
             let accMm = 0
