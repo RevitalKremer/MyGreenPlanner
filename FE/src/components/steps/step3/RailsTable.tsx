@@ -47,7 +47,9 @@ export default function RailsTable({ areaLabel, rails, crossRowRails = [] }) {
             <td style={{ ...tdBase, fontWeight: '700', color: totalLeftoverMm > 0 ? AMBER_DARK : TEXT_MUTED }}>{fmt(totalLeftoverMm)}</td>
           </tr>
           {expanded && rails.map((rail, i) => (
-            <tr key={rail.railId} style={{ borderTop: `1px solid ${BG_MID}`, background: i % 2 === 0 ? 'white' : BG_FAINT }}>
+            // railId only unique within one panelRow — prefix with _panelRowIdx
+            // so multi-row areas (Recalc-split) don't collide on R1..R6 keys.
+            <tr key={`${rail._panelRowIdx ?? 0}-${rail.railId}`} style={{ borderTop: `1px solid ${BG_MID}`, background: i % 2 === 0 ? 'white' : BG_FAINT }}>
               <td style={tdBase} />
               <td style={{ ...tdBase, color: TEXT_MUTED }}>#{rail.lineIdx + 1}</td>
               <td style={{ ...tdBase, color: TEXT }}>{fmt(Math.round((rail.roundedLengthCm ?? rail.lengthCm) * 10))}</td>
