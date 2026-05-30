@@ -58,8 +58,8 @@ export interface Step2Data {
   panelType: string
   panelWidthCm?: number | null
   panelLengthCm?: number | null
-  defaultAngleDeg: number
-  defaultFrontHeightCm: number
+  defaultAngleDeg: number | null
+  defaultFrontHeightCm: number | null
   trapezoids: Step2Trapezoid[]
   areas: Step2Area[]
 }

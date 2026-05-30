@@ -507,16 +507,15 @@ export default function RowSidebar({
                               || (rowRa?.id != null ? String(rowRa.id) : (r.areaIdx != null ? `ra-${r.areaIdx}` : null))
                             const rIdx = r.panelRowIndex ?? ri
                             const rowEntry = (rowMounting?.[rowKey] || [])[rIdx] || {}
-                            const aDefault = parseFloat(panelAngle) || 0
-                            const fhDefault = parseFloat(panelFrontHeight) || 0
-                            const rowAng = rowEntry.angleDeg ?? aDefault
+                            const rowAng = rowEntry.angleDeg
                             // Derived rows source frontHeight from rectArea.frontHeight (the
                             // reactive recompute in Step2PanelPlacement keeps it in sync with
                             // the anchor row). rowMounting may carry a stale slot from older
                             // projects, so we explicitly bypass it for derived rows.
                             const rowFh = rowRa?.frontHeightDerived
-                              ? (parseFloat(rowRa?.frontHeight) || fhDefault)
-                              : (rowEntry.frontHeightCm ?? fhDefault)
+                              ? (parseFloat(rowRa?.frontHeight) || null)
+                              : rowEntry.frontHeightCm
+                            const fmtRow = (v) => v == null ? '—' : v.toFixed(1).replace(/\.0$/, '')
                             return (
                               <div
                                 key={ri}
@@ -529,7 +528,7 @@ export default function RowSidebar({
                                 </span>
                                 {showMounting && !areaIsFrameless && (
                                   <span style={{ fontSize: '0.6rem', color: TEXT_PLACEHOLDER, whiteSpace: 'nowrap' }}>
-                                    {rowAng.toFixed(1).replace(/\.0$/, '')}° · {rowFh.toFixed(1).replace(/\.0$/, '')}cm
+                                    {fmtRow(rowAng)}° · {fmtRow(rowFh)}cm
                                   </span>
                                 )}
                               </div>
@@ -632,15 +631,15 @@ export default function RowSidebar({
         const groupLabel = area?.label || (area?.id != null ? String(area.id) : (areaKey != null ? `ra-${areaKey}` : null))
         const rowIdx = selectedRow[0]?.panelRowIdx ?? area?.rowIndex ?? 0
         const rowEntry = (rowMounting?.[groupLabel] || [])[rowIdx] || {}
-        const aDefault = parseFloat(panelAngle) || 0
-        const fhDefault = parseFloat(panelFrontHeight) || 0
-        const rowAng = rowEntry.angleDeg ?? aDefault
+        // Strict mode: row a/h has no fallback to global defaults. Input shows
+        // empty until the user types a value — Next is blocked until both are set.
+        const rowAng = rowEntry.angleDeg
         // Derived rows (created by Recalc rows) read frontHeight from the
         // rectArea — BE recomputes it from slope geometry. Input is disabled.
         const isFhDerived = !!area?.frontHeightDerived
         const rowFh = isFhDerived
           ? (parseFloat(area?.frontHeight ?? '0') || 0)
-          : (rowEntry.frontHeightCm ?? fhDefault)
+          : rowEntry.frontHeightCm
         const isTrapView = !!trapIdOverride
 
         return (
@@ -656,9 +655,10 @@ export default function RowSidebar({
                     <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.angle')}</div>
                     <input
                       type="number" min={angleMin} max={angleMax} step="0.5"
-                      value={rowAng}
-                      onChange={e => updateRowMounting(groupLabel, rowIdx, { angleDeg: parseFloat(e.target.value) || 0 })}
-                      onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { angleDeg: Math.min(angleMax, Math.max(angleMin, v)) }) }}
+                      value={rowAng ?? ''}
+                      placeholder={`${angleMin}–${angleMax}`}
+                      onChange={e => updateRowMounting(groupLabel, rowIdx, { angleDeg: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) })}
+                      onBlur={e => { if (e.target.value === '') return; const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { angleDeg: Math.min(angleMax, Math.max(angleMin, v)) }) }}
                       style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
                     />
                   </div>
@@ -669,11 +669,12 @@ export default function RowSidebar({
                     </div>
                     <input
                       type="number" min={frontHeightMin} max={frontHeightMax} step="0.5"
-                      value={Math.round(rowFh * 10) / 10}
+                      value={rowFh == null ? '' : (Math.round(rowFh * 10) / 10)}
                       disabled={isFhDerived}
+                      placeholder={`${frontHeightMin}–${frontHeightMax}`}
                       title={isFhDerived ? 'Derived from slope geometry — set by server' : undefined}
-                      onChange={e => updateRowMounting(groupLabel, rowIdx, { frontHeightCm: parseFloat(e.target.value) || 0 })}
-                      onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { frontHeightCm: Math.min(frontHeightMax, Math.max(frontHeightMin, v)) }) }}
+                      onChange={e => updateRowMounting(groupLabel, rowIdx, { frontHeightCm: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) })}
+                      onBlur={e => { if (e.target.value === '') return; const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { frontHeightCm: Math.min(frontHeightMax, Math.max(frontHeightMin, v)) }) }}
                       style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: isFhDerived ? BG_FAINT : undefined, color: isFhDerived ? TEXT_VERY_LIGHT : undefined, cursor: isFhDerived ? 'not-allowed' : undefined }}
                     />
                   </div>

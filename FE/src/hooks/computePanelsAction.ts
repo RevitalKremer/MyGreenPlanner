@@ -145,17 +145,37 @@ export function computePanelsAction({
     const areaLabel = getAreaLabel(area, areaIdx)
     // Explicit empty-string check — area.angle='0' is a real user choice, not
     // a missing value, so `|| panelAngle` would wrongly override it.
-    const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
-    const aAngle = parseFloat((area.angle !== '' && area.angle != null) ? area.angle : panelAngle) || 0
-    // Resolve this row's a/h: existing row a/h → area default → panel default.
-    // Derived rows (created by Recalc rows) source frontHeight from
-    // rectArea.frontHeight — it's recomputed reactively from the anchor row,
-    // so we must never let a stale rowMounting entry override it.
+    // Null is preserved through the chain so unset rows stay empty in the UI
+    // (Step 2 strict mode blocks Next until the user types each row's a/h).
+    const aFrontRaw = (area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight
+    const aAngleRaw = (area.angle !== '' && area.angle != null) ? area.angle : panelAngle
+    const aFrontNum = (aFrontRaw === '' || aFrontRaw == null) ? null : parseFloat(aFrontRaw)
+    const aAngleNum = (aAngleRaw === '' || aAngleRaw == null) ? null : parseFloat(aAngleRaw)
+    const aFront = aFrontNum != null && !isNaN(aFrontNum) ? aFrontNum : null
+    const aAngle = aAngleNum != null && !isNaN(aAngleNum) ? aAngleNum : null
     const ri = area.rowIndex ?? 0
     const inMtg = (rowMounting?.[areaLabel] || [])[ri]
     const isFhDerived = !!area.frontHeightDerived
-    const rAngle = inMtg?.angleDeg ?? aAngle
-    const rFront = isFhDerived ? aFront : (inMtg?.frontHeightCm ?? aFront)
+    // Row a/h policy:
+    //   - Derived rows always mirror rectArea.frontHeight (geometry-driven).
+    //   - Fresh non-derived rows (no rowMounting slot yet) seed from area/global
+    //     default — matches the "new rows use the general a/h as is" rule.
+    //   - Existing non-derived rows preserve whatever the user has (including
+    //     explicit null) so changing the global default later does NOT silently
+    //     overwrite per-row values. Cascading happens only via "Apply to all
+    //     rows" or direct row edits.
+    let rAngle: number | null
+    let rFront: number | null
+    if (isFhDerived) {
+      rAngle = aAngle
+      rFront = aFront
+    } else if (inMtg === undefined) {
+      rAngle = aAngle
+      rFront = aFront
+    } else {
+      rAngle = inMtg.angleDeg ?? null
+      rFront = inMtg.frontHeightCm ?? null
+    }
     if (!newRowMounting[areaLabel]) newRowMounting[areaLabel] = []
     // For derived rows, leave the rowMounting slot empty so downstream
     // consumers fall back to rectArea.frontHeight (single source of truth).

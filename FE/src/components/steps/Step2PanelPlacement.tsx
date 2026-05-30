@@ -665,15 +665,21 @@ export default function Step2PanelPlacement({
       if (!a) continue
       const areaLabelStr = String(a.label || a.id || `area-${idx}`)
       const ri = a.rowIndex ?? 0
-      const angle = parseFloat(a.angle ?? '0') || 0
-      const frontHeight = parseFloat(a.frontHeight ?? '0') || 0
+      // Strict mode: empty area a/h → null in rowMounting (user must fill it).
+      // Don't fall back to 0 — Next is blocked until each row has explicit values.
+      const angle = (a.angle === '' || a.angle == null) ? null : (parseFloat(a.angle) || 0)
+      const frontHeight = (a.frontHeight === '' || a.frontHeight == null) ? null : (parseFloat(a.frontHeight) || 0)
       // rowMounting represents USER-DEFINED rows only. Skip derived rows so
       // BE knows to recompute their H. The sidebar's display falls back to
       // rectArea.frontHeight (which we DO populate above).
       if (!a.frontHeightDerived) {
         if (!newRowMounting[areaLabelStr]) newRowMounting[areaLabelStr] = []
         newRowMounting[areaLabelStr] = [...newRowMounting[areaLabelStr]]
-        newRowMounting[areaLabelStr][ri] = { angleDeg: angle, frontHeightCm: frontHeight }
+        const prev = newRowMounting[areaLabelStr][ri] || {}
+        newRowMounting[areaLabelStr][ri] = {
+          angleDeg: angle != null ? angle : (prev.angleDeg ?? null),
+          frontHeightCm: frontHeight != null ? frontHeight : (prev.frontHeightCm ?? null),
+        }
       }
       // trapezoidConfigs: refresh the a/h of trapIds touching this sub-area
       // so the trap detail panel reflects the new value (even for derived
