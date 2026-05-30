@@ -205,7 +205,6 @@ export default function Step2PanelPlacement({
   //           new sub-row
   // Detection + logs only for now; state mutation lands next.
   const handleRecalcRows = useCallback(() => {
-    console.log('[recalc-rows] start')
     const lineGapPx = cmPerPixel ? (appDefaults?.lineGapCm ?? 5) / cmPerPixel : 8
     const colsOf = (p: any) => (p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0])
     const orientOf = (p: any) => p.heightCm > p.widthCm ? PANEL_V : PANEL_H
@@ -303,15 +302,6 @@ export default function Step2PanelPlacement({
         if (cs.length !== 1) return
         if (!colCenters.has(cs[0])) colCenters.set(cs[0], colCenterOf(p))
       })
-      // TEMP DEBUG: rotation geometry + derived col centers (axis-aware)
-      console.log(`  area ${areaIdx} (${area.label}) areaVertical=${av}`)
-      console.log('  rotated panel geometry:', rotatedPanels.map(p => ({
-        id: p.id, col: p.col, coveredCols: p.coveredCols, line: p.row,
-        xRange: `[${p.x.toFixed(1)}..${(p.x + p.width).toFixed(1)}]`,
-        yRange: `[${p.y.toFixed(1)}..${(p.y + p.height).toFixed(1)}]`,
-        colAxisRange: `[${colStartOf(p).toFixed(1)}..${colEndOf(p).toFixed(1)}]`,
-      })))
-      console.log('  canonical col centers (col axis):', [...colCenters.entries()].sort((a, b) => a[0] - b[0]))
       // A col is "rotated" iff its canonical center is INSIDE the H's x range
       const rotatedCols = new Set<number>()
       for (const [col, cx] of colCenters) {
@@ -323,8 +313,6 @@ export default function Step2PanelPlacement({
       areaPanels.forEach(p => colsOf(p).forEach((c: number) => allCols.add(c)))
       const cleanCols = [...allCols].filter(c => !omittedCols.has(c)).sort((a, b) => a - b)
       const rotCols = [...omittedCols].sort((a, b) => a - b)
-
-      console.log(`[recalc-rows] area ${areaIdx} (${area.label}): ${rotatedPanels.length} rotated panel(s); rotated cols [${[...rotatedCols].sort((a, b) => a - b).join(',')}], void cols [${[...voidCols].sort((a, b) => a - b).join(',')}], omitted [${rotCols.join(',')}]`)
 
       // Helper: group an ordered list of column indices into contiguous ranges
       const groupContiguous = (cols: number[]) => {
@@ -359,8 +347,6 @@ export default function Step2PanelPlacement({
         if (ps.length === 0) return
         subRows.push({ kind: 'clean', colRange: `${range[0]}-${range[range.length - 1]}`, firstCol: range[0], panels: ps })
       })
-      console.log(`  → step 2: ${subRows.filter(s => s.kind === 'clean').length} clean row(s)`,
-        subRows.filter(s => s.kind === 'clean').map(s => ({ colRange: s.colRange, panelCount: s.panels.length })))
 
       // Step 3: rotated column ranges → split each by void along the ROW axis
       // (screen-y for horizontal areas, screen-x for vertical).
@@ -389,20 +375,11 @@ export default function Step2PanelPlacement({
         }
         flush()
       })
-      console.log(`  → step 3: ${subRows.filter(s => s.kind === 'rotated').length} rotated row(s) (split by void)`,
-        subRows.filter(s => s.kind === 'rotated').map(s => ({
-          colRange: s.colRange,
-          panelCount: s.panels.length,
-          lines: s.panels.map(p => ({ line: p.row, orient: orientOf(p) })),
-        })))
 
       mutations.push({ areaIdx, parentArea: area, subRows, colCenters })
     })
 
-    if (mutations.length === 0) {
-      console.log('[recalc-rows] done — no changes needed')
-      return
-    }
+    if (mutations.length === 0) return
 
     // ─── Apply mutations ─────────────────────────────────────────────────
     // Helpers: rotation-aware col/row projection for one area. The bbox +
@@ -653,24 +630,7 @@ export default function Step2PanelPlacement({
         }
       }
     })
-    console.log('[recalc-rows] deletedPanelKeys remap:', { before: deletedPanelKeys, after: newDeletedPanelKeys })
     setDeletedPanelKeys?.(newDeletedPanelKeys)
-
-    console.log(`[recalc-rows] applying: ${newRectAreas.length - rectAreas.length} new rectArea(s); ${panelReassignments.size} panel(s) reassigned`)
-    console.log('[recalc-rows] new rectAreas:', newRectAreas.map((a, i) => {
-      const xs = (a.vertices ?? []).map((v: any) => v.x).filter((v: any) => typeof v === 'number')
-      const ys = (a.vertices ?? []).map((v: any) => v.y).filter((v: any) => typeof v === 'number')
-      return {
-        idx: i, id: a.id, groupId: a.areaGroupId, rowIndex: a.rowIndex,
-        areaVertical: !!a.areaVertical,
-        bboxX: xs.length ? `${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}` : '?',
-        bboxY: ys.length ? `${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}` : '?',
-        preferredOrientations: a.preferredOrientations,
-        frontHeight: a.frontHeight,
-        frontHeightDerived: !!a.frontHeightDerived,
-        angle: a.angle,
-      }
-    }))
 
     // Sync rowMounting and trapezoidConfigs for affected sub-areas so the
     // sidebar's row list (reads rowMounting) and traps list (reads
@@ -775,7 +735,6 @@ export default function Step2PanelPlacement({
     // explicitly so the rebuild sees the post-Recalc layout — closured
     // rectAreas inside the hook still points at pre-Recalc state.
     rebuildPanelGrid?.(remappedPanels, { rectAreas: newRectAreas })
-    console.log('[recalc-rows] done')
   }, [rectAreas, panels, appDefaults, cmPerPixel, setRectAreas, setPanels, deletedPanelKeys, setDeletedPanelKeys, skipNextRecompute, rowMounting, setRowMounting, trapezoidConfigs, setTrapezoidConfigs])
 
   const handleDeleteArea = useCallback((areaKey) => {
