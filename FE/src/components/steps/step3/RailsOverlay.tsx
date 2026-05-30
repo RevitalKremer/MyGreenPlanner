@@ -1,4 +1,4 @@
-import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK } from '../../../styles/colors'
+import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK, BORDER_MID } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 
 /**
@@ -28,6 +28,11 @@ export default function RailsOverlay({
     dimensions: showDimensions = true,
     materialSummary: showMaterialSummary = true,
     connectors: showConnectors = true,
+    // Per-row rails vs cross-row rails can be rendered independently so the
+    // bases tab can paint cross-row rails AFTER the bases layer (otherwise
+    // bases cover the orange lines). Default: render both.
+    perRow: showPerRow = true,
+    crossRow: showCrossRow = true,
   } = layers
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -72,15 +77,34 @@ export default function RailsOverlay({
     return (crd / 10 / pixelToCmRatio) * sc
   }
 
+  // Map railId → crrId for the layout at index `i`. Source rails of
+  // a cross-row rail are kept in per-row data but rendered faded so the orange
+  // cross-row line stands out on top.
+  const concatLookupFor = (i: number) => {
+    const rl = railLayouts[i]
+    const pri = rl?._panelRowIdx ?? 0
+    const areaKey = rowKeys[i]
+    const beArea = groupKeyToBeArea[areaKey]
+    const map: Record<string, string> = {}
+    for (const r of (beArea?.rails ?? [])) {
+      if ((r._panelRowIdx ?? 0) === pri && r.crrId) {
+        map[r.railId] = r.crrId
+      }
+    }
+    return (railId: string) => map[railId] ?? null
+  }
+
   // ── Material summary (centered label per panel line) ─────────────────
 
-  const renderMaterialSummary = (rl, beSegsFn, railProfile, prefix) => {
+  const renderMaterialSummary = (rl, beSegsFn, railProfile, prefix, concatLookup) => {
     if (!rl.rails.length || !rl.panelLocalRects || !rl.frame) return null
     // Dedupe by (lineIdx, segment-start) — split segments share a lineIdx but
     // each segment needs its own label at its own center; front+back rails of
-    // the same segment share stock and should render only once.
+    // the same segment share stock and should render only once. Virtual rails
+    // (absorbed by a cross-row rail) are skipped — the cross-row pass labels them.
     const railBySegment: Record<string, any> = {}
     for (const rail of rl.rails) {
+      if (concatLookup && concatLookup(rail.railId)) continue
       const key = `${rail.lineIdx}:${rail.localStart.x.toFixed(3)}`
       if (!(key in railBySegment)) railBySegment[key] = rail
     }
@@ -189,7 +213,7 @@ export default function RailsOverlay({
 
   // ── Segment labels (length in mm, first rail per line) ───────────────
 
-  const renderSegmentLabels = (rl, beSegsFn, railProfile, prefix) => {
+  const renderSegmentLabels = (rl, beSegsFn, railProfile, prefix, concatLookup) => {
     if (!rl.panelLocalRects || !rl.frame) return null
     const { center, angleRad } = rl.frame
 
@@ -204,9 +228,11 @@ export default function RailsOverlay({
     const dimMaxFs = isFinite(smallestPanelW) ? (smallestPanelW * sc) / (4 * 0.6) : undefined
 
     // Dedupe per (lineIdx, segment-start): each segment needs its own dimensions,
-    // but front+back rails of the same segment should not double up.
+    // but front+back rails of the same segment should not double up. Virtual
+    // rails are skipped — cross-row pass annotates them.
     const seenSegments = new Set<string>()
     return rl.rails.map(rail => {
+      if (concatLookup && concatLookup(rail.railId)) return null
       const segKey = `${rail.lineIdx}:${rail.localStart.x.toFixed(3)}`
       if (seenSegments.has(segKey)) return null
       seenSegments.add(segKey)
@@ -262,11 +288,134 @@ export default function RailsOverlay({
     })
   }
 
+  // ── Cross-row rails (area-level, concatenated across sub-rows) ──────────
+  // Sources are NOT stored on the CR itself (no `sourceRails` array). Each
+  // per-row rail tagged with `crrId == cr.railId` IS a source — we filter
+  // beArea.rails by that flag and then look up the matching FE rail in
+  // railLayouts to project its endpoints into screen space.
+
+  const renderCrossRowRails = () => {
+    const out: any[] = []
+    const fontSize = Math.max(9, 11 / zoom)
+    // Dedupe areas (BasesPlanTab has one rowKey per trap → multiple keys per area).
+    const seenAreaIds = new Set<any>()
+    rowKeys.forEach((areaKey, areaIdx) => {
+      const beArea = groupKeyToBeArea[areaKey]
+      if (!beArea) return
+      const areaIdent = beArea.areaId ?? beArea.areaLabel
+      if (seenAreaIds.has(areaIdent)) return
+      seenAreaIds.add(areaIdent)
+      const crossRails = (beArea.crossRowRails ?? []) as Array<any>
+      if (!crossRails.length) return
+      // Layouts belonging to this area: match by groupKeyToBeArea lookup
+      const areaLayouts = railLayouts
+        .map((rl, i) => ({ rl, beArea: groupKeyToBeArea[rowKeys[i]] }))
+        .filter(({ beArea: ba }) => ba && (ba.areaId ?? ba.areaLabel) === areaIdent)
+      for (const cr of crossRails) {
+        // Resolve sources by filtering beArea.rails for crrId == cr.railId,
+        // then map each (panelRowIdx, railId) to the matching FE rail layout.
+        const sourceRefs = (beArea.rails ?? []).filter((r: any) => r.crrId === cr.railId)
+        const sources: any[] = []
+        for (const sr of sourceRefs) {
+          const match = areaLayouts.find(({ rl }) => (rl?._panelRowIdx ?? 0) === (sr._panelRowIdx ?? 0))
+          const sourceRail = match?.rl?.rails.find(r => r.railId === sr.railId)
+          if (sourceRail) sources.push(sourceRail)
+        }
+        if (!sources.length) continue
+        // Use the first source's axis. All cross-row source rails are parallel.
+        const first = sources[0]
+        const dx0 = first.screenEnd.x - first.screenStart.x
+        const dy0 = first.screenEnd.y - first.screenStart.y
+        const len0 = Math.sqrt(dx0 * dx0 + dy0 * dy0)
+        if (len0 < 1) continue
+        const ux = dx0 / len0, uy = dy0 / len0
+        const ox = first.screenStart.x, oy = first.screenStart.y
+        let minT = Infinity, maxT = -Infinity
+        for (const s of sources) {
+          for (const pt of [s.screenStart, s.screenEnd] as any[]) {
+            const t = (pt.x - ox) * ux + (pt.y - oy) * uy
+            if (t < minT) minT = t
+            if (t > maxT) maxT = t
+          }
+        }
+        const sx = ox + ux * minT, sy = oy + uy * minT
+        const ex = ox + ux * maxT, ey = oy + uy * maxT
+        const [x1, y1] = toSvg(sx, sy)
+        const [x2, y2] = toSvg(ex, ey)
+        const railProfile = railProfileFor(areaIdx)
+        out.push(
+          <line key={`cr-${areaIdx}-${cr.railId}`}
+            x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke={RAIL_STROKE} strokeWidth={railProfile} strokeLinecap="square"
+            style={{ pointerEvents: 'none' }}
+          />
+        )
+
+        // Material summary label centred on the cross-row rail (replaces what
+        // the per-row pass would have drawn for the virtual source rails).
+        const segs = (cr.stockSegmentsMm ?? []) as number[]
+        if (showMaterialSummary && segs.length > 0) {
+          const counts: Record<string, number> = {}
+          for (const mm of segs) counts[String(mm)] = (counts[String(mm)] ?? 0) + 1
+          const text = Object.entries(counts)
+            .sort((a, b) => Number(b[0]) - Number(a[0]))
+            .map(([mm, n]) => `${n}×${(Number(mm) / 1000).toFixed(3).replace(/\.?0+$/, '')}m`)
+            .join(' +')
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+          const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+          const bgW = text.length * fontSize * 0.65 + 10 / zoom
+          const bgH = fontSize + 6 / zoom
+          out.push(
+            <g key={`cr-${areaIdx}-${cr.railId}-ms`} transform={`rotate(${ang}, ${mx}, ${my})`} style={{ pointerEvents: 'none' }}>
+              <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH}
+                fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5 / zoom} rx={1 / zoom} />
+              <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
+                fontSize={fontSize} fontWeight="700" fill={BLACK}>
+                {text}
+              </text>
+            </g>
+          )
+        }
+
+        // Segment-cut connectors along the cross-row rail — same shape and
+        // dimensions as per-row rail connectors so CRs and Rs look identical.
+        if (showConnectors && segs.length > 1) {
+          const totalMm = segs.reduce((s, v) => s + v, 0)
+          if (totalMm > 0) {
+            const sweepDx = x2 - x1, sweepDy = y2 - y1
+            const sweepLen = Math.sqrt(sweepDx * sweepDx + sweepDy * sweepDy)
+            const uxs = sweepDx / sweepLen, uys = sweepDy / sweepLen
+            const ang = Math.atan2(sweepDy, sweepDx) * 180 / Math.PI
+            const connW = Math.max(3, 6 / zoom)
+            const connH = Math.max(6, railProfile + 6 / zoom)
+            let accMm = 0
+            for (let si = 0; si < segs.length - 1; si++) {
+              accMm += segs[si]
+              const frac = accMm / totalMm
+              const cx = x1 + uxs * frac * sweepLen
+              const cy = y1 + uys * frac * sweepLen
+              out.push(
+                <rect key={`cr-${areaIdx}-${cr.railId}-cut-${si}`}
+                  x={cx - connW / 2} y={cy - connH / 2}
+                  width={connW} height={connH} fill={RAIL_CONNECTOR} rx={1}
+                  transform={`rotate(${ang}, ${cx}, ${cy})`}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )
+            }
+          }
+        }
+      }
+    })
+    return out
+  }
+
   // ── Render ───────────────────────────────────────────────────────────
 
-  return railLayouts.map((rl, i) => {
+  const perRowLayers = railLayouts.map((rl, i) => {
     if (!rl) return null
     const beSegs = beSegsFor(i)
+    const concatLookup = concatLookupFor(i)
     const railProfile = railProfileFor(i)
     const overhangSvg = (railOverhangCm / pixelToCmRatio) * sc
     const hlW = railProfile + 6
@@ -306,16 +455,28 @@ export default function RailsOverlay({
     return (
       <g key={i} opacity={railOpacity}>
         {spacingGaps}
-        {showMaterialSummary && renderMaterialSummary(rl, beSegs, railProfile, prefix)}
+        {showMaterialSummary && renderMaterialSummary(rl, beSegs, railProfile, prefix, concatLookup)}
         {rl.rails.map(rail => {
           const [x1, y1] = toSvg(rail.screenStart.x, rail.screenStart.y)
           const [x2, y2] = toSvg(rail.screenEnd.x, rail.screenEnd.y)
           const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy)
           if (len < 2) return null
           const ux = dx / len, uy = dy / len
+          // Virtual if absorbed by a cross-row rail: render as a dashed
+          // placeholder so the source line is visible but clearly subordinate
+          // to the orange cross-row rail on top.
+          const isConcatSource = !!concatLookup(rail.railId)
+          const virtualDash = `${8 / zoom} ${4 / zoom}`
           return (
             <g key={`${prefix}-${rail.railId}`}>
-              {showRails && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={RAIL_STROKE} strokeWidth={railProfile} strokeLinecap="square" />}
+              {showRails && (
+                isConcatSource
+                  ? <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={RAIL_STROKE} strokeWidth={Math.max(1, railProfile * 0.4)}
+                      strokeLinecap="butt" strokeDasharray={virtualDash} opacity={0.45} />
+                  : <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={RAIL_STROKE} strokeWidth={railProfile} strokeLinecap="square" />
+              )}
               {hlRail && showRails && <>
                 <line x1={x1} y1={y1} x2={x1 + ux * overhangSvg} y2={y1 + uy * overhangSvg} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                 <line x1={x2 - ux * overhangSvg} y1={y2 - uy * overhangSvg} x2={x2} y2={y2} stroke={AMBER} strokeWidth={hlW} strokeLinecap="square" style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
@@ -326,8 +487,15 @@ export default function RailsOverlay({
         })}
         {hlCuts && showRails && renderConnectorHighlights(rl, beSegs, railProfile, prefix)}
         {showConnectors && showRails && renderConnectors(rl, beSegs, railProfile, prefix)}
-        {showDimensions && showRails && renderSegmentLabels(rl, beSegs, railProfile, prefix)}
+        {showDimensions && showRails && renderSegmentLabels(rl, beSegs, railProfile, prefix, concatLookup)}
       </g>
     )
   })
+
+  return (
+    <>
+      {showPerRow && perRowLayers}
+      {showRails && showCrossRow && <g key="cross-row-rails">{renderCrossRowRails()}</g>}
+    </>
+  )
 }

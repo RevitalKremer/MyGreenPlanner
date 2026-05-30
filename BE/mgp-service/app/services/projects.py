@@ -731,15 +731,34 @@ async def compute_and_save_rails(db: AsyncSession, project: Project, rs, step3_d
             all_row_rails[row_idx] = computed['rails']
             total_large_gaps += computed['numLargeGaps']
 
+        # Cross-row concat: sibling sub-rows of the same area may have rails at
+        # identical slope-Y positions (e.g. when a row was Recalc-split by
+        # column voids). Emit area-level cross-row rails for the material
+        # summary; source rails are annotated with `crrId` so the
+        # FE can fade them out.
+        annotated_row_rails, cross_row_rails = rs.concat_cross_row_rails(
+            panel_rows=panel_rows,
+            all_row_rails=all_row_rails,
+            panel_length_cm=step2['panelLengthCm'],
+            panel_width_cm=step2['panelWidthCm'],
+            line_gap_cm=app_defaults['lineGapCm'],
+            panel_gap_cm=app_defaults['panelGapCm'],
+            stock_lengths=app_defaults['stockLengths'],
+            rail_round_threshold_cm=app_defaults.get('railRoundThresholdCm', 0) or 0,
+            rail_min_cut_cm=app_defaults.get('railMinCutCm', 0) or 0,
+        )
+
         _upsert_computed_area(step3, area_id, label, {
-            'rails': all_row_rails,
+            'rails': annotated_row_rails,
+            'crossRowRails': cross_row_rails,
             'numLargeGaps': total_large_gaps,
         })
         result.append({
-            'areaId':       area_id,
-            'areaLabel':    label,
-            'rails':        all_row_rails,
-            'numLargeGaps': total_large_gaps,
+            'areaId':        area_id,
+            'areaLabel':     label,
+            'rails':         annotated_row_rails,
+            'crossRowRails': cross_row_rails,
+            'numLargeGaps':  total_large_gaps,
         })
 
     # Strip lineRails from step3.areaSettings before persisting

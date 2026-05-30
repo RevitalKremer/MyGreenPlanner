@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useReducer } from 'react'
-import { generatePanelLayout, createManualPanel } from '../utils/panelUtils'
+import { generatePanelLayout, createManualPanel, hasVoidAreas } from '../utils/panelUtils'
 import { createProject, updateProject, uploadProjectImage, getProjectImageUrl } from '../services/projectsApi'
 import { mgpRequest } from '../services/mgpApi'
 import { PANEL_V } from '../utils/panelCodes.js'
@@ -312,6 +312,15 @@ export function useProjectState() {
         // areaGroupId = BE-assigned numeric area ID (stable across saves)
         const numericGroupId = typeof s2a.id === 'number' ? s2a.id : (typeof ra.areaGroupId === 'number' ? ra.areaGroupId : -(idx + 1))
         const rowIndex = ra.rowIndex ?? derivedRowIndex
+        // preferredOrientations isn't saved on layout.rectAreas — restore it
+        // from this sub-row's panelGrid (first cell per row gives the line
+        // orientation). Without this, computePolygonPanels falls back to
+        // defaults on reload and rebuilds the wrong grid for mixed H/V rows.
+        const subRow = s2a.panelRows?.find((pr: any) => pr.rowIndex === rowIndex)
+        const gridRows = subRow?.panelGrid?.rows
+        const preferredOrientations = Array.isArray(gridRows) && gridRows.length > 0
+          ? gridRows.map((r: any) => Array.isArray(r) && r.length > 0 ? r[0] : null).filter((o: any) => o)
+          : undefined
         return {
           ...ra,
           // id stays immutable (row identity) — don't overwrite with group id
@@ -320,6 +329,7 @@ export function useProjectState() {
           angle: String(s2a.angleDeg ?? ''),
           areaGroupId: numericGroupId,
           rowIndex,
+          ...(preferredOrientations?.length ? { preferredOrientations } : {}),
           // Mirror the step2 area's per-area roof spec onto every rectArea in
           // the group. Only meaningful for projects with roof_spec.type='mixed';
           // non-mixed projects ignore this field entirely.
@@ -498,6 +508,16 @@ export function useProjectState() {
         : validStoredIds.length > 0 ? validStoredIds : storedTrapIds
 
       const areaRowMounting = (d.step2.rowMounting || {})[groupLabel] || []
+      // Per-row rectArea lookup: in multi-row areas, each row is its own
+      // rectArea with the same areaGroupId and a distinct rowIndex. Used to
+      // fall back to derived frontHeight when rowMounting is absent (Recalc-
+      // created rows are tracked via rectArea.frontHeight, not rowMounting,
+      // since they're meant to be BE-recomputed in phase 2).
+      const groupRectAreas = rectAreas.filter(r =>
+        (typeof areaId === 'number' && r.areaGroupId === areaId) || r.label === groupLabel
+      )
+      const rectAreaForRow = (ri) =>
+        groupRectAreas.find(r => (r.rowIndex ?? 0) === ri) ?? ra
       return {
         ...a,
         label: groupLabel,
@@ -507,14 +527,72 @@ export function useProjectState() {
         // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
         // Serialize whatever is on the (first) rectArea of the group.
         roofSpec: ra?.roofSpec ?? null,
-        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => (
-          pg == null ? null : {
-            rowIndex: ri,
-            panelGrid: pg,
-            angleDeg: areaRowMounting[ri]?.angleDeg ?? null,
-            frontHeightCm: areaRowMounting[ri]?.frontHeightCm ?? null,
+        panelRows: (d.step2.panelGrid[groupLabel] || []).map((pg, ri) => {
+          if (pg == null) return null
+          const rRa = rectAreaForRow(ri)
+          const rmEntry = areaRowMounting[ri]
+          // Prefer rowMounting (user-defined). For DERIVED rows (Recalc-
+          // created sub-rows), send null — the BE recomputes from slope
+          // geometry and the anchor row's H.
+          // FE computes derived rows' frontHeight in handleRecalcRows; the
+          // value lives on the rectArea. Fall back to it so the BE receives
+          // a complete row spec (no null frontHeightCm).
+          const angleDeg = rmEntry?.angleDeg
+            ?? (rRa?.angle !== '' && rRa?.angle != null ? parseFloat(rRa.angle) : null)
+          const frontHeightCm = rmEntry?.frontHeightCm
+            ?? (rRa?.frontHeight !== '' && rRa?.frontHeight != null ? parseFloat(rRa.frontHeight) : null)
+          // rowAxisOffsetCm: offset of THIS sub-row's V0 from the GROUP ANCHOR
+          // (smallest rowIndex in the group), measured along the area's
+          // row-axis in cm. Sub-row 0 (anchor) → 0. Lets the BE convert
+          // per-sub-row startCm (local frame) into absolute positions for
+          // cross-row concat adjacency checks. FE rendering keeps its own
+          // local frame and is unchanged.
+          // 2D offset of this sub-row's V0 from the anchor's V0, decomposed
+          // along the area's row-axis (cm) and slope-axis (cm). Each sub-row's
+          // own V0 is the corner where its panels grow — depends on
+          // startCorner (BL/BR/TL/TR), not on the anchor's orientation.
+          //   row-axis = (cos θ, sin θ)
+          //   slope-axis = (-sin θ, cos θ), flipped for btt yDir so positive
+          //   = going UP the slope (away from the eave).
+          let rowAxisOffsetCm = 0
+          let slopeAxisOffsetCm = 0
+          const cmPerPx = refinedArea?.pixelToCmRatio
+          if (rRa && groupRectAreas.length > 1 && cmPerPx) {
+            const anchor = groupRectAreas.reduce((min: any, r: any) =>
+              (min == null || (r.rowIndex ?? 0) < (min.rowIndex ?? 0)) ? r : min, null)
+            if (anchor && anchor !== rRa && anchor.vertices?.length && rRa.vertices?.length) {
+              const effRot = ((anchor.areaVertical ? 90 : 0) + (anchor.rotation ?? 0)) * Math.PI / 180
+              const ux = Math.cos(effRot), uy = Math.sin(effRot)
+              const vx = -Math.sin(effRot), vy = Math.cos(effRot)
+              const anchorIsRtl = (anchor.xDir ?? 'ltr') === 'rtl'
+              const anchorIsBtt = (anchor.yDir ?? 'btt') === 'btt'
+              const subIsRtl = (rRa.xDir ?? 'ltr') === 'rtl'
+              const subIsBtt = (rRa.yDir ?? 'btt') === 'btt'
+              // V0 vertex selection — projection on row-axis: ltr → min, rtl → max.
+              // V0 on the slope-axis: btt → max screen Y after rotation; ttb → min.
+              const pickRow = (vs: { x: number; y: number }[], isRtl: boolean) => {
+                const projs = vs.map(v => v.x * ux + v.y * uy)
+                return isRtl ? Math.max(...projs) : Math.min(...projs)
+              }
+              const pickSlope = (vs: { x: number; y: number }[], isBtt: boolean) => {
+                const projs = vs.map(v => v.x * vx + v.y * vy)
+                return isBtt ? Math.max(...projs) : Math.min(...projs)
+              }
+              const aRow = pickRow(anchor.vertices, anchorIsRtl)
+              const rRow = pickRow(rRa.vertices, subIsRtl)
+              const aSlope = pickSlope(anchor.vertices, anchorIsBtt)
+              const rSlope = pickSlope(rRa.vertices, subIsBtt)
+              const rowSign = anchorIsRtl ? -1 : 1
+              // Slope positive = going UP the slope (away from eave). For btt
+              // (eave at bottom of screen), screen Y of V0 is MAX; going up the
+              // slope means Y decreases, so flip the sign on the slope diff.
+              const slopeSign = anchorIsBtt ? -1 : 1
+              rowAxisOffsetCm = Math.round((rRow - aRow) * rowSign * cmPerPx * 10) / 10
+              slopeAxisOffsetCm = Math.round((rSlope - aSlope) * slopeSign * cmPerPx * 10) / 10
+            }
           }
-        )).filter(Boolean),
+          return { rowIndex: ri, panelGrid: pg, angleDeg, frontHeightCm, rowAxisOffsetCm, slopeAxisOffsetCm }
+        }).filter(Boolean),
       }
     })
     const { trapezoidConfigs: _tc, panelGrid: _pg, rowMounting: _rm, ...step2Rest } = d.step2
@@ -788,9 +866,14 @@ export function useProjectState() {
     setTrapezoidConfigs(currentTrapConfigs)
   }
 
-  const rebuildPanelGrid = (updatedPanels) => {
+  const rebuildPanelGrid = (updatedPanels, opts = {} as { rectAreas?: any[] }) => {
     const newGrid = rebuildPanelGridAction({
-      referenceLine, referenceLineLengthCm, rectAreas, panels: updatedPanels, panelSpec, appDefaults,
+      referenceLine, referenceLineLengthCm,
+      // Allow caller (e.g. Recalc rows) to pass in a fresh rectAreas array —
+      // the closured `rectAreas` won't reflect setRectAreas() calls that
+      // happen in the same event tick.
+      rectAreas: opts.rectAreas ?? rectAreas,
+      panels: updatedPanels, panelSpec, appDefaults,
     })
     if (newGrid) setPanelGrid(newGrid)
   }
@@ -909,6 +992,7 @@ export function useProjectState() {
         if (rectAreas.some((a: any) => typeof a.label !== 'string' || a.label.trim() === '')) {
           blockers.push('nav.blocker.step2.areaLabel')
         }
+        if (hasVoidAreas(panels)) blockers.push('nav.blocker.step2.recalcRows')
         if (allAreasFrameless(roofType, [])) break
         const defaultFH = panelFrontHeight ?? ''
         const defaultAng = panelAngle ?? ''
@@ -1038,6 +1122,12 @@ export function useProjectState() {
     rebuildPanelGrid,
     recordPanelDeletion,
     clearDeletedPanelsForArea,
+    deletedPanelKeys,
+    setDeletedPanelKeys,
+    // Suppress the next auto-recompute. Call BEFORE setRectAreas in handlers
+    // that manage panel state themselves and don't want polygon-fill to
+    // regenerate panels.
+    skipNextRecompute: () => { skipRecomputeRef.current = 'manual' },
     // Step 4 (construction planning)
     step3GlobalSettings, setStep3GlobalSettings,
     step3AreaSettings, setStep3AreaSettings,

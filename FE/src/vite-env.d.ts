@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // Injected at build time by Vite (see vite.config.js → define).
 // Source of truth: FE/package.json — bump it on every merge to dev/master.

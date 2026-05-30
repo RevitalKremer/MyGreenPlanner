@@ -2,6 +2,47 @@
 import { isEmptyOrientation, isHorizontalOrientation } from './trapezoidGeometry'
 import { PANEL_H, PANEL_V } from './panelCodes.js'
 
+// True if any area needs a "Recalc rows" — either:
+//   (a) middle void: a column has a gap in its line indices (panel above
+//       AND below an empty line). Trailing empties are EV/EH, not voids.
+//   (b) mixed orientations within a line: a rotated panel sits in a line
+//       whose majority is the other orientation. It can't be represented
+//       as EV/EH so it counts as a logical void requiring re-tiling.
+export const hasVoidAreas = (panels) => {
+  const colLinesByArea = new Map()  // `${area}_${panelRowIdx}` → Map<col, Set<line>>
+  const lineOrientsByArea = new Map()  // `${area}_${panelRowIdx}_${line}` → Set<orient>
+  for (const p of panels || []) {
+    if (p.isEmpty) continue
+    const areaKey = `${p.area}_${p.panelRowIdx ?? 0}`
+    if (!colLinesByArea.has(areaKey)) colLinesByArea.set(areaKey, new Map())
+    const colMap = colLinesByArea.get(areaKey)
+    const cols = p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0]
+    for (const c of cols) {
+      if (!colMap.has(c)) colMap.set(c, new Set())
+      colMap.get(c).add(p.row ?? 0)
+    }
+    // (b) per-line orientation tracking
+    const lineKey = `${p.area}_${p.panelRowIdx ?? 0}_${p.row ?? 0}`
+    if (!lineOrientsByArea.has(lineKey)) lineOrientsByArea.set(lineKey, new Set())
+    const orient = (p.heightCm ?? 0) > (p.widthCm ?? 0) ? PANEL_V : PANEL_H
+    lineOrientsByArea.get(lineKey).add(orient)
+  }
+  // (a) middle voids
+  for (const colMap of colLinesByArea.values()) {
+    for (const linesSet of colMap.values()) {
+      const sorted = [...linesSet].sort((a, b) => a - b)
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] - sorted[i - 1] > 1) return true
+      }
+    }
+  }
+  // (b) mixed orientations in any line
+  for (const orientSet of lineOrientsByArea.values()) {
+    if (orientSet.size > 1) return true
+  }
+  return false
+}
+
 // Stable string identifier for an area — used as a key in panelGrid,
 // rowMounting, trapezoidId, etc. (all string-keyed). When the user clears
 // the area label, the fallback resolves to `area.id` (numeric), so we

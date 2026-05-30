@@ -147,13 +147,21 @@ export function computePanelsAction({
     // a missing value, so `|| panelAngle` would wrongly override it.
     const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
     const aAngle = parseFloat((area.angle !== '' && area.angle != null) ? area.angle : panelAngle) || 0
-    // Resolve this row's a/h: existing row a/h → area default → panel default
+    // Resolve this row's a/h: existing row a/h → area default → panel default.
+    // Derived rows (created by Recalc rows) source frontHeight from
+    // rectArea.frontHeight — it's recomputed reactively from the anchor row,
+    // so we must never let a stale rowMounting entry override it.
     const ri = area.rowIndex ?? 0
     const inMtg = (rowMounting?.[areaLabel] || [])[ri]
+    const isFhDerived = !!area.frontHeightDerived
     const rAngle = inMtg?.angleDeg ?? aAngle
-    const rFront = inMtg?.frontHeightCm ?? aFront
+    const rFront = isFhDerived ? aFront : (inMtg?.frontHeightCm ?? aFront)
     if (!newRowMounting[areaLabel]) newRowMounting[areaLabel] = []
-    newRowMounting[areaLabel][ri] = { angleDeg: rAngle, frontHeightCm: rFront }
+    // For derived rows, leave the rowMounting slot empty so downstream
+    // consumers fall back to rectArea.frontHeight (single source of truth).
+    if (!isFhDerived) {
+      newRowMounting[areaLabel][ri] = { angleDeg: rAngle, frontHeightCm: rFront }
+    }
     const computed = computePolygonPanels(area, pixelToCmRatio, panelSpec, appDefaults?.panelGapCm, area.preferredOrientations ?? null)
     let filtered = computed.filter(p => !allPanels.some(ep => obbsOverlap(p, ep)))
     // Remove panels manually deleted by the user
@@ -425,11 +433,13 @@ function _refreshSingleRowTrapezoids({
   const aFront = parseFloat((area.frontHeight !== '' && area.frontHeight != null) ? area.frontHeight : panelFrontHeight) || 0
   const aAngle = parseFloat((area.angle !== '' && area.angle != null) ? area.angle : panelAngle) || 0
   // Row a/h is the source of truth for trap a/h. Fallback to area defaults if
-  // rowMounting has no entry for this row.
+  // rowMounting has no entry for this row. Derived rows must source frontHeight
+  // from rectArea.frontHeight (single source of truth — see computePanelsAction).
   const ri = area.rowIndex ?? 0
   const inMtg = (rowMounting?.[areaLabel] || [])[ri]
+  const isFhDerived = !!area.frontHeightDerived
   const rAngle = inMtg?.angleDeg ?? aAngle
-  const rFront = inMtg?.frontHeightCm ?? aFront
+  const rFront = isFhDerived ? aFront : (inMtg?.frontHeightCm ?? aFront)
 
   const areaPanels = panels.filter(p => p.area === areaIdx)
   if (!areaPanels.length) return null

@@ -66,16 +66,63 @@ export interface Step2Data {
 
 // ── Step 3: Construction planning ───────────────────────────────────────────
 
+/**
+ * The first block of fields is intentionally shared with `CrossRowRail` so
+ * consumers can treat both rail types uniformly. Rail-specific fields follow.
+ */
 export interface Rail {
+  // ── shared with CrossRowRail ──────────────────────────────────────────
   railId: string
-  lineIdx: number
-  offsetFromRearEdgeCm: number
-  offsetFromLineFrontCm: number
   startCm: number
   lengthCm: number
+  offsetFromLineFrontCm: number
+  offsetFromRearEdgeCm: number
   roundedLengthCm?: number | null
   stockSegmentsMm: number[]
   leftoverCm: number
+  /** Absolute (parent-frame) span along the area's row-axis. Set only on
+   * virtual source rails (per-row); always set on CRs (where coords are
+   * already in parent-frame). */
+  absStartCm?: number | null
+  absEndCm?: number | null
+  // ── Rail-specific ─────────────────────────────────────────────────────
+  lineIdx: number
+  /**
+   * When set, this rail has been absorbed into an area-level CrossRowRail
+   * with this ID — it's a source of that CR. The rail is preserved in per-row
+   * data so the FE can reconstruct the cross-row span, but it should be faded
+   * in the canvas and skipped by material summaries.
+   */
+  crrId?: string | null
+  /** Mirror of `crrId !== null` — true iff this rail is virtual (absorbed by
+   * a cross-row rail). Kept as a separate flag for cheap checks. */
+  virtual?: boolean
+}
+
+/**
+ * Rail formed by concatenating aligned rails across sibling sub-rows of the
+ * same area. Lives at the area level (not keyed by panelRowIdx). Provenance
+ * is one-way: find the source rails by filtering per-row `Rail[]` where
+ * `crrId === cr.railId`.
+ *
+ * The first block of fields mirrors `Rail`. CR-specific fields follow.
+ */
+export interface CrossRowRail {
+  // ── shared with Rail ──────────────────────────────────────────────────
+  railId: string
+  startCm: number
+  lengthCm: number
+  offsetFromLineFrontCm: number
+  offsetFromRearEdgeCm: number
+  roundedLengthCm?: number | null
+  stockSegmentsMm: number[]
+  leftoverCm: number
+  absStartCm?: number | null
+  absEndCm?: number | null
+  // ── CR-specific ───────────────────────────────────────────────────────
+  slopeYCm: number                      // area-frame slope-axis position
+  areaAngleDeg?: number                 // screen rotation of the source rails (whole deg)
+  mountAngleDeg?: number                // mounting tilt of the source rails (0.1° resolution)
 }
 
 export interface Base {
@@ -177,6 +224,7 @@ export interface ComputedArea {
   areaId: number
   label: string
   rails: Record<number, Rail[]>
+  crossRowRails?: CrossRowRail[]
   bases: Record<number, Base[]>
   diagonals: ExternalDiagonal[]
   numLargeGaps: number
@@ -243,6 +291,7 @@ export interface BeRailsAreaData {
   areaId: number
   areaLabel: string
   rails: FlatRail[]
+  crossRowRails?: CrossRowRail[]
   numLargeGaps: number
 }
 

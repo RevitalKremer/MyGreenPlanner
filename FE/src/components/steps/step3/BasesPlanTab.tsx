@@ -139,6 +139,23 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
     [trapIds, areas],
   )
 
+  // For cross-row rails rendering: each entry in railLayouts is keyed by an
+  // expandedTrapId. Map each trapId → its area's BE rails data (which carries
+  // crossRowRails). Multiple trapIds in the same area resolve to the SAME
+  // beArea — renderCrossRowRails dedupes by areaId.
+  const trapKeyToBeArea = useMemo(() => {
+    const m: Record<string, any> = {}
+    // `trapAreaMap[trapId]` returns an areaId (number) OR area label (string) —
+    // never an area object. Match against both fields on beRailsData entries.
+    for (const trapId of expandedTrapIds) {
+      const aIdOrLabel = trapAreaMap[trapId]
+      if (aIdOrLabel == null) continue
+      const beArea = (beRailsData ?? []).find(a => a.areaId === aIdOrLabel || a.areaLabel === aIdOrLabel)
+      if (beArea) m[trapId] = beArea
+    }
+    return m
+  }, [expandedTrapIds, trapAreaMap, beRailsData])
+
   const basePlansMap = useMemo(
     () => buildBasePlansMap(expandedTrapIds, basePlans),
     [expandedTrapIds, basePlans],
@@ -550,17 +567,20 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
       {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
 
-                {/* 1. Rails — only the line geometry is drawn here (material summary,
-                    dimensions and connectors are all disabled), so no beSegs lookup is needed. */}
+                {/* 1. Per-row rails (under bases). Material summary, dimensions
+                    and connectors are disabled in the bases tab; cross-row rails
+                    are rendered separately below the bases layer so the orange
+                    lines aren't covered by the dark base rectangles. */}
                 <RailsOverlay
                   railLayouts={railLayouts}
                   rowKeys={expandedTrapIds}
                   rowGroups={trapGroups}
+                  groupKeyToBeArea={trapKeyToBeArea}
                   toSvg={toSvg}
                   sc={sc}
                   pixelToCmRatio={pixelToCmRatio}
                   zoom={effZoom}
-                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false }}
+                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: true, crossRow: false }}
                   crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
                   selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
                   trapSettingsMap={trapSettingsMap}
@@ -862,6 +882,24 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     )
                   })
                 })}
+
+                {/* 6.5 Cross-row rails (orange) — drawn ABOVE bases so the
+                    concat'd rails are visible. Per-row rails were drawn under
+                    bases at Z-index 1. */}
+                <RailsOverlay
+                  railLayouts={railLayouts}
+                  rowKeys={expandedTrapIds}
+                  rowGroups={trapGroups}
+                  groupKeyToBeArea={trapKeyToBeArea}
+                  toSvg={toSvg}
+                  sc={sc}
+                  pixelToCmRatio={pixelToCmRatio}
+                  zoom={effZoom}
+                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: false, crossRow: true }}
+                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
+                  selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
+                  trapSettingsMap={trapSettingsMap}
+                />
 
                 {/* 7. Edit bar */}
                 {sEditMode && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {

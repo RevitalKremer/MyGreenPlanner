@@ -212,11 +212,13 @@ function App() {
       return result
     }
 
-    // Convert to rails format (flatten per-row dict to flat list)
+    // Convert to rails format (flatten per-row dict to flat list).
+    // crossRowRails are area-level (already flat) and pass through unchanged.
     const railsData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
       rails: flattenRailsWithRowIdx(ca.rails),
+      crossRowRails: ca.crossRowRails || [],
       numLargeGaps: ca.numLargeGaps ?? 0,
     }))
     setBeRailsData(railsData)
@@ -876,6 +878,9 @@ function App() {
             rebuildPanelGrid={s.rebuildPanelGrid}
             recordPanelDeletion={s.recordPanelDeletion}
             clearDeletedPanelsForArea={s.clearDeletedPanelsForArea}
+            deletedPanelKeys={s.deletedPanelKeys}
+            setDeletedPanelKeys={s.setDeletedPanelKeys}
+            skipNextRecompute={s.skipNextRecompute}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}

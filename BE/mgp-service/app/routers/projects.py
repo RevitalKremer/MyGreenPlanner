@@ -562,7 +562,8 @@ async def get_rail_materials(
     # Get stockLengths from settings cache (no DB query)
     stock_lengths_default = settings_cache.get_setting('stockLengths')
     stock_lengths = (step3.get('globalSettings') or {}).get('stockLengths', stock_lengths_default)
-    # Flatten rails across all panel rows per area
+    # Flatten rails across all panel rows per area, plus cross-row rails
+    # (area-level concatenated rails — pruned from the per-row dict).
     areas_rails = []
     for ca in step3.get('computedAreas', []):
         rails_dict = ca.get('rails', {})
@@ -573,6 +574,9 @@ async def get_rail_materials(
                     flat_rails.extend(row_rails)
         else:
             flat_rails = rails_dict  # legacy list format
+        cross = ca.get('crossRowRails') or []
+        if isinstance(cross, list):
+            flat_rails.extend(cross)
         areas_rails.append(flat_rails)
     return rail_service.compute_materials_summary(areas_rails, stock_lengths)
 
