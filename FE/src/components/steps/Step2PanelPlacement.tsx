@@ -217,16 +217,37 @@ export default function Step2PanelPlacement({
     rectAreas.forEach((area, areaIdx) => {
       const areaPanels = panels.filter(p => p.area === areaIdx && !p.isEmpty)
       if (areaPanels.length === 0) return
-      // Axis selection: for axis-aligned vertical areas (areaVertical=true,
-      // effectiveRotation=90°), cols are laid out along screen Y and lines
-      // along screen X. For horizontal areas, vice versa. (Arbitrary rotations
-      // are not handled in phase 1.)
+      // Axis selection. Three cases:
+      //   - Axis-aligned horizontal (rotation≈0, areaVertical=false): col axis
+      //     = screen X, row axis = screen Y.
+      //   - Axis-aligned vertical (rotation≈0, areaVertical=true): col axis =
+      //     screen Y, row axis = screen X.
+      //   - Tilted (rotation ≠ 0, ≠ 90): col axis = panel local-x rotated by
+      //     effRot; row axis = panel local-y rotated. We project panel centers
+      //     onto the rotated unit vectors instead of using raw screen coords.
       const av = !!area?.areaVertical
-      const colCenterOf = (p: any) => av ? p.y + p.height / 2 : p.x + p.width / 2
-      const colStartOf  = (p: any) => av ? p.y : p.x
-      const colEndOf    = (p: any) => av ? p.y + p.height : p.x + p.width
-      const rowStartOf  = (p: any) => av ? p.x : p.y
-      const rowEndOf    = (p: any) => av ? p.x + p.width : p.y + p.height
+      const areaRot = ((area?.rotation ?? 0) % 360 + 360) % 360
+      const isTilted = areaRot > 0.5 && Math.abs(areaRot - 90) > 0.5 && Math.abs(areaRot - 180) > 0.5 && Math.abs(areaRot - 270) > 0.5
+      const effRotRad = ((av ? 90 : 0) + (area?.rotation ?? 0)) * Math.PI / 180
+      const ux = Math.cos(effRotRad), uy = Math.sin(effRotRad)
+      const vx = -Math.sin(effRotRad), vy = Math.cos(effRotRad)
+      const pCx = (p: any) => p.x + p.width / 2
+      const pCy = (p: any) => p.y + p.height / 2
+      const colCenterOf = (p: any) => isTilted
+        ? (pCx(p) * ux + pCy(p) * uy)
+        : (av ? p.y + p.height / 2 : p.x + p.width / 2)
+      const colStartOf = (p: any) => isTilted
+        ? (pCx(p) * ux + pCy(p) * uy) - p.width / 2
+        : (av ? p.y : p.x)
+      const colEndOf = (p: any) => isTilted
+        ? (pCx(p) * ux + pCy(p) * uy) + p.width / 2
+        : (av ? p.y + p.height : p.x + p.width)
+      const rowStartOf = (p: any) => isTilted
+        ? (pCx(p) * vx + pCy(p) * vy) - p.height / 2
+        : (av ? p.x : p.y)
+      const rowEndOf = (p: any) => isTilted
+        ? (pCx(p) * vx + pCy(p) * vy) + p.height / 2
+        : (av ? p.x + p.width : p.y + p.height)
 
       // Per-line majority orientation = expected orientation for the row
       const lineGroups = new Map<number, any[]>()
@@ -384,62 +405,96 @@ export default function Step2PanelPlacement({
     }
 
     // ─── Apply mutations ─────────────────────────────────────────────────
+    // Helpers: rotation-aware col/row projection for one area. The bbox +
+    // vertex matching pair handles both axis-aligned and tilted areas:
+    //   - axis-aligned (rotation 0 with av=false/true): col axis = screen X
+    //     or Y. Min/max bbox in screen frame, vertex-match by min/max X/Y.
+    //   - tilted: project panel centers onto rotated (col, row) axes; bbox
+    //     is in projected space; vertex-match by classifying each parent
+    //     vertex's (col,row) projection as min/max and inverting back to
+    //     screen via the area's effective rotation.
+    type AreaFrame = {
+      isTilted: boolean
+      av: boolean
+      ux: number; uy: number; vx: number; vy: number
+      colStartOf: (p: any) => number
+      colEndOf:   (p: any) => number
+      rowStartOf: (p: any) => number
+      rowEndOf:   (p: any) => number
+    }
+    const buildAreaFrame = (areaForFrame: any): AreaFrame => {
+      const _av = !!areaForFrame?.areaVertical
+      const _rotDeg = ((areaForFrame?.rotation ?? 0) % 360 + 360) % 360
+      const _isTilted = _rotDeg > 0.5 && Math.abs(_rotDeg - 90) > 0.5 && Math.abs(_rotDeg - 180) > 0.5 && Math.abs(_rotDeg - 270) > 0.5
+      const _effRot = ((_av ? 90 : 0) + (areaForFrame?.rotation ?? 0)) * Math.PI / 180
+      const _ux = Math.cos(_effRot), _uy = Math.sin(_effRot)
+      const _vx = -Math.sin(_effRot), _vy = Math.cos(_effRot)
+      const cx = (p: any) => p.x + p.width / 2
+      const cy = (p: any) => p.y + p.height / 2
+      return {
+        isTilted: _isTilted, av: _av, ux: _ux, uy: _uy, vx: _vx, vy: _vy,
+        colStartOf: (p: any) => _isTilted ? (cx(p) * _ux + cy(p) * _uy) - p.width / 2 : (_av ? p.y : p.x),
+        colEndOf:   (p: any) => _isTilted ? (cx(p) * _ux + cy(p) * _uy) + p.width / 2 : (_av ? p.y + p.height : p.x + p.width),
+        rowStartOf: (p: any) => _isTilted ? (cx(p) * _vx + cy(p) * _vy) - p.height / 2 : (_av ? p.x : p.y),
+        rowEndOf:   (p: any) => _isTilted ? (cx(p) * _vx + cy(p) * _vy) + p.height / 2 : (_av ? p.x + p.width : p.y + p.height),
+      }
+    }
+
     // Bbox X range comes from canonical col centers — tight, won't bleed into
-    // adjacent cols (e.g. when a multi-col panel anchors at col 0 but spans
-    // into col 1, the col 0 sub-row's x range stays at col 0's edges).
-    // Axis-aware bbox. For horizontal areas: col axis = screen-x, row axis =
-    // screen-y. For vertical areas: col axis = screen-y, row axis = screen-x.
-    // colCenters values are in the area's col axis; bbox returned in screen.
-    const bboxFromColsAndPanels = (subRow: MutationSubRow, colCenters: Map<number, number>, areaVertical: boolean) => {
+    // adjacent cols. Returns extent in PROJECTED (col, row) coords; for
+    // axis-aligned areas the projection is identity so values map trivially
+    // to screen min/max X/Y. For tilted areas the (col, row) values run along
+    // the rotated axes and verticesMatchingParent inverts the rotation.
+    const bboxFromColsAndPanels = (
+      subRow: MutationSubRow, colCenters: Map<number, number>, frame: AreaFrame,
+    ) => {
       const sortedCenters = [...colCenters.entries()].sort((a, b) => a[0] - b[0])
-      const fallbackPanelDim = areaVertical ? (subRow.panels[0]?.height ?? 50) : (subRow.panels[0]?.width ?? 50)
+      const fallbackPanelDim = (frame.isTilted || !frame.av) ? (subRow.panels[0]?.width ?? 50) : (subRow.panels[0]?.height ?? 50)
       const colWidth = sortedCenters.length >= 2
         ? Math.abs(sortedCenters[1][1] - sortedCenters[0][1])
         : fallbackPanelDim
-      // Use coveredCols so multi-col panels (e.g. an H spanning 2 cols)
-      // extend the sub-row's bbox to cover their full extent — otherwise the
-      // bbox is too narrow and polygon-fill places the panel at the start
-      // corner, making it look "aligned to left".
       const subCols = [...new Set(
         subRow.panels.flatMap((p: any) => p.coveredCols?.length > 0 ? p.coveredCols : [p.col ?? 0])
       )] as number[]
       const colCenterVals = subCols.map(c => colCenters.get(c)).filter((x): x is number => x !== undefined)
-      // Col-axis extent (along col axis)
       let colMin: number, colMax: number
       if (colCenterVals.length === 0) {
-        if (areaVertical) {
-          colMin = Math.min(...subRow.panels.map(p => p.y))
-          colMax = Math.max(...subRow.panels.map(p => p.y + p.height))
-        } else {
-          colMin = Math.min(...subRow.panels.map(p => p.x))
-          colMax = Math.max(...subRow.panels.map(p => p.x + p.width))
-        }
+        colMin = Math.min(...subRow.panels.map(frame.colStartOf))
+        colMax = Math.max(...subRow.panels.map(frame.colEndOf))
       } else {
         colMin = Math.min(...colCenterVals) - colWidth / 2
         colMax = Math.max(...colCenterVals) + colWidth / 2
       }
-      // Row-axis extent (along row axis)
-      let rowMin = Infinity, rowMax = -Infinity
-      for (const p of subRow.panels) {
-        if (areaVertical) {
-          rowMin = Math.min(rowMin, p.x)
-          rowMax = Math.max(rowMax, p.x + p.width)
-        } else {
-          rowMin = Math.min(rowMin, p.y)
-          rowMax = Math.max(rowMax, p.y + p.height)
-        }
+      const rowMin = Math.min(...subRow.panels.map(frame.rowStartOf))
+      const rowMax = Math.max(...subRow.panels.map(frame.rowEndOf))
+      if (frame.isTilted) {
+        return { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN, colMin, colMax, rowMin, rowMax }
       }
-      // Map col/row axes back to screen X/Y
-      const minX = areaVertical ? rowMin : colMin
-      const maxX = areaVertical ? rowMax : colMax
-      const minY = areaVertical ? colMin : rowMin
-      const maxY = areaVertical ? colMax : rowMax
-      return { minX, minY, maxX, maxY }
+      const minX = frame.av ? rowMin : colMin
+      const maxX = frame.av ? rowMax : colMax
+      const minY = frame.av ? colMin : rowMin
+      const maxY = frame.av ? colMax : rowMax
+      return { minX, minY, maxX, maxY, colMin, colMax, rowMin, rowMax }
     }
 
-    // Match parent vertex ordering so pivotIdx/yDir/xDir stay consistent
-    // (axis-aligned assumption — for rotated areas we'd need local frame).
-    const verticesMatchingParent = (parentVerts: any[], bbox: { minX: number; minY: number; maxX: number; maxY: number }) => {
+    const verticesMatchingParent = (parentVerts: any[], bbox: any, frame: AreaFrame) => {
+      if (frame.isTilted) {
+        const parentProjs = parentVerts.map((v: any) => ({
+          col: v.x * frame.ux + v.y * frame.uy,
+          row: v.x * frame.vx + v.y * frame.vy,
+        }))
+        const pColMin = Math.min(...parentProjs.map(p => p.col))
+        const pColMax = Math.max(...parentProjs.map(p => p.col))
+        const pRowMin = Math.min(...parentProjs.map(p => p.row))
+        const pRowMax = Math.max(...parentProjs.map(p => p.row))
+        return parentVerts.map((_, i) => {
+          const colIsMin = Math.abs(parentProjs[i].col - pColMin) < Math.abs(parentProjs[i].col - pColMax)
+          const rowIsMin = Math.abs(parentProjs[i].row - pRowMin) < Math.abs(parentProjs[i].row - pRowMax)
+          const cp = colIsMin ? bbox.colMin : bbox.colMax
+          const rp = rowIsMin ? bbox.rowMin : bbox.rowMax
+          return { x: cp * frame.ux + rp * frame.vx, y: cp * frame.uy + rp * frame.vy }
+        })
+      }
       const pMinX = Math.min(...parentVerts.map((v: any) => v.x))
       const pMinY = Math.min(...parentVerts.map((v: any) => v.y))
       return parentVerts.map((v: any) => ({
@@ -532,11 +587,12 @@ export default function Step2PanelPlacement({
       // user-defined row. Appended sub-rows are positioned UP the slope and
       // get derived frontHeight + frontHeightDerived: true flag so the BE
       // (and FE-side gating) treats them as view-only.
+      const areaFrame = buildAreaFrame(parentArea)
       const firstSubRow = sorted[0]
-      const firstBbox = bboxFromColsAndPanels(firstSubRow, colCenters, !!parentArea?.areaVertical)
+      const firstBbox = bboxFromColsAndPanels(firstSubRow, colCenters, areaFrame)
       newRectAreas[areaIdx] = {
         ...newRectAreas[areaIdx],
-        vertices: verticesMatchingParent(parentArea.vertices, firstBbox),
+        vertices: verticesMatchingParent(parentArea.vertices, firstBbox, areaFrame),
         preferredOrientations: preferredOrientationsOf(firstSubRow),
         frontHeight: computeFrontHeightAndDelta(firstSubRow.panels).fh,
         ...inheritedClean,
@@ -548,7 +604,7 @@ export default function Step2PanelPlacement({
       // their H reactively when the anchor's a/h changes.
       const anchorRowIndex = newRectAreas[areaIdx].rowIndex ?? 0
       sorted.slice(1).forEach(subRow => {
-        const bbox = bboxFromColsAndPanels(subRow, colCenters, !!parentArea?.areaVertical)
+        const bbox = bboxFromColsAndPanels(subRow, colCenters, areaFrame)
         const { fh: subFh, deltaCm } = computeFrontHeightAndDelta(subRow.panels)
         // Sub-rows whose derived H equals the parent's H (typically those at
         // the same slope position as the parent's front line) stay as
@@ -557,7 +613,7 @@ export default function Step2PanelPlacement({
         const isDerived = Math.abs(subFh - parentFrontHeightVal) > 0.5
         const newArea = {
           ...parentArea,
-          vertices: verticesMatchingParent(parentArea.vertices, bbox),
+          vertices: verticesMatchingParent(parentArea.vertices, bbox, areaFrame),
           id: nextId--,
           areaGroupId: groupId,
           rowIndex: nextRowIndex++,
