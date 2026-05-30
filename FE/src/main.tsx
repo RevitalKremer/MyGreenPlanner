@@ -3,6 +3,19 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import { LangProvider } from './i18n/LangContext'
 import './index.css'
+import { registerSW } from 'virtual:pwa-register'
+
+// Register service worker with update prompt
+const updateSW = registerSW({
+  onNeedRefresh() {
+    if (confirm('New version available! Reload to update?')) {
+      updateSW(true)
+    }
+  },
+  onOfflineReady() {
+    console.log('App ready to work offline')
+  },
+})
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

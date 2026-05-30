@@ -21,8 +21,13 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      workbox: {
+        cleanupOutdatedCaches: true,
+        skipWaiting: false,
+        clientsClaim: false,
+      },
       manifest: {
         name: 'MyGreenPlanner',
         short_name: 'GreenPlanner',
