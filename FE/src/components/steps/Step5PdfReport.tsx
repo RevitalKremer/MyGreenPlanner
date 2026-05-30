@@ -597,10 +597,10 @@ export default function Step5PdfReport({
         finalBytes = (beBytes ?? planBytes)!
       }
 
-      const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
-      const dateStr  = new Date().toISOString().split('T')[0]
-      const label    = [...beContent, ...(pdfContent.plans ? ['plans'] : [])].join('_')
-      const filename = `${safeName}_${label}_${dateStr}.pdf`
+      const safeName  = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
+      const dateStr   = new Date().toISOString().split('T')[0]
+      const idSuffix  = String(projectId || '').replace(/-/g, '').slice(-8)
+      const filename  = `${safeName}_plan_${idSuffix}_${dateStr}.pdf`
 
       const blob = new Blob([finalBytes], { type: 'application/pdf' })
       const url  = URL.createObjectURL(blob)
