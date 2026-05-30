@@ -70,6 +70,19 @@ class PanelRowData(_StrictBase):
     panelGrid: Optional[PanelGrid] = None
     angleDeg: Optional[float] = None       # row-level mounting angle (deg)
     frontHeightCm: Optional[float] = None  # row-level front-edge height (cm)
+    # 2D offset of this sub-row's V0 from the PARENT area's V0, decomposed
+    # along the area's row-axis and slope-axis (cm). Both are 0 for the
+    # anchor sub-row. Non-anchor sub-rows of multi-row areas carry these so
+    # cross-row concat can:
+    #   - translate per-sub-row startCm into absolute row-axis positions
+    #     (rowAxisOffsetCm) for adjacency math
+    #   - distinguish sub-rows at different physical slope positions
+    #     (slopeAxisOffsetCm) even when they happen to share frontHeightCm
+    # Without slopeAxisOffsetCm two manually-drawn rows at the same
+    # frontHeightCm but different physical Y would wrongly bucket as one
+    # slope-Y level.
+    rowAxisOffsetCm: float = 0
+    slopeAxisOffsetCm: float = 0
 
 
 class Step2Area(_StrictBase):
@@ -120,16 +133,62 @@ class Step2Data(_StrictBase):
 # Server-computed models (stored in step3.computedAreas / step3.computedTrapezoids)
 
 class Rail(_StrictBase):
-    """One physical rail computed by rail_service."""
+    """One physical rail computed by rail_service.
+
+    The first block of fields is intentionally shared with `CrossRowRail` so
+    both rail types can be consumed uniformly. Rail-specific fields follow.
+    """
+    # ── shared with CrossRowRail ──────────────────────────────────────────
     railId: str
-    lineIdx: int
-    offsetFromRearEdgeCm: float
-    offsetFromLineFrontCm: float = 0
     startCm: float
     lengthCm: float
+    offsetFromLineFrontCm: float = 0
+    offsetFromRearEdgeCm: float
     roundedLengthCm: Optional[float] = None
     stockSegmentsMm: list[int]
     leftoverCm: float
+    # Absolute (parent-frame) span along the area's row-axis. For per-row rails
+    # set only on virtual source rails (anchor V0 as origin). For CRs always
+    # set (since CR coords are already in parent-frame).
+    absStartCm: Optional[float] = None
+    absEndCm: Optional[float] = None
+    # ── Rail-specific ─────────────────────────────────────────────────────
+    lineIdx: int
+    # When set, this rail was absorbed into an area-level CrossRowRail with
+    # this ID. The FE fades it visually and the material summary skips it.
+    crrId: Optional[str] = None
+    # Mirror of `crrId` — True iff this rail has been replaced by a cross-row
+    # rail. Kept as a separate flag for cheap renderer / aggregator checks
+    # (no string lookups).
+    virtual: bool = False
+
+
+class CrossRowRail(_StrictBase):
+    """Rail formed by concatenating aligned rails from multiple sibling sub-rows
+    of the same area. Lives at the area level (not keyed by panelRowIdx) since
+    it spans across sub-rows.
+
+    Provenance (which per-row rails were absorbed) lives on the source rails
+    themselves via `Rail.crrId` — no separate sourceRails array needed.
+    Resolve sources by filtering `ComputedArea.rails[*]` where `crrId == railId`.
+
+    The first block of fields mirrors `Rail`. CR-specific fields follow.
+    """
+    # ── shared with Rail ──────────────────────────────────────────────────
+    railId: str
+    startCm: float
+    lengthCm: float
+    offsetFromLineFrontCm: float = 0
+    offsetFromRearEdgeCm: float = 0
+    roundedLengthCm: Optional[float] = None
+    stockSegmentsMm: list[int]
+    leftoverCm: float
+    absStartCm: Optional[float] = None
+    absEndCm: Optional[float] = None
+    # ── CR-specific ───────────────────────────────────────────────────────
+    slopeYCm: float                          # absolute slope-axis position within the area
+    areaAngleDeg: float = 0                  # screen rotation of the source rails (whole degrees)
+    mountAngleDeg: float = 0                 # mounting tilt of the source rails (0.1° resolution)
 
 
 class Base(_StrictBase):
@@ -186,6 +245,8 @@ class ComputedArea(_StrictBase):
     label: str                      # matches step2.areas[].label (display)
     rails: dict[int, list[Rail]] = Field(default_factory=dict)
     # rowIndex → computed rails for that panel row
+    crossRowRails: list[CrossRowRail] = Field(default_factory=list)
+    # Area-level rails formed by concatenating aligned rails across sibling sub-rows.
     bases: dict[int, list[Base]] = Field(default_factory=dict)
     # rowIndex → computed bases for that panel row
     diagonals: list[ExternalDiagonal] = Field(default_factory=list)

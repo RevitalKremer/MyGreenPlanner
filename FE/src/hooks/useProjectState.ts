@@ -531,7 +531,57 @@ export function useProjectState() {
             ?? (rRa?.angle !== '' && rRa?.angle != null ? parseFloat(rRa.angle) : null)
           const frontHeightCm = rmEntry?.frontHeightCm
             ?? (rRa?.frontHeight !== '' && rRa?.frontHeight != null ? parseFloat(rRa.frontHeight) : null)
-          return { rowIndex: ri, panelGrid: pg, angleDeg, frontHeightCm }
+          // rowAxisOffsetCm: offset of THIS sub-row's V0 from the GROUP ANCHOR
+          // (smallest rowIndex in the group), measured along the area's
+          // row-axis in cm. Sub-row 0 (anchor) → 0. Lets the BE convert
+          // per-sub-row startCm (local frame) into absolute positions for
+          // cross-row concat adjacency checks. FE rendering keeps its own
+          // local frame and is unchanged.
+          // 2D offset of this sub-row's V0 from the anchor's V0, decomposed
+          // along the area's row-axis (cm) and slope-axis (cm). Each sub-row's
+          // own V0 is the corner where its panels grow — depends on
+          // startCorner (BL/BR/TL/TR), not on the anchor's orientation.
+          //   row-axis = (cos θ, sin θ)
+          //   slope-axis = (-sin θ, cos θ), flipped for btt yDir so positive
+          //   = going UP the slope (away from the eave).
+          let rowAxisOffsetCm = 0
+          let slopeAxisOffsetCm = 0
+          const cmPerPx = refinedArea?.pixelToCmRatio
+          if (rRa && groupRectAreas.length > 1 && cmPerPx) {
+            const anchor = groupRectAreas.reduce((min: any, r: any) =>
+              (min == null || (r.rowIndex ?? 0) < (min.rowIndex ?? 0)) ? r : min, null)
+            if (anchor && anchor !== rRa && anchor.vertices?.length && rRa.vertices?.length) {
+              const effRot = ((anchor.areaVertical ? 90 : 0) + (anchor.rotation ?? 0)) * Math.PI / 180
+              const ux = Math.cos(effRot), uy = Math.sin(effRot)
+              const vx = -Math.sin(effRot), vy = Math.cos(effRot)
+              const anchorIsRtl = (anchor.xDir ?? 'ltr') === 'rtl'
+              const anchorIsBtt = (anchor.yDir ?? 'btt') === 'btt'
+              const subIsRtl = (rRa.xDir ?? 'ltr') === 'rtl'
+              const subIsBtt = (rRa.yDir ?? 'btt') === 'btt'
+              // V0 vertex selection — projection on row-axis: ltr → min, rtl → max.
+              // V0 on the slope-axis: btt → max screen Y after rotation; ttb → min.
+              const pickRow = (vs: { x: number; y: number }[], isRtl: boolean) => {
+                const projs = vs.map(v => v.x * ux + v.y * uy)
+                return isRtl ? Math.max(...projs) : Math.min(...projs)
+              }
+              const pickSlope = (vs: { x: number; y: number }[], isBtt: boolean) => {
+                const projs = vs.map(v => v.x * vx + v.y * vy)
+                return isBtt ? Math.max(...projs) : Math.min(...projs)
+              }
+              const aRow = pickRow(anchor.vertices, anchorIsRtl)
+              const rRow = pickRow(rRa.vertices, subIsRtl)
+              const aSlope = pickSlope(anchor.vertices, anchorIsBtt)
+              const rSlope = pickSlope(rRa.vertices, subIsBtt)
+              const rowSign = anchorIsRtl ? -1 : 1
+              // Slope positive = going UP the slope (away from eave). For btt
+              // (eave at bottom of screen), screen Y of V0 is MAX; going up the
+              // slope means Y decreases, so flip the sign on the slope diff.
+              const slopeSign = anchorIsBtt ? -1 : 1
+              rowAxisOffsetCm = Math.round((rRow - aRow) * rowSign * cmPerPx * 10) / 10
+              slopeAxisOffsetCm = Math.round((rSlope - aSlope) * slopeSign * cmPerPx * 10) / 10
+            }
+          }
+          return { rowIndex: ri, panelGrid: pg, angleDeg, frontHeightCm, rowAxisOffsetCm, slopeAxisOffsetCm }
         }).filter(Boolean),
       }
     })

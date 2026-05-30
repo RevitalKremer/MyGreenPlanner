@@ -85,8 +85,31 @@ export default function RailLayoutTab({
     })
   }, [railLayoutsProp, rowKeys, rowGroups, pixelToCmRatio, selectedRowIdx, selectedPanelRowIdx, printMode, lineRails, trapSettingsMap, railOverhangCm, stockLengths, beRailsData, groupKeyToLabel])
 
-  const totalRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
-  const totalLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
+  // Rails absorbed into a cross-row rail are still present in per-row layouts
+  // (for span reconstruction) but shouldn't be counted as separate units. Use
+  // beRailsData to identify them, then add the area-level cross-row rails on top.
+  const concatSourceCount = useMemo(() => {
+    let n = 0
+    for (const a of (beRailsData ?? [])) {
+      for (const r of (a.rails ?? [])) if (r.crrId) n++
+    }
+    return n
+  }, [beRailsData])
+  const crossRowRailsAll = useMemo(() => {
+    const all: Array<{ leftoverCm: number; stockSegmentsMm: number[] }> = []
+    for (const a of (beRailsData ?? [])) {
+      for (const cr of (a.crossRowRails ?? [])) all.push(cr)
+    }
+    return all
+  }, [beRailsData])
+  const perRowRails    = railLayouts.reduce((s, rl) => s + (rl?.rails.length ?? 0), 0)
+  const totalRails     = perRowRails - concatSourceCount + crossRowRailsAll.length
+  const perRowLeftover = railLayouts.reduce((s, rl) => s + (rl?.rails.reduce((rs, r) => rs + (r.leftoverCm ?? 0), 0) ?? 0), 0)
+  // Approximation: per-row leftover sum still includes the source rails' leftovers
+  // (we can't subtract them without a railId-by-railId lookup here). Cross-row
+  // rails' leftover is added on top. Small over-count is acceptable for the
+  // summary banner; the table view shows the authoritative per-rail values.
+  const totalLeftover  = perRowLeftover + crossRowRailsAll.reduce((s, cr) => s + (cr.leftoverCm ?? 0), 0)
 
   const bbox = useMemo(() => {
     if (printMode && printBbox) return printBbox
@@ -288,7 +311,12 @@ export default function RailLayoutTab({
         {tableOpen && (
           <div style={{ overflowY: 'auto', maxHeight: '260px', padding: '0.5rem 1.25rem 1rem' }}>
             {(beRailsData ?? []).map((areaData, i) => (
-              <RailsTable key={areaData.areaLabel} areaLabel={areaData.areaLabel} rails={areaData.rails ?? []} />
+              <RailsTable
+                key={areaData.areaLabel}
+                areaLabel={areaData.areaLabel}
+                rails={(areaData.rails ?? []).filter(r => !r.crrId)}
+                crossRowRails={areaData.crossRowRails ?? []}
+              />
             ))}
           </div>
         )}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_MUTED, BORDER_LIGHT, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_BG, AMBER_DARK } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_MUTED, BORDER_LIGHT, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_BG, AMBER_DARK, CROSS_ROW_RAIL } from '../../../styles/colors'
 import { fmt } from './tabUtils'
 
 function formatStockPieces(segments) {
@@ -13,14 +13,15 @@ function formatStockPieces(segments) {
   return groups.map(g => g.count > 1 ? `${g.count}×${fmt(g.mm)}mm` : `${fmt(g.mm)}mm`).join(' + ')
 }
 
-export default function RailsTable({ areaLabel, rails }) {
+export default function RailsTable({ areaLabel, rails, crossRowRails = [] }) {
   const { t } = useLang()
   const [expanded, setExpanded] = useState(false)
-  if (!rails || rails.length === 0) return null
+  if ((!rails || rails.length === 0) && (!crossRowRails || crossRowRails.length === 0)) return null
 
-  const totalLengthMm = Math.round(rails.reduce((s, r) => s + (r.roundedLengthCm ?? r.lengthCm), 0) * 10)
-  const totalPieces   = rails.reduce((s, r) => s + r.stockSegmentsMm.length, 0)
-  const totalLeftoverMm = Math.round(rails.reduce((s, r) => s + r.leftoverCm, 0) * 10)
+  const allRails = [...(rails ?? []), ...(crossRowRails ?? [])]
+  const totalLengthMm = Math.round(allRails.reduce((s, r) => s + (r.roundedLengthCm ?? r.lengthCm), 0) * 10)
+  const totalPieces   = allRails.reduce((s, r) => s + r.stockSegmentsMm.length, 0)
+  const totalLeftoverMm = Math.round(allRails.reduce((s, r) => s + r.leftoverCm, 0) * 10)
   const tdBase = { padding: '0.3rem 0.5rem' }
 
   return (
@@ -49,6 +50,17 @@ export default function RailsTable({ areaLabel, rails }) {
             <tr key={rail.railId} style={{ borderTop: `1px solid ${BG_MID}`, background: i % 2 === 0 ? 'white' : BG_FAINT }}>
               <td style={tdBase} />
               <td style={{ ...tdBase, color: TEXT_MUTED }}>#{rail.lineIdx + 1}</td>
+              <td style={{ ...tdBase, color: TEXT }}>{fmt(Math.round((rail.roundedLengthCm ?? rail.lengthCm) * 10))}</td>
+              <td style={{ ...tdBase, color: TEXT }}>{formatStockPieces(rail.stockSegmentsMm)}</td>
+              <td style={{ ...tdBase, color: rail.leftoverCm > 0 ? AMBER_DARK : TEXT_VERY_LIGHT }}>{fmt(Math.round(rail.leftoverCm * 10))}</td>
+            </tr>
+          ))}
+          {expanded && crossRowRails.map((rail, i) => (
+            <tr key={rail.railId} style={{ borderTop: `1px solid ${BG_MID}`, background: (rails.length + i) % 2 === 0 ? 'white' : BG_FAINT }}>
+              <td style={tdBase} />
+              <td style={{ ...tdBase, color: CROSS_ROW_RAIL, fontWeight: 700 }}>
+                ⇆ {rail.railId}
+              </td>
               <td style={{ ...tdBase, color: TEXT }}>{fmt(Math.round((rail.roundedLengthCm ?? rail.lengthCm) * 10))}</td>
               <td style={{ ...tdBase, color: TEXT }}>{formatStockPieces(rail.stockSegmentsMm)}</td>
               <td style={{ ...tdBase, color: rail.leftoverCm > 0 ? AMBER_DARK : TEXT_VERY_LIGHT }}>{fmt(Math.round(rail.leftoverCm * 10))}</td>
