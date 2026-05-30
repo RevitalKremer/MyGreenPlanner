@@ -32,11 +32,13 @@ export default function PanelCanvas({
   rectAreas = [],
   setRectAreas,
   onAddRectArea,
+  onDeleteArea,
   cmPerPixel,
   panelSpec,
   rebuildPanelGrid,
   recordPanelDeletion,
   panelGapCm,
+  lineGapCm,
   drawVertical = false,
   roofAxis = null,
   setRoofAxis,
@@ -324,6 +326,13 @@ export default function PanelCanvas({
         setPanels(newPanels)
         rebuildPanelGrid?.(newPanels)
         setSelectedPanels([])
+        // If the deleted panel was the last non-empty one in its area,
+        // remove the (now-empty) area too — empty areas just clutter the
+        // canvas and block step3.
+        const areaKey = clickedPanel.area ?? clickedPanel.row
+        if (areaKey != null && !newPanels.some(p => !p.isEmpty && (p.area ?? p.row) === areaKey)) {
+          onDeleteArea?.(areaKey)
+        }
       } else startPan(e)
       return
     }
@@ -530,7 +539,10 @@ export default function PanelCanvas({
       let finalDx = rawDx, finalDy = rawDy
 
       const isDragging = Math.abs(rawDx) > 4 || Math.abs(rawDy) > 4
-      if (isDragging && snapToGridlines && (showHGridlines || showVGridlines)) {
+      // Snap is decoupled from gridline visibility — gridlines are a visual aid,
+      // snap is a drag behaviour. When snap is on, snap in BOTH axes regardless
+      // of which gridlines are shown.
+      if (isDragging && snapToGridlines) {
         const refId = dragState.panelIds[0]
         const refPanel = panels.find(p => p.id === refId)
         if (refPanel) {
@@ -548,18 +560,42 @@ export default function PanelCanvas({
             const ux = cosR, uy = sinR, vx = -sinR, vy = cosR
             const hw = refPanel.width / 2, hh = refPanel.height / 2
             const THRESH = Math.max(refPanel.width, refPanel.height) * 0.35
-            if (showHGridlines) {
+            // Snap candidates per stationary panel edge `g`:
+            //   g - hh - gap → dragged sits `gap` BEFORE g (side-by-side, with gap)
+            //   g + hh       → dragged near-edge aligned with g (edge-aligned)
+            // Applied separately to each of the stationary panel's two edges,
+            // yielding both gap-spaced and edge-aligned snap targets. Gap is
+            // lineGapCm across rows (H axis) and panelGapCm along rows (V axis).
+            const lineGapPx = (lineGapCm ?? 0) / (refinedArea?.pixelToCmRatio ?? 1)
+            const panelGapPx = (panelGapCm ?? 0) / (refinedArea?.pixelToCmRatio ?? 1)
+            {
               const centerPerp = cx * vx + cy * vy
-              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy; return [pOff - p.height/2, pOff + p.height/2] })
-              const candidates = offsets.flatMap(g => [g - hh, g + hh])
+              const candidates = stationary.flatMap(p => {
+                const pOff = (p.x + p.width/2) * vx + (p.y + p.height/2) * vy
+                const top = pOff - p.height/2, bot = pOff + p.height/2
+                return [
+                  top - hh - lineGapPx,   // gap above stationary
+                  top + hh,               // top-aligned
+                  bot - hh,               // bottom-aligned
+                  bot + hh + lineGapPx,   // gap below stationary
+                ]
+              })
               const nearest = candidates.reduce((b, c) => Math.abs(c - centerPerp) < Math.abs(b - centerPerp) ? c : b)
               if (Math.abs(nearest - centerPerp) < THRESH) { finalDx += (nearest - centerPerp) * vx; finalDy += (nearest - centerPerp) * vy }
             }
-            if (showVGridlines) {
+            {
               const cx2 = orig.x + refPanel.width / 2 + finalDx, cy2 = orig.y + refPanel.height / 2 + finalDy
               const centerPar = cx2 * ux + cy2 * uy
-              const offsets = stationary.flatMap(p => { const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy; return [pOff - p.width/2, pOff + p.width/2] })
-              const candidates = offsets.flatMap(g => [g - hw, g + hw])
+              const candidates = stationary.flatMap(p => {
+                const pOff = (p.x + p.width/2) * ux + (p.y + p.height/2) * uy
+                const left = pOff - p.width/2, right = pOff + p.width/2
+                return [
+                  left - hw - panelGapPx,  // gap to the left of stationary
+                  left + hw,               // left-aligned
+                  right - hw,              // right-aligned
+                  right + hw + panelGapPx, // gap to the right of stationary
+                ]
+              })
               const nearest = candidates.reduce((b, c) => Math.abs(c - centerPar) < Math.abs(b - centerPar) ? c : b)
               if (Math.abs(nearest - centerPar) < THRESH) { finalDx += (nearest - centerPar) * ux; finalDy += (nearest - centerPar) * uy }
             }

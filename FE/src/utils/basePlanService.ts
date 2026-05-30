@@ -227,7 +227,12 @@ export function computeExpandedBasePlans({
       const customOffsets = customBasesMap[trapId]
       if (customOffsets?.length > 0) cfg.customOffsets = customOffsets
       bps.push(computeRowBasePlan(rowPanels, pixelToCmRatio, { overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineRails, lineSegments, anchorPanels }, cfg))
-      rls.push(computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineSegments, anchorPanels }))
+      const rl = computeRowRailLayout(rowPanels, pixelToCmRatio, { lineRails, overhangCm: s.railOverhangCm, stockLengths: s.stockLengths, lineSegments, anchorPanels })
+      // Stamp the panel-row index so consumers (e.g. RailsOverlay's
+      // concatLookup) can resolve which sub-row this layout belongs to —
+      // virtual source rails get faded, cross-row rails render on top.
+      if (rl) (rl as any)._panelRowIdx = ri
+      rls.push(rl)
       eTrapIds.push(trapId)
     }
   }

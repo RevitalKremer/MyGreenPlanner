@@ -101,9 +101,11 @@ export default function useRowData({
     for (const key of rowKeys) {
       const samplePanel = panels.find(p => p.areaGroupKey === key)
       if (samplePanel) {
-        const trapId = samplePanel.trapezoidId
+        // Legacy projects may have non-string trapezoidId from before the
+        // empty-label gates — coerce defensively so render doesn't crash.
+        const trapId = typeof samplePanel.trapezoidId === 'string' ? samplePanel.trapezoidId : null
         const matched = areas.find(a => a.trapezoidIds?.includes(trapId))
-          ?? areaByLabel[trapId?.replace(/\d+$/, '')]
+          ?? (trapId ? areaByLabel[trapId.replace(/\d+$/, '')] : undefined)
         if (matched) { map[key] = matched; continue }
       }
       if (areas[key]) map[key] = areas[key]

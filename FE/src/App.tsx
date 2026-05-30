@@ -58,6 +58,7 @@ function App() {
   const [projectsSearch, setProjectsSearch] = useState('')
   const [urlResetToken, setUrlResetToken] = useState(null) // reset token from URL param
   const [verifyBanner, setVerifyBanner] = useState(null)  // null | 'success' | 'error'
+  const [showNextTooltip, setShowNextTooltip] = useState(false)
   const confirmDialog = useConfirm()
   // Server-side step-transition validation errors (set when updateStep returns 400)
   const [stepTransitionErrors, setStepTransitionErrors] = useState<
@@ -211,11 +212,13 @@ function App() {
       return result
     }
 
-    // Convert to rails format (flatten per-row dict to flat list)
+    // Convert to rails format (flatten per-row dict to flat list).
+    // crossRowRails are area-level (already flat) and pass through unchanged.
     const railsData = computedAreas.map(ca => ({
       areaId: ca.areaId,
       areaLabel: ca.label || '',
       rails: flattenRailsWithRowIdx(ca.rails),
+      crossRowRails: ca.crossRowRails || [],
       numLargeGaps: ca.numLargeGaps ?? 0,
     }))
     setBeRailsData(railsData)
@@ -875,6 +878,9 @@ function App() {
             rebuildPanelGrid={s.rebuildPanelGrid}
             recordPanelDeletion={s.recordPanelDeletion}
             clearDeletedPanelsForArea={s.clearDeletedPanelsForArea}
+            deletedPanelKeys={s.deletedPanelKeys}
+            setDeletedPanelKeys={s.setDeletedPanelKeys}
+            skipNextRecompute={s.skipNextRecompute}
             areas={s.areas}
             setAreas={s.setAreas}
             addManualPanel={s.addManualPanel}
@@ -1134,8 +1140,29 @@ function App() {
           ))}
         </div>
 
+        <span
+          style={{ position: 'relative', display: 'inline-block' }}
+          onMouseEnter={() => setShowNextTooltip(true)}
+          onMouseLeave={() => setShowNextTooltip(false)}
+        >
+        {showNextTooltip && (() => {
+          const blockers = s.getNextStepBlockers()
+          if (blockers.length === 0) return null
+          return (
+            <div style={{
+              position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+              background: '#222', color: '#fff', padding: '8px 12px', borderRadius: 6,
+              fontSize: '0.8rem', whiteSpace: 'nowrap', zIndex: 1000,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25)', pointerEvents: 'none',
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('nav.blocker.header')}</div>
+              {blockers.map(k => <div key={k}>• {t(k)}</div>)}
+            </div>
+          )
+        })()}
         <button
           className="btn-nav btn-next"
+          style={!s.canProceedToNextStep() ? { pointerEvents: 'none' } : undefined}
           onClick={async () => {
             if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
             // On the final step the button reads "Finish" — show the
@@ -1184,6 +1211,7 @@ function App() {
         >
           {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
         </button>
+        </span>
       </footer>
 
       {confirmDialogElement}

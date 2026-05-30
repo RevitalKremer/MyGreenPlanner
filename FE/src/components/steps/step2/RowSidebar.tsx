@@ -168,22 +168,41 @@ export default function RowSidebar({
     return info
   }, [selectedPanels, panels, rectAreas])
 
-  // "Apply to all rows" — write current default a/h to every row of every area
-  // and to area defaults (so newly added rows pick them up too).
+  // "Apply to all rows" — write current default a/h to every USER-DEFINED row.
+  // Derived rows (rectArea.frontHeightDerived = true, created by Recalc rows)
+  // are skipped — their H is geometrically constrained. The reactive
+  // useEffect in Step2PanelPlacement will recompute their frontHeight from
+  // the anchor's new H + slope geometry.
   const applyDefaultsToAll = () => {
     const fh = panelFrontHeight ?? ''
     const ang = panelAngle ?? ''
-    setRectAreas?.(prev => prev.map(a => ({ ...a, frontHeight: fh, angle: ang })))
+    setRectAreas?.(prev => prev.map(a => a.frontHeightDerived
+      ? { ...a, angle: ang }  // angle propagates (per-area), but keep derived frontHeight
+      : { ...a, frontHeight: fh, angle: ang }
+    ))
     if (setRowMounting) {
       const fhNum = parseFloat(fh)
       const angNum = parseFloat(ang)
+      // Build a quick lookup: "label_rowIndex" → isDerived
+      const derivedKeys = new Set<string>()
+      ;(rectAreas || []).forEach((a: any) => {
+        if (a.frontHeightDerived) {
+          const lbl = a.label || (a.id != null ? String(a.id) : '')
+          derivedKeys.add(`${lbl}_${a.rowIndex ?? 0}`)
+        }
+      })
       setRowMounting(prev => {
         const next = {};
         (Object.entries(prev || {}) as [string, any[]][]).forEach(([label, rows]) => {
-          next[label] = (rows || []).map(r => ({
-            angleDeg: isNaN(angNum) ? r?.angleDeg : angNum,
-            frontHeightCm: isNaN(fhNum) ? r?.frontHeightCm : fhNum,
-          }))
+          next[label] = (rows || []).map((r, ri) => {
+            // Don't write a rowMounting entry for derived rows — they should
+            // remain "missing" so the display falls back to rectArea.frontHeight.
+            if (derivedKeys.has(`${label}_${ri}`)) return r
+            return {
+              angleDeg: isNaN(angNum) ? r?.angleDeg : angNum,
+              frontHeightCm: isNaN(fhNum) ? r?.frontHeightCm : fhNum,
+            }
+          })
         })
         return next
       })
@@ -491,7 +510,13 @@ export default function RowSidebar({
                             const aDefault = parseFloat(panelAngle) || 0
                             const fhDefault = parseFloat(panelFrontHeight) || 0
                             const rowAng = rowEntry.angleDeg ?? aDefault
-                            const rowFh = rowEntry.frontHeightCm ?? fhDefault
+                            // Derived rows source frontHeight from rectArea.frontHeight (the
+                            // reactive recompute in Step2PanelPlacement keeps it in sync with
+                            // the anchor row). rowMounting may carry a stale slot from older
+                            // projects, so we explicitly bypass it for derived rows.
+                            const rowFh = rowRa?.frontHeightDerived
+                              ? (parseFloat(rowRa?.frontHeight) || fhDefault)
+                              : (rowEntry.frontHeightCm ?? fhDefault)
                             return (
                               <div
                                 key={ri}
@@ -610,7 +635,12 @@ export default function RowSidebar({
         const aDefault = parseFloat(panelAngle) || 0
         const fhDefault = parseFloat(panelFrontHeight) || 0
         const rowAng = rowEntry.angleDeg ?? aDefault
-        const rowFh = rowEntry.frontHeightCm ?? fhDefault
+        // Derived rows (created by Recalc rows) read frontHeight from the
+        // rectArea — BE recomputes it from slope geometry. Input is disabled.
+        const isFhDerived = !!area?.frontHeightDerived
+        const rowFh = isFhDerived
+          ? (parseFloat(area?.frontHeight ?? '0') || 0)
+          : (rowEntry.frontHeightCm ?? fhDefault)
         const isTrapView = !!trapIdOverride
 
         return (
@@ -633,13 +663,18 @@ export default function RowSidebar({
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>{t('step2.sidebar.frontH')}</div>
+                    <div style={{ fontSize: '0.6rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }}>
+                      {t('step2.sidebar.frontH')}
+                      {isFhDerived && <span style={{ marginInlineStart: 4, color: TEXT_VERY_LIGHT }}>↻</span>}
+                    </div>
                     <input
                       type="number" min={frontHeightMin} max={frontHeightMax} step="0.5"
-                      value={rowFh}
+                      value={Math.round(rowFh * 10) / 10}
+                      disabled={isFhDerived}
+                      title={isFhDerived ? 'Derived from slope geometry — set by server' : undefined}
                       onChange={e => updateRowMounting(groupLabel, rowIdx, { frontHeightCm: parseFloat(e.target.value) || 0 })}
                       onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { frontHeightCm: Math.min(frontHeightMax, Math.max(frontHeightMin, v)) }) }}
-                      style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600' }}
+                      style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: isFhDerived ? BG_FAINT : undefined, color: isFhDerived ? TEXT_VERY_LIGHT : undefined, cursor: isFhDerived ? 'not-allowed' : undefined }}
                     />
                   </div>
                 </div>
