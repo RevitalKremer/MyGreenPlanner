@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_MUTED, BORDER_LIGHT, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_BG, AMBER_DARK, CROSS_ROW_RAIL } from '../../../styles/colors'
+import { TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_MUTED, BORDER_LIGHT, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY_BG, AMBER_DARK } from '../../../styles/colors'
 import { fmt } from './tabUtils'
 
 function formatStockPieces(segments) {
@@ -60,8 +60,8 @@ export default function RailsTable({ areaLabel, rails, crossRowRails = [] }) {
           {expanded && crossRowRails.map((rail, i) => (
             <tr key={rail.railId} style={{ borderTop: `1px solid ${BG_MID}`, background: (rails.length + i) % 2 === 0 ? 'white' : BG_FAINT }}>
               <td style={tdBase} />
-              <td style={{ ...tdBase, color: CROSS_ROW_RAIL, fontWeight: 700 }}>
-                ⇆ {rail.railId}
+              <td style={{ ...tdBase, color: TEXT_MUTED }}>
+                Cross-Line {rail.railId}
               </td>
               <td style={{ ...tdBase, color: TEXT }}>{fmt(Math.round((rail.roundedLengthCm ?? rail.lengthCm) * 10))}</td>
               <td style={{ ...tdBase, color: TEXT }}>{formatStockPieces(rail.stockSegmentsMm)}</td>

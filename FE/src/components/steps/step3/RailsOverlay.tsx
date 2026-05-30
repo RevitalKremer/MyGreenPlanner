@@ -1,4 +1,4 @@
-import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK, CROSS_ROW_RAIL } from '../../../styles/colors'
+import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK, BORDER_MID } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 
 /**
@@ -346,7 +346,7 @@ export default function RailsOverlay({
         out.push(
           <line key={`cr-${areaIdx}-${cr.railId}`}
             x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke={CROSS_ROW_RAIL} strokeWidth={widthPx} strokeLinecap="round"
+            stroke={RAIL_STROKE} strokeWidth={widthPx} strokeLinecap="round"
             opacity={0.9}
             style={{ pointerEvents: 'none' }}
           />
@@ -364,41 +364,43 @@ export default function RailsOverlay({
             .join(' +')
           const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
           const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
-          const bgW = text.length * fontSize * 0.65 + 12 / zoom
+          const bgW = text.length * fontSize * 0.65 + 10 / zoom
           const bgH = fontSize + 6 / zoom
           out.push(
             <g key={`cr-${areaIdx}-${cr.railId}-ms`} transform={`rotate(${ang}, ${mx}, ${my})`} style={{ pointerEvents: 'none' }}>
               <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH}
-                fill="white" fillOpacity={0.85} stroke={CROSS_ROW_RAIL} strokeWidth={0.6 / zoom} rx={2 / zoom} />
+                fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5 / zoom} rx={1 / zoom} />
               <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                fontSize={fontSize} fontWeight="700" fill={CROSS_ROW_RAIL}>
+                fontSize={fontSize} fontWeight="700" fill={BLACK}>
                 {text}
               </text>
             </g>
           )
         }
 
-        // Segment-cut dimension annotations along the cross-row rail
-        if (showDimensions && segs.length > 0) {
+        // Segment-cut connectors along the cross-row rail — same shape and
+        // dimensions as per-row rail connectors so CRs and Rs look identical.
+        if (showConnectors && segs.length > 1) {
           const totalMm = segs.reduce((s, v) => s + v, 0)
           if (totalMm > 0) {
             const sweepDx = x2 - x1, sweepDy = y2 - y1
             const sweepLen = Math.sqrt(sweepDx * sweepDx + sweepDy * sweepDy)
             const uxs = sweepDx / sweepLen, uys = sweepDy / sweepLen
+            const ang = Math.atan2(sweepDy, sweepDx) * 180 / Math.PI
+            const railProfile = railProfileFor(areaIdx)
+            const connW = Math.max(3, 6 / zoom)
+            const connH = Math.max(6, railProfile + 6 / zoom)
             let accMm = 0
             for (let si = 0; si < segs.length - 1; si++) {
               accMm += segs[si]
               const frac = accMm / totalMm
               const cx = x1 + uxs * frac * sweepLen
               const cy = y1 + uys * frac * sweepLen
-              // Small tick perpendicular to the rail
-              const tickH = Math.max(8, widthPx + 8 / zoom)
-              const px = -uys, py = uxs
               out.push(
-                <line key={`cr-${areaIdx}-${cr.railId}-cut-${si}`}
-                  x1={cx - px * tickH / 2} y1={cy - py * tickH / 2}
-                  x2={cx + px * tickH / 2} y2={cy + py * tickH / 2}
-                  stroke={CROSS_ROW_RAIL} strokeWidth={Math.max(1.5, 2 / zoom)}
+                <rect key={`cr-${areaIdx}-${cr.railId}-cut-${si}`}
+                  x={cx - connW / 2} y={cy - connH / 2}
+                  width={connW} height={connH} fill={RAIL_CONNECTOR} rx={1}
+                  transform={`rotate(${ang}, ${cx}, ${cy})`}
                   style={{ pointerEvents: 'none' }}
                 />
               )
