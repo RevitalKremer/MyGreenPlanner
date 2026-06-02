@@ -246,16 +246,14 @@ export function useProjectState() {
     }
 
     // ── Convert server areas → FE areas format + extract panelGrid ──
-    // Preserve null for "not set" — Step 2 strict mode shows empty input and
-    // blocks Next until the user types a value. Coercing to 0 would hide the
-    // empty state and let the user advance with implicit defaults.
+    // d.step2.areas only carries identity + relationships. The a/h values live
+    // on rectAreas (FE strings) for inputs, on rowMounting for per-row,
+    // and on trapezoidConfigs for per-trap. No angle/frontHeight/
+    // lineOrientations on the area object — those were legacy fallbacks.
     const feAreas = (s2.areas || []).map(a => ({
       id: a.id,
       label: a.label ?? a.id,
       trapezoidIds: a.trapezoidIds ?? [],
-      angle: a.angleDeg == null ? '' : a.angleDeg,
-      frontHeight: a.frontHeightCm == null ? '' : a.frontHeightCm,
-      lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
       roofSpec: a.roofSpec ?? null,
     }))
     const grid = {}
@@ -756,7 +754,7 @@ export function useProjectState() {
     if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
-    const newArea = { angle: 0, frontHeight: 0, lineOrientations: [PANEL_V] }
+    const newArea = {}
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
@@ -1022,6 +1020,15 @@ export function useProjectState() {
         const inFh  = (v) => v != null && v >= fhLim.min  && v <= fhLim.max
         const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
         let angBad = false, fhBad = false, purlinBad = false
+        // Global default a/h must be set. BE's trapezoid-consistency check
+        // (`_validate_step2_trapezoids`) falls back to defaultAngleDeg/
+        // defaultFrontHeightCm as the last expected value when comparing trap
+        // a/h to its owning row — sending null there causes a 422 even when
+        // rows look fine to the FE. Require both globals to be in range.
+        const gAng = pState.data.step2.defaultAngleDeg
+        const gFh  = pState.data.step2.defaultFrontHeightCm
+        if (gAng == null || !inAng(gAng)) angBad = true
+        if (gFh  == null || !inFh(gFh))   fhBad  = true
         // Strict mode: every user-defined row must have its own a/h. No fallback
         // to area/global defaults. Build the set of row keys (label/rowIndex)
         // we expect from rectAreas, then verify rowMounting fills each one.

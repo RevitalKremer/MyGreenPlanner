@@ -357,16 +357,16 @@ export function computePanelsAction({
     .map((_, i) => i)
     .filter(i => !areaIndicesWithPanels.has(i) && !existingAreaIndices.has(i))
 
-  // Build updated areas array — group by areaGroupId for multi-row areas
-  const areaGroupMap = new Map()  // areaGroupId → { label, angle, frontHeight, lineOrientations, panelRows: [] }
+  // Build updated areas array — group by areaGroupId for multi-row areas.
+  // The area object carries identity + structural relationships only. A/h
+  // values live on rectAreas (strings, for inputs), rowMounting (per row),
+  // and trapezoidConfigs (per trap). Per-cell V/H codes are in panelGrid.rows.
+  const areaGroupMap = new Map()  // areaGroupId → { label, areaVertical, roofSpec, panelRows: [] }
   rectAreas.forEach((a, idx) => {
     const groupId = a.areaGroupId ?? -(idx + 1)
     if (!areaGroupMap.has(groupId)) {
       areaGroupMap.set(groupId, {
         label: a.label,
-        angle: parseFloat(a.angle) || 0,
-        frontHeight: parseFloat(a.frontHeight) || 0,
-        lineOrientations: areaLineConfigs[idx]?.lineOrientations ?? [PANEL_V],
         areaVertical: a.areaVertical ?? false,
         roofSpec: a.roofSpec ?? null,
         panelRows: [],
