@@ -12,5 +12,6 @@ bcrypt>=3.2.0,<4.0.0
 python-multipart>=0.0.9
 python-dotenv>=1.0.1
 aiosmtplib>=3.0.0
+httpx>=0.27.0            # async HTTP client (Monday.com integration)
 Pillow>=10.0.0           # image processing for uploads
 openpyxl>=3.1.0          # xlsx template loading + price/quantities proposal export

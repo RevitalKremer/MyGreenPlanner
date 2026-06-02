@@ -76,9 +76,9 @@ export function useProjectState() {
   // slope beam sits directly on the base beam); coercing it to '' would
   // silently revert the input back to the global default on the next render.
   const panelFrontHeight = String(pState.data.step2.defaultFrontHeightCm ?? '')
-  const setPanelFrontHeight = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultFrontHeightCm: parseFloat(v) || 0 } })
+  const setPanelFrontHeight = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultFrontHeightCm: (v === '' || v == null) ? null : (parseFloat(v) || 0) } })
   const panelAngle = String(pState.data.step2.defaultAngleDeg ?? '')
-  const setPanelAngle = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultAngleDeg: parseFloat(v) || 0 } })
+  const setPanelAngle = (v) => pDispatch({ type: A.SET_STEP2, payload: { defaultAngleDeg: (v === '' || v == null) ? null : (parseFloat(v) || 0) } })
 
   // Derived from layout + step2 data
   const refinedArea = useMemo(() => {
@@ -246,13 +246,14 @@ export function useProjectState() {
     }
 
     // ── Convert server areas → FE areas format + extract panelGrid ──
+    // d.step2.areas only carries identity + relationships. The a/h values live
+    // on rectAreas (FE strings) for inputs, on rowMounting for per-row,
+    // and on trapezoidConfigs for per-trap. No angle/frontHeight/
+    // lineOrientations on the area object — those were legacy fallbacks.
     const feAreas = (s2.areas || []).map(a => ({
       id: a.id,
       label: a.label ?? a.id,
       trapezoidIds: a.trapezoidIds ?? [],
-      angle: a.angleDeg ?? 0,
-      frontHeight: a.frontHeightCm ?? 0,
-      lineOrientations: a.trapezoids?.[0]?.lineOrientations ?? [PANEL_V],
       roofSpec: a.roofSpec ?? null,
     }))
     const grid = {}
@@ -263,8 +264,10 @@ export function useProjectState() {
         // New format: panelRows array
         grid[label] = a.panelRows.map(pr => pr?.panelGrid).filter(Boolean)
         // Row a/h: prefer panelRow's a/h. Backfill from area / first matching trap if missing.
+        // Null is preserved (empty state) — do NOT fall back to global default,
+        // since strict mode requires explicit per-row values.
         rowMtg[label] = a.panelRows.map((pr, ri) => {
-          if (!pr) return { angleDeg: a.angleDeg ?? s2.defaultAngleDeg ?? 0, frontHeightCm: a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0 }
+          if (!pr) return { angleDeg: a.angleDeg ?? null, frontHeightCm: a.frontHeightCm ?? null }
           let ang = pr.angleDeg
           let fh  = pr.frontHeightCm
           if (ang == null || fh == null) {
@@ -274,8 +277,8 @@ export function useProjectState() {
             )
             const tid = panels.map(p => p.trapezoidId).find(t => t && (a.trapezoidIds || []).includes(t))
             const trap = tid ? (s2.trapezoids || []).find(t => t.id === tid) : null
-            if (ang == null) ang = trap?.angleDeg ?? a.angleDeg ?? s2.defaultAngleDeg ?? 0
-            if (fh  == null) fh  = trap?.frontHeightCm ?? a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0
+            if (ang == null) ang = trap?.angleDeg ?? a.angleDeg ?? null
+            if (fh  == null) fh  = trap?.frontHeightCm ?? a.frontHeightCm ?? null
           }
           return { angleDeg: ang, frontHeightCm: fh }
         })
@@ -283,8 +286,8 @@ export function useProjectState() {
         // Legacy format: single panelGrid → wrap as array
         grid[label] = [a.panelGrid]
         rowMtg[label] = [{
-          angleDeg: a.angleDeg ?? s2.defaultAngleDeg ?? 0,
-          frontHeightCm: a.frontHeightCm ?? s2.defaultFrontHeightCm ?? 0,
+          angleDeg: a.angleDeg ?? null,
+          frontHeightCm: a.frontHeightCm ?? null,
         }]
       }
     })
@@ -372,8 +375,10 @@ export function useProjectState() {
           panelType: s2.panelType || 'AIKO-G670-MCH72Mw',
           panelWidthCm: s2.panelWidthCm ?? null,
           panelLengthCm: s2.panelLengthCm ?? null,
-          defaultFrontHeightCm: s2.defaultFrontHeightCm ?? 0,
-          defaultAngleDeg: s2.defaultAngleDeg ?? 0,
+          // null preserved so the "not set" state survives save/reload. BE
+          // schema treats null as "user hasn't filled in the general default".
+          defaultFrontHeightCm: s2.defaultFrontHeightCm ?? null,
+          defaultAngleDeg: s2.defaultAngleDeg ?? null,
           areas: feAreas,
           trapezoidConfigs,
           panelGrid: grid,
@@ -518,11 +523,27 @@ export function useProjectState() {
       )
       const rectAreaForRow = (ri) =>
         groupRectAreas.find(r => (r.rowIndex ?? 0) === ri) ?? ra
+      // Area-level a/h: prefer area string → global default → first non-null
+      // row's value. Send null when nothing is set so the "empty" state
+      // survives save/reload (BE validator on 2→3 also catches missing values,
+      // but FE blocks Next before that fires).
+      const areaFhRaw = ra?.frontHeight !== '' && ra?.frontHeight != null ? ra.frontHeight : panelFrontHeight
+      const areaAngRaw = ra?.angle !== '' && ra?.angle != null ? ra.angle : panelAngle
+      let areaFhNum: number | null = areaFhRaw === '' || areaFhRaw == null ? null : parseFloat(areaFhRaw)
+      let areaAngNum: number | null = areaAngRaw === '' || areaAngRaw == null ? null : parseFloat(areaAngRaw)
+      if (areaFhNum == null || isNaN(areaFhNum)) {
+        const firstFh = areaRowMounting.find((r: any) => r?.frontHeightCm != null)?.frontHeightCm
+        areaFhNum = firstFh != null ? firstFh : null
+      }
+      if (areaAngNum == null || isNaN(areaAngNum)) {
+        const firstAng = areaRowMounting.find((r: any) => r?.angleDeg != null)?.angleDeg
+        areaAngNum = firstAng != null ? firstAng : null
+      }
       return {
         ...a,
         label: groupLabel,
-        frontHeightCm: parseFloat(ra?.frontHeight !== '' ? ra?.frontHeight : panelFrontHeight) || 0,
-        angleDeg: parseFloat(ra?.angle !== '' ? ra?.angle : panelAngle) || 0,
+        frontHeightCm: areaFhNum,
+        angleDeg: areaAngNum,
         trapezoidIds: areaTrapIds,
         // Per-area roof spec (only meaningful when project roof_spec is 'mixed').
         // Serialize whatever is on the (first) rectArea of the group.
@@ -733,7 +754,7 @@ export function useProjectState() {
     if (!newPanel) return false
     const newAreaIdx  = areas.length
     const trapezoidId = `${String.fromCharCode(65 + newAreaIdx)}1`
-    const newArea = { angle: 0, frontHeight: 0, lineOrientations: [PANEL_V] }
+    const newArea = {}
     setAreas([...areas, newArea])
     setPanels([...panels, { ...newPanel, area: newAreaIdx, trapezoidId }])
     setSelectedPanels([newPanel.id])
@@ -994,19 +1015,31 @@ export function useProjectState() {
         }
         if (hasVoidAreas(panels)) blockers.push('nav.blocker.step2.recalcRows')
         if (allAreasFrameless(roofType, [])) break
-        const defaultFH = panelFrontHeight ?? ''
-        const defaultAng = panelAngle ?? ''
         const angLim = paramLimits.mountingAngleDeg
         const fhLim  = paramLimits.frontHeightCm
         const inFh  = (v) => v != null && v >= fhLim.min  && v <= fhLim.max
         const inAng = (v) => v != null && v >= angLim.min && v <= angLim.max
         let angBad = false, fhBad = false, purlinBad = false
-        for (const a of rectAreas) {
+        // Global default a/h must be set. BE's trapezoid-consistency check
+        // (`_validate_step2_trapezoids`) falls back to defaultAngleDeg/
+        // defaultFrontHeightCm as the last expected value when comparing trap
+        // a/h to its owning row — sending null there causes a 422 even when
+        // rows look fine to the FE. Require both globals to be in range.
+        const gAng = pState.data.step2.defaultAngleDeg
+        const gFh  = pState.data.step2.defaultFrontHeightCm
+        if (gAng == null || !inAng(gAng)) angBad = true
+        if (gFh  == null || !inFh(gFh))   fhBad  = true
+        // Strict mode: every user-defined row must have its own a/h. No fallback
+        // to area/global defaults. Build the set of row keys (label/rowIndex)
+        // we expect from rectAreas, then verify rowMounting fills each one.
+        const expectedRowKeys: Array<{ label: string; rowIdx: number }> = []
+        for (const a of rectAreas as any[]) {
           if (isAreaFrameless(roofType, a)) continue
-          const fh = a.frontHeight !== '' ? a.frontHeight : defaultFH
-          const ang = a.angle !== '' ? a.angle : defaultAng
-          if (!(ang !== '' && inAng(parseFloat(ang)))) angBad = true
-          if (!(fh  !== '' && inFh (parseFloat(fh )))) fhBad  = true
+          // Derived rows are geometrically computed — skip; BE owns their H.
+          if (a.frontHeightDerived) continue
+          const label = a.label || (a.id != null ? String(a.id) : null)
+          if (!label) continue
+          expectedRowKeys.push({ label, rowIdx: a.rowIndex ?? 0 })
           if (roofType === 'mixed') {
             const t = a.roofSpec?.type
             if ((t === 'iskurit' || t === 'insulated_panel') && !(a.roofSpec?.distanceBetweenPurlinsCm > 0)) {
@@ -1014,12 +1047,10 @@ export function useProjectState() {
             }
           }
         }
-        for (const rows of Object.values(rowMounting || {}) as any[][]) {
-          for (const r of (rows || [])) {
-            if (!r) continue
-            if (r.angleDeg != null && !inAng(r.angleDeg)) angBad = true
-            if (r.frontHeightCm != null && !inFh(r.frontHeightCm)) fhBad = true
-          }
+        for (const { label, rowIdx } of expectedRowKeys) {
+          const r = (rowMounting?.[label] || [])[rowIdx]
+          if (!r || r.angleDeg == null || !inAng(r.angleDeg)) angBad = true
+          if (!r || r.frontHeightCm == null || !inFh(r.frontHeightCm)) fhBad = true
         }
         if (angBad) blockers.push('nav.blocker.step2.angle')
         if (fhBad)  blockers.push('nav.blocker.step2.frontHeight')

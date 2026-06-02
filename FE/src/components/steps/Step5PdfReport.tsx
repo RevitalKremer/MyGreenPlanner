@@ -508,7 +508,8 @@ export default function Step5PdfReport({
   // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
   const buildPlansPdfBytes = async (): Promise<ArrayBuffer | null> => {
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    // compress: true → zlib on PDF object streams (lossless, no visual change).
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
     let firstPage = true
 
     for (const ref of refs) {
@@ -522,8 +523,11 @@ export default function Step5PdfReport({
       if (parent) parent.style.transform = 'none'
 
       const swaps = await rasterizeSvgs(el)
+      // scale 1.5 gives ~225 DPI on A4 landscape — well above print quality
+      // (150 DPI is standard) and reduces the embedded JPEG by ~2.25× vs
+      // scale 2. Visible only when zooming far in on screen.
       const canvas = await html2canvas(el, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -597,10 +601,10 @@ export default function Step5PdfReport({
         finalBytes = (beBytes ?? planBytes)!
       }
 
-      const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
-      const dateStr  = new Date().toISOString().split('T')[0]
-      const label    = [...beContent, ...(pdfContent.plans ? ['plans'] : [])].join('_')
-      const filename = `${safeName}_${label}_${dateStr}.pdf`
+      const safeName  = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
+      const dateStr   = new Date().toISOString().split('T')[0]
+      const idSuffix  = String(projectId || '').replace(/-/g, '').slice(-8)
+      const filename  = `${safeName}_plan_${idSuffix}_${dateStr}.pdf`
 
       const blob = new Blob([finalBytes], { type: 'application/pdf' })
       const url  = URL.createObjectURL(blob)
@@ -697,7 +701,15 @@ export default function Step5PdfReport({
               <button
                 onClick={async () => {
                   setMenuOpen(false)
-                  try { await downloadProposal(projectId, project?.name) }
+                  try {
+                    await downloadProposal(projectId, project?.name)
+                    // Fire-and-forget: trigger Monday item + email (xlsx only,
+                    // no PDF). Don't block the user on this — failures are
+                    // server-side best-effort already.
+                    sendReportEmail(projectId).catch(err =>
+                      console.warn('Failed to push xlsx-only report:', err)
+                    )
+                  }
                   catch (err) { console.error('Failed to generate proposal:', err); alert('Failed to generate proposal') }
                 }}
                 style={{

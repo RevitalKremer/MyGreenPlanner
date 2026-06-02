@@ -26,5 +26,11 @@ class Settings(BaseSettings):
     SYSADMIN_PASSWORD: str = ""
     SYSADMIN_NAME: str = "System Administrator"
 
+    # Monday.com integration — leave MONDAY_API_TOKEN empty to disable.
+    # Files are attached to a post (update) on the item, not to a column.
+    MONDAY_API_TOKEN: str = ""
+    MONDAY_BOARD_ID: str = ""
+    MONDAY_GROUP_ID: str = ""
+
 
 settings = Settings()

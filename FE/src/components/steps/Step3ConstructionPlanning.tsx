@@ -118,12 +118,13 @@ export default function Step3ConstructionPlanning({
   })
 
   // ── Line orientations resolver ─────────────────────────────────────────
-  const getLineOrientations = useCallback((areaKey, trapId) => {
+  // Trap config is the source of truth; falls back to globalCfg only when a
+  // trapId has no entry yet (e.g. transient state during recompute).
+  const getLineOrientations = useCallback((_areaKey, trapId) => {
     const globalCfg = refinedArea?.panelConfig || {}
     const override  = trapezoidConfigs[trapId] || {}
-    const areaGroup = areaByGroupKey[areaKey] ?? areas[areaKey] ?? {}
-    return override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
-  }, [refinedArea, trapezoidConfigs, areas])
+    return override.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
+  }, [refinedArea, trapezoidConfigs])
 
   // ── Row data hook ──────────────────────────────────────────────────────
   const rowData = useRowData({
