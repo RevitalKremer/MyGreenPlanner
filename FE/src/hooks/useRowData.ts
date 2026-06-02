@@ -341,10 +341,11 @@ export default function useRowData({
     rowKeys.forEach((areaKey) => {
       if (_isAreaFrameless(areaByGroupKey[areaKey])) return
       const trapIdsList = areaTrapezoidMap[areaKey] || []
-      const areaGroup   = areaByGroupKey[areaKey] || {} as any
       trapIdsList.forEach(trapId => {
         const override = trapezoidConfigs[trapId] || {}
-        const lineOrientations = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
+        // Trap config is the source of truth; fall back to globalCfg only
+        // when the trap entry hasn't been initialised yet.
+        const lineOrientations = override.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
         map[trapId] = lineOrientations.map((o: string, i: number) => ({
           depthCm:     isHorizontalOrientation(o) ? panelWidthCm : panelLengthCm,
           gapBeforeCm: i === 0 ? 0 : lineGapCm,

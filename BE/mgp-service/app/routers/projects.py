@@ -26,6 +26,7 @@ from app.services import bom_service
 from app.services import proposal_service
 from app.services import settings_cache
 from app.services import email_service
+from app.services import monday_service
 from app.config import settings as app_settings
 from app.routers.deps import get_current_user, require_admin
 
@@ -838,24 +839,81 @@ async def download_proposal_pdf(
 @router.post("/{project_id}/send-report")
 async def send_report_email(
     project_id: uuid.UUID,
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
-    """Email the uploaded PDF report to the company inbox."""
-    pdf_bytes = await file.read()
+    """Email a project report to the company inbox AND (if Monday is
+    configured) create a new item on the proposals board.
+
+    The pricing xlsx is generated server-side and is **always** attached to
+    both the email and the Monday item — it's the canonical deliverable.
+    The PDF is **optional**: when the FE has built one (any combination of
+    plans/pricing/quantities), it's attached too; when the user only
+    downloaded the standalone xlsx, the call still fires with no PDF and
+    everything still works.
+
+    The Monday upload is best-effort: failures are logged but don't bubble up
+    to the user, so the email still succeeds when Monday is misconfigured."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    pdf_bytes = await file.read() if file is not None else None
     safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'report'))
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    filename = f"{safe_name}_{today}.pdf"
-    await email_service.send_email_with_attachment(
+    pdf_filename  = f"{safe_name}_plan_{today}.pdf"
+    xlsx_filename = f"{safe_name}_proposal_{today}.xlsx"
+
+    # xlsx is the canonical deliverable — always generate it.
+    xlsx_bytes = await proposal_service.generate_proposal(db, project)
+
+    XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    PDF_MIME  = 'application/pdf'
+
+    # Email — xlsx always, PDF when provided.
+    email_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
+    if pdf_bytes is not None:
+        email_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
+    await email_service.send_email_with_attachments(
         to=app_settings.COMPANY_REPORT_EMAIL,
         subject=f"Project Report — {project.name or project_id}",
         html=f"<p>Please find attached the generated report for project <strong>{project.name or project_id}</strong>.</p>",
-        attachment=pdf_bytes,
-        filename=filename,
+        attachments=email_attachments,
     )
-    return {"status": "sent", "to": app_settings.COMPANY_REPORT_EMAIL}
+
+    # Monday — best-effort. Same attachment policy as email.
+    monday_result = None
+    monday_error = None
+    try:
+        owner = None
+        if project.owner_id:
+            from app.models.user import User as _User
+            owner = await db.get(_User, project.owner_id)
+        monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
+        if pdf_bytes is not None:
+            monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
+        monday_result = await monday_service.upload_proposal(
+            project_id=str(project_id),
+            project_name=project.name or str(project_id),
+            client_name=project.client_name or "",
+            owner_email=(owner.email if owner else "") or "",
+            owner_full_name=(owner.full_name if owner else None),
+            owner_phone=(owner.phone_number if owner else None),
+            owner_created_at=(owner.created_at if owner else None),
+            location=project.location,
+            attachments=monday_attachments,
+        )
+    except Exception as e:
+        monday_error = str(e)
+        logger.exception("Monday upload failed for project %s", project_id)
+
+    return {
+        "status": "sent",
+        "to": app_settings.COMPANY_REPORT_EMAIL,
+        "monday": monday_result,
+        "monday_error": monday_error,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

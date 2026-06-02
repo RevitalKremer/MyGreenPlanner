@@ -42,6 +42,10 @@ services:
       SYSADMIN_EMAIL: ${SYSADMIN_EMAIL}
       SYSADMIN_PASSWORD: ${SYSADMIN_PASSWORD}
       SYSADMIN_NAME: ${SYSADMIN_NAME}
+      # Monday.com integration — leave empty to disable.
+      MONDAY_API_TOKEN: ${MONDAY_API_TOKEN:-}
+      MONDAY_BOARD_ID: ${MONDAY_BOARD_ID:-}
+      MONDAY_GROUP_ID: ${MONDAY_GROUP_ID:-}
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     # No `ports:` — only reachable from mgp-webapp via Docker network.

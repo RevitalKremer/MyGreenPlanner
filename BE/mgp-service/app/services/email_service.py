@@ -1,6 +1,6 @@
 import aiosmtplib
 from email.message import EmailMessage
-from typing import Optional
+from typing import Iterable, Optional
 
 from app.config import settings
 
@@ -39,13 +39,30 @@ async def send_email_with_attachment(
     filename: str,
     mimetype: str = "application/pdf",
 ) -> None:
+    await send_email_with_attachments(
+        to=to,
+        subject=subject,
+        html=html,
+        attachments=[(filename, attachment, mimetype)],
+    )
+
+
+async def send_email_with_attachments(
+    to: str,
+    subject: str,
+    html: str,
+    attachments: Iterable[tuple[str, bytes, str]],
+) -> None:
+    """Send an HTML email with one or more file attachments.
+    Each attachment is (filename, bytes, mimetype)."""
     msg = EmailMessage()
     msg["From"] = settings.SMTP_FROM
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(html, subtype="html")
-    maintype, subtype = mimetype.split("/", 1)
-    msg.add_attachment(attachment, maintype=maintype, subtype=subtype, filename=filename)
+    for filename, data, mimetype in attachments:
+        maintype, subtype = mimetype.split("/", 1)
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
     await _send_msg(msg)
 
 

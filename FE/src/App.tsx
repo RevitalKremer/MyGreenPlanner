@@ -907,8 +907,10 @@ function App() {
                     id: rowId,
                     label: parentArea?.label ?? '',
                     color: parentArea?.color ?? AREA_PALETTE[prev.length % AREA_PALETTE.length],
-                    frontHeight: parentArea?.frontHeight ?? s.panelFrontHeight ?? '',
-                    angle: parentArea?.angle ?? s.panelAngle ?? '',
+                    // New rows inherit a/h from the global default (general a/h).
+                    // If global is empty, row stays empty — user must fill before Next.
+                    frontHeight: s.panelFrontHeight ?? '',
+                    angle: s.panelAngle ?? '',
                     areaGroupId: addToGroupId,
                     rowIndex: nextRowIndex,
                     areaVertical: parentArea?.areaVertical ?? false,

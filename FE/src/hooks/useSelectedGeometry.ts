@@ -72,9 +72,9 @@ export default function useSelectedGeometry({
     if (!trapId) return null
     const globalCfg  = refinedArea?.panelConfig || {}
     const override   = trapezoidConfigs[trapId] || {}
-    const areaKey    = rowKeys[selectedRowIdx]
-    const areaGroup  = areas[areaKey] || {} as any
-    const lineOrientations: string[] = override.lineOrientations ?? areaGroup.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
+    // Trap config is the source of truth; fall back to globalCfg only when
+    // the trap entry hasn't been initialised yet.
+    const lineOrientations: string[] = override.lineOrientations ?? globalCfg.lineOrientations ?? [PANEL_V]
     return lineOrientations
       .filter(o => !isEmptyOrientation(o))
       .map((o, i) => ({
@@ -83,7 +83,7 @@ export default function useSelectedGeometry({
         isEmpty: false,
         isHorizontal: isHorizontalOrientation(o),
       }))
-  }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings, areas, rowKeys])
+  }, [effectiveSelectedTrapId, refinedArea, trapezoidConfigs, selectedRowIdx, areaSettings, globalSettings])
 
   // ── Selected line orientations ─────────────────────────────────────────
   const selectedLineOrientations = useMemo((): string[] => {

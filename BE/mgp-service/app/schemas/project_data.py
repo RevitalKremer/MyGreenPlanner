@@ -122,8 +122,10 @@ class Step2Data(_StrictBase):
     panelType: str = 'AIKO-G670-MCH72Mw'
     panelWidthCm: float | None = None
     panelLengthCm: float | None = None
-    defaultAngleDeg: float = 0
-    defaultFrontHeightCm: float = 0
+    # Optional — null = "not set". FE Step 2 strict mode requires explicit
+    # per-row a/h before advancing, so unfilled global defaults stay null.
+    defaultAngleDeg: Optional[float] = None
+    defaultFrontHeightCm: Optional[float] = None
     trapezoids: list[Step2Trapezoid] = Field(default_factory=list)
     areas: list[Step2Area] = Field(default_factory=list)
 

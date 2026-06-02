@@ -195,9 +195,18 @@ export async function fetchProposalPdfBytes(id: string, content: string[]): Prom
   return res.arrayBuffer()
 }
 
-export async function sendReportEmail(id: string, pdfBytes: ArrayBuffer, filename: string): Promise<void> {
+export async function sendReportEmail(
+  id: string,
+  pdfBytes: ArrayBuffer | null = null,
+  filename: string | null = null,
+): Promise<void> {
+  // BE always generates the xlsx server-side; the PDF here is optional. Calling
+  // with null/null is how the standalone "Download Excel" flow triggers the
+  // Monday item creation + email without uploading a PDF.
   const formData = new FormData()
-  formData.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), filename)
+  if (pdfBytes != null && filename) {
+    formData.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), filename)
+  }
   const res = await mgpRequest(`/projects/${id}/send-report`, { method: 'POST', body: formData })
   if (!res.ok) throw new Error('Failed to send report email')
 }
