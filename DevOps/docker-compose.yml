@@ -45,6 +45,10 @@ services:
       SYSADMIN_EMAIL: ${SYSADMIN_EMAIL:-sysadmin@mgp.local}
       SYSADMIN_PASSWORD: ${SYSADMIN_PASSWORD:-Sysadmin1234!}
       SYSADMIN_NAME: ${SYSADMIN_NAME:-System Administrator}
+      # Monday.com integration — leave empty to disable.
+      MONDAY_API_TOKEN: ${MONDAY_API_TOKEN:-}
+      MONDAY_BOARD_ID: ${MONDAY_BOARD_ID:-}
+      MONDAY_GROUP_ID: ${MONDAY_GROUP_ID:-}
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
