@@ -764,7 +764,7 @@ def _embed_branding_images_for_pdf(ws) -> None:
             aspect = pil.size[0] / pil.size[1]  # original w/h, e.g. ~6.97
 
         bounds = _parse_print_area_bounds(ws)
-        min_col, _, max_col, _ = bounds if bounds else (1, 1, 9, 1)
+        min_col, _, max_col, max_row_pa = bounds if bounds else (1, 1, 9, ws.max_row)
 
         # Convert the print area's column-width-sum to points to set a row
         # height that keeps the image's aspect ratio. (Excel char width × 7
@@ -779,7 +779,11 @@ def _embed_branding_images_for_pdf(ws) -> None:
         col_pt = col_chars * 7 * 0.75
         row_h_pt = col_pt / aspect
 
-        footer_row = ws.max_row + 1
+        # Anchor the footer right after the print area's last content row
+        # (template-defined, post-fill extension). Using ws.max_row would
+        # leave a gap because some templates leave stray formatted/empty rows
+        # past the print area, inflating max_row beyond actual content.
+        footer_row = max_row_pa + 1
         ws.row_dimensions[footer_row].height = row_h_pt + 4  # small bottom pad
 
         footer = XLImage(str(_FOOTER_PATH))
