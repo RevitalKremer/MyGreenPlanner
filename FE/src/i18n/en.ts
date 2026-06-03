@@ -358,6 +358,7 @@ const en = {
   'bom.sectionOther':                 'Other',
   'bom.section.trapezoids':           'Trapezoids',
   'bom.section.diagonalsExternal':    'External diagonals',
+  'bom.section.processing':           'Processing',
   // Excel export
   'bom.xlsx.appTitle':      'MyGreenPlanner — Solar PV Planning System',
   'bom.xlsx.appSubtitle':   'by Sadot Energy',

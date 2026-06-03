@@ -421,7 +421,10 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
     aluminium_weight = 0.0
     blocks_weight = 0.0
     for item in effective_items:
-        if item.get('element') == 'depreciation_waste':
+        # Summary rows (depreciation_waste, processing) carry meters/units of
+        # the aggregate, not real material — they must not be double-counted
+        # into weight totals.
+        if item.get('element') in ('depreciation_waste', 'processing'):
             continue
         product = products_by_type.get(item.get('element'))
         if not product or not product.weight_kg:

@@ -692,7 +692,14 @@ def _append_depreciation_waste(
 ) -> list[dict]:
     """Sum totalLengthM × depreciation_pct/100 across all length-bearing BOM items
     and append a single depreciation_waste row (pieceLengthM=1, qty=meters).
-    Items without a depreciation_pct or without a totalLengthM are skipped."""
+    Items without a depreciation_pct or without a totalLengthM are skipped —
+    when no material contributes (total <= 0) the row is omitted entirely.
+
+    The 'depreciation_waste' summary product itself has no depreciation_pct
+    (NULL) — it isn't a material being depreciated. Disabling the feature is
+    therefore done by zeroing depreciation_pct on each contributing material,
+    or by deactivating the 'depreciation_waste' product. (Mirrors
+    `_append_processing`.)"""
     total = sum(
         item['totalLengthM'] * prod['depreciation_pct'] / 100.0
         for item in items
@@ -710,6 +717,44 @@ def _append_depreciation_waste(
         'pieceLengthM': 1.0,
         'totalLengthM': dep_qty,
         'section': 'depreciation',
+    }]
+
+
+def _append_processing(
+    items: list[dict],
+    products_by_type: dict,
+) -> list[dict]:
+    """Sum totalLengthM × process_pct/100 across all length-bearing BOM items
+    and append a single 'processing' row (pieceLengthM=1, qty=meters of
+    processing labor). Items without a process_pct or without a totalLengthM
+    are skipped — when no material contributes (total <= 0) the row is
+    omitted entirely.
+
+    Pricing happens downstream via the 'processing' product's price_ils
+    (₪ per meter of processing labor). Example: 10 m of aluminium at
+    process_pct=9 → 0.9 m of processing × 16.5 ₪/m = 14.85 ₪ in the proposal.
+
+    Unlike `_append_depreciation_waste`, the summary product itself has no
+    process_pct (NULL) — it isn't a material being processed. Disabling the
+    feature is therefore done by zeroing process_pct on each contributing
+    material, or by deactivating the 'processing' product."""
+    total = sum(
+        item['totalLengthM'] * prod['process_pct'] / 100.0
+        for item in items
+        if item.get('totalLengthM') is not None
+        and (prod := products_by_type.get(item['element']))
+        and prod.get('process_pct')
+    )
+    if total <= 0:
+        return items
+    proc_qty = round(total, 2)
+    return items + [{
+        'areaLabel': '-',
+        'element': 'processing',
+        'qty': proc_qty,
+        'pieceLengthM': 1.0,
+        'totalLengthM': proc_qty,
+        'section': 'processing',
     }]
 
 
@@ -759,7 +804,8 @@ def build_bom(
             rows += _compute_bolt_bom(rc, area_label, p)
 
     aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows))
-    return _append_depreciation_waste(aggregated, products_by_type)
+    with_dep = _append_depreciation_waste(aggregated, products_by_type)
+    return _append_processing(with_dep, products_by_type)
 
 
 def enrich_bom_with_products(
@@ -856,6 +902,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
             'bundle': p.bundle,
             'weight_kg': p.weight_kg,
             'depreciation_pct': p.depreciation_pct,
+            'process_pct': p.process_pct,
         }
         for p in products
     }
