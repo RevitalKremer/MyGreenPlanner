@@ -81,6 +81,7 @@ Full per-service setup (Vite dev server, local uvicorn, env vars, common issues)
 
 The production stack runs on a single AWS EC2 and deploys automatically on every push to `master`.
 
+- **[docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md)** — start here. Architecture diagram, AWS resource inventory, security model, cost, day-2 ops cheatsheet, gotchas, recovery scenarios
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — GitHub Actions CI/CD: what the workflow does, how to trigger / roll back / troubleshoot
 - **[docs/OPS_ACCESS.md](docs/OPS_ACCESS.md)** — SSM shell access, port-forwarding Postgres to TablePlus, updating secrets, running on-demand backups
 
@@ -136,6 +137,7 @@ See [ISRAELI_GIS_GUIDE.md](ISRAELI_GIS_GUIDE.md) for details.
 
 | Doc | Description |
 | --- | --- |
+| [docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md) | Production deployment reference — architecture, AWS resources, security, cost, day-2 ops, gotchas, recovery |
 | [docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md) | Run the stack locally — Docker Compose or per-service with npm / uvicorn |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | CI/CD pipeline, manual triggers, rollback, troubleshooting |
 | [docs/OPS_ACCESS.md](docs/OPS_ACCESS.md) | SSM shell sessions, DB port-forward for TablePlus, on-demand backups |
