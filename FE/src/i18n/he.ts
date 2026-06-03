@@ -357,6 +357,7 @@ const he = {
   'bom.sectionOther':              'אביזרים אחרים',
   'bom.section.trapezoids':        'טרפזים',
   'bom.section.diagonalsExternal': 'דיאגונלים',
+  'bom.section.processing':        'עיבוד',
   // ייצוא אקסל
   'bom.xlsx.appTitle':      'MyGreenPlanner — מערכת תכנון מערכות סולאריות',
   'bom.xlsx.appSubtitle':   'מבית שדות אנרגיה',

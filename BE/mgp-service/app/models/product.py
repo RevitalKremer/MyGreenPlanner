@@ -30,6 +30,10 @@ class Product(Base):
     price_ils: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     depreciation_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Per-product processing percentage (labor cost: material cutting,
+    # punching, etc.). Aggregated into a single 'processing' summary row in
+    # the BOM, mirroring depreciation_pct → depreciation_waste.
+    process_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     # When set, this product is auto-emitted as a child of `parentType`
     # whenever the parent appears in the effective BOM, with
     # qty = parent.qty * multiplier. Shape: {"parentType": str, "multiplier": int}.
