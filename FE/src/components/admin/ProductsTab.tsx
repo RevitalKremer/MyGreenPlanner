@@ -23,7 +23,7 @@ const MATERIAL_CATEGORIES = [
 const emptyForm = {
   type_key: '', product_type: 'material', part_number: '', name: '', name_he: '',
   additional_info: '', active: true, extra: '', alt_group: '', is_default: false,
-  price_ils: '', weight_kg: '', depreciation_pct: '',
+  price_ils: '', weight_kg: '', depreciation_pct: '', process_pct: '',
 }
 
 function EditRow({ product, onSave, onCancel }) {
@@ -34,6 +34,7 @@ function EditRow({ product, onSave, onCancel }) {
         price_ils:        product.price_ils ?? '',
         weight_kg:        product.weight_kg ?? '',
         depreciation_pct: product.depreciation_pct ?? '',
+        process_pct:      product.process_pct ?? '',
       }
     : { ...emptyForm }
   const [form, setForm] = useState(initial)
@@ -47,6 +48,7 @@ function EditRow({ product, onSave, onCancel }) {
       price_ils:        numOrNull(form.price_ils),
       weight_kg:        numOrNull(form.weight_kg),
       depreciation_pct: numOrNull(form.depreciation_pct),
+      process_pct:      numOrNull(form.process_pct),
     })
   }
   const inp = (key, placeholder, style = {}, type = 'text') => (
@@ -80,6 +82,7 @@ function EditRow({ product, onSave, onCancel }) {
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('price_ils', '₪',           { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('weight_kg', 'kg',          { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('depreciation_pct', '%',    { textAlign: 'right' }, 'number')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('process_pct',      '%',    { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('extra', 'e.g. 10%')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('alt_group', '#', { width: '3.5rem' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
@@ -176,6 +179,7 @@ export default function ProductsTab() {
       case 'price_ils':        return p.price_ils ?? Infinity
       case 'weight_kg':        return p.weight_kg ?? Infinity
       case 'depreciation_pct': return p.depreciation_pct ?? Infinity
+      case 'process_pct':      return p.process_pct ?? Infinity
       case 'extra':            return p.extra ?? ''
       case 'alt_group':        return p.alt_group ?? Infinity
       case 'multiplier':       return p.bundle?.multiplier ?? Infinity
@@ -284,6 +288,7 @@ export default function ProductsTab() {
               <SortTh colKey="price_ils"        label="Price ₪" />
               <SortTh colKey="weight_kg"        label="Weight kg" />
               <SortTh colKey="depreciation_pct" label="פחת %" />
+              <SortTh colKey="process_pct"      label="עיבוד %" />
               <SortTh colKey="extra"            label="Extra" />
               <SortTh colKey="alt_group"        label="Alt Group" />
               <SortTh colKey="is_default"       label="Default" />
@@ -297,7 +302,7 @@ export default function ProductsTab() {
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
-                <td colSpan={14} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
+                <td colSpan={15} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
                   No materials found.
                 </td>
               </tr>
@@ -321,6 +326,7 @@ export default function ProductsTab() {
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.price_ils ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.weight_kg ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.depreciation_pct ?? '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.process_pct ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, fontSize: '0.78rem' }}>{p.extra || '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT, textAlign: 'center' }}>{p.alt_group ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', textAlign: 'center', color: p.is_default ? SUCCESS : TEXT_VERY_LIGHT }}>{p.is_default ? '✓' : '—'}</td>

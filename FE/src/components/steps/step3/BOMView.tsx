@@ -224,7 +224,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
     //   2. Length-bearing rows without a section, alphabetically by element
     //   3. Non-length rows (single "Other" section)
     // Within a section the user's chosen sort applies as a secondary order.
-    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1, depreciation: 2000 }
+    const SECTION_ORDER: Record<string, number> = { trapezoids: 0, diagonals_external: 1, depreciation: 2000, processing: 2001 }
     const sectionRank = (r) => {
       if (r.section && r.section in SECTION_ORDER) return SECTION_ORDER[r.section]
       if (r.pieceLengthM == null) return 1000  // "Other"
@@ -436,7 +436,7 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                   // Header transitions on section key (explicit `section` field
                   // OR fall back to element when no section is set).
                   const sectionKey = row.section ?? row.element
-                  if (sectionKey !== prevSectionKey && row.section !== 'depreciation') {
+                  if (sectionKey !== prevSectionKey && row.section !== 'depreciation' && row.section !== 'processing') {
                     out.push(sectionHeader(`hdr-${sectionKey}-${ri}`, sectionLabelFor(row)))
                   }
                   prevSectionKey = sectionKey

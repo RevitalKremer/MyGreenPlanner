@@ -21,6 +21,7 @@ class ProductBase(BaseModel):
     price_ils: float | None = None
     weight_kg: float | None = None
     depreciation_pct: float | None = None
+    process_pct: float | None = None
     # Panel-only fields — only relevant when product_type == 'panel'
     length_cm: float | None = None
     width_cm: float | None = None
@@ -47,6 +48,7 @@ class ProductUpdate(BaseModel):
     price_ils: float | None = None
     weight_kg: float | None = None
     depreciation_pct: float | None = None
+    process_pct: float | None = None
     # Panel-only fields
     length_cm: float | None = None
     width_cm: float | None = None
