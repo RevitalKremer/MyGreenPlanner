@@ -28,6 +28,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(!!resetToken || !!openLoginOnMount)
+  // One-shot: user clicked "New Project" while logged out → after a successful
+  // login, automatically open the new-project form so they don't have to click
+  // the card a second time.
+  const [openFormAfterLogin, setOpenFormAfterLogin] = useState(false)
 
   // When a reset token arrives via URL (after initial mount), open the auth
   // modal in reset mode.
@@ -104,9 +108,15 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     if (tab === 'login') {
       await onLogin(email, password)
       setShowAuth(false)
+      if (openFormAfterLogin) {
+        setMode('new')
+        setOpenFormAfterLogin(false)
+      }
     } else {
       await onRegister(email, password, fullName, phone)
-      // Don't close — AuthModal transitions to 'registered' screen internally
+      // Don't close — AuthModal transitions to 'registered' screen internally.
+      // openFormAfterLogin stays set so a follow-up login (after email verify)
+      // still opens the form.
     }
   }
 
@@ -177,7 +187,14 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           overflow: 'hidden', transition: 'border-color 0.15s'
         }}>
           <div
-            onClick={() => setMode(mode === 'new' ? null : 'new')}
+            onClick={() => {
+              if (!user) {
+                setOpenFormAfterLogin(true)
+                setShowAuth(true)
+                return
+              }
+              setMode(mode === 'new' ? null : 'new')
+            }}
             style={{
               padding: '1.5rem 1.75rem', cursor: 'pointer',
               background: mode === 'new' ? '#f6f6f6' : 'white',
@@ -475,7 +492,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
 
       {showAuth && (
         <AuthModal
-          onClose={() => { setShowAuth(false); onClearResetToken?.() }}
+          onClose={() => { setShowAuth(false); setOpenFormAfterLogin(false); onClearResetToken?.() }}
           onSuccess={handleAuthSuccess}
           onForgotPassword={onForgotPassword}
           onResetPassword={onResetPassword}

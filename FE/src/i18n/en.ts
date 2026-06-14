@@ -41,7 +41,6 @@ const en = {
   'nav.backWarning': 'Going back to step {to} will reset all changes made in later steps. Continue?',
   'nav.next':   'Next →',
   'nav.finish': 'Finish',
-  'nav.signIn': 'Sign In to Continue →',
   'nav.blocker.header':                   'Missing before continuing:',
   'nav.blocker.step1.roofPolygon':        'Mark the roof outline',
   'nav.blocker.step1.referenceLine':      'Draw a reference line',

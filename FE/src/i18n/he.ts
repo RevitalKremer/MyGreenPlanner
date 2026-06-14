@@ -41,7 +41,6 @@ const he = {
   'nav.backWarning': 'חזרה לשלב {to} תמחק את כל השינויים בשלבים הבאים. להמשיך?',
   'nav.next':   'הבא →',
   'nav.finish': 'סיום',
-  'nav.signIn': 'התחבר כדי להמשיך →',
   'nav.blocker.header':                   'חסר לפני המשך:',
   'nav.blocker.step1.roofPolygon':        'יש לסמן את קו הגג',
   'nav.blocker.step1.referenceLine':      'יש לצייר קו ייחוס',

@@ -25,8 +25,6 @@ import './App.css'
 
 const TOTAL_STEPS = 5
 
-const LOGIN_REQUIRED_STEP = 3   // step 3+ (construction planning, approval, export) require login
-
 // Trap-scope schema params persisted server-side under step3.trapezoidConfigs
 // (mirrors BE TRAP_SCHEMA_PARAM_KEYS). On every BE result these are re-synced
 // authoritatively — stripped then re-applied from the server — so an unsaved
@@ -48,7 +46,6 @@ function App() {
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [step3ResetKey, setStep3ResetKey] = useState(0)
   const [showAuthGate, setShowAuthGate] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
   const PAGE_SIZE = 10
   const [cloudProjects, setCloudProjects] = useState([])
@@ -65,8 +62,8 @@ function App() {
     null | { fromStep: number; toStep: number; errors: Array<{ code: string; field: string; params?: Record<string, any> }> }
   >(null)
   // One-shot signal: logout sets this to true so the welcome screen opens the
-  // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
-  // don't auto-open on normal app load — only after explicit logout.
+  // login modal as soon as it mounts. On normal load we don't auto-open —
+  // the user clicks "New Project" (or the UserChip sign-in) when they're ready.
   const [openLoginOnWelcome, setOpenLoginOnWelcome] = useState(false)
   // Celebration modal shown when the user clicks Finish on step 5.
   const [showFinishModal, setShowFinishModal] = useState(false)
@@ -89,13 +86,6 @@ function App() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const requireLogin = (action) => {
-    if (auth.user) return true
-    setPendingAction(action)
-    setShowAuthGate(true)
-    return false
-  }
 
   const fetchCloudProjects = useCallback(async (searchTerm = '') => {
     if (!auth.user) return
@@ -557,12 +547,11 @@ function App() {
     if (tab === 'login') await auth.login(email, password)
     else await auth.register(email, password, fullName, phone)
     setShowAuthGate(false)
-    // Save the in-memory project immediately at its current step so
-    // anonymous-up-to-step-N work is persisted the moment the account exists.
-    // Any subsequent step transition writes again on top of this baseline.
+    // If the user signed back in mid-wizard (UserChip → Sign In), flush
+    // the current in-memory state to BE so subsequent step transitions
+    // build on a saved baseline. For the reset-token URL flow no project
+    // is in memory yet — handleCloudSave is a no-op in that case.
     try { await handleCloudSave(s.currentStep) } catch (e) { console.error(e) }
-    if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
-    setPendingAction(null)
   }
 
   const handleLoadCloudProject = async (projectId) => {
@@ -797,7 +786,7 @@ function App() {
             {/* User chip — avatar / sign-in / admin gear */}
             <UserChip
               user={auth.user}
-              onSignIn={() => { setPendingAction(null); setShowAuthGate(true) }}
+              onSignIn={() => setShowAuthGate(true)}
               onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
               dark
@@ -1048,7 +1037,7 @@ function App() {
 
         {showAuthGate && (
           <AuthModal
-            onClose={() => { setShowAuthGate(false); setPendingAction(null); setUrlResetToken(null) }}
+            onClose={() => { setShowAuthGate(false); setUrlResetToken(null) }}
             onSuccess={handleAuthGateSuccess}
             onForgotPassword={auth.forgotPassword}
             onResetPassword={auth.resetPassword}
@@ -1130,13 +1119,8 @@ function App() {
           {[1, 2, 3, 4, 5].map((step) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
-              <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <div className="step-name">
                 {STEP_NAME[step]}
-                {step >= LOGIN_REQUIRED_STEP && !auth.user && (
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ opacity: 0.55, flexShrink: 0 }}>
-                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                )}
               </div>
             </div>
           ))}
@@ -1166,7 +1150,6 @@ function App() {
           className="btn-nav btn-next"
           style={!s.canProceedToNextStep() ? { pointerEvents: 'none' } : undefined}
           onClick={async () => {
-            if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
             // On the final step the button reads "Finish" — show the
             // celebration popup instead of trying to advance.
             if (s.currentStep === TOTAL_STEPS) {
@@ -1181,37 +1164,32 @@ function App() {
             // Let React flush the prep's state updates before save reads them.
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
             setStepTransitionErrors(null)
-            if (auth.user) {
-              const savedId = await handleCloudSave(stepBeforeNext)
-              if (!savedId) return  // save failed — handleCloudSave already surfaced it
-              // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
-              // the transition. The Step3 component fills step3FlushDirtyRef
-              // with a function that awaits saveTab for every dirty tab and
-              // clears its dirty flag.
-              if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
-                try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
-              }
-              try {
-                const stepResult = await updateStep(savedId, stepBeforeNext + 1)
-                applyBeResult(stepResult)
-                s.advanceToNextStep()
-              } catch (e) {
-                if (e instanceof StepTransitionError) {
-                  setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
-                } else {
-                  console.error(e)
-                  setSaveState('error')
-                  setTimeout(() => setSaveState(null), 3000)
-                }
-              }
-            } else {
-              // Anonymous flow — no BE round-trip yet, just advance locally.
+            const savedId = await handleCloudSave(stepBeforeNext)
+            if (!savedId) return  // save failed — handleCloudSave already surfaced it
+            // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
+            // the transition. The Step3 component fills step3FlushDirtyRef
+            // with a function that awaits saveTab for every dirty tab and
+            // clears its dirty flag.
+            if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
+              try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
+            }
+            try {
+              const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+              applyBeResult(stepResult)
               s.advanceToNextStep()
+            } catch (e) {
+              if (e instanceof StepTransitionError) {
+                setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
+              } else {
+                console.error(e)
+                setSaveState('error')
+                setTimeout(() => setSaveState(null), 3000)
+              }
             }
           }}
           disabled={!s.canProceedToNextStep()}
         >
-          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
+          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : t('nav.next')}
         </button>
         </span>
       </footer>
