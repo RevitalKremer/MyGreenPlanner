@@ -37,6 +37,9 @@ const he = {
   'step2.error.area.purlinDistance.missing':    'לאזור {areaLabel}: יש להזין מרחק בין פטות.',
   'step2.error.insufficientCredits':             'נדרשים {required} קרדיטים כדי להתקדם לשלב 3, ויש לך רק {available}.',
   'step2.error.insufficientCredits.cta':         'לחשבון שלי',
+  'step2.error.chargedProjectCannotResetToStep1':         'הפרויקט הזה כבר חויב. אפשר לערוך משלב 2 והלאה, אבל לא ניתן להתחיל מחדש משלב 1 בפרויקט שכבר שולם.',
+  'step2.error.chargedProjectCannotResetToStep1.title':   'הפרויקט כבר חויב',
+  'step2.error.chargedProjectCannotResetToStep1.message': 'הפרויקט הזה כבר חויב. כדי להתחיל מחדש צריך לפתוח פרויקט חדש ממסך הבית..',
   'step2.confirmCredits.title':                  'אישור חיוב קרדיטים',
   'step2.confirmCredits.message':                'מעבר לשלב 3 ינכה {cost} קרדיטים מהיתרה שלך (יש לך {available}). הקרדיטים יוחזרו לחשבונך עם חתימת ההזמנה מול שדות אנרגיה. להמשיך?',
 
@@ -51,6 +54,9 @@ const he = {
   'account.comingSoon':       'בקרוב',
   'account.topUpHint':        'צריך קרדיטים מוקדם יותר? פנה אלינו בכתובת',
   'account.editProfile':      'עריכת פרופיל',
+  'account.periodLabel':      'שנה {year}',
+  'account.plansThisYear':    'פרויקטים השנה',
+  'account.discountEligible': 'זכאי להנחה במחיר',
   'userChip.balanceUnit':     'ק׳',
   'userChip.balanceTooltip':  'בשימוש {used} מתוך {total} קרדיטים',
   'auth.register.creditsCta': 'הרשמה ל-{credits} קרדיטים חינם',
@@ -69,6 +75,7 @@ const he = {
   'nav.backWarning': 'חזרה לשלב {to} תמחק את כל השינויים בשלבים הבאים. להמשיך?',
   'nav.next':   'הבא →',
   'nav.finish': 'סיום',
+  'nav.startOverNew': 'פתח פרויקט חדש',
   'nav.blocker.header':                   'חסר לפני שממשיכים:',
   'nav.blocker.step1.roofPolygon':        'יש לסמן את קו הגג',
   'nav.blocker.step1.referenceLine':      'יש לצייר קו ייחוס',
@@ -108,7 +115,11 @@ const he = {
   'step5.blockMsg':        'נדרש אישור תכנית כדי להמשיך לשלב הבא.',
 
   // ── Project info (read-only modal opened from header) ───────────────────
-  'projectInfo.title':              'פרטי הפרויקט',
+  'projectInfo.title':                  'פרטי הפרויקט',
+  'projectInfo.charged.badge':          'חויב',
+  'projectInfo.charged.tooltip':        'הפרויקט הזה כבר חויב. לחץ לפרטים.',
+  'projectInfo.chargedOn':              'תאריך חיוב',
+  'projectInfo.quotationRequestedOn':   'תאריך בקשת הצעת מחיר',
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':             'פרויקט חדש',

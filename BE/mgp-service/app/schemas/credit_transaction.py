@@ -24,9 +24,14 @@ class LedgerResponse(BaseModel):
     rows: list[CreditTransactionRead]
     total_rows: int
     has_more: bool
+    # Snapshot fields mirror UserRead (calendar-year windowed). See
+    # services/credits.compute_account_snapshot for the full semantics.
     credits_available: int
     credits_used: int
     credits_total: int
+    plans_this_year: int = 0
+    discount_eligible: bool = False
+    period_year: int = 0
 
 
 class PendingRefundRow(BaseModel):

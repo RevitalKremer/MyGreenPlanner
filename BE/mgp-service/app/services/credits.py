@@ -275,22 +275,65 @@ def undismiss_from_refund_inbox(project: Project) -> None:
 
 
 async def compute_account_snapshot(db: AsyncSession, user: User) -> dict:
-    """Return the {available, used, total} view shown on /auth/me.
+    """Return the credits view shown on /auth/me + admin pane.
 
-    `used` is the absolute sum of currently-open project_charge rows.
-    `total = available + used` (only ever grows as new grants/purchases land).
+    Calendar-year windowed:
+      * `credits_used` — absolute sum of currently-open `project_charge`
+        rows whose `created_at` falls in the current calendar year.
+        Refunds within the year correctly reverse the "used" count.
+      * `credits_total = credits_available + credits_used` — drifts down as
+        old charges age out of the window on Jan 1; the wallet balance
+        (credits_available) is unchanged.
+      * `plans_this_year` — count of `project_charge` rows in the current
+        calendar year, INCLUDING refunded ones (rewards activity, per the
+        business rule "if they have already produced more than 25 plans
+        during the calendar year").
+      * `discount_eligible` — True when plans_this_year > the configured
+        threshold (default 25, admin-tunable via app_settings).
+      * `period_year` — the calendar year being counted; lets the FE
+        render a "2026" label so the windowed numbers don't surprise users.
     """
-    result = await db.execute(
+    now = datetime.now(timezone.utc)
+    year_start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+
+    # Open project_charge rows IN the current calendar year. Refund
+    # within the year flips `refunded=true` and drops the row from `used`.
+    used_q = await db.execute(
         select(func.coalesce(func.sum(-CreditTransaction.amount), 0)).where(
             CreditTransaction.user_id == user.id,
             CreditTransaction.kind == CreditTxnKind.project_charge,
             CreditTransaction.refunded.is_(False),
+            CreditTransaction.created_at >= year_start,
         )
     )
-    used = int(result.scalar_one())
+    used = int(used_q.scalar_one())
+
+    # Count of project_charge rows this calendar year. Refunds DO count
+    # (rewards plan-creation activity). Deleted projects do NOT count —
+    # the FK is ON DELETE SET NULL, so an orphaned charge has project_id
+    # IS NULL. Filtering on project_id IS NOT NULL closes the
+    # "create + delete repeatedly to unlock the volume discount" loophole.
+    # `credits_used` above intentionally still counts orphan charges
+    # (the credits were spent regardless of whether the project survives).
+    plans_q = await db.execute(
+        select(func.count(CreditTransaction.id)).where(
+            CreditTransaction.user_id == user.id,
+            CreditTransaction.kind == CreditTxnKind.project_charge,
+            CreditTransaction.project_id.isnot(None),
+            CreditTransaction.created_at >= year_start,
+        )
+    )
+    plans_this_year = int(plans_q.scalar_one())
+
+    threshold = int(settings_cache.get_setting('volumeDiscountThresholdPlans', default=25))
+    discount_eligible = plans_this_year > threshold
+
     available = int(user.credits_balance)
     return {
         'credits_available': available,
         'credits_used': used,
         'credits_total': available + used,
+        'plans_this_year': plans_this_year,
+        'discount_eligible': discount_eligible,
+        'period_year': now.year,
     }

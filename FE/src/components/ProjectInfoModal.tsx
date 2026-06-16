@@ -1,4 +1,4 @@
-import { TEXT_DARK, TEXT_LIGHT } from '../styles/colors'
+import { TEXT_DARK, TEXT_FAINT, TEXT_LIGHT, BORDER_FAINT, PRIMARY_BG } from '../styles/colors'
 import { useLang } from '../i18n/LangContext'
 import ProjectForm from './ProjectForm'
 
@@ -10,6 +10,12 @@ export default function ProjectInfoModal({ project, onClose }: { project: any; o
   // Date inputs expect YYYY-MM-DD — strip any ISO timestamp suffix.
   const dateValue = project?.date ? String(project.date).split('T')[0] : ''
   const roofSpec = project?.roofSpec ?? {}
+  const formatStamp = (raw: string | null | undefined) => raw
+    ? new Date(raw).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : null
+  const chargedAt           = formatStamp(project?.credits_charged_at)
+  const quotationRequestedAt = formatStamp(project?.quotation_requested_at)
+  const showCreditsInfo = !!(chargedAt || quotationRequestedAt)
 
   return (
     <div
@@ -42,6 +48,32 @@ export default function ProjectInfoModal({ project, onClose }: { project: any; o
             }}
           >×</button>
         </div>
+
+        {/* Credits/quotation status — subtle info pill row, only when the
+            project has actually been charged or quoted. Stays hidden on
+            fresh projects so the modal isn't noisier than it needs to be. */}
+        {showCreditsInfo && (
+          <div style={{
+            margin: '0.75rem 1.75rem 0',
+            padding: '0.55rem 0.75rem',
+            background: PRIMARY_BG,
+            border: `1px solid ${BORDER_FAINT}`,
+            borderRadius: 8,
+            display: 'flex', flexDirection: 'column', gap: 4,
+            fontSize: '0.78rem', color: TEXT_FAINT,
+          }}>
+            {chargedAt && (
+              <div>
+                <strong style={{ color: TEXT_DARK }}>{t('projectInfo.chargedOn')}:</strong>{' '}{chargedAt}
+              </div>
+            )}
+            {quotationRequestedAt && (
+              <div>
+                <strong style={{ color: TEXT_DARK }}>{t('projectInfo.quotationRequestedOn')}:</strong>{' '}{quotationRequestedAt}
+              </div>
+            )}
+          </div>
+        )}
 
         <ProjectForm
           projectName={project?.name ?? ''}

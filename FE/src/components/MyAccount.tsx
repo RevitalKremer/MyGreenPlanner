@@ -78,9 +78,14 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const available = user?.credits_available ?? 0
-  const used      = user?.credits_used ?? 0
-  const total     = user?.credits_total ?? 0
+  // Credits view is windowed to the current calendar year (used / total /
+  // plans). `available` is the lifetime wallet balance.
+  const available       = user?.credits_available ?? 0
+  const used            = user?.credits_used ?? 0
+  const total           = user?.credits_total ?? 0
+  const plansThisYear   = user?.plans_this_year ?? 0
+  const discountEligible = !!user?.discount_eligible
+  const periodYear      = user?.period_year || new Date().getFullYear()
 
   const StatBox = ({ label, value, accent = false }) => (
     <div style={{
@@ -286,11 +291,30 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
           )}
         </div>
 
-        {/* Stat boxes */}
+        {/* Stat boxes — windowed to the current calendar year (except
+            "available", which is the lifetime wallet balance). */}
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          marginBottom: '0.4rem',
+        }}>
+          <span style={{ fontSize: '0.72rem', color: TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {t('account.periodLabel', { year: periodYear })}
+          </span>
+          {discountEligible && (
+            <span style={{
+              fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+              background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
+              padding: '0.15rem 0.5rem', borderRadius: 999,
+            }}>
+              {t('account.discountEligible')}
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.9rem' }}>
-          <StatBox label={t('account.available')} value={available} accent />
-          <StatBox label={t('account.used')}      value={used} />
-          <StatBox label={t('account.total')}     value={total} />
+          <StatBox label={t('account.available')}       value={available} accent />
+          <StatBox label={t('account.used')}            value={used} />
+          <StatBox label={t('account.total')}           value={total} />
+          <StatBox label={t('account.plansThisYear')}   value={plansThisYear} />
         </div>
 
         {/* Refund-policy notice */}

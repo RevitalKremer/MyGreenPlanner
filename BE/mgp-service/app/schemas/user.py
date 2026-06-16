@@ -22,13 +22,21 @@ class UserRead(BaseModel):
     is_sysadmin: bool
     lang: str = 'en'
     created_at: datetime
-    # Credits snapshot. `available` is the live balance; `used` is the absolute
-    # sum of unrefunded project_charge ledger rows; `total = available + used`.
-    # All three default to 0 so endpoints that don't compute them (admin
-    # listings) still serialize cleanly.
+    # Credits snapshot. `available` is the live wallet balance (lifetime).
+    # `used` and `total` are CALENDAR-YEAR windowed — only count
+    # project_charge rows from Jan 1 of the current year. `total =
+    # available + used` and drifts down as old charges age out each Jan 1.
+    # `plans_this_year` counts every project_charge in the year (refunds
+    # included); `discount_eligible` flips true once that count crosses
+    # the admin-tunable threshold (volumeDiscountThresholdPlans).
+    # All default to 0/false so endpoints that don't compute the snapshot
+    # (admin listings, etc.) still serialize cleanly.
     credits_available: int = 0
     credits_used: int = 0
     credits_total: int = 0
+    plans_this_year: int = 0
+    discount_eligible: bool = False
+    period_year: int = 0
 
     model_config = {"from_attributes": True}
 

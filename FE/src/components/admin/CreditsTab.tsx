@@ -324,7 +324,14 @@ function UserLookupPane() {
 
   // ── Ledger pane — server-paginated + debounced search ─────────────────
   const [ledgerRows, setLedgerRows] = useState<any[]>([])
-  const [ledgerSnapshot, setLedgerSnapshot] = useState<{ credits_available?: number; credits_used?: number; credits_total?: number }>({})
+  const [ledgerSnapshot, setLedgerSnapshot] = useState<{
+    credits_available?: number;
+    credits_used?: number;
+    credits_total?: number;
+    plans_this_year?: number;
+    discount_eligible?: boolean;
+    period_year?: number;
+  }>({})
   const [ledgerTotal, setLedgerTotal] = useState(0)
   const [ledgerHasMore, setLedgerHasMore] = useState(false)
   const [ledgerLoading, setLedgerLoading] = useState(false)
@@ -424,6 +431,9 @@ function UserLookupPane() {
         credits_available: data.credits_available,
         credits_used: data.credits_used,
         credits_total: data.credits_total,
+        plans_this_year: data.plans_this_year,
+        discount_eligible: data.discount_eligible,
+        period_year: data.period_year,
       })
     } catch (e: any) {
       setError(e.message || 'Failed to load ledger')
@@ -584,14 +594,31 @@ function UserLookupPane() {
           </div>
         ) : (
           <>
+            {/* Period chip + discount-eligible badge above the balance grid. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Calendar year {ledgerSnapshot.period_year ?? new Date().getFullYear()}
+              </span>
+              {ledgerSnapshot.discount_eligible && (
+                <span style={{
+                  fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+                  background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
+                  padding: '0.15rem 0.5rem', borderRadius: 999,
+                }}>
+                  Eligible for volume discount
+                </span>
+              )}
+            </div>
+
             {/* Balance header */}
             <div style={{
               display: 'flex', gap: '0.5rem', marginBottom: '1rem',
             }}>
               {[
                 { label: 'Available', value: ledgerSnapshot.credits_available ?? selectedUser.credits_available ?? 0, accent: true },
-                { label: 'Held by projects', value: ledgerSnapshot.credits_used ?? selectedUser.credits_used ?? 0 },
-                { label: 'Total', value: ledgerSnapshot.credits_total ?? selectedUser.credits_total ?? 0 },
+                { label: `Used (${ledgerSnapshot.period_year ?? new Date().getFullYear()})`, value: ledgerSnapshot.credits_used ?? selectedUser.credits_used ?? 0 },
+                { label: `Total (${ledgerSnapshot.period_year ?? new Date().getFullYear()})`, value: ledgerSnapshot.credits_total ?? selectedUser.credits_total ?? 0 },
+                { label: 'Plans this year', value: ledgerSnapshot.plans_this_year ?? 0 },
               ].map(b => (
                 <div key={b.label} style={{
                   flex: 1, background: b.accent ? PRIMARY_BG : 'white',

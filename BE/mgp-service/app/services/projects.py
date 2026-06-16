@@ -2500,6 +2500,20 @@ async def update_project_step(
     if transition_errors:
         raise StepTransitionInvalidError(old_step, new_step, transition_errors)
 
+    # ── Credits: block reset-to-step-1 on charged projects ──────────────
+    # Closes the "pay once, restart the whole plan" loophole — a user could
+    # otherwise charge 100 credits at 2→3, generate the PDF, go back to
+    # step 1 to redo the roof outline, and effectively get a second plan
+    # free. Charged projects are committed; to start fresh the user has to
+    # create a new project (which charges again). Iteration in steps 2+
+    # stays free as designed.
+    if new_step == 1 and project.credits_charged_at is not None:
+        raise StepTransitionInvalidError(old_step, new_step, [{
+            'code': 'chargedProjectCannotResetToStep1',
+            'field': 'currentStep',
+            'params': {},
+        }])
+
     # ── Credits: charge once per project on first entry into step 3+ ──
     # The legitimate FE flow only ever transitions ±1, so this almost always
     # fires on 2→3. We gate on `new_step > 2 AND credits_charged_at IS NULL`

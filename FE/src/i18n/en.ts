@@ -37,6 +37,9 @@ const en = {
   'step2.error.area.purlinDistance.missing':  'Area {areaLabel}: distance between purlins is required.',
   'step2.error.insufficientCredits':           'You need {required} credits to advance to step 3, but you only have {available}.',
   'step2.error.insufficientCredits.cta':       'View my account',
+  'step2.error.chargedProjectCannotResetToStep1':         'This project has already been charged. You can iterate freely from step 2 onward, but starting over from step 1 isn\'t allowed for a paid project.',
+  'step2.error.chargedProjectCannotResetToStep1.title':   'Project already charged',
+  'step2.error.chargedProjectCannotResetToStep1.message': 'This project has already been charged. To start over, please create a new project from the welcome screen.',
   'step2.confirmCredits.title':                'Confirm credit charge',
   'step2.confirmCredits.message':              'Advancing to step 3 will deduct {cost} credits from your balance (you have {available}). Credits are refunded to your account once you sign your order with Sadot Energy. Continue?',
 
@@ -51,6 +54,9 @@ const en = {
   'account.comingSoon':       'Coming soon',
   'account.topUpHint':        'Need more credits sooner? Contact us at',
   'account.editProfile':      'Edit profile',
+  'account.periodLabel':      'Calendar year {year}',
+  'account.plansThisYear':    'Plans this year',
+  'account.discountEligible': 'Eligible for volume discount',
   'userChip.balanceUnit':     'c',
   'userChip.balanceTooltip':  'Used {used} of {total} credits',
   'auth.register.creditsCta': 'Register and get {credits} free credits',
@@ -69,6 +75,7 @@ const en = {
   'nav.backWarning': 'Going back to step {to} will reset all changes made in later steps. Continue?',
   'nav.next':   'Next →',
   'nav.finish': 'Finish',
+  'nav.startOverNew': 'Start a new project',
   'nav.blocker.header':                   'Missing before continuing:',
   'nav.blocker.step1.roofPolygon':        'Mark the roof outline',
   'nav.blocker.step1.referenceLine':      'Draw a reference line',
@@ -108,7 +115,11 @@ const en = {
   'step5.blockMsg':        'Plan approval is required to proceed to the next step.',
 
   // ── Project info (read-only modal opened from header) ───────────────────
-  'projectInfo.title':            'Project Details',
+  'projectInfo.title':                  'Project Details',
+  'projectInfo.charged.badge':          'Charged',
+  'projectInfo.charged.tooltip':        'This project has been charged. Click for details.',
+  'projectInfo.chargedOn':              'Charged on',
+  'projectInfo.quotationRequestedOn':   'Quotation requested on',
 
   // ── Welcome screen ───────────────────────────────────────────────────────
   'welcome.newProject':           'New Project',

@@ -777,6 +777,30 @@ function App() {
                   <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap' }}>
                     {s.currentProject.date ? new Date(s.currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
                   </span>
+                  {/* Charged-project marker — subtle pill, opens the project
+                      details modal on click. Visible to all roles since the
+                      charge is a property of the project. */}
+                  {s.currentProject.credits_charged_at && (
+                    <span
+                      onClick={() => setShowProjectInfo(true)}
+                      title={t('projectInfo.charged.tooltip')}
+                      style={{
+                        fontSize: '0.6rem', fontWeight: 700,
+                        color: 'rgba(255,255,255,0.65)',
+                        background: 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.18)',
+                        padding: '1px 6px', borderRadius: 999,
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        whiteSpace: 'nowrap', cursor: 'pointer',
+                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                      }}
+                    >
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      {t('projectInfo.charged.badge')}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{t('app.subtitle')}</div>
@@ -1158,11 +1182,34 @@ function App() {
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
+            const nextStep = s.currentStep - 1
+            // ── Credits guard: a charged project cannot reset to step 1.
+            //    Going back to step 1 would let the user redo the whole
+            //    plan for free. The guard is a property of the PROJECT,
+            //    not the user — admins viewing a charged project see
+            //    the same block (the BE rejects the request either way).
+            //    Offer Start Over (= new project) as the explicit way out.
+            const isChargedProjectResetToStep1 = (
+              nextStep === 1 &&
+              !!s.currentProject?.credits_charged_at
+            )
+            if (isChargedProjectResetToStep1) {
+              const proceed = await confirmDialog.ask({
+                title: t('step2.error.chargedProjectCannotResetToStep1.title'),
+                message: t('step2.error.chargedProjectCannotResetToStep1.message'),
+                confirmLabel: t('nav.startOverNew'),
+                cancelLabel: t('common.cancel'),
+              })
+              if (proceed) {
+                s.handleStartOver()
+              }
+              return
+            }
             if (!await confirmDialog.ask({
-              message: t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }),
+              message: t('nav.backWarning', { from: s.currentStep, to: nextStep }),
               variant: 'warning',
             })) return
-            const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            const result = await updateStep(s.cloudProjectId, nextStep).catch(console.error)
             if (result?.clearedSteps) {
               s.resetStepData(result.clearedSteps)
               if (result.clearedSteps.includes('step3')) setStep3ResetKey(k => k + 1)
