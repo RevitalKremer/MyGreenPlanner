@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, BORDER_LIGHT } from '../../styles/colors'
+import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, WHITE_75 } from '../../styles/colors'
 import UserProfileModal from './UserProfileModal'
 import AdminPanel from '../admin/AdminPanel'
 import { useLang } from '../../i18n/LangContext'
@@ -19,14 +19,24 @@ const PersonIcon = ({ size = 22, color = 'currentColor' }) => (
 )
 
 /**
- * Shared user chip for all pages.
+ * Shared user chip for all pages — collapses to just an avatar circle.
  * dark=true  → app header (dark bg, light text)
  * dark=false → welcome screen (light bg, dark text)
+ *
+ * Click target:
+ *   non-admin → MyAccount modal (credits + profile + sign-out live there)
+ *   admin     → UserProfileModal (profile + sign-out live there)
  */
-export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, dark = false }) {
+export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, onOpenAccount, dark = false }) {
   const { t } = useLang()
   const [showProfile, setShowProfile] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+
+  const isCreditsUser = !!(user && user.role !== 'admin')
+  // For non-admins, the avatar / name area becomes the single entry point
+  // into "My Account" (which contains credits, ledger, profile editing).
+  // For admins, credits don't apply — keep today's profile-modal click target.
+  const avatarOpensAccount = isCreditsUser && !!onOpenAccount
 
   const col = (lightVal, darkVal) => dark ? darkVal : lightVal
 
@@ -35,18 +45,11 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
     background: 'none', border: 'none', cursor: 'pointer',
     padding: '0.3rem 0.55rem',
-    color: extraColor ?? col(TEXT_DARK, 'rgba(255,255,255,0.75)'),
+    color: extraColor ?? col(TEXT_DARK, WHITE_75),
   })
 
   const labelStyle: React.CSSProperties = {
     fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.04em', whiteSpace: 'nowrap',
-  }
-
-  const signOutStyle: React.CSSProperties = {
-    background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: '0.58rem', padding: 0, lineHeight: 1,
-    textDecoration: 'underline',
-    color: col('rgba(0,0,0,0.35)', 'rgba(255,255,255,0.4)'),
   }
 
   return (
@@ -54,39 +57,36 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem' }}>
         {user ? (
           <>
-            {/* Avatar + name + sign-out */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.3rem 0.55rem' }}>
-              <button
-                onClick={() => setShowProfile(true)}
-                title={t('user.myAccount')}
-                style={{
-                  width: '28px', height: '28px', borderRadius: '50%',
-                  background: PRIMARY, color: TEXT, border: 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer', flexShrink: 0,
-                }}
-              >
-                {user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
-              </button>
-              <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.9)'), maxWidth: '68px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {user.full_name?.split(' ')[0]}
-              </span>
-              <button onClick={onSignOut} style={signOutStyle}>{t('user.signOut')}</button>
-            </div>
+            {/* Just the avatar — name, balance pill, and sign-out moved into
+                the modal that opens on click (MyAccount for non-admin,
+                UserProfileModal for admin). Single icon, single entry point. */}
+            <button
+              onClick={() => avatarOpensAccount ? onOpenAccount() : setShowProfile(true)}
+              title={user.full_name || t('user.myAccount')}
+              style={{
+                width: '32px', height: '32px', borderRadius: '50%',
+                background: PRIMARY, color: TEXT, border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: '800', fontSize: '0.92rem', cursor: 'pointer',
+                flexShrink: 0, padding: 0, margin: '0 0.3rem',
+              }}
+            >
+              {user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+            </button>
 
             {/* Admin gear — only for admins */}
             {user.role === 'admin' && (
               <button onClick={() => setShowAdmin(true)} style={iconBtn()} title={t('user.adminPanel')}>
                 <GearIcon />
-                <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>{t('user.adminBadge')}</span>
+                <span style={{ ...labelStyle, color: col(TEXT_DARK, WHITE_75) }}>{t('user.adminBadge')}</span>
               </button>
             )}
           </>
         ) : (
           /* Guest — person icon + Sign In */
           <button onClick={onSignIn} style={iconBtn()}>
-            <PersonIcon color={col(TEXT_MUTED, 'rgba(255,255,255,0.75)')} />
-            <span style={{ ...labelStyle, color: col(TEXT_DARK, 'rgba(255,255,255,0.75)') }}>{t('auth.signIn')}</span>
+            <PersonIcon color={col(TEXT_MUTED, WHITE_75)} />
+            <span style={{ ...labelStyle, color: col(TEXT_DARK, WHITE_75) }}>{t('auth.signIn')}</span>
           </button>
         )}
       </div>
@@ -96,6 +96,7 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, d
           user={user}
           onClose={() => setShowProfile(false)}
           onSave={onUpdateProfile}
+          onSignOut={onSignOut}
         />
       )}
       {showAdmin && user?.role === 'admin' && (

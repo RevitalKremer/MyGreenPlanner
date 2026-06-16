@@ -211,6 +211,30 @@ export async function sendReportEmail(
   if (!res.ok) throw new Error('Failed to send report email')
 }
 
+/**
+ * Push the project to the Monday.com quotation board (or the main board, when
+ * MONDAY_QUOTATION_BOARD_ID isn't configured) and mark the project as having
+ * been quoted. No credits move — the refund is admin-driven after the order
+ * signs externally. Optionally accepts the PDF the FE just built; the BE
+ * always attaches the proposal xlsx.
+ *
+ * Returns `{ quotationRequestedAt, status, ... }`. Status is `cooldown` when
+ * the server short-circuited a re-click within the 30s window.
+ */
+export async function requestQuotation(
+  id: string,
+  pdfBytes: ArrayBuffer | null = null,
+  filename: string | null = null,
+): Promise<{ status: string; quotationRequestedAt: string | null; monday?: any; monday_error?: string | null }> {
+  const formData = new FormData()
+  if (pdfBytes != null && filename) {
+    formData.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), filename)
+  }
+  const res = await mgpRequest(`/projects/${id}/request-quotation`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error('Failed to request quotation')
+  return res.json()
+}
+
 // ── Version ─────────────────────────────────────────────────────────────────
 
 export async function getBackendVersion() {

@@ -16,7 +16,7 @@ const inputStyle = (focused): React.CSSProperties => ({
  * mode: 'login' | 'register' | 'forgot' | 'reset' | 'registered'
  * resetToken: string — pre-fill the reset flow from URL param
  */
-export default function AuthModal({ onClose, onSuccess, onForgotPassword, onResetPassword, defaultTab = 'login', resetToken = null }) {
+export default function AuthModal({ onClose, onSuccess, onForgotPassword, onResetPassword, defaultTab = 'login', resetToken = null, trialGrantCredits = 0 }) {
   const { t } = useLang()
   const [mode, setMode] = useState(resetToken ? 'reset' : defaultTab)
   const [email, setEmail] = useState('')
@@ -205,6 +205,23 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 </button>
               ))}
             </div>
+
+            {/* Signup CTA — visible on register tab only. Pulls the live
+                trial amount from the FE app config so the message tracks
+                whatever admins set in the Monetization page. */}
+            {mode === 'register' && trialGrantCredits > 0 && (
+              <div style={{
+                marginBottom: '1.1rem', padding: '0.75rem 0.9rem',
+                background: SUCCESS_BG, borderRadius: 10,
+                fontSize: '0.85rem', color: TEXT_DARK,
+                display: 'flex', alignItems: 'center', gap: '0.55rem',
+              }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                <span><strong>{t('auth.register.creditsCta', { credits: trialGrantCredits })}</strong></span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit}>
               {mode === 'register' && (

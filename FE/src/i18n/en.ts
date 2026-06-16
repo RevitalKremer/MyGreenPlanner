@@ -35,6 +35,34 @@ const en = {
   'step2.error.row.angle.outOfRange':         'Area {areaLabel}, row {rowIdx}: angle {value}° is outside {min}–{max}°.',
   'step2.error.row.frontHeight.outOfRange':   'Area {areaLabel}, row {rowIdx}: front height {value} cm is outside {min}–{max} cm.',
   'step2.error.area.purlinDistance.missing':  'Area {areaLabel}: distance between purlins is required.',
+  'step2.error.insufficientCredits':           'You need {required} credits to advance to step 3, but you only have {available}.',
+  'step2.error.insufficientCredits.cta':       'View my account',
+  'step2.confirmCredits.title':                'Confirm credit charge',
+  'step2.confirmCredits.message':              'Advancing to step 3 will deduct {cost} credits from your balance (you have {available}). Credits are refunded to your account once you sign your order with Sadot Energy. Continue?',
+
+  // ── My Account / credits ──────────────────────────────────────────────
+  'account.title':            'My Account',
+  'account.available':        'Available',
+  'account.used':             'Held by projects',
+  'account.total':            'Total',
+  'account.refresh':          'Refresh',
+  'account.refundNotice':     'Credits charged when advancing to step 3 are refunded to your account once you sign your order with Sadot Energy.',
+  'account.buyMore':          'Buy more credits',
+  'account.comingSoon':       'Coming soon',
+  'account.topUpHint':        'Need more credits sooner? Contact us at',
+  'account.editProfile':      'Edit profile',
+  'userChip.balanceUnit':     'c',
+  'userChip.balanceTooltip':  'Used {used} of {total} credits',
+  'auth.register.creditsCta': 'Register and get {credits} free credits',
+  'common.close':             'Close',
+
+  // ── Step 5: Get Quotation ─────────────────────────────────────────────
+  'step5.quotation.getQuotation':   'Get Quotation',
+  'step5.quotation.requestAgain':   'Request quotation again',
+  'step5.quotation.sending':        'Sending…',
+  'step5.quotation.success':        'Quotation request sent. Sadot Energy will be in touch.',
+  'step5.quotation.failed':         'Quotation request failed. Please try again.',
+  'step5.quotation.refundNotice':   'Credits charged for this project will be refunded to your account once you sign your order with Sadot Energy.',
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← Back',

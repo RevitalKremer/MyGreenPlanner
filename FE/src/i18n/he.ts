@@ -35,6 +35,34 @@ const he = {
   'step2.error.row.angle.outOfRange':           'שטח {areaLabel}, שורה {rowIdx}: זווית {value}° מחוץ לטווח {min}–{max}°.',
   'step2.error.row.frontHeight.outOfRange':     'שטח {areaLabel}, שורה {rowIdx}: גובה קדמי {value} ס"מ מחוץ לטווח {min}–{max} ס"מ.',
   'step2.error.area.purlinDistance.missing':    'שטח {areaLabel}: יש להזין מרחק בין פטות.',
+  'step2.error.insufficientCredits':             'נדרשים {required} קרדיטים כדי להתקדם לשלב 3, ויש לך רק {available}.',
+  'step2.error.insufficientCredits.cta':         'לחשבון שלי',
+  'step2.confirmCredits.title':                  'אישור חיוב קרדיטים',
+  'step2.confirmCredits.message':                'מעבר לשלב 3 ינכה {cost} קרדיטים מהיתרה שלך (יש לך {available}). הקרדיטים יוחזרו לחשבונך עם חתימת ההזמנה מול שדות אנרגיה. להמשיך?',
+
+  // ── My Account / credits ──────────────────────────────────────────────
+  'account.title':            'החשבון שלי',
+  'account.available':        'זמין',
+  'account.used':             'בשימוש בפרויקטים',
+  'account.total':            'סך הכל',
+  'account.refresh':          'רענון',
+  'account.refundNotice':     'קרדיטים שמחויבים במעבר לשלב 3 מוחזרים לחשבונך עם חתימת ההזמנה מול שדות אנרגיה.',
+  'account.buyMore':          'רכישת קרדיטים',
+  'account.comingSoon':       'בקרוב',
+  'account.topUpHint':        'צריך קרדיטים מוקדם יותר? פנה אלינו בכתובת',
+  'account.editProfile':      'עריכת פרופיל',
+  'userChip.balanceUnit':     'ק׳',
+  'userChip.balanceTooltip':  'בשימוש {used} מתוך {total} קרדיטים',
+  'auth.register.creditsCta': 'הרשמה ל-{credits} קרדיטים חינם',
+  'common.close':             'סגירה',
+
+  // ── Step 5: בקשת הצעת מחיר ────────────────────────────────────────────
+  'step5.quotation.getQuotation':   'קבל הצעת מחיר',
+  'step5.quotation.requestAgain':   'בקש הצעת מחיר שוב',
+  'step5.quotation.sending':        'שולח…',
+  'step5.quotation.success':        'בקשת הצעת המחיר נשלחה. שדות אנרגיה תיצור איתך קשר.',
+  'step5.quotation.failed':         'בקשת הצעת המחיר נכשלה. נסה שוב.',
+  'step5.quotation.refundNotice':   'הקרדיטים שחויבו עבור הפרויקט יוחזרו לחשבונך לאחר חתימת ההזמנה מול שדות אנרגיה.',
 
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.back':   '← חזרה',

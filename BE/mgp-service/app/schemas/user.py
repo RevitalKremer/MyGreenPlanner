@@ -22,8 +22,29 @@ class UserRead(BaseModel):
     is_sysadmin: bool
     lang: str = 'en'
     created_at: datetime
+    # Credits snapshot. `available` is the live balance; `used` is the absolute
+    # sum of unrefunded project_charge ledger rows; `total = available + used`.
+    # All three default to 0 so endpoints that don't compute them (admin
+    # listings) still serialize cleanly.
+    credits_available: int = 0
+    credits_used: int = 0
+    credits_total: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class AdminGrantCreditsRequest(BaseModel):
+    amount: int
+    reason: str
+
+
+class AdminRefundProjectRequest(BaseModel):
+    reason: str
+
+
+class AdminDismissRefundInboxRequest(BaseModel):
+    reason: str | None = None
+    undo: bool = False
 
 
 class UserUpdate(BaseModel):

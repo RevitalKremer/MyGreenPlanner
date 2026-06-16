@@ -14,6 +14,7 @@ import FinishCelebration from './components/FinishCelebration'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useConfirm } from './hooks/useConfirm'
 import ProjectInfoModal from './components/ProjectInfoModal'
+import MyAccount from './components/MyAccount'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
@@ -68,6 +69,9 @@ function App() {
   // Celebration modal shown when the user clicks Finish on step 5.
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [showProjectInfo, setShowProjectInfo] = useState(false)
+  // My Account modal — opened from UserChip (non-admin avatar click + balance
+  // pill) and from the insufficient-credits banner CTA.
+  const [showMyAccount, setShowMyAccount] = useState(false)
 
   // Handle ?verifyToken= and ?resetToken= URL params on mount
   useEffect(() => {
@@ -572,6 +576,12 @@ function App() {
           location: cloudProject.location,
           date: cloudProject.created_at,
           roofSpec: cloudProject.roof_spec,
+          // Credits markers — needed so the FE doesn't re-prompt the 2→3
+          // confirm dialog on an already-charged project, and so Step 5's
+          // Get-Quotation button shows the right label on a previously-
+          // quoted project.
+          credits_charged_at: cloudProject.credits_charged_at ?? null,
+          quotation_requested_at: cloudProject.quotation_requested_at ?? null,
         },
         currentStep,
         activeTab,
@@ -686,6 +696,7 @@ function App() {
           onRegister={auth.register}
           onLogout={handleLogout}
           onUpdateProfile={auth.updateProfile}
+          onOpenAccount={() => setShowMyAccount(true)}
           authLoading={auth.authLoading}
           cloudProjects={cloudProjects}
           cloudProjectsLoading={cloudProjectsLoading}
@@ -699,12 +710,22 @@ function App() {
           projectsSearch={projectsSearch}
           onForgotPassword={auth.forgotPassword}
           onResetPassword={auth.resetPassword}
+          trialGrantCredits={Number(s.appDefaults?.trialGrantCredits ?? 0)}
           appConfigReady={s.appConfigReady}
           resetToken={urlResetToken}
           onClearResetToken={() => setUrlResetToken(null)}
           openLoginOnMount={openLoginOnWelcome}
           onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
         />
+        {showMyAccount && auth.user && (
+          <MyAccount
+            user={auth.user}
+            onClose={() => setShowMyAccount(false)}
+            onRefresh={auth.refreshMe}
+            onUpdateProfile={auth.updateProfile}
+            onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+          />
+        )}
         {confirmDialogElement}
       </>
     )
@@ -789,6 +810,7 @@ function App() {
               onSignIn={() => setShowAuthGate(true)}
               onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
+              onOpenAccount={() => setShowMyAccount(true)}
               dark
             />
 
@@ -1029,6 +1051,12 @@ function App() {
             beTrapezoidGroups={beTrapezoidGroups}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
+            onQuotationRequested={(timestamp) => {
+              s.setCurrentProject({
+                ...s.currentProject,
+                quotation_requested_at: timestamp,
+              })
+            }}
             products={s.products}
             productByType={s.productByType}
             altsByType={s.altsByType}
@@ -1042,6 +1070,7 @@ function App() {
             onForgotPassword={auth.forgotPassword}
             onResetPassword={auth.resetPassword}
             resetToken={urlResetToken}
+            trialGrantCredits={Number(s.appDefaults?.trialGrantCredits ?? 0)}
           />
         )}
 
@@ -1054,6 +1083,16 @@ function App() {
           <ProjectInfoModal
             project={s.currentProject}
             onClose={() => setShowProjectInfo(false)}
+          />
+        )}
+
+        {showMyAccount && auth.user && (
+          <MyAccount
+            user={auth.user}
+            onClose={() => setShowMyAccount(false)}
+            onRefresh={auth.refreshMe}
+            onUpdateProfile={auth.updateProfile}
+            onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}
 
@@ -1071,29 +1110,48 @@ function App() {
           </div>
         )}
 
-        {stepTransitionErrors && (
-          <div style={{
-            position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
-            background: ERROR_BG, color: ERROR_DARK,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
-            border: `1px solid ${ERROR}`,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
-                <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
-                  {stepTransitionErrors.errors.map((err, i) => (
-                    <li key={i} style={{ marginBottom: '0.2rem' }}>
-                      {t(`step2.error.${err.code}` as any, err.params || {})}
-                    </li>
-                  ))}
-                </ul>
+        {stepTransitionErrors && (() => {
+          // Insufficient credits is the only error code that has a "fix" action
+          // surfaced inline — open My Account so the user sees their balance +
+          // the (future) top-up flow. Other codes are content errors with no
+          // standardized CTA.
+          const hasInsufficientCredits = stepTransitionErrors.errors.some(e => e.code === 'insufficientCredits')
+          return (
+            <div style={{
+              position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
+              background: ERROR_BG, color: ERROR_DARK,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
+              border: `1px solid ${ERROR}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
+                  <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
+                    {stepTransitionErrors.errors.map((err, i) => (
+                      <li key={i} style={{ marginBottom: '0.2rem' }}>
+                        {t(`step2.error.${err.code}` as any, err.params || {})}
+                      </li>
+                    ))}
+                  </ul>
+                  {hasInsufficientCredits && (
+                    <button
+                      onClick={() => { setStepTransitionErrors(null); setShowMyAccount(true) }}
+                      style={{
+                        marginTop: '0.55rem', background: ERROR_DARK, color: 'white',
+                        border: 'none', borderRadius: 6, padding: '0.4rem 0.75rem',
+                        fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      {t('step2.error.insufficientCredits.cta')}
+                    </button>
+                  )}
+                </div>
+                <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
               </div>
-              <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </main>
 
       {/* Wizard Toolbar */}
@@ -1157,6 +1215,22 @@ function App() {
               return
             }
             const stepBeforeNext = s.currentStep
+            // ── Credits: confirm prompt on first 2→3 transition ─────────────
+            // Skipped for admins (unlimited usage) and for already-charged
+            // projects (re-traversal stays free).
+            const isCreditsUser = auth.user && auth.user.role !== 'admin'
+            const alreadyCharged = !!s.currentProject?.credits_charged_at
+            if (stepBeforeNext === 2 && isCreditsUser && !alreadyCharged) {
+              const cost = Number(s.appDefaults?.projectCostCredits ?? 0)
+              const available = auth.user?.credits_available ?? 0
+              if (cost > 0) {
+                const proceed = await confirmDialog.ask({
+                  title: t('step2.confirmCredits.title'),
+                  message: t('step2.confirmCredits.message', { cost, available }),
+                })
+                if (!proceed) return
+              }
+            }
             // Run pre-transition prep (e.g. refresh trapezoids for 2→3) WITHOUT
             // advancing currentStep yet — the visual advance must wait for the
             // server's 200 OK so a BE rejection keeps the user on this step.
@@ -1176,6 +1250,25 @@ function App() {
             try {
               const stepResult = await updateStep(savedId, stepBeforeNext + 1)
               applyBeResult(stepResult)
+              // First successful forward entry into step 3+ charges the project
+              // server-side. Mirror that marker locally so re-entering 2→3
+              // doesn't re-trigger the confirm prompt (BE is the source of
+              // truth — it would no-op the re-charge — but the FE prompt
+              // gate needs the same signal). Skipped for admins (no charge).
+              if (
+                stepBeforeNext === 2 &&
+                auth.user?.role !== 'admin' &&
+                !s.currentProject?.credits_charged_at
+              ) {
+                s.setCurrentProject({
+                  ...s.currentProject,
+                  credits_charged_at: new Date().toISOString(),
+                })
+                // The charge moved the balance — pull the fresh /auth/me so
+                // the UserChip pill + MyAccount totals reflect it without
+                // waiting for a tab-focus refresh.
+                auth.refreshMe?.().catch(() => {})
+              }
               s.advanceToNextStep()
             } catch (e) {
               if (e instanceof StepTransitionError) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { PRIMARY, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
+import { PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
 import ProjectForm from './ProjectForm'
@@ -24,7 +24,7 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken, openLoginOnMount = false, onClearOpenLogin }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, onOpenAccount, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken, openLoginOnMount = false, onClearOpenLogin, trialGrantCredits = 0 }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(!!resetToken || !!openLoginOnMount)
@@ -155,6 +155,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
             onSignIn={() => setShowAuth(true)}
             onSignOut={onLogout}
             onUpdateProfile={onUpdateProfile}
+            onOpenAccount={onOpenAccount}
             dark={false}
           />
         )}
@@ -214,6 +215,13 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
             <div>
               <div style={{ fontSize: '1.05rem', fontWeight: '700', color: TEXT_FAINT }}>{t('welcome.newProject')}</div>
               <div style={{ fontSize: '0.8rem', color: TEXT_FAINT, marginTop: '2px' }}>{t('welcome.newProjectDesc')}</div>
+              {/* Signup CTA — shown only to logged-out users, when admin has
+                  configured a non-zero trial grant. */}
+              {!user && trialGrantCredits > 0 && (
+                <div style={{ fontSize: '0.74rem', color: PRIMARY_DARK, marginTop: '4px', fontWeight: 700 }}>
+                  {t('auth.register.creditsCta', { credits: trialGrantCredits })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -497,6 +505,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           onForgotPassword={onForgotPassword}
           onResetPassword={onResetPassword}
           resetToken={resetToken}
+          trialGrantCredits={trialGrantCredits}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { mgpRequest, setAccessToken, clearAccessToken } from '../services/mgpApi'
 
 const MGP_API = import.meta.env.VITE_MGP_API_URL || '/api/mgp'
@@ -6,6 +6,22 @@ const MGP_API = import.meta.env.VITE_MGP_API_URL || '/api/mgp'
 export function useAuth() {
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  // Mirror of user used by visibility-change listener so it can no-op when
+  // logged out without re-running the effect on every user change.
+  const userRef = useRef(null)
+  useEffect(() => { userRef.current = user }, [user])
+
+  // Pull the latest /auth/me state — used after events that may have moved
+  // the credit balance externally (admin grant/refund happening in another tab).
+  const refreshMe = useCallback(async () => {
+    const meRes = await mgpRequest('/auth/me')
+    if (meRes.ok) {
+      const me = await meRes.json()
+      setUser(me)
+      return me
+    }
+    return null
+  }, [])
 
   // Restore session from httpOnly refresh cookie on mount
   useEffect(() => {
@@ -25,6 +41,19 @@ export function useAuth() {
       setAuthLoading(false)
     })()
   }, [])
+
+  // Pull a fresh /auth/me whenever the tab regains focus — catches credit
+  // balance changes triggered by an admin grant/refund from another session.
+  // No-op when logged out so we don't hammer the endpoint on every tab swap.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && userRef.current) {
+        refreshMe().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refreshMe])
 
   const login = useCallback(async (email, password) => {
     const res = await mgpRequest('/auth/login', {
@@ -102,5 +131,5 @@ export function useAuth() {
     }
   }, [])
 
-  return { user, authLoading, login, logout, register, updateProfile, forgotPassword, resetPassword, verifyEmail }
+  return { user, authLoading, login, logout, register, updateProfile, forgotPassword, resetPassword, verifyEmail, refreshMe }
 }
