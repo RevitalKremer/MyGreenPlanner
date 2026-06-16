@@ -47,6 +47,15 @@ class AdminDismissRefundInboxRequest(BaseModel):
     undo: bool = False
 
 
+class UserListResponse(BaseModel):
+    """Paginated response for GET /admin/users — mirrors ProjectListResponse /
+    LedgerResponse shape so the FE pagination pattern is identical across lists.
+    """
+    rows: list[UserRead]
+    total_rows: int
+    has_more: bool
+
+
 class UserUpdate(BaseModel):
     full_name: str | None = None
     is_active: bool | None = None

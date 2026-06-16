@@ -44,8 +44,12 @@ export default function UsersTab({ currentUserId }) {
 
   useEffect(() => {
     setLoading(true)
-    getUsers()
-      .then(setUsers)
+    // /admin/users is now paginated. UsersTab keeps its "single list"
+    // UX; we just pull a big page (500 is the BE max). When this tab
+    // gets its own search + Load More, switch to the same offset/search
+    // state pattern as CreditsTab.
+    getUsers({ limit: 500, offset: 0 })
+      .then(res => setUsers(res.rows))
       .catch(() => setError('Failed to load users'))
       .finally(() => setLoading(false))
   }, [])

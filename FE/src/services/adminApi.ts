@@ -1,7 +1,17 @@
 import { mgpRequest } from './mgpApi'
 
-// Users
-export const getUsers = () => mgpRequest('/admin/users').then(r => r.json())
+// Users — paginated list. Default page size matches the admin UI's
+// "Load more" pattern across CreditsTab + UsersTab.
+export const getUsers = async (
+  opts: { limit?: number; offset?: number; search?: string | null } = {},
+): Promise<{ rows: any[]; total_rows: number; has_more: boolean }> => {
+  const { limit = 50, offset = 0, search = null } = opts
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (search && search.trim()) params.set('search', search.trim())
+  const res = await mgpRequest(`/admin/users?${params}`)
+  if (!res.ok) throw new Error('Failed to load users')
+  return res.json()
+}
 export const updateUser = (id, data) => mgpRequest(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then(r => r.json())
 export const deleteUser = async (id) => {
   const res = await mgpRequest(`/admin/users/${id}`, { method: 'DELETE' })
@@ -30,9 +40,14 @@ async function _credits<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export const getCreditLedger = (userId: string, opts: { limit?: number; offset?: number } = {}) => {
-  const { limit = 50, offset = 0 } = opts
-  return _credits(`/admin/users/${userId}/credits/ledger?limit=${limit}&offset=${offset}`)
+export const getCreditLedger = (
+  userId: string,
+  opts: { limit?: number; offset?: number; search?: string | null } = {},
+) => {
+  const { limit = 50, offset = 0, search = null } = opts
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (search && search.trim()) params.set('search', search.trim())
+  return _credits(`/admin/users/${userId}/credits/ledger?${params}`)
 }
 
 export const grantCredits = (userId: string, payload: { amount: number; reason: string }) =>
@@ -41,9 +56,13 @@ export const grantCredits = (userId: string, payload: { amount: number; reason: 
 export const refundProjectCredits = (projectId: string, payload: { reason: string }) =>
   _credits(`/admin/projects/${projectId}/credits/refund`, { method: 'POST', body: JSON.stringify(payload) })
 
-export const getPendingRefunds = (opts: { limit?: number; offset?: number } = {}) => {
-  const { limit = 50, offset = 0 } = opts
-  return _credits(`/admin/projects/pending-refunds?limit=${limit}&offset=${offset}`)
+export const getPendingRefunds = (
+  opts: { limit?: number; offset?: number; search?: string | null } = {},
+) => {
+  const { limit = 50, offset = 0, search = null } = opts
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (search && search.trim()) params.set('search', search.trim())
+  return _credits(`/admin/projects/pending-refunds?${params}`)
 }
 
 export const dismissRefundInbox = async (projectId: string, payload: { reason?: string | null; undo?: boolean }) => {

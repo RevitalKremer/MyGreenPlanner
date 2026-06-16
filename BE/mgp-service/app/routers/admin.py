@@ -10,7 +10,7 @@ from app.models.setting import AppSetting
 from app.models.project import Project
 from app.models.credit_transaction import CreditTransaction, CreditTxnKind
 from app.schemas.user import (
-    UserRead, UserUpdate,
+    UserRead, UserListResponse, UserUpdate,
     AdminGrantCreditsRequest, AdminRefundProjectRequest, AdminDismissRefundInboxRequest,
 )
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
@@ -24,24 +24,53 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 # ── Users ──────────────────────────────────────────────────────────────────────
 
-@router.get("/users", response_model=list[UserRead])
+@router.get("/users", response_model=UserListResponse)
 async def list_users(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Substring match on email or full_name."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).order_by(User.created_at))
-    users = list(result.scalars().all())
-    # The ORM stores spendable balance as `credits_balance`; UserRead exposes
-    # it as `credits_available` — names diverge so Pydantic from_attributes
-    # can't auto-map. Patch it per-row so the admin user picker shows real
-    # balances instead of 0. `credits_used` / `credits_total` stay at 0 here
-    # (the right-hand detail pane fetches the full snapshot via the ledger
-    # endpoint when a user is selected — paying for a sum-of-open-charges
-    # query for every row in the list would be wasted work).
-    return [
+    """Paginated user list for admin views.
+
+    Optional `search` is case-insensitive substring matching on `email`
+    OR `full_name`. The credits picker / Users tab share this endpoint.
+
+    `credits_available` is patched from the ORM's `credits_balance`
+    column (names diverge between schema and ORM). `credits_used` /
+    `credits_total` stay at 0 in the list view — those need a per-user
+    ledger query and aren't worth running for every row; the right-hand
+    detail pane fetches the full snapshot via the ledger endpoint when
+    a user is selected.
+    """
+    base = select(User)
+    clean_search = (search or '').strip()
+    if clean_search:
+        pattern = f"%{clean_search}%"
+        from sqlalchemy import or_
+        base = base.where(or_(
+            User.email.ilike(pattern),
+            User.full_name.ilike(pattern),
+        ))
+
+    total_rows = (await db.execute(
+        select(func.count()).select_from(base.subquery())
+    )).scalar_one()
+
+    page = await db.execute(
+        base.order_by(User.created_at).offset(offset).limit(limit)
+    )
+    users = list(page.scalars().all())
+    rows = [
         UserRead.model_validate(u).model_copy(update={'credits_available': u.credits_balance})
         for u in users
     ]
+    return UserListResponse(
+        rows=rows,
+        total_rows=total_rows,
+        has_more=(offset + len(rows)) < total_rows,
+    )
 
 
 @router.put("/users/{user_id}", response_model=UserRead)
@@ -207,6 +236,7 @@ async def get_user_ledger(
     user_id: str,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Substring match on reason, kind, or project_id."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -215,15 +245,24 @@ async def get_user_ledger(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    base = select(CreditTransaction).where(CreditTransaction.user_id == uid)
+    clean_search = (search or '').strip()
+    if clean_search:
+        pattern = f"%{clean_search}%"
+        from sqlalchemy import or_, cast, String
+        base = base.where(or_(
+            CreditTransaction.reason.ilike(pattern),
+            cast(CreditTransaction.kind, String).ilike(pattern),
+            cast(CreditTransaction.project_id, String).ilike(pattern),
+        ))
+
     total_rows = (await db.execute(
-        select(func.count(CreditTransaction.id)).where(CreditTransaction.user_id == uid)
+        select(func.count()).select_from(base.subquery())
     )).scalar_one()
 
     rows_result = await db.execute(
-        select(CreditTransaction)
-        .where(CreditTransaction.user_id == uid)
-        .order_by(CreditTransaction.created_at.desc())
-        .offset(offset).limit(limit)
+        base.order_by(CreditTransaction.created_at.desc())
+            .offset(offset).limit(limit)
     )
     rows = list(rows_result.scalars().all())
     snapshot = await credits_service.compute_account_snapshot(db, user)
@@ -293,10 +332,15 @@ async def admin_refund_project(
 async def list_pending_refunds(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Substring match on project name, owner email, or charge reason."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Projects that are charged, quoted, not dismissed, and not yet refunded."""
+    """Projects that are charged, quoted, not dismissed, and not yet refunded.
+
+    Optional `search` is a case-insensitive substring filter applied to
+    project.name OR owner.email OR the project_charge ledger row's reason.
+    """
     base = (
         select(Project, CreditTransaction, User)
         .join(CreditTransaction, CreditTransaction.project_id == Project.id)
@@ -309,6 +353,16 @@ async def list_pending_refunds(
             CreditTransaction.refunded.is_(False),
         )
     )
+    clean_search = (search or '').strip()
+    if clean_search:
+        pattern = f"%{clean_search}%"
+        from sqlalchemy import or_, cast, String
+        base = base.where(or_(
+            Project.name.ilike(pattern),
+            User.email.ilike(pattern),
+            CreditTransaction.reason.ilike(pattern),
+            cast(Project.id, String).ilike(pattern),
+        ))
 
     total_rows = (await db.execute(
         select(func.count()).select_from(base.subquery())
