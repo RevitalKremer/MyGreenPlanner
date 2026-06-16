@@ -38,7 +38,18 @@ export const BG_MID    = '#f0f0f0'  // mid background
 export const WHITE     = '#fff'
 export const BLACK     = '#000'
 export const WHITE_10  = 'rgba(255,255,255,0.1)'  // white divider on dark bg
+export const WHITE_20  = 'rgba(255,255,255,0.2)'  // subtle white border on dark bg
+export const WHITE_40  = 'rgba(255,255,255,0.4)'  // faint white text on dark bg
 export const WHITE_50  = 'rgba(255,255,255,0.5)'  // muted white text on dark bg
+export const WHITE_75  = 'rgba(255,255,255,0.75)' // secondary white text on dark bg
+export const WHITE_90  = 'rgba(255,255,255,0.9)'  // primary white text on dark bg
+export const BLACK_35  = 'rgba(0,0,0,0.35)'       // faint dark text on light bg
+
+// ── Modal scrim / shadow (shared overlay tokens) ─────────────────────────
+// Scrim sits behind centered modal cards; shadow is the rgba portion of the
+// box-shadow drop applied to the card. Reuse across all overlay components.
+export const MODAL_SCRIM    = 'rgba(0,0,0,0.45)'
+export const MODAL_SHADOW   = 'rgba(0,0,0,0.2)'
 
 // ── Warning / Orange ─────────────────────────────────────────────────────
 export const WARNING       = '#FF9800'  // warning orange
@@ -169,3 +180,12 @@ export const TAB_ACTIVE_COLOR  = '#d97706'  // active tab text
 export const ROW_SELECTED_BG   = '#edf5d8'  // selected row background
 export const TRAP_BADGE_BG     = '#ddeea0'  // trapezoid badge background
 export const SECTION_HEADER_BG = '#f0f4e8'  // section header background
+
+// ── Credits ledger row backgrounds (admin CreditsTab) ────────────────────
+// One pastel tint per ledger transaction kind, chosen so the kind chip is
+// readable at a glance against the table row background.
+export const LEDGER_TRIAL_BG    = '#F1F8E9'  // trial grant — pale green
+export const LEDGER_GRANT_BG    = '#E3F2FD'  // admin_grant — pale blue
+export const LEDGER_REFUND_BG   = '#FFF3E0'  // admin_refund — pale orange
+export const LEDGER_PURCHASE_BG = '#F3E5F5'  // purchase — pale purple
+export const LEDGER_CHARGE_BG   = '#FCE4EC'  // project_charge — pale pink

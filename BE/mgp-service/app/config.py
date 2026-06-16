@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     MONDAY_API_TOKEN: str = ""
     MONDAY_BOARD_ID: str = ""
     MONDAY_GROUP_ID: str = ""
+    # Optional dedicated board/group for "Get Quotation" requests from step 5.
+    # When left empty, the quotation flow falls back to MONDAY_BOARD_ID /
+    # MONDAY_GROUP_ID — so today's single-board setup keeps working and
+    # ops can flip to a dedicated board later via env without a deploy.
+    MONDAY_QUOTATION_BOARD_ID: str = ""
+    MONDAY_QUOTATION_GROUP_ID: str = ""
 
 
 settings = Settings()

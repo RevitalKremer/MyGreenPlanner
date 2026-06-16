@@ -7,9 +7,13 @@ import ProductsTab from './ProductsTab'
 import PanelTypesTab from './PanelTypesTab'
 import SettingsTab from './SettingsTab'
 import UsersTab from './UsersTab'
+import CreditsTab from './CreditsTab'
 
 const TABS = [
   { key: 'users', label: 'Users' },
+  // Monetization lives as a sub-tab inside Credits so all
+  // credits-related management stays in one place.
+  { key: 'credits', label: 'Credits' },
   { key: 'panel-types', label: 'Panels' },
   { key: 'products', label: 'Materials' },
   { key: 'settings', label: 'Default Settings' },
@@ -59,10 +63,11 @@ export default function AdminPanel({ onClose, currentUserId }) {
 
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
-        {activeTab === 'users'       && <UsersTab currentUserId={currentUserId} />}
-        {activeTab === 'panel-types' && <PanelTypesTab />}
-        {activeTab === 'products'    && <ProductsTab />}
-        {activeTab === 'settings'    && <SettingsTab />}
+        {activeTab === 'users'        && <UsersTab currentUserId={currentUserId} />}
+        {activeTab === 'credits'      && <CreditsTab />}
+        {activeTab === 'panel-types'  && <PanelTypesTab />}
+        {activeTab === 'products'     && <ProductsTab />}
+        {activeTab === 'settings'     && <SettingsTab />}
       </div>
     </div>,
     document.body

@@ -14,6 +14,7 @@ import FinishCelebration from './components/FinishCelebration'
 import ConfirmDialog from './components/ConfirmDialog'
 import { useConfirm } from './hooks/useConfirm'
 import ProjectInfoModal from './components/ProjectInfoModal'
+import MyAccount from './components/MyAccount'
 import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
@@ -24,8 +25,6 @@ import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
 import './App.css'
 
 const TOTAL_STEPS = 5
-
-const LOGIN_REQUIRED_STEP = 3   // step 3+ (construction planning, approval, export) require login
 
 // Trap-scope schema params persisted server-side under step3.trapezoidConfigs
 // (mirrors BE TRAP_SCHEMA_PARAM_KEYS). On every BE result these are re-synced
@@ -48,7 +47,6 @@ function App() {
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [step3ResetKey, setStep3ResetKey] = useState(0)
   const [showAuthGate, setShowAuthGate] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // 'next'
   const [saveState, setSaveState] = useState(null) // null | 'saving' | 'saved' | 'error'
   const PAGE_SIZE = 10
   const [cloudProjects, setCloudProjects] = useState([])
@@ -65,12 +63,15 @@ function App() {
     null | { fromStep: number; toStep: number; errors: Array<{ code: string; field: string; params?: Record<string, any> }> }
   >(null)
   // One-shot signal: logout sets this to true so the welcome screen opens the
-  // login modal as soon as it mounts. Anonymous-until-step-4 flow means we
-  // don't auto-open on normal app load — only after explicit logout.
+  // login modal as soon as it mounts. On normal load we don't auto-open —
+  // the user clicks "New Project" (or the UserChip sign-in) when they're ready.
   const [openLoginOnWelcome, setOpenLoginOnWelcome] = useState(false)
   // Celebration modal shown when the user clicks Finish on step 5.
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [showProjectInfo, setShowProjectInfo] = useState(false)
+  // My Account modal — opened from UserChip (non-admin avatar click + balance
+  // pill) and from the insufficient-credits banner CTA.
+  const [showMyAccount, setShowMyAccount] = useState(false)
 
   // Handle ?verifyToken= and ?resetToken= URL params on mount
   useEffect(() => {
@@ -89,13 +90,6 @@ function App() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const requireLogin = (action) => {
-    if (auth.user) return true
-    setPendingAction(action)
-    setShowAuthGate(true)
-    return false
-  }
 
   const fetchCloudProjects = useCallback(async (searchTerm = '') => {
     if (!auth.user) return
@@ -557,12 +551,11 @@ function App() {
     if (tab === 'login') await auth.login(email, password)
     else await auth.register(email, password, fullName, phone)
     setShowAuthGate(false)
-    // Save the in-memory project immediately at its current step so
-    // anonymous-up-to-step-N work is persisted the moment the account exists.
-    // Any subsequent step transition writes again on top of this baseline.
+    // If the user signed back in mid-wizard (UserChip → Sign In), flush
+    // the current in-memory state to BE so subsequent step transitions
+    // build on a saved baseline. For the reset-token URL flow no project
+    // is in memory yet — handleCloudSave is a no-op in that case.
     try { await handleCloudSave(s.currentStep) } catch (e) { console.error(e) }
-    if (pendingAction === 'next') s.handleNext(TOTAL_STEPS)
-    setPendingAction(null)
   }
 
   const handleLoadCloudProject = async (projectId) => {
@@ -583,6 +576,12 @@ function App() {
           location: cloudProject.location,
           date: cloudProject.created_at,
           roofSpec: cloudProject.roof_spec,
+          // Credits markers — needed so the FE doesn't re-prompt the 2→3
+          // confirm dialog on an already-charged project, and so Step 5's
+          // Get-Quotation button shows the right label on a previously-
+          // quoted project.
+          credits_charged_at: cloudProject.credits_charged_at ?? null,
+          quotation_requested_at: cloudProject.quotation_requested_at ?? null,
         },
         currentStep,
         activeTab,
@@ -697,6 +696,7 @@ function App() {
           onRegister={auth.register}
           onLogout={handleLogout}
           onUpdateProfile={auth.updateProfile}
+          onOpenAccount={() => setShowMyAccount(true)}
           authLoading={auth.authLoading}
           cloudProjects={cloudProjects}
           cloudProjectsLoading={cloudProjectsLoading}
@@ -710,12 +710,22 @@ function App() {
           projectsSearch={projectsSearch}
           onForgotPassword={auth.forgotPassword}
           onResetPassword={auth.resetPassword}
+          trialGrantCredits={Number(s.appDefaults?.trialGrantCredits ?? 0)}
           appConfigReady={s.appConfigReady}
           resetToken={urlResetToken}
           onClearResetToken={() => setUrlResetToken(null)}
           openLoginOnMount={openLoginOnWelcome}
           onClearOpenLogin={() => setOpenLoginOnWelcome(false)}
         />
+        {showMyAccount && auth.user && (
+          <MyAccount
+            user={auth.user}
+            onClose={() => setShowMyAccount(false)}
+            onRefresh={auth.refreshMe}
+            onUpdateProfile={auth.updateProfile}
+            onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+          />
+        )}
         {confirmDialogElement}
       </>
     )
@@ -767,6 +777,30 @@ function App() {
                   <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.28)', whiteSpace: 'nowrap' }}>
                     {s.currentProject.date ? new Date(s.currentProject.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
                   </span>
+                  {/* Charged-project marker — subtle pill, opens the project
+                      details modal on click. Visible to all roles since the
+                      charge is a property of the project. */}
+                  {s.currentProject.credits_charged_at && (
+                    <span
+                      onClick={() => setShowProjectInfo(true)}
+                      title={t('projectInfo.charged.tooltip')}
+                      style={{
+                        fontSize: '0.6rem', fontWeight: 700,
+                        color: 'rgba(255,255,255,0.65)',
+                        background: 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.18)',
+                        padding: '1px 6px', borderRadius: 999,
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        whiteSpace: 'nowrap', cursor: 'pointer',
+                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                      }}
+                    >
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      {t('projectInfo.charged.badge')}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{t('app.subtitle')}</div>
@@ -797,9 +831,10 @@ function App() {
             {/* User chip — avatar / sign-in / admin gear */}
             <UserChip
               user={auth.user}
-              onSignIn={() => { setPendingAction(null); setShowAuthGate(true) }}
+              onSignIn={() => setShowAuthGate(true)}
               onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
+              onOpenAccount={() => setShowMyAccount(true)}
               dark
             />
 
@@ -1040,6 +1075,12 @@ function App() {
             beTrapezoidGroups={beTrapezoidGroups}
             bomDeltas={s.step5BomDeltas ?? {}}
             onBomDeltasChange={s.setStep5BomDeltas}
+            onQuotationRequested={(timestamp) => {
+              s.setCurrentProject({
+                ...s.currentProject,
+                quotation_requested_at: timestamp,
+              })
+            }}
             products={s.products}
             productByType={s.productByType}
             altsByType={s.altsByType}
@@ -1048,11 +1089,12 @@ function App() {
 
         {showAuthGate && (
           <AuthModal
-            onClose={() => { setShowAuthGate(false); setPendingAction(null); setUrlResetToken(null) }}
+            onClose={() => { setShowAuthGate(false); setUrlResetToken(null) }}
             onSuccess={handleAuthGateSuccess}
             onForgotPassword={auth.forgotPassword}
             onResetPassword={auth.resetPassword}
             resetToken={urlResetToken}
+            trialGrantCredits={Number(s.appDefaults?.trialGrantCredits ?? 0)}
           />
         )}
 
@@ -1065,6 +1107,16 @@ function App() {
           <ProjectInfoModal
             project={s.currentProject}
             onClose={() => setShowProjectInfo(false)}
+          />
+        )}
+
+        {showMyAccount && auth.user && (
+          <MyAccount
+            user={auth.user}
+            onClose={() => setShowMyAccount(false)}
+            onRefresh={auth.refreshMe}
+            onUpdateProfile={auth.updateProfile}
+            onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}
 
@@ -1082,40 +1134,82 @@ function App() {
           </div>
         )}
 
-        {stepTransitionErrors && (
-          <div style={{
-            position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
-            background: ERROR_BG, color: ERROR_DARK,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
-            border: `1px solid ${ERROR}`,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
-                <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
-                  {stepTransitionErrors.errors.map((err, i) => (
-                    <li key={i} style={{ marginBottom: '0.2rem' }}>
-                      {t(`step2.error.${err.code}` as any, err.params || {})}
-                    </li>
-                  ))}
-                </ul>
+        {stepTransitionErrors && (() => {
+          // Insufficient credits is the only error code that has a "fix" action
+          // surfaced inline — open My Account so the user sees their balance +
+          // the (future) top-up flow. Other codes are content errors with no
+          // standardized CTA.
+          const hasInsufficientCredits = stepTransitionErrors.errors.some(e => e.code === 'insufficientCredits')
+          return (
+            <div style={{
+              position: 'fixed', bottom: '5rem', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 1100, maxWidth: '32rem', padding: '0.85rem 1.1rem', borderRadius: '10px',
+              background: ERROR_BG, color: ERROR_DARK,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12)', fontSize: '0.85rem',
+              border: `1px solid ${ERROR}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{t('app.stepTransitionError')}</div>
+                  <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
+                    {stepTransitionErrors.errors.map((err, i) => (
+                      <li key={i} style={{ marginBottom: '0.2rem' }}>
+                        {t(`step2.error.${err.code}` as any, err.params || {})}
+                      </li>
+                    ))}
+                  </ul>
+                  {hasInsufficientCredits && (
+                    <button
+                      onClick={() => { setStepTransitionErrors(null); setShowMyAccount(true) }}
+                      style={{
+                        marginTop: '0.55rem', background: ERROR_DARK, color: 'white',
+                        border: 'none', borderRadius: 6, padding: '0.4rem 0.75rem',
+                        fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      {t('step2.error.insufficientCredits.cta')}
+                    </button>
+                  )}
+                </div>
+                <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
               </div>
-              <button onClick={() => setStepTransitionErrors(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: 0, color: 'inherit', opacity: 0.6 }}>×</button>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </main>
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
+            const nextStep = s.currentStep - 1
+            // ── Credits guard: a charged project cannot reset to step 1.
+            //    Going back to step 1 would let the user redo the whole
+            //    plan for free. The guard is a property of the PROJECT,
+            //    not the user — admins viewing a charged project see
+            //    the same block (the BE rejects the request either way).
+            //    Offer Start Over (= new project) as the explicit way out.
+            const isChargedProjectResetToStep1 = (
+              nextStep === 1 &&
+              !!s.currentProject?.credits_charged_at
+            )
+            if (isChargedProjectResetToStep1) {
+              const proceed = await confirmDialog.ask({
+                title: t('step2.error.chargedProjectCannotResetToStep1.title'),
+                message: t('step2.error.chargedProjectCannotResetToStep1.message'),
+                confirmLabel: t('nav.startOverNew'),
+                cancelLabel: t('common.cancel'),
+              })
+              if (proceed) {
+                s.handleStartOver()
+              }
+              return
+            }
             if (!await confirmDialog.ask({
-              message: t('nav.backWarning', { from: s.currentStep, to: s.currentStep - 1 }),
+              message: t('nav.backWarning', { from: s.currentStep, to: nextStep }),
               variant: 'warning',
             })) return
-            const result = await updateStep(s.cloudProjectId, s.currentStep - 1).catch(console.error)
+            const result = await updateStep(s.cloudProjectId, nextStep).catch(console.error)
             if (result?.clearedSteps) {
               s.resetStepData(result.clearedSteps)
               if (result.clearedSteps.includes('step3')) setStep3ResetKey(k => k + 1)
@@ -1130,13 +1224,8 @@ function App() {
           {[1, 2, 3, 4, 5].map((step) => (
             <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
               <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
-              <div className="step-name" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <div className="step-name">
                 {STEP_NAME[step]}
-                {step >= LOGIN_REQUIRED_STEP && !auth.user && (
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ opacity: 0.55, flexShrink: 0 }}>
-                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                )}
               </div>
             </div>
           ))}
@@ -1166,7 +1255,6 @@ function App() {
           className="btn-nav btn-next"
           style={!s.canProceedToNextStep() ? { pointerEvents: 'none' } : undefined}
           onClick={async () => {
-            if (s.currentStep >= LOGIN_REQUIRED_STEP - 1 && !requireLogin('next')) return
             // On the final step the button reads "Finish" — show the
             // celebration popup instead of trying to advance.
             if (s.currentStep === TOTAL_STEPS) {
@@ -1174,6 +1262,22 @@ function App() {
               return
             }
             const stepBeforeNext = s.currentStep
+            // ── Credits: confirm prompt on first 2→3 transition ─────────────
+            // Skipped for admins (unlimited usage) and for already-charged
+            // projects (re-traversal stays free).
+            const isCreditsUser = auth.user && auth.user.role !== 'admin'
+            const alreadyCharged = !!s.currentProject?.credits_charged_at
+            if (stepBeforeNext === 2 && isCreditsUser && !alreadyCharged) {
+              const cost = Number(s.appDefaults?.projectCostCredits ?? 0)
+              const available = auth.user?.credits_available ?? 0
+              if (cost > 0) {
+                const proceed = await confirmDialog.ask({
+                  title: t('step2.confirmCredits.title'),
+                  message: t('step2.confirmCredits.message', { cost, available }),
+                })
+                if (!proceed) return
+              }
+            }
             // Run pre-transition prep (e.g. refresh trapezoids for 2→3) WITHOUT
             // advancing currentStep yet — the visual advance must wait for the
             // server's 200 OK so a BE rejection keeps the user on this step.
@@ -1181,37 +1285,51 @@ function App() {
             // Let React flush the prep's state updates before save reads them.
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
             setStepTransitionErrors(null)
-            if (auth.user) {
-              const savedId = await handleCloudSave(stepBeforeNext)
-              if (!savedId) return  // save failed — handleCloudSave already surfaced it
-              // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
-              // the transition. The Step3 component fills step3FlushDirtyRef
-              // with a function that awaits saveTab for every dirty tab and
-              // clears its dirty flag.
-              if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
-                try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
+            const savedId = await handleCloudSave(stepBeforeNext)
+            if (!savedId) return  // save failed — handleCloudSave already surfaced it
+            // Auto-apply any unsaved step-3 edits (rails/bases/detail) before
+            // the transition. The Step3 component fills step3FlushDirtyRef
+            // with a function that awaits saveTab for every dirty tab and
+            // clears its dirty flag.
+            if (stepBeforeNext === 3 && step3FlushDirtyRef.current) {
+              try { await step3FlushDirtyRef.current() } catch (e) { console.error(e) }
+            }
+            try {
+              const stepResult = await updateStep(savedId, stepBeforeNext + 1)
+              applyBeResult(stepResult)
+              // First successful forward entry into step 3+ charges the project
+              // server-side. Mirror that marker locally so re-entering 2→3
+              // doesn't re-trigger the confirm prompt (BE is the source of
+              // truth — it would no-op the re-charge — but the FE prompt
+              // gate needs the same signal). Skipped for admins (no charge).
+              if (
+                stepBeforeNext === 2 &&
+                auth.user?.role !== 'admin' &&
+                !s.currentProject?.credits_charged_at
+              ) {
+                s.setCurrentProject({
+                  ...s.currentProject,
+                  credits_charged_at: new Date().toISOString(),
+                })
+                // The charge moved the balance — pull the fresh /auth/me so
+                // the UserChip pill + MyAccount totals reflect it without
+                // waiting for a tab-focus refresh.
+                auth.refreshMe?.().catch(() => {})
               }
-              try {
-                const stepResult = await updateStep(savedId, stepBeforeNext + 1)
-                applyBeResult(stepResult)
-                s.advanceToNextStep()
-              } catch (e) {
-                if (e instanceof StepTransitionError) {
-                  setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
-                } else {
-                  console.error(e)
-                  setSaveState('error')
-                  setTimeout(() => setSaveState(null), 3000)
-                }
-              }
-            } else {
-              // Anonymous flow — no BE round-trip yet, just advance locally.
               s.advanceToNextStep()
+            } catch (e) {
+              if (e instanceof StepTransitionError) {
+                setStepTransitionErrors({ fromStep: e.fromStep, toStep: e.toStep, errors: e.errors })
+              } else {
+                console.error(e)
+                setSaveState('error')
+                setTimeout(() => setSaveState(null), 3000)
+              }
             }
           }}
           disabled={!s.canProceedToNextStep()}
         >
-          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : s.currentStep === LOGIN_REQUIRED_STEP - 1 && !auth.user ? t('nav.signIn') : t('nav.next')}
+          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : t('nav.next')}
         </button>
         </span>
       </footer>

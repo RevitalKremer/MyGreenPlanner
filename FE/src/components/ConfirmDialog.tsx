@@ -1,11 +1,16 @@
-import { BLACK, ERROR, ERROR_DARK, WARNING, WARNING_DARK, BORDER_LIGHT, TEXT_DARK, TEXT_LIGHT } from '../styles/colors'
+import { BLACK, WHITE, PRIMARY, ERROR, ERROR_DARK, WARNING, WARNING_DARK, BORDER_LIGHT, TEXT, TEXT_DARK, TEXT_LIGHT } from '../styles/colors'
 
 type Variant = 'default' | 'warning' | 'danger'
 
-const ACCENT: Record<Variant, { fg: string; bg: string }> = {
-  default: { fg: TEXT_DARK,   bg: '#fff' },
-  warning: { fg: WARNING_DARK, bg: WARNING },
-  danger:  { fg: ERROR_DARK,   bg: ERROR },
+// fg  — title bar text colour
+// bg  — confirm-button background
+// btnFg — confirm-button foreground (contrasts against bg). Previously
+//         the confirm button hardcoded '#fff' which collided with the
+//         default variant's white background, leaving the label invisible.
+const ACCENT: Record<Variant, { fg: string; bg: string; btnFg: string }> = {
+  default: { fg: TEXT_DARK,    bg: PRIMARY, btnFg: TEXT },
+  warning: { fg: WARNING_DARK, bg: WARNING, btnFg: WHITE },
+  danger:  { fg: ERROR_DARK,   bg: ERROR,   btnFg: WHITE },
 }
 
 export default function ConfirmDialog({
@@ -91,7 +96,7 @@ export default function ConfirmDialog({
             autoFocus
             style={{
               padding: '0.45rem 0.95rem', borderRadius: '7px',
-              background: a.bg, color: '#fff',
+              background: a.bg, color: a.btnFg,
               border: `1px solid ${a.bg}`, cursor: 'pointer',
               fontSize: '0.85rem', fontWeight: 700,
             }}

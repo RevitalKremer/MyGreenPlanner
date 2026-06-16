@@ -27,6 +27,7 @@ from app.services import proposal_service
 from app.services import settings_cache
 from app.services import email_service
 from app.services import monday_service
+from app.services import credits as credits_service
 from app.config import settings as app_settings
 from app.routers.deps import get_current_user, require_admin
 
@@ -310,6 +311,7 @@ async def update_step(
         result = await project_service.update_project_step(
             db, project, new_step,
             rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
+            current_user=current_user,
         )
     except project_service.StepTransitionInvalidError as e:
         # Structured detail so the FE can translate per-error and highlight
@@ -911,6 +913,111 @@ async def send_report_email(
     return {
         "status": "sent",
         "to": app_settings.COMPANY_REPORT_EMAIL,
+        "monday": monday_result,
+        "monday_error": monday_error,
+    }
+
+
+# Server-side soft cooldown on /request-quotation. Re-clicks within this
+# window return the existing state without re-pushing to Monday — friendly
+# to legitimate re-submissions (an hour later), kills accidental double-taps.
+QUOTATION_COOLDOWN_SECONDS = 30
+
+
+@router.post("/{project_id}/request-quotation")
+async def request_quotation(
+    project_id: uuid.UUID,
+    file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Push a project to the quotation board on Monday and mark it as having
+    been quoted. **No credit movement happens here** — refunds are admin-
+    driven once the order signs externally. The user is informed via the FE
+    refund-policy notice.
+
+    Roles:
+      - Any authenticated user can request a quotation for a project they own
+        (admins can request for any project, via get_accessible_project).
+      - Admin's PDF includes pricing/quantities; non-admin's PDF (when sent)
+        is plans-only — the FE enforces that choice when building the file.
+
+    Routing: if MONDAY_QUOTATION_BOARD_ID is set, the item lands there;
+    otherwise it falls back to MONDAY_BOARD_ID so today's setup works.
+
+    Cooldown: re-clicks within QUOTATION_COOLDOWN_SECONDS skip the Monday
+    push and return the existing quotation_requested_at. Idempotent for the
+    common double-click case.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    now = datetime.now(timezone.utc)
+
+    # Cooldown: if quoted very recently, no-op the Monday push.
+    last = project.quotation_requested_at
+    within_cooldown = bool(last and (now - last).total_seconds() < QUOTATION_COOLDOWN_SECONDS)
+    if within_cooldown:
+        return {
+            "status": "cooldown",
+            "quotationRequestedAt": last.isoformat(),
+            "monday": None,
+        }
+
+    pdf_bytes = await file.read() if file is not None else None
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'project'))
+    today_str = now.strftime('%Y-%m-%d')
+    pdf_filename  = f"{safe_name}_plan_{today_str}.pdf"
+    xlsx_filename = f"{safe_name}_proposal_{today_str}.xlsx"
+
+    XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    PDF_MIME  = 'application/pdf'
+
+    # xlsx (with pricing) is the canonical deliverable Sadot needs to quote.
+    xlsx_bytes = await proposal_service.generate_proposal(db, project)
+
+    monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
+    if pdf_bytes is not None:
+        monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
+
+    # Quotation routing — fall back to the main board when the dedicated one
+    # isn't configured. Empty strings count as "not configured".
+    quotation_board = app_settings.MONDAY_QUOTATION_BOARD_ID or None
+    quotation_group = app_settings.MONDAY_QUOTATION_GROUP_ID or None
+
+    monday_result = None
+    monday_error = None
+    try:
+        owner = await db.get(User, project.owner_id) if project.owner_id else None
+        monday_result = await monday_service.upload_proposal(
+            project_id=str(project_id),
+            project_name=project.name or str(project_id),
+            client_name=project.client_name or "",
+            owner_email=(owner.email if owner else "") or "",
+            owner_full_name=(owner.full_name if owner else None),
+            owner_phone=(owner.phone_number if owner else None),
+            owner_created_at=(owner.created_at if owner else None),
+            location=project.location,
+            attachments=monday_attachments,
+            board_id=quotation_board,
+            group_id=quotation_group,
+            intent_label="[QUOTATION REQUEST]",
+        )
+    except Exception as e:
+        monday_error = str(e)
+        logger.exception("Monday upload failed for quotation on project %s", project_id)
+
+    # Mark the project as quoted regardless of Monday's success — admins use
+    # this flag to populate the pending-refunds inbox; a Monday outage
+    # shouldn't block the user from having "requested" status.
+    credits_service.mark_quotation_requested(project)
+    await db.commit()
+    await db.refresh(project, attribute_names=['quotation_requested_at'])
+
+    return {
+        "status": "sent",
+        "quotationRequestedAt": project.quotation_requested_at.isoformat() if project.quotation_requested_at else None,
         "monday": monday_result,
         "monday_error": monday_error,
     }
