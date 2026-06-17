@@ -5,10 +5,11 @@ import {
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
   DANGER, ADD_GREEN_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 const emptyForm = { type_key: '', product_type: 'panel', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true }
 
-function EditRow({ product, onSave, onCancel }) {
+function EditRow({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState({
     ...emptyForm, ...product,
     length_cm: product?.length_cm ?? '',
@@ -41,14 +42,14 @@ function EditRow({ product, onSave, onCancel }) {
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <select value={String(form.active)} onChange={e => set('active', e.target.value === 'true')}
           style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem' }}>
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
+          <option value="true">{t('admin.common.active')}</option>
+          <option value="false">{t('admin.common.inactive')}</option>
         </select>
       </td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <div style={{ display: 'flex', gap: '0.35rem' }}>
-          <button onClick={handleSave} style={{ padding: '0.3rem 0.7rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '5px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer' }}>Save</button>
-          <button onClick={onCancel} style={{ padding: '0.3rem 0.7rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.78rem', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} style={{ padding: '0.3rem 0.7rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '5px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.save')}</button>
+          <button onClick={onCancel} style={{ padding: '0.3rem 0.7rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.cancel')}</button>
         </div>
       </td>
     </tr>
@@ -56,6 +57,7 @@ function EditRow({ product, onSave, onCancel }) {
 }
 
 export default function PanelTypesTab() {
+  const { t } = useLang()
   const [panels, setPanels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -66,7 +68,8 @@ export default function PanelTypesTab() {
   useEffect(() => {
     getProducts('panel')
       .then(data => { setPanels(data); setLoading(false) })
-      .catch(() => { setError('Failed to load panels'); setLoading(false) })
+      .catch(() => { setError(t('admin.panels.failedLoad')); setLoading(false) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleCreate = async (form) => {
@@ -74,7 +77,7 @@ export default function PanelTypesTab() {
       const created = await createProduct({ ...form, product_type: 'panel' })
       setPanels(prev => [...prev, created])
       setAddingNew(false)
-    } catch { setError('Failed to create panel') }
+    } catch { setError(t('admin.panels.failedCreate')) }
   }
 
   const handleUpdate = async (id, form) => {
@@ -82,22 +85,22 @@ export default function PanelTypesTab() {
       const updated = await updateProduct(id, form)
       setPanels(prev => prev.map(p => p.id === id ? updated : p))
       setEditingId(null)
-    } catch { setError('Failed to update panel') }
+    } catch { setError(t('admin.panels.failedUpdate')) }
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this panel?')) return
+    if (!window.confirm(t('admin.panels.deleteConfirm'))) return
     try {
       await deleteProduct(id)
       setPanels(prev => prev.filter(p => p.id !== id))
-    } catch { setError('Failed to delete panel') }
+    } catch { setError(t('admin.panels.failedDelete')) }
   }
 
   const handleToggleActive = async (p) => {
     try {
       const updated = await updateProduct(p.id, { active: !p.active })
       setPanels(prev => prev.map(x => x.id === p.id ? updated : x))
-    } catch { setError('Failed to update') }
+    } catch { setError(t('admin.common.failedUpdate')) }
   }
 
   const filtered = panels.filter(p =>
@@ -106,7 +109,7 @@ export default function PanelTypesTab() {
 
   const thStyle: React.CSSProperties = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}` }
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>Loading…</div>
+  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>{t('admin.common.loading')}</div>
 
   return (
     <div>
@@ -115,7 +118,7 @@ export default function PanelTypesTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <input
           value={filter} onChange={e => setFilter(e.target.value)}
-          placeholder="Filter by name or key…"
+          placeholder={t('admin.panels.filterPlaceholder')}
           style={{ padding: '0.4rem 0.7rem', borderRadius: '7px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.85rem', width: '240px', outline: 'none' }}
         />
         <button
@@ -123,7 +126,7 @@ export default function PanelTypesTab() {
           disabled={addingNew}
           style={{ padding: '0.4rem 0.9rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '7px', fontWeight: '700', fontSize: '0.83rem', cursor: 'pointer' }}
         >
-          + Add Panel
+          {t('admin.panels.addPanel')}
         </button>
       </div>
 
@@ -131,30 +134,30 @@ export default function PanelTypesTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
-              <th style={thStyle}>Key</th>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>P.N.</th>
-              <th style={thStyle}>L (cm)</th>
-              <th style={thStyle}>W (cm)</th>
-              <th style={thStyle}>Wp</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Actions</th>
+              <th style={thStyle}>{t('admin.panels.col.key')}</th>
+              <th style={thStyle}>{t('admin.panels.col.name')}</th>
+              <th style={thStyle}>{t('admin.panels.col.pn')}</th>
+              <th style={thStyle}>{t('admin.panels.col.lengthCm')}</th>
+              <th style={thStyle}>{t('admin.panels.col.widthCm')}</th>
+              <th style={thStyle}>{t('admin.panels.col.wp')}</th>
+              <th style={thStyle}>{t('admin.panels.col.status')}</th>
+              <th style={thStyle}>{t('admin.common.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {addingNew && (
-              <EditRow product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} />
+              <EditRow product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} t={t} />
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
                 <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
-                  No panels defined yet.
+                  {t('admin.panels.empty')}
                 </td>
               </tr>
             )}
             {filtered.map((p, i) => (
               editingId === p.id ? (
-                <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} />
+                <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} t={t} />
               ) : (
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY }}>{p.type_key}</td>
@@ -169,18 +172,18 @@ export default function PanelTypesTab() {
                       background: p.active ? SUCCESS_BG : BORDER_FAINT,
                       color: p.active ? SUCCESS : TEXT_VERY_LIGHT,
                     }}>
-                      {p.active ? 'Active' : 'Inactive'}
+                      {p.active ? t('admin.common.active') : t('admin.common.inactive')}
                     </button>
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
                       <button onClick={() => { setEditingId(p.id); setAddingNew(false) }}
                         style={{ padding: '0.2rem 0.55rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        Edit
+                        {t('admin.common.edit')}
                       </button>
                       <button onClick={() => handleDelete(p.id)}
                         style={{ padding: '0.2rem 0.55rem', background: 'transparent', color: DANGER, border: `1px solid ${DANGER}`, borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        Del
+                        {t('admin.common.del')}
                       </button>
                     </div>
                   </td>
@@ -190,7 +193,7 @@ export default function PanelTypesTab() {
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>{filtered.length} panel{filtered.length !== 1 ? 's' : ''}</div>
+      <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>{t('admin.panels.count', { count: filtered.length })}</div>
     </div>
   )
 }

@@ -908,7 +908,9 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 const slopeLen = topBeamLength
                 const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
                 const slopeLabel = (p) => fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm)
-                const slopeLiveDiag = liveDiagPunches.map(d => ({ x: atSlope2(d.topPosCm), label: fmt(d.topPosCm), origin: 'diagonal' }))
+                // Diagonal punches must honor the reverse setting too — mirror the BE
+                // slope reverse (top_beam_length - positionCm) so they match the rail punches.
+                const slopeLiveDiag = liveDiagPunches.map(d => ({ x: atSlope2(d.topPosCm), label: fmt(reverseBlockPunches ? slopeLen - d.topPosCm : d.topPosCm), origin: 'diagonal' }))
                 const points = makePunchPoints('slope', 'rail', atSlope2, slopeLabel, slopeLiveDiag)
                 return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}

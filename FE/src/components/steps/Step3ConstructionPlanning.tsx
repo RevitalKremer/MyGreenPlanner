@@ -14,6 +14,7 @@ import { buildFullTrapGhost } from './step3/tabUtils'
 import useStep3Settings from '../../hooks/useStep3Settings'
 import useRowData from '../../hooks/useRowData'
 import useSelectedGeometry from '../../hooks/useSelectedGeometry'
+import type { Block } from '../../types/projectData'
 
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ export default function Step3ConstructionPlanning({
   // Seeded from beTrapezoidsData[trapId].blocks on the first user gesture
   // (deferred to avoid sending phantom ops for unedited traps).
   // Shape: Record<string, { positionCm: number; isEnd?: boolean }[]>
-  const [customBlocksMap, setCustomBlocksMap] = useState<Record<string, { positionCm: number; isEnd?: boolean }[]>>({})
+  const [customBlocksMap, setCustomBlocksMap] = useState<Record<string, Block[]>>({})
 
   // ── Pending trap-extend ops queue ──────────────────────────────────────
   // Live state (not just a ref) so the canvas can preview each extension

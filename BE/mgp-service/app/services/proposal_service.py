@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
+from app.models.user import User
 from app.services import bom_service
 
 
@@ -103,14 +104,22 @@ def _build_data_row(line_num: int, item: dict, product: Product | None) -> dict:
     dep_qty = round(qty * dep_pct / 100, 4) if dep_pct else 0
     total_with_dep = round(total_price * (1 + dep_pct / 100), 2) if dep_pct else round(total_price, 2)
 
+    # Summary rows (depreciation_waste, processing) carry their amount in
+    # `qty` (meters) with pieceLengthM=1 and zero weight. The per-row total
+    # formula in column I is `unit_price × G (qty_kg_or_units)`, so the amount
+    # must live in G — otherwise it multiplies by the zero weight and totals 0.
+    # Shift the displayed values one cell left: blank the length column, put a
+    # count of 1 in `qty` (F), and the meters in G.
+    is_summary = item.get('element') in ('depreciation_waste', 'processing')
+
     return {
         'is_section_header':       False,
         'line_num':                line_num,
         'location':                item.get('areaLabel') or '',
         'product_name_he':         (product.name_he if product else None) or item.get('name') or item.get('element', ''),
-        'length_m':                round(piece_length, 2) if is_length_row else None,
-        'qty':                     qty,
-        'qty_kg_or_units':         qty_kg_or_units,
+        'length_m':                None if is_summary else (round(piece_length, 2) if is_length_row else None),
+        'qty':                     1 if is_summary else qty,
+        'qty_kg_or_units':         round(qty, 2) if is_summary else qty_kg_or_units,
         'unit_price_ils':          round(price_per_unit, 2),
         'total_price_ils':         round(total_price, 2),
         'depreciation_qty':        dep_qty,
@@ -308,6 +317,30 @@ def _shift_merged_ranges(ws, insert_row: int, shift: int) -> None:
         ws.merge_cells(f'{c1}{mr.min_row + shift}:{c2}{mr.max_row + shift}')
 
 
+def _apply_after_discount(ws, ctx: dict) -> None:
+    """Replace the PRICE_AFTER_DISCOUNT token with a formula referencing the
+    cell directly above it:
+        `=<above>*(100-d)/100`   when a discount is set, or
+        `=<above>`               when there is none (normal price).
+
+    Must run AFTER row insertion/formula-shifting: insert_rows moves the token
+    cell and the cell above it down together, so the relative `row-1`
+    reference stays correct at the final position.
+    """
+    discount = ctx.get('DISCOUNT_PCT')
+    for excel_row in ws.iter_rows():
+        for cell in excel_row:
+            if cell.value is None:
+                continue
+            if str(cell.value).strip() == 'PRICE_AFTER_DISCOUNT':
+                col = get_column_letter(cell.column)
+                above = cell.row - 1
+                if discount is None or discount == 0:
+                    cell.value = f'={col}{above}'
+                else:
+                    cell.value = f'={col}{above}*(100-{discount:g})/100'
+
+
 def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> None:
     # 1. Walk every cell once: replace the static placeholders, find the anchor.
     anchor_row = None
@@ -325,8 +358,22 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
     if anchor_row is None:
         raise ValueError(f"{ws.title}: anchor placeholder {anchor_placeholder!r} not found")
 
+    # Capture any per-row formula the template author placed in the data-row
+    # prototype (e.g. column I = unit price × qty as a Table structured ref).
+    # These use [#This Row] references, so the identical text is valid on every
+    # data row — we replicate it across all rows instead of writing a
+    # precomputed value, keeping Excel as the source of truth for that column.
+    anchor_formulas = {
+        cell.column: cell.value
+        for cell in ws[anchor_row]
+        if isinstance(cell.value, str) and cell.value.startswith('=')
+    }
+
     n = len(rows)
     if n == 0:
+        # No data rows: no insertion happens, so the token is still at its
+        # template position. Apply the discount and bail.
+        _apply_after_discount(ws, ctx)
         return
     shift = n - 1
     last_data_row = anchor_row + n - 1
@@ -351,14 +398,20 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
                 _copy_cell_style(ws.cell(anchor_row, c), ws.cell(target, c))
 
     # 3. Fill data rows. Empty/None values are left blank (don't write '').
+    #    Formula columns (captured from the prototype row) get the formula text
+    #    replicated on every row instead of the precomputed value.
     for offset, row in enumerate(rows):
         excel_row_idx = anchor_row + offset
         for key, col_letter in _COLUMN_MAP.items():
+            col_idx = _col_to_idx(col_letter)
+            if col_idx in anchor_formulas:
+                ws.cell(excel_row_idx, col_idx).value = anchor_formulas[col_idx]
+                continue
             val = row.get(key)
             if val == '' or val is None:
-                ws.cell(excel_row_idx, _col_to_idx(col_letter)).value = None
+                ws.cell(excel_row_idx, col_idx).value = None
             else:
-                ws.cell(excel_row_idx, _col_to_idx(col_letter)).value = val
+                ws.cell(excel_row_idx, col_idx).value = val
 
     # 3b. Grow the Excel Table that owns the anchor so its style + calculated
     #     columns apply to every new row.
@@ -385,6 +438,10 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
             cell.value = f'=SUM({col}{anchor_row}:{col}{last_data_row})'
         else:
             cell.value = _shift_formula_refs(formula, threshold_row=anchor_row + 1, shift=shift)
+
+    # 5. Now that every cell is at its final position, resolve the
+    #    PRICE_AFTER_DISCOUNT token against the cell directly above it.
+    _apply_after_discount(ws, ctx)
 
 
 def _col_to_idx(letter: str) -> int:
@@ -439,12 +496,22 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
         elif element == 'block_50x24x15':
             blocks_weight += total_weight
 
+    # Client discount comes from the project OWNER's account (admin-set).
+    # None / 0 → normal price (no discount applied).
+    owner = await db.get(User, project.owner_id)
+    discount = (
+        float(owner.discount_percent)
+        if owner is not None and owner.discount_percent is not None
+        else None
+    )
+
     ctx = {
         'CUSTOMER_NAME':    getattr(project, 'client_name', '') or '',
         'PROJECT_NAME':     project.name or '',
         'PROPOSAL_DATE':    today,
         'ALUMINIUM_WEIGHT': round(aluminium_weight, 1),
         'BLOCKS_WEIGHT':    round(blocks_weight, 1),
+        'DISCOUNT_PCT':     discount,
     }
 
     if 'quantities' in wb.sheetnames:

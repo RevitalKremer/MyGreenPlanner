@@ -59,7 +59,7 @@ export default function Step4PlanApproval({ user, projectId, onEnsureSaved, plan
         overflow: 'hidden',
       }}>
         {/* Header */}
-        <div style={{ background: PRIMARY_BG, borderBottom: `1px solid ${BORDER_FAINT}`, padding: '1.5rem 2rem' }}>
+        <div style={{ background: PRIMARY_BG, borderBottom: `1px solid ${BORDER_FAINT}`, padding: '1.5rem 2rem', textAlign: 'center' }}>
           <div style={{ fontSize: '1.25rem', fontWeight: '700', color: PRIMARY_DARK }}>{t('step5.title')}</div>
           <div style={{ fontSize: '0.85rem', color: TEXT_SECONDARY, marginTop: '0.35rem', lineHeight: 1.5 }}>
             {t('step5.subtitle')}
@@ -70,11 +70,11 @@ export default function Step4PlanApproval({ user, projectId, onEnsureSaved, plan
 
           {isApproved ? (
             /* ── Approved state ── */
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
               <div style={{
                 background: SUCCESS_BG, border: `1px solid ${SUCCESS}`,
                 borderRadius: 8, padding: '1.25rem 1.5rem',
-                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
               }}>
                 <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>✓</span>
                 <div>
@@ -168,6 +168,8 @@ export default function Step4PlanApproval({ user, projectId, onEnsureSaved, plan
           fontSize: '0.75rem',
           color: TEXT_MUTED,
           lineHeight: 1.6,
+          whiteSpace: 'pre-line',
+          textAlign: 'center',
         }}>
           {t('step5.disclaimer')}
         </div>

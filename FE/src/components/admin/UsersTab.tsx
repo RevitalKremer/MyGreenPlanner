@@ -5,10 +5,11 @@ import {
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG,
   ERROR, ERROR_BG, DANGER, WARNING, WARNING_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 const ROLES = ['user', 'admin']
 
-function RoleBadge({ role }) {
+function RoleBadge({ role, t }) {
   const isAdmin = role === 'admin'
   return (
     <span style={{
@@ -17,25 +18,26 @@ function RoleBadge({ role }) {
       background: isAdmin ? WARNING_BG : BG_SUBTLE,
       color: isAdmin ? WARNING : TEXT_SECONDARY,
     }}>
-      {role}
+      {isAdmin ? t('admin.users.role.admin') : t('admin.users.role.user')}
     </span>
   )
 }
 
-function StatusDot({ active, verified }) {
+function StatusDot({ active, verified, t }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <span style={{ fontSize: '0.72rem', color: active ? SUCCESS : ERROR, fontWeight: '600' }}>
-        {active ? '● Active' : '● Inactive'}
+        {active ? `● ${t('admin.common.active')}` : `● ${t('admin.common.inactive')}`}
       </span>
       <span style={{ fontSize: '0.68rem', color: verified ? SUCCESS : WARNING, fontWeight: '500' }}>
-        {verified ? '✓ Verified' : '⚠ Unverified'}
+        {verified ? `✓ ${t('admin.common.verified')}` : t('admin.common.unverified')}
       </span>
     </div>
   )
 }
 
 export default function UsersTab({ currentUserId }) {
+  const { t } = useLang()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -50,8 +52,9 @@ export default function UsersTab({ currentUserId }) {
     // state pattern as CreditsTab.
     getUsers({ limit: 500, offset: 0 })
       .then(res => setUsers(res.rows))
-      .catch(() => setError('Failed to load users'))
+      .catch(() => setError(t('admin.users.failedLoad')))
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleRoleChange = async (user, role) => {
@@ -80,8 +83,27 @@ export default function UsersTab({ currentUserId }) {
     }
   }
 
+  const handleDiscountChange = async (user, raw) => {
+    const trimmed = String(raw).trim()
+    // Empty input clears the discount back to null (normal price).
+    const next = trimmed === '' ? null : Math.min(100, Math.max(0, parseFloat(trimmed)))
+    if (next !== null && Number.isNaN(next)) return
+    const cur = user.discount_percent ?? null
+    if (next === cur) return // no-op (covers blur without edit)
+    setSaving(s => ({ ...s, [user.id]: true }))
+    setSaveErr(e => ({ ...e, [user.id]: null }))
+    try {
+      const updated = await updateUser(user.id, { discount_percent: next })
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+    } catch (err) {
+      setSaveErr(e => ({ ...e, [user.id]: err.message }))
+    } finally {
+      setSaving(s => ({ ...s, [user.id]: false }))
+    }
+  }
+
   const handleDelete = async (user) => {
-    if (!confirm(`Delete user "${user.full_name}" (${user.email})? This cannot be undone.`)) return
+    if (!confirm(t('admin.users.deleteConfirm', { name: user.full_name, email: user.email }))) return
     setSaving(s => ({ ...s, [user.id]: true }))
     setSaveErr(e => ({ ...e, [user.id]: null }))
     try {
@@ -96,20 +118,30 @@ export default function UsersTab({ currentUserId }) {
   const canEdit = (user) => !user.is_sysadmin
   const canDelete = (user) => !user.is_sysadmin && user.role !== 'admin' && user.id !== currentUserId
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT, fontSize: '0.88rem' }}>Loading users…</div>
+  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT, fontSize: '0.88rem' }}>{t('admin.users.loading')}</div>
   if (error) return <div style={{ padding: '2rem', color: ERROR, fontSize: '0.88rem' }}>{error}</div>
+
+  const COL_HEADERS = [
+    t('admin.users.col.name'),
+    t('admin.users.col.email'),
+    t('admin.users.col.role'),
+    t('admin.users.col.status'),
+    t('admin.users.col.joined'),
+    t('admin.users.col.discount'),
+    t('admin.common.actions'),
+  ]
 
   return (
     <div>
       <div style={{ fontSize: '0.78rem', color: TEXT_SECONDARY, marginBottom: '1rem' }}>
-        {users.length} user{users.length !== 1 ? 's' : ''} total
+        {t('admin.users.total', { count: users.length })}
       </div>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${BORDER_LIGHT}` }}>
-              {['Name', 'Email', 'Role', 'Status', 'Joined', 'Actions'].map(h => (
+              {COL_HEADERS.map(h => (
                 <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '700', color: TEXT_SECONDARY, whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -124,12 +156,12 @@ export default function UsersTab({ currentUserId }) {
                     {user.full_name}
                     {user.is_sysadmin && (
                       <span style={{ fontSize: '0.65rem', background: ERROR_BG, color: ERROR, borderRadius: '10px', padding: '0.1rem 0.45rem', fontWeight: '700' }}>
-                        sysadmin
+                        {t('admin.users.sysadminBadge')}
                       </span>
                     )}
                     {user.id === currentUserId && (
                       <span style={{ fontSize: '0.65rem', background: SUCCESS_BG, color: SUCCESS, borderRadius: '10px', padding: '0.1rem 0.45rem', fontWeight: '700' }}>
-                        you
+                        {t('admin.common.you')}
                       </span>
                     )}
                   </div>
@@ -151,10 +183,10 @@ export default function UsersTab({ currentUserId }) {
                         cursor: 'pointer', background: 'white',
                       }}
                     >
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      {ROLES.map(r => <option key={r} value={r}>{r === 'admin' ? t('admin.users.role.admin') : t('admin.users.role.user')}</option>)}
                     </select>
                   ) : (
-                    <RoleBadge role={user.role} />
+                    <RoleBadge role={user.role} t={t} />
                   )}
                 </td>
 
@@ -172,14 +204,14 @@ export default function UsersTab({ currentUserId }) {
                         fontSize: '0.75rem', fontWeight: '600',
                       }}
                     >
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.is_active ? t('admin.common.active') : t('admin.common.inactive')}
                     </button>
                   ) : (
-                    <StatusDot active={user.is_active} verified={user.is_verified} />
+                    <StatusDot active={user.is_active} verified={user.is_verified} t={t} />
                   )}
                   {!canEdit(user) ? null : (
                     <div style={{ fontSize: '0.68rem', color: user.is_verified ? TEXT_LIGHT : WARNING, marginTop: '2px' }}>
-                      {user.is_verified ? 'Verified' : '⚠ Unverified'}
+                      {user.is_verified ? t('admin.common.verified') : t('admin.common.unverified')}
                     </div>
                   )}
                 </td>
@@ -187,6 +219,32 @@ export default function UsersTab({ currentUserId }) {
                 {/* Joined */}
                 <td style={{ padding: '0.6rem 0.75rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                   {new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                </td>
+
+                {/* Discount % — null/empty = normal price */}
+                <td style={{ padding: '0.6rem 0.75rem' }}>
+                  {canEdit(user) ? (
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      defaultValue={user.discount_percent ?? ''}
+                      disabled={!!saving[user.id]}
+                      placeholder="—"
+                      title={t('admin.users.discountTooltip')}
+                      onBlur={e => handleDiscountChange(user, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      style={{
+                        width: '4.5rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
+                        border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
+                      }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: TEXT_SECONDARY }}>
+                      {user.discount_percent != null ? `${user.discount_percent}%` : '—'}
+                    </span>
+                  )}
                 </td>
 
                 {/* Actions */}
@@ -198,18 +256,18 @@ export default function UsersTab({ currentUserId }) {
                     <button
                       onClick={() => handleDelete(user)}
                       disabled={!!saving[user.id]}
-                      title="Delete user"
+                      title={t('admin.users.deleteTooltip')}
                       style={{
                         background: 'none', border: `1px solid ${BORDER_LIGHT}`, cursor: 'pointer',
                         color: DANGER, borderRadius: '6px', padding: '0.25rem 0.55rem',
                         fontSize: '0.75rem', fontWeight: '600',
                       }}
                     >
-                      Delete
+                      {t('admin.common.delete')}
                     </button>
                   ) : (
                     <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>
-                      {user.is_sysadmin ? 'Protected' : user.role === 'admin' ? 'Admin' : user.id === currentUserId ? 'You' : '—'}
+                      {user.is_sysadmin ? t('admin.common.protected') : user.role === 'admin' ? t('admin.users.adminBadge') : user.id === currentUserId ? t('admin.common.you') : '—'}
                     </span>
                   )}
                 </td>
