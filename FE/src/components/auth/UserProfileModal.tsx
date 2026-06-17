@@ -23,12 +23,12 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!fullName.trim()) return
+    if (!fullName.trim() || !phone.trim()) return
     setError(null)
     setSaved(false)
     setLoading(true)
     try {
-      await onSave({ full_name: fullName.trim(), phone_number: phone.trim() || null })
+      await onSave({ full_name: fullName.trim(), phone_number: phone.trim() })
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (err) {
@@ -105,12 +105,12 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
           {/* Phone */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-              {t('profile.phone')}
+              {t('profile.phone')} <span style={{ color: ERROR }}>{t('profile.required')}</span>
             </label>
             <input
               type="tel" value={phone} onChange={e => setPhone(e.target.value)}
               onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
-              placeholder={t('profile.phonePlaceholder')}
+              placeholder={t('profile.phonePlaceholder')} required
               style={inputStyle(focused === 'phone')}
             />
           </div>
@@ -126,12 +126,12 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
             </div>
           )}
 
-          <button type="submit" disabled={loading || !fullName.trim()} style={{
+          <button type="submit" disabled={loading || !fullName.trim() || !phone.trim()} style={{
             width: '100%', padding: '0.75rem',
-            background: loading || !fullName.trim() ? BORDER_LIGHT : PRIMARY,
-            color: loading || !fullName.trim() ? TEXT_VERY_LIGHT : TEXT,
+            background: loading || !fullName.trim() || !phone.trim() ? BORDER_LIGHT : PRIMARY,
+            color: loading || !fullName.trim() || !phone.trim() ? TEXT_VERY_LIGHT : TEXT,
             border: 'none', borderRadius: '8px',
-            cursor: loading || !fullName.trim() ? 'default' : 'pointer',
+            cursor: loading || !fullName.trim() || !phone.trim() ? 'default' : 'pointer',
             fontWeight: '700', fontSize: '0.95rem',
             transition: 'background 0.15s',
           }}>
