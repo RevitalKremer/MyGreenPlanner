@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
+from app.models.user import User
 from app.services import bom_service
 
 
@@ -308,6 +309,30 @@ def _shift_merged_ranges(ws, insert_row: int, shift: int) -> None:
         ws.merge_cells(f'{c1}{mr.min_row + shift}:{c2}{mr.max_row + shift}')
 
 
+def _apply_after_discount(ws, ctx: dict) -> None:
+    """Replace the PRICE_AFTER_DISCOUNT token with a formula referencing the
+    cell directly above it:
+        `=<above>*(100-d)/100`   when a discount is set, or
+        `=<above>`               when there is none (normal price).
+
+    Must run AFTER row insertion/formula-shifting: insert_rows moves the token
+    cell and the cell above it down together, so the relative `row-1`
+    reference stays correct at the final position.
+    """
+    discount = ctx.get('DISCOUNT_PCT')
+    for excel_row in ws.iter_rows():
+        for cell in excel_row:
+            if cell.value is None:
+                continue
+            if str(cell.value).strip() == 'PRICE_AFTER_DISCOUNT':
+                col = get_column_letter(cell.column)
+                above = cell.row - 1
+                if discount is None or discount == 0:
+                    cell.value = f'={col}{above}'
+                else:
+                    cell.value = f'={col}{above}*(100-{discount:g})/100'
+
+
 def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> None:
     # 1. Walk every cell once: replace the static placeholders, find the anchor.
     anchor_row = None
@@ -327,6 +352,9 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
 
     n = len(rows)
     if n == 0:
+        # No data rows: no insertion happens, so the token is still at its
+        # template position. Apply the discount and bail.
+        _apply_after_discount(ws, ctx)
         return
     shift = n - 1
     last_data_row = anchor_row + n - 1
@@ -386,6 +414,10 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
         else:
             cell.value = _shift_formula_refs(formula, threshold_row=anchor_row + 1, shift=shift)
 
+    # 5. Now that every cell is at its final position, resolve the
+    #    PRICE_AFTER_DISCOUNT token against the cell directly above it.
+    _apply_after_discount(ws, ctx)
+
 
 def _col_to_idx(letter: str) -> int:
     return ord(letter.upper()) - ord('A') + 1
@@ -439,12 +471,22 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
         elif element == 'block_50x24x15':
             blocks_weight += total_weight
 
+    # Client discount comes from the project OWNER's account (admin-set).
+    # None / 0 → normal price (no discount applied).
+    owner = await db.get(User, project.owner_id)
+    discount = (
+        float(owner.discount_percent)
+        if owner is not None and owner.discount_percent is not None
+        else None
+    )
+
     ctx = {
         'CUSTOMER_NAME':    getattr(project, 'client_name', '') or '',
         'PROJECT_NAME':     project.name or '',
         'PROPOSAL_DATE':    today,
         'ALUMINIUM_WEIGHT': round(aluminium_weight, 1),
         'BLOCKS_WEIGHT':    round(blocks_weight, 1),
+        'DISCOUNT_PCT':     discount,
     }
 
     if 'quantities' in wb.sheetnames:

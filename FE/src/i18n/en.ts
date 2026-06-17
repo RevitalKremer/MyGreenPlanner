@@ -637,6 +637,8 @@ const en = {
   'admin.users.col.role':       'Role',
   'admin.users.col.status':     'Status',
   'admin.users.col.joined':     'Joined',
+  'admin.users.col.discount':   'Discount %',
+  'admin.users.discountTooltip': 'Client discount (0–100%). Leave empty for normal price.',
   'admin.users.deleteConfirm':  'Delete user "{name}" ({email})? This cannot be undone.',
   'admin.users.deleteTooltip':  'Delete user',
   'admin.users.sysadminBadge':  'sysadmin',

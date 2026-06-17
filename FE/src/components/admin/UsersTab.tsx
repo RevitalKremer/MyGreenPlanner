@@ -83,6 +83,25 @@ export default function UsersTab({ currentUserId }) {
     }
   }
 
+  const handleDiscountChange = async (user, raw) => {
+    const trimmed = String(raw).trim()
+    // Empty input clears the discount back to null (normal price).
+    const next = trimmed === '' ? null : Math.min(100, Math.max(0, parseFloat(trimmed)))
+    if (next !== null && Number.isNaN(next)) return
+    const cur = user.discount_percent ?? null
+    if (next === cur) return // no-op (covers blur without edit)
+    setSaving(s => ({ ...s, [user.id]: true }))
+    setSaveErr(e => ({ ...e, [user.id]: null }))
+    try {
+      const updated = await updateUser(user.id, { discount_percent: next })
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+    } catch (err) {
+      setSaveErr(e => ({ ...e, [user.id]: err.message }))
+    } finally {
+      setSaving(s => ({ ...s, [user.id]: false }))
+    }
+  }
+
   const handleDelete = async (user) => {
     if (!confirm(t('admin.users.deleteConfirm', { name: user.full_name, email: user.email }))) return
     setSaving(s => ({ ...s, [user.id]: true }))
@@ -108,6 +127,7 @@ export default function UsersTab({ currentUserId }) {
     t('admin.users.col.role'),
     t('admin.users.col.status'),
     t('admin.users.col.joined'),
+    t('admin.users.col.discount'),
     t('admin.common.actions'),
   ]
 
@@ -199,6 +219,32 @@ export default function UsersTab({ currentUserId }) {
                 {/* Joined */}
                 <td style={{ padding: '0.6rem 0.75rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                   {new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                </td>
+
+                {/* Discount % — null/empty = normal price */}
+                <td style={{ padding: '0.6rem 0.75rem' }}>
+                  {canEdit(user) ? (
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      defaultValue={user.discount_percent ?? ''}
+                      disabled={!!saving[user.id]}
+                      placeholder="—"
+                      title={t('admin.users.discountTooltip')}
+                      onBlur={e => handleDiscountChange(user, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      style={{
+                        width: '4.5rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
+                        border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
+                      }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: TEXT_SECONDARY }}>
+                      {user.discount_percent != null ? `${user.discount_percent}%` : '—'}
+                    </span>
+                  )}
                 </td>
 
                 {/* Actions */}

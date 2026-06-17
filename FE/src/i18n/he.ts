@@ -635,6 +635,8 @@ const he = {
   'admin.users.col.role':       'הרשאה',
   'admin.users.col.status':     'סטטוס',
   'admin.users.col.joined':     'הצטרף',
+  'admin.users.col.discount':   'הנחה %',
+  'admin.users.discountTooltip': 'הנחת לקוח (0–100%). השאר ריק למחיר רגיל.',
   'admin.users.deleteConfirm':  'למחוק את המשתמש "{name}" ({email})? פעולה זו אינה ניתנת לביטול.',
   'admin.users.deleteTooltip':  'מחק משתמש',
   'admin.users.sysadminBadge':  'מנהל-על',

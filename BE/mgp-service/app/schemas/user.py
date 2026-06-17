@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from app.models.user import UserRole
 
 
@@ -21,6 +21,8 @@ class UserRead(BaseModel):
     is_verified: bool
     is_sysadmin: bool
     lang: str = 'en'
+    # Admin-set client discount, percent 0–100. None = no discount.
+    discount_percent: float | None = None
     created_at: datetime
     # Credits snapshot. `available` is the live wallet balance (lifetime).
     # `used` and `total` are CALENDAR-YEAR windowed — only count
@@ -71,6 +73,9 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     is_active: bool | None = None
     role: UserRole | None = None
+    # Percent 0–100. Send null explicitly to clear (back to normal price).
+    # The router applies fields with exclude_unset, so an explicit null sticks.
+    discount_percent: float | None = Field(default=None, ge=0, le=100)
 
 
 class UserProfileUpdate(BaseModel):
