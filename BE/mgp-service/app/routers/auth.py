@@ -163,7 +163,8 @@ async def update_me(
     if payload.full_name is not None:
         current_user.full_name = payload.full_name
     if payload.phone_number is not None:
-        current_user.phone_number = payload.phone_number or None
+        # Validated non-blank by UserProfileUpdate; store as-is.
+        current_user.phone_number = payload.phone_number.strip()
     if payload.lang is not None:
         current_user.lang = payload.lang
     await db.commit()

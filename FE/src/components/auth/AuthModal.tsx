@@ -238,19 +238,21 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                   </div>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
-                      {t('auth.phone')}
+                      {t('auth.phone')} <span style={{ color: ERROR }}>{t('auth.required')}</span>
                     </label>
                     <input
                       type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                       onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
-                      placeholder={t('auth.phonePlaceholder')} style={inputStyle(focused === 'phone')}
+                      placeholder={t('auth.phonePlaceholder')} required style={inputStyle(focused === 'phone')}
                     />
                   </div>
                 </>
               )}
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.email')}</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                  {t('auth.email')} {mode === 'register' && <span style={{ color: ERROR }}>{t('auth.required')}</span>}
+                </label>
                 <input
                   type="email" value={email} onChange={e => setEmail(e.target.value)}
                   onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
@@ -260,7 +262,9 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
               </div>
 
               <div style={{ marginBottom: mode === 'login' ? '0.5rem' : '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>{t('auth.password')}</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                  {t('auth.password')} {mode === 'register' && <span style={{ color: ERROR }}>{t('auth.required')}</span>}
+                </label>
                 <input
                   type="password" value={password} onChange={e => setPassword(e.target.value)}
                   onFocus={() => setFocused('pass')} onBlur={() => setFocused(null)}

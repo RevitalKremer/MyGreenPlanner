@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.models.user import UserRole
 
 
@@ -8,7 +8,9 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    phone_number: str | None = None
+    # Mandatory at registration (the DB column stays nullable for legacy rows
+    # and admin-created users). min_length=1 rejects empty/whitespace-only.
+    phone_number: str = Field(min_length=1)
 
 
 class UserRead(BaseModel):
@@ -82,3 +84,12 @@ class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     phone_number: str | None = None
     lang: str | None = None
+
+    @field_validator('phone_number')
+    @classmethod
+    def phone_not_blank(cls, v: str | None) -> str | None:
+        # None means "not changing phone" (e.g. a lang-only update) — allowed.
+        # But if phone is being set, it cannot be blanked out.
+        if v is not None and not v.strip():
+            raise ValueError('phone_number cannot be empty')
+        return v
