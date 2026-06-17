@@ -1,13 +1,13 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, BORDER_FAINT, BORDER, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS_DARK, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
+import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, ERROR_BG, BORDER_FAINT, BORDER, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS, SUCCESS_BG, SUCCESS_DARK, MODAL_SHADOW, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { PDFDocument } from 'pdf-lib'
-import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail } from '../../services/projectsApi'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail, requestQuotation } from '../../services/projectsApi'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
 import AreasLayoutPage from './step5/AreasLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
@@ -257,7 +257,15 @@ export default function Step5PdfReport({
   beTrapezoidGroups = [],
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
+  // Fired with the new ISO timestamp after a successful Get Quotation.
+  // App.tsx merges it into currentProject so the button label survives
+  // navigations / remounts.
+  onQuotationRequested = null,
 }) {
+  // Admins see the full step 5 surface (BOM tab + Excel + pricing-bearing
+  // PDF sections). Non-admins see only the plans-only PDF + the Get Quotation
+  // button — they don't have access to BOM, pricing, or the auto Monday push.
+  const isAdmin = user?.role === 'admin'
   const page1Ref = useRef(null)
   const page2Ref = useRef(null)
   const page3Ref = useRef(null)
@@ -265,13 +273,28 @@ export default function Step5PdfReport({
   const page5Ref = useRef(null)
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
-  const { lang } = useLang()
-  const [activeTab, setActiveTab] = useState('bom')
+  const { lang, t } = useLang()
+  const [activeTab, setActiveTab] = useState(isAdmin ? 'bom' : 'pdf')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
   const [bomItems, setBomItems] = useState([])
   const [bomLoading, setBomLoading] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle')
+
+  // ── Get Quotation state ────────────────────────────────────────────────
+  // Local mirror of project.quotation_requested_at so the button label can
+  // flip immediately on success without waiting for a parent re-fetch. Init
+  // from the project prop so a reload of an already-quoted project still
+  // shows "Request again" rather than "Get Quotation".
+  const [quotationRequestedAt, setQuotationRequestedAt] = useState<string | null>(
+    project?.quotation_requested_at ?? null
+  )
+  useEffect(() => {
+    setQuotationRequestedAt(project?.quotation_requested_at ?? null)
+  }, [project?.quotation_requested_at, project?.id])
+  const [requestingQuotation, setRequestingQuotation] = useState(false)
+  const [quotationBanner, setQuotationBanner] = useState<'success' | 'error' | null>(null)
+  const hasRequestedQuotation = !!quotationRequestedAt
 
   // Fetch BOM from server on mount
   useEffect(() => {
@@ -547,8 +570,15 @@ export default function Step5PdfReport({
   }
 
   // ── Generate menu ────────────────────────────────────────────────────────
+  // Non-admins can only export plans (no pricing / quantities). The state still
+  // tracks all three keys so the admin dropdown logic stays unchanged; the
+  // non-admin path forces beContent to empty regardless.
   const [menuOpen, setMenuOpen]     = useState(false)
-  const [pdfContent, setPdfContent] = useState({ pricing: true, quantities: true, plans: true })
+  const [pdfContent, setPdfContent] = useState(
+    isAdmin
+      ? { pricing: true,  quantities: true,  plans: true }
+      : { pricing: false, quantities: false, plans: true }
+  )
   const menuRef      = useRef<HTMLDivElement>(null)
   const generateRef  = useRef<HTMLButtonElement>(null)
 
@@ -616,7 +646,12 @@ export default function Step5PdfReport({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      await sendReportEmail(projectId, finalBytes, filename)
+      // Auto-push to Monday is admin-only. Non-admin users push to Monday
+      // explicitly via the dedicated "Get Quotation" button (Phase 6) so a
+      // plain "save my plan PDF" download doesn't spam the sales board.
+      if (isAdmin) {
+        await sendReportEmail(projectId, finalBytes, filename)
+      }
     } catch (err) {
       console.error('Generate PDF failed:', err)
       alert('Generate PDF failed')
@@ -625,12 +660,40 @@ export default function Step5PdfReport({
     }
   }
 
+  const handleRequestQuotation = async () => {
+    if (!projectId) return
+    setQuotationBanner(null)
+    setRequestingQuotation(true)
+    try {
+      const res = await requestQuotation(projectId)
+      if (res?.quotationRequestedAt) {
+        setQuotationRequestedAt(res.quotationRequestedAt)
+        // Tell the parent so currentProject.quotation_requested_at sticks —
+        // otherwise navigating away and back to step 5 finds the prop still
+        // null and the button label resets to "Get Quotation".
+        onQuotationRequested?.(res.quotationRequestedAt)
+      }
+      setQuotationBanner('success')
+      setTimeout(() => setQuotationBanner(null), 4000)
+    } catch (err) {
+      console.error('Quotation request failed:', err)
+      setQuotationBanner('error')
+      setTimeout(() => setQuotationBanner(null), 4000)
+    } finally {
+      setRequestingQuotation(false)
+    }
+  }
+
   const dateStr = new Date().toLocaleDateString('he-IL')
 
-  const tabs = [
-    { key: 'bom', label: 'Bill of Materials' },
-    { key: 'pdf', label: 'PDF Report' },
-  ]
+  const tabs = isAdmin
+    ? [
+        { key: 'bom', label: 'Bill of Materials' },
+        { key: 'pdf', label: 'PDF Report' },
+      ]
+    : [
+        { key: 'pdf', label: 'PDF Report' },
+      ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG, position: 'relative' }}>
@@ -644,6 +707,23 @@ export default function Step5PdfReport({
             <div className="spinner"></div>
             <p>Generating PDF...</p>
           </div>
+        </div>
+      )}
+
+      {/* Quotation banner — pops up briefly after Get Quotation completes. */}
+      {quotationBanner && (
+        <div style={{
+          position: 'fixed', top: '5rem', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9998, padding: '0.6rem 1rem', borderRadius: 8,
+          background: quotationBanner === 'success' ? SUCCESS_BG : ERROR_BG,
+          color: quotationBanner === 'success' ? SUCCESS : ERROR_DARK,
+          fontSize: '0.85rem', fontWeight: 700,
+          boxShadow: `0 4px 16px ${MODAL_SHADOW}`,
+          maxWidth: '32rem', textAlign: 'center',
+        }}>
+          {quotationBanner === 'success'
+            ? t('step5.quotation.success')
+            : t('step5.quotation.failed')}
         </div>
       )}
 
@@ -670,7 +750,56 @@ export default function Step5PdfReport({
         ))}
         <div style={{ flex: 1 }} />
 
-        {/* ── Generate dropdown ── */}
+        {/* ── Get Quotation ──
+            Available to all roles. Pushes the project to the Sadot
+            quotation board on Monday. No credit movement here — the refund
+            tooltip explains the policy. Label flips after the first
+            request so a re-click reads "Request quotation again". */}
+        <button
+          onClick={handleRequestQuotation}
+          disabled={!projectId || requestingQuotation}
+          title={t('step5.quotation.refundNotice')}
+          style={{
+            padding: '0.35rem 1rem',
+            background: hasRequestedQuotation ? WHITE : PRIMARY,
+            color: BLACK,
+            border: `1.5px solid ${hasRequestedQuotation ? BORDER : PRIMARY}`,
+            borderRadius: '6px',
+            fontSize: '0.78rem', fontWeight: '700',
+            cursor: (projectId && !requestingQuotation) ? 'pointer' : 'not-allowed',
+            opacity: (projectId && !requestingQuotation) ? 1 : 0.5,
+            marginRight: '0.4rem',
+            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          {requestingQuotation
+            ? t('step5.quotation.sending')
+            : hasRequestedQuotation
+              ? t('step5.quotation.requestAgain')
+              : t('step5.quotation.getQuotation')
+          }
+        </button>
+
+        {/* ── Generate ──
+            Non-admin: single "Generate PDF" button (plans only, no choices).
+            Admin: dropdown with Excel + pricing/quantities/plans options. */}
+        {!isAdmin ? (
+          <button
+            onClick={handleGeneratePdf}
+            disabled={!projectId || isExporting}
+            style={{
+              padding: '0.35rem 1rem',
+              background: PRIMARY, color: BLACK,
+              border: 'none', borderRadius: '6px',
+              fontSize: '0.78rem', fontWeight: '700',
+              cursor: (projectId && !isExporting) ? 'pointer' : 'not-allowed',
+              opacity: (projectId && !isExporting) ? 1 : 0.5,
+            }}
+          >↓ Generate PDF</button>
+        ) : (
         <div style={{ position: 'relative' }}>
           <button
             ref={generateRef}
@@ -757,6 +886,7 @@ export default function Step5PdfReport({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* BOM tab */}

@@ -24,7 +24,9 @@ export default function SettingsTab() {
 
   useEffect(() => {
     getSettings()
-      .then(data => { setSettings(data); setLoading(false) })
+      // Monetization rows have their own dedicated admin page; keep this
+      // tab focused on engineering/materials settings.
+      .then(data => { setSettings(data.filter(s => s.section !== 'monetization')); setLoading(false) })
       .catch(() => { setError('Failed to load settings'); setLoading(false) })
   }, [])
 

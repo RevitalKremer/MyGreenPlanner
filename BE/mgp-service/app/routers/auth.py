@@ -20,6 +20,7 @@ from app.services.auth import (
     hash_password,
 )
 from app.services.email_service import send_verification_email, send_reset_email
+from app.services import credits as credits_service
 from app.routers.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -87,6 +88,9 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     user.is_verified = True
+    # Idempotent — credits_service skips users who already have a 'trial' row.
+    # Safe to call on every verify (even re-verifications).
+    await credits_service.grant_trial_if_eligible(db, user)
     await db.commit()
 
 
@@ -135,9 +139,19 @@ async def logout(response: Response):
     response.delete_cookie(key=REFRESH_COOKIE, samesite="lax")
 
 
+async def _user_read_with_credits(db: AsyncSession, user: User) -> UserRead:
+    """Build a UserRead with credits_available/used/total computed from the ledger."""
+    snapshot = await credits_service.compute_account_snapshot(db, user)
+    base = UserRead.model_validate(user)
+    return base.model_copy(update=snapshot)
+
+
 @router.get("/me", response_model=UserRead)
-async def me(current_user: User = Depends(get_current_user)):
-    return current_user
+async def me(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await _user_read_with_credits(db, current_user)
 
 
 @router.patch("/me", response_model=UserRead)
@@ -154,4 +168,4 @@ async def update_me(
         current_user.lang = payload.lang
     await db.commit()
     await db.refresh(current_user)
-    return current_user
+    return await _user_read_with_credits(db, current_user)

@@ -64,17 +64,24 @@ async def _create_item(
     client: httpx.AsyncClient,
     item_name: str,
     column_values: dict,
+    *,
+    board_id: Optional[str] = None,
+    group_id: Optional[str] = None,
 ) -> str:
     """Create an item on the configured board+group with column values.
-    Returns the new item id."""
+
+    `board_id`/`group_id` override the defaults — used by the quotation flow
+    so it can target `MONDAY_QUOTATION_BOARD_ID` while existing call sites
+    keep pointing at `MONDAY_BOARD_ID`. Returns the new item id.
+    """
     query = """
       mutation ($board: ID!, $group: String, $name: String!, $cols: JSON) {
         create_item(board_id: $board, group_id: $group, item_name: $name, column_values: $cols) { id }
       }
     """
     vars_ = {
-        "board": settings.MONDAY_BOARD_ID,
-        "group": settings.MONDAY_GROUP_ID or None,
+        "board": board_id or settings.MONDAY_BOARD_ID,
+        "group": group_id if group_id is not None else (settings.MONDAY_GROUP_ID or None),
         "name": item_name,
         # Monday's `column_values` arg is a JSON-encoded string of the dict.
         "cols": json.dumps(column_values, ensure_ascii=False),
@@ -192,6 +199,9 @@ async def upload_proposal(
     owner_created_at: Optional[datetime] = None,
     location: Optional[str],
     attachments: Iterable[tuple[str, bytes, str]],
+    board_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    intent_label: Optional[str] = None,
 ) -> Optional[dict]:
     """Create an item with project metadata, post two updates (submitter
     contact details, then project details), and attach files to the
@@ -208,7 +218,12 @@ async def upload_proposal(
 
     # The board's Item Name column gets the project name; the dedicated
     # 'project name' text column gets "name — client_name" for searchability.
+    # An intent_label (e.g. "[QUOTATION REQUEST]") is prefixed so today's
+    # shared-board users can distinguish proposal uploads from quotation
+    # requests until each gets its own dedicated board.
     item_name = project_name or "(unnamed project)"
+    if intent_label:
+        item_name = f"{intent_label} {item_name}"
     project_label = f"{project_name} — {client_name}" if client_name else project_name
 
     column_values = {
@@ -232,7 +247,7 @@ async def upload_proposal(
     )
 
     async with httpx.AsyncClient() as client:
-        item_id = await _create_item(client, item_name, column_values)
+        item_id = await _create_item(client, item_name, column_values, board_id=board_id, group_id=group_id)
         logger.info("Monday: created item %s for project '%s'", item_id, item_name)
         # Post owner first, then project — Monday shows newest on top, so the
         # project details end up as the leading post visible on the item.

@@ -12,7 +12,7 @@ const inputStyle = (focused): React.CSSProperties => ({
   transition: 'border-color 0.15s',
 })
 
-export default function UserProfileModal({ user, onClose, onSave }) {
+export default function UserProfileModal({ user, onClose, onSave, onSignOut = null }) {
   const { t } = useLang()
   const [fullName, setFullName] = useState(user.full_name ?? '')
   const [phone, setPhone] = useState(user.phone_number ?? '')
@@ -138,6 +138,23 @@ export default function UserProfileModal({ user, onClose, onSave }) {
             {loading ? t('profile.saving') : t('profile.saveChanges')}
           </button>
         </form>
+
+        {/* Sign out — small secondary action below the save button, only
+            rendered when the parent threaded the handler through. */}
+        {onSignOut && (
+          <div style={{ marginTop: '1rem', textAlign: 'center', paddingTop: '0.75rem', borderTop: `1px solid ${BORDER_FAINT}` }}>
+            <button
+              onClick={onSignOut}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: TEXT_LIGHT, fontSize: '0.82rem', fontWeight: 600,
+                textDecoration: 'underline', padding: '0.25rem 0.5rem',
+              }}
+            >
+              {t('user.signOut')}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

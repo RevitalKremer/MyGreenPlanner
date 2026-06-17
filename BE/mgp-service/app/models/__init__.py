@@ -4,3 +4,4 @@ from app.models.project_image import ProjectImage
 from app.models.product import Product
 from app.models.setting import AppSetting
 from app.models.bom import ProjectBOM
+from app.models.credit_transaction import CreditTransaction

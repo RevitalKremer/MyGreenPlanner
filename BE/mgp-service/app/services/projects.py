@@ -17,6 +17,7 @@ from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
 from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid, group_identical_trapezoids
 from app.services import settings_cache
+from app.services import credits as credits_service
 from app.utils.math_helpers import round_to_1dp
 from app.utils.panel_geometry import (
     is_empty_orientation, infer_row_orientation,
@@ -2474,11 +2475,14 @@ async def compute_and_save_external_diagonals(
 async def update_project_step(
     db: AsyncSession, project: Project, new_step: int,
     rs=None, bs=None, tds=None,
+    current_user: User | None = None,
 ) -> dict:
     """
     Transition project to a new step with server-side data cleanup.
     Forward: resets dependent data and recomputes (e.g., rails+bases on 2→3).
     Backward: clears data from steps being navigated away from.
+
+    `current_user` is required for the 2→3 charge — pass it from the router.
     """
     # Infer old step from navigation; if not set, assume one step before new_step
     # (the FE always saves before calling updateStep, so the transition is always ±1)
@@ -2495,6 +2499,39 @@ async def update_project_step(
     transition_errors = _validate_step_transition(project, old_step, new_step)
     if transition_errors:
         raise StepTransitionInvalidError(old_step, new_step, transition_errors)
+
+    # ── Credits: block reset-to-step-1 on charged projects ──────────────
+    # Closes the "pay once, restart the whole plan" loophole — a user could
+    # otherwise charge 100 credits at 2→3, generate the PDF, go back to
+    # step 1 to redo the roof outline, and effectively get a second plan
+    # free. Charged projects are committed; to start fresh the user has to
+    # create a new project (which charges again). Iteration in steps 2+
+    # stays free as designed.
+    if new_step == 1 and project.credits_charged_at is not None:
+        raise StepTransitionInvalidError(old_step, new_step, [{
+            'code': 'chargedProjectCannotResetToStep1',
+            'field': 'currentStep',
+            'params': {},
+        }])
+
+    # ── Credits: charge once per project on first entry into step 3+ ──
+    # The legitimate FE flow only ever transitions ±1, so this almost always
+    # fires on 2→3. We gate on `new_step > 2 AND credits_charged_at IS NULL`
+    # instead of the exact 2→3 pair so a forged "advance straight to step 5"
+    # request can't sneak past the charge. Admins are skipped (charge_for_project
+    # no-ops on role='admin'). Already-charged projects are also no-ops, so
+    # re-entering step 3+ after going back to step 2 stays free. Insufficient
+    # credits is surfaced through the same StepTransitionInvalidError channel
+    # as other 2→3 validations.
+    if new_step > 2 and project.credits_charged_at is None and current_user is not None:
+        try:
+            await credits_service.charge_for_project(db, current_user, project)
+        except credits_service.InsufficientCreditsError as e:
+            raise StepTransitionInvalidError(old_step, new_step, [{
+                'code': 'insufficientCredits',
+                'field': 'credits',
+                'params': {'required': e.required, 'available': e.available},
+            }])
 
     data = copy.deepcopy(project.data or {})
     cleared = []
