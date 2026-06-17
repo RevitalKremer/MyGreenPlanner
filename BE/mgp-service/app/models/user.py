@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Enum as SAEnum, DateTime, Integer
+from sqlalchemy import String, Boolean, Enum as SAEnum, DateTime, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import enum
@@ -29,6 +29,10 @@ class User(Base):
     # Spendable balance. Admins never spend; their value is informational. Writes
     # always go through services/credits.py so the ledger and balance stay in sync.
     credits_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Admin-set client discount, percent 0–100. NULL = no discount (normal
+    # price). Applied to the price proposal's PRICE_AFTER_DISCOUNT cell as
+    # `cell_above * (100 - discount_percent) / 100`.
+    discount_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

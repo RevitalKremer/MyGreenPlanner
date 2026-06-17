@@ -88,7 +88,10 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify the system administrator")
     if user.id == current_admin.id and payload.role is not None and payload.role != current_admin.role:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change your own role")
-    for field, value in payload.model_dump(exclude_none=True).items():
+    # exclude_unset (not exclude_none): only touch fields the client actually
+    # sent, but honor an explicit null — e.g. clearing discount_percent back
+    # to "no discount". Omitted fields are left untouched.
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)
