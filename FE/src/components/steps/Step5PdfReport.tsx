@@ -665,7 +665,30 @@ export default function Step5PdfReport({
     setQuotationBanner(null)
     setRequestingQuotation(true)
     try {
-      const res = await requestQuotation(projectId)
+      // Attach the full plan PDF report alongside the server-generated Excel.
+      // Plan pages are only mounted while the PDF tab is active — mirror
+      // handleGeneratePdf: switch to it, then wait one frame for mount.
+      let planBytes: ArrayBuffer | null = null
+      let pdfFilename: string | null = null
+      try {
+        if (activeTab !== 'pdf') {
+          setActiveTab('pdf')
+          await new Promise(resolve => requestAnimationFrame(resolve))
+        }
+        planBytes = await buildPlansPdfBytes()
+        if (planBytes) {
+          const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
+          const dateStr  = new Date().toISOString().split('T')[0]
+          const idSuffix = String(projectId || '').replace(/-/g, '').slice(-8)
+          pdfFilename = `${safeName}_plan_${idSuffix}_${dateStr}.pdf`
+        }
+      } catch (pdfErr) {
+        // A rendering hiccup must not block the quotation itself — send without
+        // the PDF (the Excel still goes through) and log for diagnosis.
+        console.error('Quotation PDF build failed, sending without it:', pdfErr)
+      }
+
+      const res = await requestQuotation(projectId, planBytes, pdfFilename)
       if (res?.quotationRequestedAt) {
         setQuotationRequestedAt(res.quotationRequestedAt)
         // Tell the parent so currentProject.quotation_requested_at sticks —
