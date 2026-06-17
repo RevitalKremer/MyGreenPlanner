@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   PRIMARY, PRIMARY_BG, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_MUTED, TEXT_FAINT,
-  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
+  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, ERROR, ERROR_BG,
   MODAL_SCRIM, MODAL_SHADOW,
   LEDGER_TRIAL_BG, LEDGER_GRANT_BG, LEDGER_REFUND_BG, LEDGER_PURCHASE_BG, LEDGER_CHARGE_BG,
 } from '../../styles/colors'
@@ -14,14 +14,15 @@ import {
   dismissRefundInbox,
 } from '../../services/adminApi'
 import MonetizationTab from './MonetizationTab'
+import { useLang } from '../../i18n/LangContext'
 
 
-const TXN_KIND_LABEL = {
-  trial:           'Trial grant',
-  admin_grant:     'Admin grant',
-  admin_refund:    'Admin refund',
-  purchase:        'Purchase',
-  project_charge:  'Project charge',
+const TXN_KIND_TKEY = {
+  trial:           'admin.credits.kind.trial',
+  admin_grant:     'admin.credits.kind.adminGrant',
+  admin_refund:    'admin.credits.kind.adminRefund',
+  purchase:        'admin.credits.kind.purchase',
+  project_charge:  'admin.credits.kind.projectCharge',
 }
 
 const TXN_KIND_BG = {
@@ -52,28 +53,29 @@ function formatDate(iso: string | null | undefined): string {
  * endpoints. The tab is only mounted inside AdminPanel which is gated by role.
  */
 export default function CreditsTab() {
+  const { t } = useLang()
   const [subTab, setSubTab] = useState<'pending' | 'lookup' | 'monetization'>('pending')
 
   return (
     <div style={{ padding: '1rem 0' }}>
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.1rem', borderBottom: `1px solid ${BORDER_FAINT}` }}>
         {[
-          { key: 'pending',      label: 'Pending refunds' },
-          { key: 'lookup',       label: 'User credits' },
-          { key: 'monetization', label: 'Monetization' },
-        ].map(t => (
+          { key: 'pending',      label: t('admin.credits.subtab.pending') },
+          { key: 'lookup',       label: t('admin.credits.subtab.lookup') },
+          { key: 'monetization', label: t('admin.credits.subtab.monetization') },
+        ].map(tab => (
           <button
-            key={t.key}
-            onClick={() => setSubTab(t.key as any)}
+            key={tab.key}
+            onClick={() => setSubTab(tab.key as any)}
             style={{
               padding: '0.55rem 0.95rem', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '0.86rem', fontWeight: subTab === t.key ? 700 : 500,
-              color: subTab === t.key ? TEXT_DARKEST : TEXT_LIGHT,
-              borderBottom: `2px solid ${subTab === t.key ? TEXT_DARKEST : 'transparent'}`,
+              fontSize: '0.86rem', fontWeight: subTab === tab.key ? 700 : 500,
+              color: subTab === tab.key ? TEXT_DARKEST : TEXT_LIGHT,
+              borderBottom: `2px solid ${subTab === tab.key ? TEXT_DARKEST : 'transparent'}`,
               marginBottom: '-1px',
             }}
           >
-            {t.label}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -93,6 +95,7 @@ const PAGE_SIZE = 50
 
 
 function PendingRefundsPane() {
+  const { t } = useLang()
   const [rows, setRows] = useState<any[]>([])
   const [totalRows, setTotalRows] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -129,7 +132,7 @@ function PendingRefundsPane() {
       setTotalRows(data.total_rows ?? 0)
       setHasMore(!!data.has_more)
     } catch (e: any) {
-      setError(e.message || 'Failed to load')
+      setError(e.message || t('admin.common.failedLoad'))
     } finally {
       setLoading(false)
     }
@@ -149,7 +152,7 @@ function PendingRefundsPane() {
       setTotalRows(data.total_rows ?? totalRows)
       setHasMore(!!data.has_more)
     } catch (e: any) {
-      setError(e.message || 'Failed to load')
+      setError(e.message || t('admin.common.failedLoad'))
     } finally {
       setLoadingMore(false)
     }
@@ -167,10 +170,10 @@ function PendingRefundsPane() {
         await dismissRefundInbox(row.project_id, { reason: reason || null })
       }
       setRows(prev => prev.filter(r => r.project_id !== row.project_id))
-      setTotalRows(t => Math.max(0, t - 1))
+      setTotalRows(n => Math.max(0, n - 1))
       setConfirming(null)
     } catch (e: any) {
-      setError(e.message || 'Action failed')
+      setError(e.message || t('admin.credits.pending.failedAction'))
     } finally {
       setBusy(null)
     }
@@ -179,7 +182,7 @@ function PendingRefundsPane() {
   return (
     <div style={{ maxWidth: 1000 }}>
       <div style={{ marginBottom: '0.65rem', fontSize: '0.85rem', color: TEXT_MUTED }}>
-        Projects that requested a quotation and are waiting on a refund decision. Refund once the order signs; dismiss if it won't.
+        {t('admin.credits.pending.subtitle')}
       </div>
 
       {/* Search + counts toolbar */}
@@ -187,7 +190,7 @@ function PendingRefundsPane() {
         <input
           value={searchInput}
           onChange={e => onSearchChange(e.target.value)}
-          placeholder="Search by project, owner email, reason, project id…"
+          placeholder={t('admin.credits.pending.searchPlaceholder')}
           style={{
             flex: 1, padding: '0.45rem 0.65rem', boxSizing: 'border-box',
             border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 7, fontSize: '0.85rem', outline: 'none',
@@ -200,22 +203,22 @@ function PendingRefundsPane() {
               background: 'white', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 7,
               padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.78rem', color: TEXT_DARK,
             }}
-          >✕ Clear</button>
+          >{t('admin.common.clear')}</button>
         )}
         <div style={{ fontSize: '0.75rem', color: TEXT_VERY_LIGHT, whiteSpace: 'nowrap', minWidth: 110, textAlign: 'right' }}>
-          {loading ? 'Loading…' : totalRows === 0 ? 'No rows' : `Showing ${rows.length} of ${totalRows}`}
+          {loading ? t('admin.common.loading') : totalRows === 0 ? t('admin.common.noRows') : t('admin.credits.pending.showing', { shown: rows.length, total: totalRows })}
         </div>
       </div>
 
       {error && <div style={{ padding: '0.55rem 0.75rem', background: ERROR_BG, color: ERROR, borderRadius: 8, marginBottom: '0.75rem', fontSize: '0.82rem' }}>{error}</div>}
 
       {loading ? (
-        <div style={{ color: TEXT_VERY_LIGHT, fontSize: '0.88rem', padding: '0.5rem 0' }}>Loading…</div>
+        <div style={{ color: TEXT_VERY_LIGHT, fontSize: '0.88rem', padding: '0.5rem 0' }}>{t('admin.common.loading')}</div>
       ) : rows.length === 0 ? (
         <div style={{ padding: '1.5rem', textAlign: 'center', color: TEXT_VERY_LIGHT, fontSize: '0.9rem', fontStyle: 'italic', border: `1px dashed ${BORDER_LIGHT}`, borderRadius: 10 }}>
           {appliedSearch
-            ? 'No projects match this search.'
-            : 'Nothing to refund. Quoted projects appear here once their charge is open.'}
+            ? t('admin.credits.pending.emptySearch')
+            : t('admin.credits.pending.empty')}
         </div>
       ) : (
         <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -225,8 +228,8 @@ function PendingRefundsPane() {
             fontSize: '0.7rem', fontWeight: 700, color: TEXT_VERY_LIGHT,
             textTransform: 'uppercase', letterSpacing: '0.06em',
           }}>
-            <div>Project</div><div>Owner</div><div>Quoted</div><div>Charged</div>
-            <div style={{ textAlign: 'right' }}>Amount</div><div />
+            <div>{t('admin.credits.pending.col.project')}</div><div>{t('admin.credits.pending.col.owner')}</div><div>{t('admin.credits.pending.col.quoted')}</div><div>{t('admin.credits.pending.col.charged')}</div>
+            <div style={{ textAlign: 'right' }}>{t('admin.credits.pending.col.amount')}</div><div />
           </div>
           {rows.map((r, i) => (
             <div key={r.project_id} style={{
@@ -250,7 +253,7 @@ function PendingRefundsPane() {
                     fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
                     opacity: busy === r.project_id ? 0.6 : 1,
                   }}
-                >Refund {r.charge_amount}</button>
+                >{t('admin.credits.pending.refundBtn', { amount: r.charge_amount })}</button>
                 <button
                   onClick={() => setConfirming({ action: 'dismiss', row: r, reason: '' })}
                   disabled={!!busy}
@@ -259,7 +262,7 @@ function PendingRefundsPane() {
                     borderRadius: 6, padding: '0.35rem 0.7rem', cursor: busy ? 'default' : 'pointer',
                     fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
                   }}
-                >Dismiss</button>
+                >{t('admin.credits.pending.dismissBtn')}</button>
               </div>
             </div>
           ))}
@@ -276,20 +279,20 @@ function PendingRefundsPane() {
               padding: '0.45rem 1rem', fontSize: '0.82rem', fontWeight: 700,
               cursor: loadingMore ? 'default' : 'pointer', opacity: loadingMore ? 0.6 : 1,
             }}
-          >{loadingMore ? 'Loading…' : 'Load more'}</button>
+          >{loadingMore ? t('admin.common.loading') : t('admin.common.loadMore')}</button>
         </div>
       )}
 
       {confirming && (
         <ReasonPromptModal
-          title={confirming.action === 'refund' ? `Refund ${confirming.row.charge_amount} credits to ${confirming.row.owner_email}` : 'Dismiss from inbox'}
+          title={confirming.action === 'refund' ? t('admin.credits.refundModal.title', { amount: confirming.row.charge_amount, email: confirming.row.owner_email }) : t('admin.credits.dismissModal.title')}
           description={
             confirming.action === 'refund'
-              ? 'This will credit the user back, mark the original charge as refunded, and email them.'
-              : 'This hides the project from the inbox. It does NOT refund credits — the charge stays open and the project is still refundable from the User credits tab.'
+              ? t('admin.credits.refundModal.desc')
+              : t('admin.credits.dismissModal.desc')
           }
           reasonRequired={confirming.action === 'refund'}
-          confirmLabel={confirming.action === 'refund' ? 'Refund' : 'Dismiss'}
+          confirmLabel={confirming.action === 'refund' ? t('admin.credits.refundModal.confirm') : t('admin.credits.dismissModal.confirm')}
           confirmBg={confirming.action === 'refund' ? PRIMARY : TEXT_DARK}
           confirmFg={confirming.action === 'refund' ? TEXT : 'white'}
           reason={confirming.reason}
@@ -308,6 +311,7 @@ function PendingRefundsPane() {
 
 
 function UserLookupPane() {
+  const { t } = useLang()
   // ── User list (left rail) — server-paginated + debounced search ────────
   const [users, setUsers] = useState<any[]>([])
   const [usersTotal, setUsersTotal] = useState(0)
@@ -382,7 +386,7 @@ function UserLookupPane() {
       setUsersTotal(data.total_rows ?? 0)
       setUsersHasMore(!!data.has_more)
     } catch (e: any) {
-      setError(e.message || 'Failed to load users')
+      setError(e.message || t('admin.credits.lookup.failedLoad'))
     } finally {
       setUsersLoading(false)
     }
@@ -398,7 +402,7 @@ function UserLookupPane() {
       setUsersTotal(data.total_rows ?? usersTotal)
       setUsersHasMore(!!data.has_more)
     } catch (e: any) {
-      setError(e.message || 'Failed to load')
+      setError(e.message || t('admin.common.failedLoad'))
     } finally {
       setUsersLoadingMore(false)
     }
@@ -438,7 +442,7 @@ function UserLookupPane() {
         period_year: data.period_year,
       })
     } catch (e: any) {
-      setError(e.message || 'Failed to load ledger')
+      setError(e.message || t('admin.credits.ledger.failedLoad'))
     } finally {
       setLedgerLoading(false)
     }
@@ -463,7 +467,7 @@ function UserLookupPane() {
       setLedgerTotal(data.total_rows ?? ledgerTotal)
       setLedgerHasMore(!!data.has_more)
     } catch (e: any) {
-      setError(e.message || 'Failed to load')
+      setError(e.message || t('admin.common.failedLoad'))
     } finally {
       setLedgerLoadingMore(false)
     }
@@ -486,8 +490,8 @@ function UserLookupPane() {
   const handleGrant = async () => {
     if (!selectedId) return
     const amt = Number(grantAmount)
-    if (!Number.isFinite(amt) || amt <= 0) { setError('Grant amount must be a positive number'); return }
-    if (!grantReason.trim()) { setError('Reason is required'); return }
+    if (!Number.isFinite(amt) || amt <= 0) { setError(t('admin.credits.grant.invalidAmount')); return }
+    if (!grantReason.trim()) { setError(t('admin.credits.grant.reasonRequired')); return }
     setError(null); setGranting(true)
     try {
       await grantCredits(selectedId, { amount: amt, reason: grantReason.trim() })
@@ -495,7 +499,7 @@ function UserLookupPane() {
       await refreshUserList()
       await refreshLedger()
     } catch (e: any) {
-      setError(e.message || 'Grant failed')
+      setError(e.message || t('admin.credits.grant.failed'))
     } finally {
       setGranting(false)
     }
@@ -503,7 +507,7 @@ function UserLookupPane() {
 
   const handleRefund = async () => {
     if (!refundProjectId) return
-    if (!refundReason.trim()) { setError('Reason is required for a refund'); return }
+    if (!refundReason.trim()) { setError(t('admin.credits.refundProject.reasonRequired')); return }
     setError(null); setRefunding(true)
     try {
       await refundProjectCredits(refundProjectId, { reason: refundReason.trim() })
@@ -511,7 +515,7 @@ function UserLookupPane() {
       await refreshUserList()
       await refreshLedger()
     } catch (e: any) {
-      setError(e.message || 'Refund failed')
+      setError(e.message || t('admin.credits.refundProject.failed'))
     } finally {
       setRefunding(false)
     }
@@ -526,7 +530,7 @@ function UserLookupPane() {
           <input
             value={userSearchInput}
             onChange={e => onUserSearchChange(e.target.value)}
-            placeholder="Search by email or name…"
+            placeholder={t('admin.credits.lookup.searchPlaceholder')}
             style={{
               flex: 1, padding: '0.5rem 0.7rem', boxSizing: 'border-box',
               border: 'none', fontSize: '0.85rem', outline: 'none',
@@ -540,7 +544,7 @@ function UserLookupPane() {
           )}
         </div>
         <div style={{ padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: TEXT_VERY_LIGHT, background: BG_SUBTLE }}>
-          {usersLoading ? 'Loading…' : usersTotal === 0 ? 'No users match' : `${users.length} of ${usersTotal}`}
+          {usersLoading ? t('admin.common.loading') : usersTotal === 0 ? t('admin.credits.lookup.noMatch') : t('admin.credits.lookup.countOf', { shown: users.length, total: usersTotal })}
         </div>
         <div style={{ maxHeight: 520, overflowY: 'auto' }}>
           {users.map(u => {
@@ -561,7 +565,7 @@ function UserLookupPane() {
                 <span style={{ fontSize: '0.84rem', fontWeight: isSelected ? 700 : 600, color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.full_name || '—'}</span>
                 <span style={{ fontSize: '0.74rem', color: TEXT_VERY_LIGHT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
                 <span style={{ fontSize: '0.7rem', color: u.role === 'admin' ? TEXT_FAINT : TEXT_DARK, fontWeight: 700 }}>
-                  {u.role === 'admin' ? '— admin —' : `${u.credits_available ?? 0} cr`}
+                  {u.role === 'admin' ? `— ${t('admin.users.role.admin')} —` : `${u.credits_available ?? 0} cr`}
                 </span>
               </button>
             )
@@ -577,7 +581,7 @@ function UserLookupPane() {
                 color: TEXT_DARK, fontSize: '0.78rem', fontWeight: 700,
                 opacity: usersLoadingMore ? 0.6 : 1,
               }}
-            >{usersLoadingMore ? 'Loading…' : 'Load more'}</button>
+            >{usersLoadingMore ? t('admin.common.loading') : t('admin.common.loadMore')}</button>
           )}
         </div>
       </div>
@@ -588,11 +592,11 @@ function UserLookupPane() {
 
         {!selectedUser ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: TEXT_VERY_LIGHT, fontSize: '0.9rem', fontStyle: 'italic', border: `1px dashed ${BORDER_LIGHT}`, borderRadius: 10 }}>
-            Pick a user to view their credits and history.
+            {t('admin.credits.lookup.empty')}
           </div>
         ) : selectedUser.role === 'admin' ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: TEXT_VERY_LIGHT, fontSize: '0.9rem', fontStyle: 'italic', border: `1px dashed ${BORDER_LIGHT}`, borderRadius: 10 }}>
-            This user is an admin — credits don't apply.
+            {t('admin.credits.lookup.adminUser')}
           </div>
         ) : (
           <>
@@ -610,7 +614,7 @@ function UserLookupPane() {
               return (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                   <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Calendar year {ledgerSnapshot.period_year ?? new Date().getFullYear()}
+                    {t('admin.credits.lookup.periodLabel', { year: ledgerSnapshot.period_year ?? new Date().getFullYear() })}
                   </span>
                   {tier === 'eligible' && (
                     <span style={{
@@ -618,7 +622,7 @@ function UserLookupPane() {
                       background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
                       padding: '0.15rem 0.5rem', borderRadius: 999,
                     }}>
-                      Eligible for volume discount
+                      {t('admin.credits.lookup.discountEligible')}
                     </span>
                   )}
                   {tier === 'near' && (
@@ -641,7 +645,7 @@ function UserLookupPane() {
                           background: PRIMARY, borderRadius: 3,
                         }} />
                       </span>
-                      {plans} / {threshold} plans — almost there
+                      {t('admin.credits.lookup.discountNearGoal', { plans, threshold })}
                     </span>
                   )}
                 </div>
@@ -653,10 +657,10 @@ function UserLookupPane() {
               display: 'flex', gap: '0.5rem', marginBottom: '1rem',
             }}>
               {[
-                { label: 'Available', value: ledgerSnapshot.credits_available ?? selectedUser.credits_available ?? 0, accent: true },
-                { label: `Used (${ledgerSnapshot.period_year ?? new Date().getFullYear()})`, value: ledgerSnapshot.credits_used ?? selectedUser.credits_used ?? 0 },
-                { label: `Total (${ledgerSnapshot.period_year ?? new Date().getFullYear()})`, value: ledgerSnapshot.credits_total ?? selectedUser.credits_total ?? 0 },
-                { label: 'Plans this year', value: ledgerSnapshot.plans_this_year ?? 0 },
+                { label: t('admin.credits.stats.available'), value: ledgerSnapshot.credits_available ?? selectedUser.credits_available ?? 0, accent: true },
+                { label: t('admin.credits.stats.usedYear', { year: ledgerSnapshot.period_year ?? new Date().getFullYear() }), value: ledgerSnapshot.credits_used ?? selectedUser.credits_used ?? 0 },
+                { label: t('admin.credits.stats.totalYear', { year: ledgerSnapshot.period_year ?? new Date().getFullYear() }), value: ledgerSnapshot.credits_total ?? selectedUser.credits_total ?? 0 },
+                { label: t('admin.credits.stats.plansThisYear'), value: ledgerSnapshot.plans_this_year ?? 0 },
               ].map(b => (
                 <div key={b.label} style={{
                   flex: 1, background: b.accent ? PRIMARY_BG : 'white',
@@ -673,15 +677,15 @@ function UserLookupPane() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               {/* Grant */}
               <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, padding: '0.8rem' }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: TEXT_DARKEST, marginBottom: '0.5rem' }}>Grant credits</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: TEXT_DARKEST, marginBottom: '0.5rem' }}>{t('admin.credits.grant.title')}</div>
                 <input
                   value={grantAmount} onChange={e => setGrantAmount(e.target.value)}
-                  placeholder="Amount" type="number" min="1"
+                  placeholder={t('admin.credits.grant.amount')} type="number" min="1"
                   style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 6, fontSize: '0.86rem', marginBottom: '0.45rem', outline: 'none' }}
                 />
                 <input
                   value={grantReason} onChange={e => setGrantReason(e.target.value)}
-                  placeholder="Reason (required)"
+                  placeholder={t('admin.credits.grant.reason')}
                   style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 6, fontSize: '0.86rem', marginBottom: '0.5rem', outline: 'none' }}
                 />
                 <button
@@ -693,15 +697,15 @@ function UserLookupPane() {
                     fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
                     opacity: (granting || !grantAmount || !grantReason.trim()) ? 0.5 : 1,
                   }}
-                >{granting ? '…' : 'Grant'}</button>
+                >{granting ? '…' : t('admin.credits.grant.btn')}</button>
               </div>
 
               {/* Refund */}
               <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, padding: '0.8rem' }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: TEXT_DARKEST, marginBottom: '0.5rem' }}>Refund a project</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: TEXT_DARKEST, marginBottom: '0.5rem' }}>{t('admin.credits.refundProject.title')}</div>
                 {openCharges.length === 0 ? (
                   <div style={{ fontSize: '0.78rem', color: TEXT_VERY_LIGHT, fontStyle: 'italic', padding: '0.4rem 0' }}>
-                    No open charges to refund.
+                    {t('admin.credits.refundProject.noOpen')}
                   </div>
                 ) : (
                   <>
@@ -710,7 +714,7 @@ function UserLookupPane() {
                       onChange={e => setRefundProjectId(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 6, fontSize: '0.86rem', marginBottom: '0.45rem', outline: 'none', background: 'white' }}
                     >
-                      <option value="">— pick a project —</option>
+                      <option value="">{t('admin.credits.refundProject.picker')}</option>
                       {openCharges.map(c => (
                         <option key={c.id} value={c.project_id}>
                           {Math.abs(c.amount)} cr · {formatDate(c.created_at).slice(0, 10)} · {String(c.project_id).slice(0, 8)}…
@@ -719,7 +723,7 @@ function UserLookupPane() {
                     </select>
                     <input
                       value={refundReason} onChange={e => setRefundReason(e.target.value)}
-                      placeholder="Reason (required)"
+                      placeholder={t('admin.credits.grant.reason')}
                       style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 6, fontSize: '0.86rem', marginBottom: '0.5rem', outline: 'none' }}
                     />
                     <button
@@ -731,7 +735,7 @@ function UserLookupPane() {
                         fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
                         opacity: (refunding || !refundProjectId || !refundReason.trim()) ? 0.5 : 1,
                       }}
-                    >{refunding ? '…' : 'Refund'}</button>
+                    >{refunding ? '…' : t('admin.credits.refundModal.confirm')}</button>
                   </>
                 )}
               </div>
@@ -739,11 +743,11 @@ function UserLookupPane() {
 
             {/* Ledger — header + search */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ledger</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.credits.ledger.title')}</div>
               <input
                 value={ledgerSearchInput}
                 onChange={e => onLedgerSearchChange(e.target.value)}
-                placeholder="Search by reason, kind, project id…"
+                placeholder={t('admin.credits.ledger.searchPlaceholder')}
                 style={{
                   flex: 1, padding: '0.4rem 0.6rem', boxSizing: 'border-box',
                   border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 6,
@@ -757,15 +761,15 @@ function UserLookupPane() {
                 }}>✕</button>
               )}
               <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, whiteSpace: 'nowrap' }}>
-                {ledgerLoading ? 'Loading…' : ledgerTotal === 0 ? '—' : `${ledgerRows.length} / ${ledgerTotal}`}
+                {ledgerLoading ? t('admin.common.loading') : ledgerTotal === 0 ? '—' : `${ledgerRows.length} / ${ledgerTotal}`}
               </span>
             </div>
 
             {ledgerLoading ? (
-              <div style={{ color: TEXT_VERY_LIGHT, fontSize: '0.85rem' }}>Loading…</div>
+              <div style={{ color: TEXT_VERY_LIGHT, fontSize: '0.85rem' }}>{t('admin.common.loading')}</div>
             ) : ledgerRows.length === 0 ? (
               <div style={{ padding: '1rem', textAlign: 'center', color: TEXT_VERY_LIGHT, fontStyle: 'italic', fontSize: '0.85rem', border: `1px dashed ${BORDER_LIGHT}`, borderRadius: 10 }}>
-                {appliedLedgerSearch ? 'No transactions match this search.' : 'No transactions yet.'}
+                {appliedLedgerSearch ? t('admin.credits.ledger.emptySearch') : t('admin.credits.ledger.empty')}
               </div>
             ) : (
               <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -775,7 +779,7 @@ function UserLookupPane() {
                   fontSize: '0.66rem', fontWeight: 700, color: TEXT_VERY_LIGHT,
                   textTransform: 'uppercase', letterSpacing: '0.06em',
                 }}>
-                  <div>Date</div><div>Kind</div><div style={{ textAlign: 'right' }}>Amount</div><div>Reason</div><div>Project</div>
+                  <div>{t('admin.credits.ledger.col.date')}</div><div>{t('admin.credits.ledger.col.kind')}</div><div style={{ textAlign: 'right' }}>{t('admin.credits.ledger.col.amount')}</div><div>{t('admin.credits.ledger.col.reason')}</div><div>{t('admin.credits.ledger.col.project')}</div>
                 </div>
                 {ledgerRows.map((r: any, i: number) => (
                   <div key={r.id} style={{
@@ -790,9 +794,9 @@ function UserLookupPane() {
                         background: TXN_KIND_BG[r.kind] ?? BG_SUBTLE,
                         padding: '1px 6px', borderRadius: 4,
                         fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
-                      }}>{TXN_KIND_LABEL[r.kind] ?? r.kind}</span>
+                      }}>{TXN_KIND_TKEY[r.kind] ? t(TXN_KIND_TKEY[r.kind]) : r.kind}</span>
                       {r.kind === 'project_charge' && r.refunded && (
-                        <span style={{ marginInlineStart: 4, fontSize: '0.65rem', color: TEXT_VERY_LIGHT }}>(refunded)</span>
+                        <span style={{ marginInlineStart: 4, fontSize: '0.65rem', color: TEXT_VERY_LIGHT }}>{t('admin.credits.ledger.refundedNote')}</span>
                       )}
                     </div>
                     <div style={{ textAlign: 'right', fontWeight: 700, color: r.amount < 0 ? ERROR : TEXT_DARKEST }}>
@@ -817,7 +821,7 @@ function UserLookupPane() {
                     padding: '0.4rem 0.9rem', fontSize: '0.78rem', fontWeight: 700,
                     cursor: ledgerLoadingMore ? 'default' : 'pointer', opacity: ledgerLoadingMore ? 0.6 : 1,
                   }}
-                >{ledgerLoadingMore ? 'Loading…' : 'Load more'}</button>
+                >{ledgerLoadingMore ? t('admin.common.loading') : t('admin.common.loadMore')}</button>
               </div>
             )}
           </>
@@ -835,6 +839,7 @@ function ReasonPromptModal({
   title, description, reasonRequired, confirmLabel, confirmBg, confirmFg,
   reason, onReasonChange, onCancel, onSubmit, busy,
 }) {
+  const { t } = useLang()
   return (
     <div style={{
       position: 'fixed', inset: 0, background: MODAL_SCRIM,
@@ -850,7 +855,7 @@ function ReasonPromptModal({
         <textarea
           value={reason}
           onChange={e => onReasonChange(e.target.value)}
-          placeholder={reasonRequired ? 'Reason (required)' : 'Reason (optional)'}
+          placeholder={reasonRequired ? t('admin.credits.grant.reason') : t('admin.credits.dismissModal.reasonOptional')}
           rows={3}
           style={{
             width: '100%', padding: '0.55rem 0.7rem', boxSizing: 'border-box',
@@ -862,7 +867,7 @@ function ReasonPromptModal({
           <button onClick={onCancel} disabled={busy} style={{
             background: 'white', color: TEXT_DARK, border: `1.5px solid ${BORDER_LIGHT}`,
             borderRadius: 7, padding: '0.5rem 0.95rem', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
-          }}>Cancel</button>
+          }}>{t('admin.common.cancel')}</button>
           <button
             onClick={onSubmit}
             disabled={busy || (reasonRequired && !reason.trim())}

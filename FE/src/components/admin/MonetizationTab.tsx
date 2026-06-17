@@ -4,6 +4,7 @@ import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 
 /**
@@ -18,6 +19,7 @@ import {
  * type 'array' or 'object' rendered alongside these scalars.
  */
 export default function MonetizationTab() {
+  const { t } = useLang()
   const [settings, setSettings] = useState<any[]>([])
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
@@ -31,7 +33,8 @@ export default function MonetizationTab() {
         setSettings(all.filter(s => s.section === 'monetization'))
         setLoading(false)
       })
-      .catch(() => { setError('Failed to load settings'); setLoading(false) })
+      .catch(() => { setError(t('admin.settings.failedLoad')); setLoading(false) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const isDirty = (s) => edits[s.key] !== undefined
@@ -51,13 +54,13 @@ export default function MonetizationTab() {
       setSaved(p => ({ ...p, [s.key]: true }))
       setTimeout(() => setSaved(p => { const n = { ...p }; delete n[s.key]; return n }), 2000)
     } catch {
-      setError('Save failed')
+      setError(t('admin.common.failedSave'))
     } finally {
       setSaving(p => ({ ...p, [s.key]: false }))
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>Loading…</div>
+  if (loading) return <div style={{ padding: '2rem', color: TEXT_VERY_LIGHT }}>{t('admin.common.loading')}</div>
 
   const inputStyle = (dirtyField): React.CSSProperties => ({
     padding: '0.4rem 0.55rem', borderRadius: 6, fontSize: '0.88rem',
@@ -72,9 +75,9 @@ export default function MonetizationTab() {
   return (
     <div style={{ padding: '1rem 0', maxWidth: 880 }}>
       <div style={{ marginBottom: '1.1rem' }}>
-        <div style={{ fontSize: '1rem', fontWeight: 800, color: TEXT_DARKEST }}>Monetization</div>
+        <div style={{ fontSize: '1rem', fontWeight: 800, color: TEXT_DARKEST }}>{t('admin.monetization.title')}</div>
         <div style={{ fontSize: '0.82rem', color: TEXT_VERY_LIGHT, marginTop: 2 }}>
-          Configure project cost (in credits) and the free trial granted on email verification. Changes take effect immediately for new charges — past transactions are not re-priced.
+          {t('admin.monetization.subtitle')}
         </div>
       </div>
 
@@ -82,7 +85,7 @@ export default function MonetizationTab() {
 
       {settings.length === 0 ? (
         <div style={{ padding: '1rem', color: TEXT_VERY_LIGHT, fontSize: '0.85rem', fontStyle: 'italic' }}>
-          No monetization settings found. Run the credits migration to seed defaults.
+          {t('admin.monetization.empty')}
         </div>
       ) : (
         <>
@@ -96,8 +99,8 @@ export default function MonetizationTab() {
             display: 'flex', alignItems: 'center', gap: '0.75rem',
             padding: '0.3rem 0.85rem',
           }}>
-            <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.68rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Setting</div>
-            <div style={{ flex: '0 0 140px', fontSize: '0.68rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Value</div>
+            <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.68rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.monetization.col.setting')}</div>
+            <div style={{ flex: '0 0 140px', fontSize: '0.68rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.monetization.col.value')}</div>
             <div style={{ flex: '0 0 64px' }} />
           </div>
 
@@ -136,7 +139,7 @@ export default function MonetizationTab() {
                       color: saved[s.key] ? SUCCESS : dirty ? TEXT : TEXT_VERY_LIGHT,
                     }}
                   >
-                    {saved[s.key] ? 'Saved' : saving[s.key] ? '…' : 'Save'}
+                    {saved[s.key] ? t('admin.common.saved') : saving[s.key] ? '…' : t('admin.common.save')}
                   </button>
                 </div>
               )

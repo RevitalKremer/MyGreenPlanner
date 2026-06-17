@@ -8,19 +8,24 @@ import PanelTypesTab from './PanelTypesTab'
 import SettingsTab from './SettingsTab'
 import UsersTab from './UsersTab'
 import CreditsTab from './CreditsTab'
+import { useLang } from '../../i18n/LangContext'
 
-const TABS = [
-  { key: 'users', label: 'Users' },
-  // Monetization lives as a sub-tab inside Credits so all
-  // credits-related management stays in one place.
-  { key: 'credits', label: 'Credits' },
-  { key: 'panel-types', label: 'Panels' },
-  { key: 'products', label: 'Materials' },
-  { key: 'settings', label: 'Default Settings' },
-]
+const TAB_KEYS = [
+  // 'credits' includes Monetization as a sub-tab so all credits-related
+  // management stays in one place.
+  'users', 'credits', 'panel-types', 'products', 'settings',
+] as const
 
 export default function AdminPanel({ onClose, currentUserId }) {
-  const [activeTab, setActiveTab] = useState('users')
+  const { t } = useLang()
+  const [activeTab, setActiveTab] = useState<string>('users')
+  const TAB_LABEL: Record<string, string> = {
+    'users':       t('admin.tab.users'),
+    'credits':     t('admin.tab.credits'),
+    'panel-types': t('admin.tab.panels'),
+    'products':    t('admin.tab.products'),
+    'settings':    t('admin.tab.settings'),
+  }
 
   return createPortal(
     <div style={{
@@ -37,8 +42,8 @@ export default function AdminPanel({ onClose, currentUserId }) {
         flexShrink: 0, background: 'white',
       }}>
         <div>
-          <div style={{ fontSize: '1.1rem', fontWeight: '800', color: TEXT_DARKEST }}>Admin Panel</div>
-          <div style={{ fontSize: '0.78rem', color: TEXT_LIGHT, marginTop: '1px' }}>Manage users, products and system defaults</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: '800', color: TEXT_DARKEST }}>{t('admin.title')}</div>
+          <div style={{ fontSize: '0.78rem', color: TEXT_LIGHT, marginTop: '1px' }}>{t('admin.subtitle')}</div>
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', color: TEXT_LIGHT, lineHeight: 1 }}>×</button>
       </div>
@@ -48,15 +53,15 @@ export default function AdminPanel({ onClose, currentUserId }) {
         display: 'flex', borderBottom: `1px solid ${BORDER_LIGHT}`,
         flexShrink: 0, padding: '0 1.75rem', background: 'white',
       }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+        {TAB_KEYS.map(key => (
+          <button key={key} onClick={() => setActiveTab(key)} style={{
             padding: '0.65rem 1rem', background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: '0.88rem', fontWeight: activeTab === t.key ? '700' : '500',
-            color: activeTab === t.key ? TEXT_DARKEST : TEXT_LIGHT,
-            borderBottom: `2px solid ${activeTab === t.key ? TEXT_DARKEST : 'transparent'}`,
+            fontSize: '0.88rem', fontWeight: activeTab === key ? '700' : '500',
+            color: activeTab === key ? TEXT_DARKEST : TEXT_LIGHT,
+            borderBottom: `2px solid ${activeTab === key ? TEXT_DARKEST : 'transparent'}`,
             marginBottom: '-1px', transition: 'all 0.15s',
           }}>
-            {t.label}
+            {TAB_LABEL[key]}
           </button>
         ))}
       </div>
