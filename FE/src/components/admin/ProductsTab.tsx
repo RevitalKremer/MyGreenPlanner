@@ -5,6 +5,7 @@ import {
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
   DANGER, ADD_GREEN_BG,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
 // Material categories the BOM uses (kept in sync with BE migration 0036).
 // 'material' is the legacy catch-all and stays first in the list as the default.
@@ -26,7 +27,7 @@ const emptyForm = {
   price_ils: '', weight_kg: '', depreciation_pct: '', process_pct: '',
 }
 
-function EditRow({ product, onSave, onCancel }) {
+function EditRow({ product, onSave, onCancel, t }) {
   const initial = product
     ? {
         ...emptyForm, ...product,
@@ -76,9 +77,9 @@ function EditRow({ product, onSave, onCancel }) {
           )}
         </select>
       </td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'Product name')}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name_he', 'שם בעברית', { direction: 'rtl' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', t('admin.products.placeholderName'))}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name_he', t('admin.products.placeholderNameHe'), { direction: 'rtl' })}</td>
+      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', t('admin.products.col.pn'))}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('price_ils', '₪',           { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('weight_kg', 'kg',          { textAlign: 'right' }, 'number')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('depreciation_pct', '%',    { textAlign: 'right' }, 'number')}</td>
@@ -91,14 +92,14 @@ function EditRow({ product, onSave, onCancel }) {
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <select value={String(form.active)} onChange={e => set('active', e.target.value === 'true')}
           style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem' }}>
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
+          <option value="true">{t('admin.common.active')}</option>
+          <option value="false">{t('admin.common.inactive')}</option>
         </select>
       </td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <div style={{ display: 'flex', gap: '0.35rem' }}>
-          <button onClick={handleSave} style={{ padding: '0.3rem 0.7rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '5px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer' }}>Save</button>
-          <button onClick={onCancel} style={{ padding: '0.3rem 0.7rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.78rem', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} style={{ padding: '0.3rem 0.7rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '5px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.save')}</button>
+          <button onClick={onCancel} style={{ padding: '0.3rem 0.7rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.cancel')}</button>
         </div>
       </td>
     </tr>
@@ -106,6 +107,7 @@ function EditRow({ product, onSave, onCancel }) {
 }
 
 export default function ProductsTab() {
+  const { t } = useLang()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -118,7 +120,8 @@ export default function ProductsTab() {
   useEffect(() => {
     getProducts('material')
       .then(data => { setProducts(data); setLoading(false) })
-      .catch(() => { setError('Failed to load materials'); setLoading(false) })
+      .catch(() => { setError(t('admin.products.failedLoad')); setLoading(false) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleCreate = async (form) => {
@@ -126,7 +129,7 @@ export default function ProductsTab() {
       const created = await createProduct({ ...form, product_type: form.product_type || 'material' })
       setProducts(prev => [...prev, created])
       setAddingNew(false)
-    } catch { setError('Failed to create material') }
+    } catch { setError(t('admin.products.failedCreate')) }
   }
 
   const handleUpdate = async (id, form) => {
@@ -134,22 +137,22 @@ export default function ProductsTab() {
       const updated = await updateProduct(id, form)
       setProducts(prev => prev.map(p => p.id === id ? updated : p))
       setEditingId(null)
-    } catch { setError('Failed to update material') }
+    } catch { setError(t('admin.products.failedUpdate')) }
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this material?')) return
+    if (!window.confirm(t('admin.products.deleteConfirm'))) return
     try {
       await deleteProduct(id)
       setProducts(prev => prev.filter(p => p.id !== id))
-    } catch { setError('Failed to delete material') }
+    } catch { setError(t('admin.products.failedDelete')) }
   }
 
   const handleToggleActive = async (p) => {
     try {
       const updated = await updateProduct(p.id, { active: !p.active })
       setProducts(prev => prev.map(x => x.id === p.id ? updated : x))
-    } catch { setError('Failed to update') }
+    } catch { setError(t('admin.common.failedUpdate')) }
   }
 
   function handleSortClick(key, e) {
@@ -238,7 +241,7 @@ export default function ProductsTab() {
     const idx = sortCols.findIndex(c => c.key === colKey)
     const col = sortCols[idx]
     return (
-      <th onClick={e => handleSortClick(colKey, e)} title="Click to sort · Shift+click for multi-sort" style={{ ...thStyle, ...style, color: col ? PRIMARY : TEXT_VERY_LIGHT }}>
+      <th onClick={e => handleSortClick(colKey, e)} title={t('admin.products.sortTooltip')} style={{ ...thStyle, ...style, color: col ? PRIMARY : TEXT_VERY_LIGHT }}>
         {label}
         {col && <span style={{ marginLeft: '4px', fontSize: '0.6rem' }}>{col.dir === 'asc' ? '▲' : '▼'}</span>}
         {col && sortCols.length > 1 && <span style={{ marginLeft: '2px', fontSize: '0.55rem', opacity: 0.7 }}>{idx + 1}</span>}
@@ -246,7 +249,7 @@ export default function ProductsTab() {
     )
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>Loading…</div>
+  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>{t('admin.common.loading')}</div>
 
   return (
     <div>
@@ -256,14 +259,14 @@ export default function ProductsTab() {
         <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
           <input
             value={filter} onChange={e => setFilter(e.target.value)}
-            placeholder="Filter by name or key…"
+            placeholder={t('admin.products.filterPlaceholder')}
             style={{ padding: '0.4rem 0.7rem', borderRadius: '7px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.85rem', width: '220px', outline: 'none' }}
           />
           <select value={filterActive} onChange={e => setFilterActive(e.target.value)}
             style={{ padding: '0.4rem 0.6rem', borderRadius: '7px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.85rem', outline: 'none' }}>
-            <option value="all">All</option>
-            <option value="active">Active only</option>
-            <option value="inactive">Inactive only</option>
+            <option value="all">{t('admin.common.all')}</option>
+            <option value="active">{t('admin.common.activeOnly')}</option>
+            <option value="inactive">{t('admin.common.inactiveOnly')}</option>
           </select>
         </div>
         <button
@@ -271,7 +274,7 @@ export default function ProductsTab() {
           disabled={addingNew}
           style={{ padding: '0.4rem 0.9rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '7px', fontWeight: '700', fontSize: '0.83rem', cursor: 'pointer' }}
         >
-          + Add Material
+          {t('admin.products.addMaterial')}
         </button>
       </div>
 
@@ -279,37 +282,37 @@ export default function ProductsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
-              <SortTh colKey="type_key"         label="Key" />
+              <SortTh colKey="type_key"         label={t('admin.products.col.key')} />
               <SortTh colKey="multiplier"       label="×" style={{ width: '1px', textAlign: 'center' }} />
-              <SortTh colKey="product_type"     label="Category" />
-              <SortTh colKey="name"             label="Name" />
-              <SortTh colKey="name_he"          label="שם (HE)" />
-              <SortTh colKey="part_number"      label="P.N." />
-              <SortTh colKey="price_ils"        label="Price ₪" />
-              <SortTh colKey="weight_kg"        label="Weight kg" />
-              <SortTh colKey="depreciation_pct" label="פחת %" />
-              <SortTh colKey="process_pct"      label="עיבוד %" />
-              <SortTh colKey="extra"            label="Extra" />
-              <SortTh colKey="alt_group"        label="Alt Group" />
-              <SortTh colKey="is_default"       label="Default" />
-              <SortTh colKey="active"           label="Status" />
-              <th style={thStyle}>Actions</th>
+              <SortTh colKey="product_type"     label={t('admin.products.col.category')} />
+              <SortTh colKey="name"             label={t('admin.products.col.name')} />
+              <SortTh colKey="name_he"          label={t('admin.products.col.nameHe')} />
+              <SortTh colKey="part_number"      label={t('admin.products.col.pn')} />
+              <SortTh colKey="price_ils"        label={t('admin.products.col.priceIls')} />
+              <SortTh colKey="weight_kg"        label={t('admin.products.col.weightKg')} />
+              <SortTh colKey="depreciation_pct" label={t('admin.products.col.depPct')} />
+              <SortTh colKey="process_pct"      label={t('admin.products.col.procPct')} />
+              <SortTh colKey="extra"            label={t('admin.products.col.extra')} />
+              <SortTh colKey="alt_group"        label={t('admin.products.col.altGroup')} />
+              <SortTh colKey="is_default"       label={t('admin.products.col.default')} />
+              <SortTh colKey="active"           label={t('admin.products.col.status')} />
+              <th style={thStyle}>{t('admin.common.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {addingNew && (
-              <EditRow product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} />
+              <EditRow product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} t={t} />
             )}
             {filtered.length === 0 && !addingNew && (
               <tr>
                 <td colSpan={15} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
-                  No materials found.
+                  {t('admin.products.empty')}
                 </td>
               </tr>
             )}
             {filtered.map((p, i) => (
               editingId === p.id ? (
-                <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} />
+                <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} t={t} />
               ) : (
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
                   <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', paddingLeft: p.bundle?.parentType ? '2rem' : '0.75rem' }}>
@@ -336,18 +339,18 @@ export default function ProductsTab() {
                       background: p.active ? SUCCESS_BG : BORDER_FAINT,
                       color: p.active ? SUCCESS : TEXT_VERY_LIGHT,
                     }}>
-                      {p.active ? 'Active' : 'Inactive'}
+                      {p.active ? t('admin.common.active') : t('admin.common.inactive')}
                     </button>
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
                       <button onClick={() => { setEditingId(p.id); setAddingNew(false) }}
                         style={{ padding: '0.2rem 0.55rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        Edit
+                        {t('admin.common.edit')}
                       </button>
                       <button onClick={() => handleDelete(p.id)}
                         style={{ padding: '0.2rem 0.55rem', background: 'transparent', color: DANGER, border: `1px solid ${DANGER}`, borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        Del
+                        {t('admin.common.del')}
                       </button>
                     </div>
                   </td>
@@ -357,7 +360,7 @@ export default function ProductsTab() {
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>{filtered.length} material{filtered.length !== 1 ? 's' : ''}</div>
+      <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>{t('admin.products.count', { count: filtered.length })}</div>
     </div>
   )
 }

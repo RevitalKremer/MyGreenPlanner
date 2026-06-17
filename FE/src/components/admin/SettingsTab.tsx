@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { getSettings, updateSetting } from '../../services/adminApi'
 import {
-  PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
+  PRIMARY, TEXT, TEXT_DARKEST, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
+  TEXT_LIGHT,
 } from '../../styles/colors'
+import { useLang } from '../../i18n/LangContext'
 
-const SECTION_LABELS = { global: 'Global', rails: 'Rails', bases: 'Bases', detail: 'Block & Detail' }
 const ROOF_TYPES = ['concrete', 'iskurit', 'insulated_panel', 'tiles', 'flat_installation']
 const ROOF_TYPE_SHORT = { concrete: 'C', iskurit: 'I', insulated_panel: 'IP', tiles: 'T', flat_installation: 'F' }
 
 export default function SettingsTab() {
+  const { t } = useLang()
+  const SECTION_LABELS: Record<string, string> = {
+    global: t('admin.settings.section.global'),
+    rails:  t('admin.settings.section.rails'),
+    bases:  t('admin.settings.section.bases'),
+    detail: t('admin.settings.section.detail'),
+  }
   const [settings, setSettings] = useState<any[]>([])
   const [edits, setEdits] = useState({})       // key → new value_json string
   const [minEdits, setMinEdits] = useState({})  // key → new min_val string
@@ -27,7 +35,8 @@ export default function SettingsTab() {
       // Monetization rows have their own dedicated admin page; keep this
       // tab focused on engineering/materials settings.
       .then(data => { setSettings(data.filter(s => s.section !== 'monetization')); setLoading(false) })
-      .catch(() => { setError('Failed to load settings'); setLoading(false) })
+      .catch(() => { setError(t('admin.settings.failedLoad')); setLoading(false) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const getValue = (s) => edits[s.key] !== undefined ? edits[s.key] : s.value_json
@@ -60,7 +69,7 @@ export default function SettingsTab() {
       setSaved(prev => ({ ...prev, [s.key]: true }))
       setTimeout(() => setSaved(prev => { const n = { ...prev }; delete n[s.key]; return n }), 2000)
     } catch {
-      setError('Save failed')
+      setError(t('admin.common.failedSave'))
     } finally {
       setSaving(prev => ({ ...prev, [s.key]: false }))
     }
@@ -72,7 +81,7 @@ export default function SettingsTab() {
     return acc
   }, {} as Record<string, any[]>)
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>Loading…</div>
+  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>{t('admin.common.loading')}</div>
 
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -89,13 +98,13 @@ export default function SettingsTab() {
             padding: '0.3rem 0.85rem',
             borderRadius: '8px 8px 0 0',
           }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Parameter</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Default</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Min</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Max</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Step</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Visible</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Roof Types</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.parameter')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.default')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.min')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.max')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.step')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.visible')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.roofTypes')}</div>
             <div />
           </div>
           <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: '10px', overflow: 'hidden' }}>
@@ -163,7 +172,7 @@ export default function SettingsTab() {
                         cursor: 'pointer',
                         accentColor: PRIMARY,
                       }}
-                      title={currentVisible ? 'Visible in Step3 Sidebar' : 'Hidden (admin only)'}
+                      title={currentVisible ? t('admin.settings.visibleTooltip.on') : t('admin.settings.visibleTooltip.off')}
                     />
                   </div>
                   <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
@@ -210,7 +219,7 @@ export default function SettingsTab() {
                       minWidth: '52px',
                     }}
                   >
-                    {saved[s.key] ? 'Saved' : saving[s.key] ? '…' : 'Save'}
+                    {saved[s.key] ? t('admin.common.saved') : saving[s.key] ? '…' : t('admin.common.save')}
                   </button>
                 </div>
               )
