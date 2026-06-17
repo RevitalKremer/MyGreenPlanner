@@ -83,9 +83,19 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
   const available       = user?.credits_available ?? 0
   const used            = user?.credits_used ?? 0
   const total           = user?.credits_total ?? 0
-  const plansThisYear   = user?.plans_this_year ?? 0
-  const discountEligible = !!user?.discount_eligible
-  const periodYear      = user?.period_year || new Date().getFullYear()
+  const plansThisYear     = user?.plans_this_year ?? 0
+  const discountEligible  = !!user?.discount_eligible
+  const discountThreshold = Number(user?.discount_threshold ?? 0)
+  const periodYear        = user?.period_year || new Date().getFullYear()
+  // Progress toward volume-discount tier, capped at 1. Below 75% we show
+  // nothing (no clutter); 75–99% gets an amber "almost there" pill; ≥100%
+  // gets the existing green "eligible" pill.
+  const discountProgress = discountThreshold > 0
+    ? Math.min(plansThisYear / discountThreshold, 1)
+    : 0
+  const discountTier: 'far' | 'near' | 'eligible' =
+    discountEligible          ? 'eligible' :
+    discountProgress >= 0.75  ? 'near'     : 'far'
 
   const StatBox = ({ label, value, accent = false }) => (
     <div style={{
@@ -300,13 +310,37 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
           <span style={{ fontSize: '0.72rem', color: TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {t('account.periodLabel', { year: periodYear })}
           </span>
-          {discountEligible && (
+          {discountTier === 'eligible' && (
             <span style={{
               fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
               background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
               padding: '0.15rem 0.5rem', borderRadius: 999,
             }}>
               {t('account.discountEligible')}
+            </span>
+          )}
+          {discountTier === 'near' && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+              fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+              background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
+              padding: '0.15rem 0.55rem', borderRadius: 999,
+            }}>
+              {/* Mini progress bar — motivational cue. Same green palette
+                  as the 'eligible' pill so it reads as positive progress
+                  rather than a warning. */}
+              <span style={{
+                display: 'inline-block', width: 44, height: 5,
+                background: BORDER_FAINT, borderRadius: 3,
+                position: 'relative', overflow: 'hidden',
+              }}>
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  width: `${Math.round(discountProgress * 100)}%`,
+                  background: PRIMARY, borderRadius: 3,
+                }} />
+              </span>
+              {t('account.discountNearGoal', { plans: plansThisYear, threshold: discountThreshold })}
             </span>
           )}
         </div>

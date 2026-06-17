@@ -57,6 +57,7 @@ const he = {
   'account.periodLabel':      'שנה {year}',
   'account.plansThisYear':    'פרויקטים השנה',
   'account.discountEligible': 'זכאי להנחה במחיר',
+  'account.discountNearGoal': '{plans} / {threshold} פרויקטים — קרוב לזכאות',
   'userChip.balanceUnit':     'ק׳',
   'userChip.balanceTooltip':  'בשימוש {used} מתוך {total} קרדיטים',
   'auth.register.creditsCta': 'הרשמה ל-{credits} קרדיטים חינם',

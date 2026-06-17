@@ -330,6 +330,7 @@ function UserLookupPane() {
     credits_total?: number;
     plans_this_year?: number;
     discount_eligible?: boolean;
+    discount_threshold?: number;
     period_year?: number;
   }>({})
   const [ledgerTotal, setLedgerTotal] = useState(0)
@@ -433,6 +434,7 @@ function UserLookupPane() {
         credits_total: data.credits_total,
         plans_this_year: data.plans_this_year,
         discount_eligible: data.discount_eligible,
+        discount_threshold: data.discount_threshold,
         period_year: data.period_year,
       })
     } catch (e: any) {
@@ -594,21 +596,57 @@ function UserLookupPane() {
           </div>
         ) : (
           <>
-            {/* Period chip + discount-eligible badge above the balance grid. */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-              <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Calendar year {ledgerSnapshot.period_year ?? new Date().getFullYear()}
-              </span>
-              {ledgerSnapshot.discount_eligible && (
-                <span style={{
-                  fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
-                  background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
-                  padding: '0.15rem 0.5rem', borderRadius: 999,
-                }}>
-                  Eligible for volume discount
-                </span>
-              )}
-            </div>
+            {/* Period chip + tiered discount badge above the balance grid.
+                'far' (<75%) shows nothing, 'near' (75–99%) shows an amber
+                pill with a mini progress bar, 'eligible' (≥100%) shows the
+                green pill. Same logic as MyAccount. */}
+            {(() => {
+              const plans     = ledgerSnapshot.plans_this_year ?? 0
+              const threshold = Number(ledgerSnapshot.discount_threshold ?? 0)
+              const progress  = threshold > 0 ? Math.min(plans / threshold, 1) : 0
+              const tier: 'far' | 'near' | 'eligible' =
+                ledgerSnapshot.discount_eligible ? 'eligible' :
+                progress >= 0.75                ? 'near'     : 'far'
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Calendar year {ledgerSnapshot.period_year ?? new Date().getFullYear()}
+                  </span>
+                  {tier === 'eligible' && (
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+                      background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
+                      padding: '0.15rem 0.5rem', borderRadius: 999,
+                    }}>
+                      Eligible for volume discount
+                    </span>
+                  )}
+                  {tier === 'near' && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                      fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+                      background: PRIMARY_BG, border: `1px solid ${PRIMARY}`,
+                      padding: '0.15rem 0.55rem', borderRadius: 999,
+                    }}>
+                      {/* Same green palette as the 'eligible' pill — the
+                          progress bar + count differentiates the tiers. */}
+                      <span style={{
+                        display: 'inline-block', width: 44, height: 5,
+                        background: BORDER_FAINT, borderRadius: 3,
+                        position: 'relative', overflow: 'hidden',
+                      }}>
+                        <span style={{
+                          position: 'absolute', inset: 0,
+                          width: `${Math.round(progress * 100)}%`,
+                          background: PRIMARY, borderRadius: 3,
+                        }} />
+                      </span>
+                      {plans} / {threshold} plans — almost there
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Balance header */}
             <div style={{

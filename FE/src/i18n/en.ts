@@ -57,6 +57,7 @@ const en = {
   'account.periodLabel':      'Calendar year {year}',
   'account.plansThisYear':    'Plans this year',
   'account.discountEligible': 'Eligible for volume discount',
+  'account.discountNearGoal': '{plans} / {threshold} plans — almost there',
   'userChip.balanceUnit':     'c',
   'userChip.balanceTooltip':  'Used {used} of {total} credits',
   'auth.register.creditsCta': 'Register and get {credits} free credits',

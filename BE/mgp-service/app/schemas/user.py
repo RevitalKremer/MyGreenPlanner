@@ -36,6 +36,9 @@ class UserRead(BaseModel):
     credits_total: int = 0
     plans_this_year: int = 0
     discount_eligible: bool = False
+    # Configured threshold (admin-tunable via app_settings). Exposed so the
+    # FE can render a progress indicator before the user hits eligibility.
+    discount_threshold: int = 0
     period_year: int = 0
 
     model_config = {"from_attributes": True}

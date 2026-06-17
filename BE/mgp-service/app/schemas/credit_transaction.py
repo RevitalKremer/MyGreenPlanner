@@ -31,6 +31,7 @@ class LedgerResponse(BaseModel):
     credits_total: int
     plans_this_year: int = 0
     discount_eligible: bool = False
+    discount_threshold: int = 0
     period_year: int = 0
 
 

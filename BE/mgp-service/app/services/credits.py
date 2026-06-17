@@ -335,5 +335,8 @@ async def compute_account_snapshot(db: AsyncSession, user: User) -> dict:
         'credits_total': available + used,
         'plans_this_year': plans_this_year,
         'discount_eligible': discount_eligible,
+        # Exposed so the FE can show a progress indicator before the user
+        # reaches the threshold — needed for the 75% encouragement tier.
+        'discount_threshold': threshold,
         'period_year': now.year,
     }
