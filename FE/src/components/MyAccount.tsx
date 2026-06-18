@@ -30,6 +30,7 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
   const [editingProfile, setEditingProfile] = useState(false)
   const [fullNameInput, setFullNameInput] = useState(user?.full_name ?? '')
   const [phoneInput, setPhoneInput] = useState(user?.phone_number ?? '')
+  const [companyInput, setCompanyInput] = useState(user?.company_name ?? '')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileSaved, setProfileSaved] = useState(false)
@@ -38,8 +39,9 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
     if (!editingProfile) {
       setFullNameInput(user?.full_name ?? '')
       setPhoneInput(user?.phone_number ?? '')
+      setCompanyInput(user?.company_name ?? '')
     }
-  }, [user?.full_name, user?.phone_number, editingProfile])
+  }, [user?.full_name, user?.phone_number, user?.company_name, editingProfile])
 
   const handleSaveProfile = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -49,6 +51,8 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
       await onUpdateProfile({
         full_name: fullNameInput.trim(),
         phone_number: phoneInput.trim() || null,
+        // Only send company when set, so leaving it blank doesn't try to clear it.
+        ...(companyInput.trim() ? { company_name: companyInput.trim() } : {}),
       })
       setProfileSaved(true)
       // Collapse the editor a moment after a successful save so the user
@@ -248,6 +252,23 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
                     }}
                   />
                 </div>
+              </div>
+
+              <div style={{ marginBottom: '0.7rem' }}>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_SECONDARY, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {t('profile.company')}
+                </label>
+                <input
+                  type="text" value={companyInput}
+                  onChange={e => setCompanyInput(e.target.value)}
+                  placeholder={t('profile.companyPlaceholder')}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '0.5rem 0.65rem', borderRadius: 7,
+                    border: `1.5px solid ${BORDER_LIGHT}`, fontSize: '0.88rem', outline: 'none',
+                    background: 'white',
+                  }}
+                />
               </div>
 
               {profileError && (

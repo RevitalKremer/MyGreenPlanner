@@ -72,14 +72,16 @@ export function useAuth() {
     return me
   }, [])
 
-  const register = useCallback(async (email, password, fullName, phone) => {
+  const register = useCallback(async (email, password, fullName, phone, company) => {
     const res = await mgpRequest('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, full_name: fullName, phone_number: phone || null }),
+      body: JSON.stringify({ email, password, full_name: fullName, phone_number: phone || null, company_name: company }),
     })
     if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.detail || 'Registration failed')
+      const err = await res.json().catch(() => ({}))
+      // FastAPI 422 returns `detail` as an array of {msg,...}; a string otherwise.
+      const detail = Array.isArray(err.detail) ? err.detail.map(d => d?.msg).filter(Boolean).join('; ') : err.detail
+      throw new Error(detail || 'Registration failed')
     }
     return login(email, password)
   }, [login])

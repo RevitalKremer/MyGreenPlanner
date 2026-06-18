@@ -547,9 +547,9 @@ function App() {
     }
   }
 
-  const handleAuthGateSuccess = async (tab, email, password, fullName, phone) => {
+  const handleAuthGateSuccess = async (tab, email, password, fullName, phone, company) => {
     if (tab === 'login') await auth.login(email, password)
-    else await auth.register(email, password, fullName, phone)
+    else await auth.register(email, password, fullName, phone, company)
     setShowAuthGate(false)
     // If the user signed back in mid-wizard (UserChip → Sign In), flush
     // the current in-memory state to BE so subsequent step transitions

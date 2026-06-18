@@ -3,6 +3,7 @@ import { PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VE
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
 import ProjectForm from './ProjectForm'
+import ReassignOwnerModal from './admin/ReassignOwnerModal'
 import { useLang } from '../i18n/LangContext'
 import LangToggle from '../i18n/LangToggle'
 import { getBackendVersion, getFrontendVersion } from '../services/projectsApi'
@@ -68,6 +69,11 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
   const [localSearch, setLocalSearch] = useState(projectsSearch || '')
   const searchTimerRef = useRef(null)
   const [backendVersion, setBackendVersion] = useState(null)
+  // Admin "reassign owner": the project being reassigned, plus local overrides
+  // ({ [id]: { owner_id, owner_email } }) so the row reflects the new owner
+  // without a full reload.
+  const [reassignProject, setReassignProject] = useState(null)
+  const [ownerOverrides, setOwnerOverrides] = useState({})
 
   const frontendVersion = getFrontendVersion()
 
@@ -104,7 +110,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     onCreateProject({ name: projectName.trim(), client_name: clientName.trim(), location: location.trim(), date, roofSpec })
   }
 
-  const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
+  const handleAuthSuccess = async (tab, email, password, fullName, phone, company) => {
     if (tab === 'login') {
       await onLogin(email, password)
       setShowAuth(false)
@@ -113,7 +119,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
         setOpenFormAfterLogin(false)
       }
     } else {
-      await onRegister(email, password, fullName, phone)
+      await onRegister(email, password, fullName, phone, company)
       // Don't close — AuthModal transitions to 'registered' screen internally.
       // openFormAfterLogin stays set so a follow-up login (after email verify)
       // still opens the form.
@@ -314,11 +320,21 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
               }}>
               {cloudProjects.map(p => {
                 const isEditing = editingId === p.id
+                // Apply any local reassign override so the row reflects a just-
+                // changed owner without a reload.
+                const ov = ownerOverrides[p.id]
+                const effOwnerId = ov?.owner_id ?? p.owner_id
+                const effOwnerEmail = ov?.owner_email ?? p.owner_email
+                // Own vs company-shared (owned by a colleague). Emphasize own
+                // projects with a PRIMARY left accent; shared ones stay muted
+                // and show the owner's email (set by the BE only for shared).
+                const isOwn = !!user && effOwnerId === user.id
                 return (
                   <div key={p.id} style={{
                     background: 'white', borderRadius: '10px',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
                     border: `1.5px solid ${isEditing ? TEXT_DARK : BORDER_LIGHT}`,
+                    borderLeft: isEditing ? undefined : `4px solid ${isOwn ? PRIMARY : BORDER_FAINT}`,
                     padding: '0.75rem 1rem',
                     display: 'flex', alignItems: 'center', gap: '1rem',
                   }}>
@@ -395,8 +411,13 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                       // Display mode
                       <>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {p.name}
+                          <div style={{ fontSize: '0.9rem', fontWeight: isOwn ? '800' : '600', color: isOwn ? TEXT_DARK : TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                            {!isOwn && (
+                              <span style={{ flexShrink: 0, fontSize: '0.62rem', fontWeight: '700', color: TEXT_MUTED, background: BORDER_FAINT, borderRadius: '10px', padding: '0.05rem 0.45rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                {t('welcome.sharedTag')}
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: TEXT_FAINT, marginTop: '2px' }}>
                             {p.client_name ? `${p.client_name} · ` : ''}
@@ -405,7 +426,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                               ? `${t(ROOF_TYPE_I18N[p.roof_spec.type])} · `
                               : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                            {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
+                            {/* owner_email is sent by the BE only for admins and for
+                                company-shared projects (owned by a colleague) — so its
+                                mere presence means "show who owns this". */}
+                            {effOwnerEmail && ` · ${effOwnerEmail}`}
                           </div>
                         </div>
                         <button
@@ -436,6 +460,20 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                           </svg>
                         </button>
+                        {user?.role === 'admin' && (
+                          <button
+                            onClick={() => setReassignProject({ id: p.id, name: p.name })}
+                            title={t('welcome.reassignOwner')}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/>
+                            </svg>
+                          </button>
+                        )}
                         <button
                           onClick={() => onDeleteCloudProject(p.id)}
                           title={t('welcome.deleteProject')}
@@ -506,6 +544,17 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
           onResetPassword={onResetPassword}
           resetToken={resetToken}
           trialGrantCredits={trialGrantCredits}
+        />
+      )}
+
+      {reassignProject && (
+        <ReassignOwnerModal
+          project={reassignProject}
+          onClose={() => setReassignProject(null)}
+          onReassigned={(id, ownerId, ownerEmail) => {
+            setOwnerOverrides(o => ({ ...o, [id]: { owner_id: ownerId, owner_email: ownerEmail } }))
+            setReassignProject(null)
+          }}
         />
       )}
     </div>

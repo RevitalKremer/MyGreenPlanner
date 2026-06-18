@@ -225,9 +225,11 @@ async def list_projects(
     is_admin = current_user.role.value == "admin"
     clean_search = search.strip() if search else None
     projects, total = await project_service.list_projects(
-        db, current_user.id, is_admin=is_admin, limit=limit, offset=offset, search=clean_search,
+        db, current_user.id, is_admin=is_admin, limit=limit, offset=offset,
+        search=clean_search, company_id=current_user.company_id,
     )
-    # For admin, populate owner_email from loaded relationship
+    # Populate owner_email for admins and for company-shared projects (those not
+    # owned by the current user) so the FE can label whose project it is.
     project_summaries = []
     for proj in projects:
         proj_dict = {
@@ -241,7 +243,7 @@ async def list_projects(
             "created_at": proj.created_at,
             "updated_at": proj.updated_at,
         }
-        if is_admin and proj.owner:
+        if proj.owner and (is_admin or proj.owner_id != current_user.id):
             proj_dict["owner_email"] = proj.owner.email
         project_summaries.append(proj_dict)
     return {

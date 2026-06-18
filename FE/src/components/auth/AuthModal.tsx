@@ -25,6 +25,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [company, setCompany] = useState('')
   const [error, setError] = useState(null)
   const [info, setInfo] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -41,7 +42,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
       if (mode === 'login') {
         await onSuccess('login', email, password)
       } else if (mode === 'register') {
-        await onSuccess('register', email, password, fullName, phone)
+        await onSuccess('register', email, password, fullName, phone, company)
         setMode('registered')
       } else if (mode === 'forgot') {
         await onForgotPassword(email)
@@ -244,6 +245,16 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                       type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                       onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
                       placeholder={t('auth.phonePlaceholder')} required style={inputStyle(focused === 'phone')}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+                      {t('auth.company')} <span style={{ color: ERROR }}>{t('auth.required')}</span>
+                    </label>
+                    <input
+                      type="text" value={company} onChange={e => setCompany(e.target.value)}
+                      onFocus={() => setFocused('company')} onBlur={() => setFocused(null)}
+                      placeholder={t('auth.companyPlaceholder')} required style={inputStyle(focused === 'company')}
                     />
                   </div>
                 </>

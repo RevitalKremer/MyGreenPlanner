@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Enum as SAEnum, DateTime, Integer, Numeric
+from sqlalchemy import String, Boolean, Enum as SAEnum, DateTime, Integer, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import enum
@@ -33,7 +33,21 @@ class User(Base):
     # price). Applied to the price proposal's PRICE_AFTER_DISCOUNT cell as
     # `cell_above * (100 - discount_percent) / 100`.
     discount_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    # Company the user belongs to. Required for public registrations, NULL for
+    # admins (exempt) and legacy users. Drives company-level project sharing.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    company: Mapped["Company | None"] = relationship("Company", foreign_keys=[company_id])
     projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", cascade="all, delete-orphan", foreign_keys="Project.owner_id")
+
+    @property
+    def company_name(self) -> str | None:
+        """Company display name for UserRead. Reads the relationship only when
+        it's already loaded — avoids triggering an async lazy load. Serialization
+        sites eager-load `company` so the value is present where it matters."""
+        from sqlalchemy import inspect as _sa_inspect
+        if 'company' in _sa_inspect(self).unloaded:
+            return None
+        return self.company.name if self.company is not None else None
