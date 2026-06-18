@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getUsers, updateUser, deleteUser, getCompanies } from '../../services/adminApi'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
@@ -48,6 +48,12 @@ export default function UsersTab({ currentUserId }) {
   const [demoteUser, setDemoteUser] = useState(null)
   const [demoteCompany, setDemoteCompany] = useState('')
   const [demoteErr, setDemoteErr] = useState(null)
+  // Search: searchInput mirrors typing; appliedSearch is the debounced (350 ms)
+  // value sent to the BE (matches email / name / company). Useful to list all
+  // users of one company by searching the company name.
+  const [searchInput, setSearchInput] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     getCompanies().then(setCompanies).catch(() => {})
@@ -55,16 +61,23 @@ export default function UsersTab({ currentUserId }) {
 
   useEffect(() => {
     setLoading(true)
-    // /admin/users is now paginated. UsersTab keeps its "single list"
-    // UX; we just pull a big page (500 is the BE max). When this tab
-    // gets its own search + Load More, switch to the same offset/search
-    // state pattern as CreditsTab.
-    getUsers({ limit: 500, offset: 0 })
+    // Single big page (500 = BE max); search narrows server-side.
+    getUsers({ limit: 500, offset: 0, search: appliedSearch || null })
       .then(res => setUsers(res.rows))
       .catch(() => setError(t('admin.users.failedLoad')))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [appliedSearch])
+
+  const onSearchChange = (v) => {
+    setSearchInput(v)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => setAppliedSearch(v.trim()), 350)
+  }
+  const clearSearch = () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    setSearchInput(''); setAppliedSearch('')
+  }
 
   // Shared: PUT a patch for one user, manage per-row saving/error, swap the row.
   const applyPatch = async (user, patch) => {
@@ -166,7 +179,9 @@ export default function UsersTab({ currentUserId }) {
   const canEdit = (user) => !user.is_sysadmin
   const canDelete = (user) => !user.is_sysadmin && user.role !== 'admin' && user.id !== currentUserId
 
-  if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT, fontSize: '0.88rem' }}>{t('admin.users.loading')}</div>
+  // Only blank the view on the very first load; subsequent searches keep the
+  // table visible and show progress in the toolbar.
+  if (loading && users.length === 0 && !appliedSearch) return <div style={{ padding: '2rem', color: TEXT_LIGHT, fontSize: '0.88rem' }}>{t('admin.users.loading')}</div>
   if (error) return <div style={{ padding: '2rem', color: ERROR, fontSize: '0.88rem' }}>{error}</div>
 
   const COL_HEADERS = [
@@ -222,8 +237,29 @@ export default function UsersTab({ currentUserId }) {
         </div>
       )}
 
-      <div style={{ fontSize: '0.78rem', color: TEXT_SECONDARY, marginBottom: '1rem' }}>
-        {t('admin.users.total', { count: users.length })}
+      {/* Search toolbar — server-side match on email / name / company. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <input
+          value={searchInput}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder={t('admin.users.searchPlaceholder')}
+          style={{
+            flex: 1, padding: '0.45rem 0.65rem', boxSizing: 'border-box',
+            border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 7, fontSize: '0.85rem', outline: 'none',
+          }}
+        />
+        {searchInput && (
+          <button
+            onClick={clearSearch}
+            style={{
+              background: 'white', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 7,
+              padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.78rem', color: TEXT_SECONDARY,
+            }}
+          >{t('admin.common.clear')}</button>
+        )}
+        <div style={{ fontSize: '0.75rem', color: TEXT_VERY_LIGHT, whiteSpace: 'nowrap' }}>
+          {loading ? t('admin.common.loading') : t('admin.users.total', { count: users.length })}
+        </div>
       </div>
 
       <div style={{ overflowX: 'auto' }}>

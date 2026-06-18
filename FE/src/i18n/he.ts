@@ -635,6 +635,7 @@ const he = {
 
   // Users tab
   'admin.users.total':          'סה״כ {count} משתמשים',
+  'admin.users.searchPlaceholder': 'חיפוש לפי שם, אימייל או חברה…',
   'admin.users.col.name':       'שם',
   'admin.users.col.email':      'אימייל',
   'admin.users.col.role':       'הרשאה',

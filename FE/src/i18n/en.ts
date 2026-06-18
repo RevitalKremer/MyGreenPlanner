@@ -637,6 +637,7 @@ const en = {
 
   // Users tab
   'admin.users.total':          '{count} user(s) total',
+  'admin.users.searchPlaceholder': 'Search by name, email, or company…',
   'admin.users.col.name':       'Name',
   'admin.users.col.email':      'Email',
   'admin.users.col.role':       'Role',
