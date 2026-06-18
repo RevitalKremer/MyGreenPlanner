@@ -2542,11 +2542,16 @@ async def update_project_step(
     # credits is surfaced through the same StepTransitionInvalidError channel
     # as other 2→3 validations.
     if new_step > 2 and project.credits_charged_at is None and current_user is not None:
-        # Company sharing: the project OWNER pays, regardless of which member
-        # advances it. An admin acting on someone's project never triggers a
-        # charge (actor-admin skip); charge_for_project also no-ops if the payer
-        # is an admin or the project is already charged.
-        if current_user.role.value != 'admin':
+        if current_user.role.value == 'admin':
+            # Admins never spend, but mark the project "charged at 0" (set
+            # credits_charged_at, no ledger row) so it's treated as committed:
+            # no reset to step 1, and no refundable charge. Critical when an
+            # admin builds a project then reassigns it to a user — the new owner
+            # is never billed and Get-Quotation has nothing to refund.
+            credits_service.mark_charged_zero(project)
+        else:
+            # Company sharing: the project OWNER pays, regardless of which member
+            # advances it.
             payer = current_user if project.owner_id == current_user.id else await db.get(User, project.owner_id)
             try:
                 await credits_service.charge_for_project(db, payer, project)

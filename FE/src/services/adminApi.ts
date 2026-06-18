@@ -25,6 +25,13 @@ export const getCompanies = (): Promise<{ id: string; name: string }[]> =>
     return r.json()
   })
 
+// Reassign a project's owner (admin). Sharing follows the new owner's company.
+export const reassignProjectOwner = (projectId: string, userId: string): Promise<{ owner_id: string; owner_email: string }> =>
+  mgpRequest(`/admin/projects/${projectId}/owner`, { method: 'PUT', body: JSON.stringify({ user_id: userId }) }).then(async r => {
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'Reassign failed') }
+    return r.json()
+  })
+
 // Products
 export const getProducts = (productType) => mgpRequest(`/admin/products${productType ? `?product_type=${productType}` : ''}`).then(r => r.json())
 export const createProduct = (data) => mgpRequest('/admin/products', { method: 'POST', body: JSON.stringify(data) }).then(r => r.json())

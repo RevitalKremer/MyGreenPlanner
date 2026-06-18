@@ -13,6 +13,7 @@ from app.models.credit_transaction import CreditTransaction, CreditTxnKind
 from app.schemas.user import (
     UserRead, UserListResponse, UserUpdate,
     AdminGrantCreditsRequest, AdminRefundProjectRequest, AdminDismissRefundInboxRequest,
+    AdminReassignProjectOwnerRequest,
 )
 from app.schemas.company import CompanyRead
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
@@ -365,6 +366,32 @@ async def admin_refund_project(
     owner = (await db.execute(select(User).where(User.id == project.owner_id))).scalar_one()
     await db.refresh(owner)
     return await _user_read_with_credits(db, owner)
+
+
+@router.put("/projects/{project_id}/owner")
+async def admin_reassign_project_owner(
+    project_id: str,
+    payload: AdminReassignProjectOwnerRequest,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reassign a project's owner. Because company sharing is derived from the
+    owner's company, assigning the project to a member of a company makes it
+    visible (and editable) to that whole company."""
+    project = (await db.execute(
+        select(Project).where(Project.id == uuid.UUID(project_id))
+    )).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    new_owner = (await db.execute(
+        select(User).where(User.id == payload.user_id)
+    )).scalar_one_or_none()
+    if not new_owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target user not found")
+    project.owner_id = new_owner.id
+    await db.commit()
+    # Return the new owner so the FE can update the project row in place.
+    return {"owner_id": str(new_owner.id), "owner_email": new_owner.email}
 
 
 @router.get("/projects/pending-refunds", response_model=PendingRefundsResponse)

@@ -68,6 +68,12 @@ class AdminDismissRefundInboxRequest(BaseModel):
     undo: bool = False
 
 
+class AdminReassignProjectOwnerRequest(BaseModel):
+    # New owner for the project. Sharing is derived from the owner's company,
+    # so assigning to a company member makes the project visible to that company.
+    user_id: uuid.UUID
+
+
 class UserListResponse(BaseModel):
     """Paginated response for GET /admin/users — mirrors ProjectListResponse /
     LedgerResponse shape so the FE pagination pattern is identical across lists.

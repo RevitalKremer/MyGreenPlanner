@@ -260,6 +260,17 @@ def mark_quotation_requested(project: Project) -> None:
         project.quotation_requested_at = datetime.now(timezone.utc)
 
 
+def mark_charged_zero(project: Project) -> None:
+    """Mark a project 'charged at 0' — set credits_charged_at without creating a
+    ledger row. The project is then treated as committed (can't reset to step 1)
+    but has NO refundable charge (pending-refunds joins the project_charge row,
+    which doesn't exist). Used for admin advances: an admin builds a project at
+    no cost, and when it's reassigned to a user the new owner is never billed
+    and there's nothing to refund. Mirrors the cost<=0 path in charge_for_project."""
+    if project.credits_charged_at is None:
+        project.credits_charged_at = datetime.now(timezone.utc)
+
+
 def dismiss_from_refund_inbox(project: Project, *, admin: User, reason: str | None) -> None:
     """Hide the project from the pending-refunds inbox (no credit movement)."""
     project.refund_inbox_dismissed_at = datetime.now(timezone.utc)
