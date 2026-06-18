@@ -11,6 +11,8 @@ class UserCreate(BaseModel):
     # Mandatory at registration (the DB column stays nullable for legacy rows
     # and admin-created users). min_length=1 rejects empty/whitespace-only.
     phone_number: str = Field(min_length=1)
+    # Mandatory at registration — resolved to a Company (get-or-create) on the BE.
+    company_name: str = Field(min_length=1)
 
 
 class UserRead(BaseModel):
@@ -25,6 +27,10 @@ class UserRead(BaseModel):
     lang: str = 'en'
     # Admin-set client discount, percent 0–100. None = no discount.
     discount_percent: float | None = None
+    # Company membership. company_name resolved from the relationship (None for
+    # admins/legacy). Surfaced for sharing + admin/marketing views.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     created_at: datetime
     # Credits snapshot. `available` is the live wallet balance (lifetime).
     # `used` and `total` are CALENDAR-YEAR windowed — only count
@@ -62,6 +68,12 @@ class AdminDismissRefundInboxRequest(BaseModel):
     undo: bool = False
 
 
+class AdminReassignProjectOwnerRequest(BaseModel):
+    # New owner for the project. Sharing is derived from the owner's company,
+    # so assigning to a company member makes the project visible to that company.
+    user_id: uuid.UUID
+
+
 class UserListResponse(BaseModel):
     """Paginated response for GET /admin/users — mirrors ProjectListResponse /
     LedgerResponse shape so the FE pagination pattern is identical across lists.
@@ -78,18 +90,25 @@ class UserUpdate(BaseModel):
     # Percent 0–100. Send null explicitly to clear (back to normal price).
     # The router applies fields with exclude_unset, so an explicit null sticks.
     discount_percent: float | None = Field(default=None, ge=0, le=100)
+    # Company assignment (admin). `company_id` selects an existing company or
+    # clears (explicit null); `company_name` creates a new one (get-or-create).
+    # When both are sent, company_name wins. Honored via exclude_unset.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
 
 
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     phone_number: str | None = None
     lang: str | None = None
+    # When provided, resolved to a Company (get-or-create). None = not changing.
+    company_name: str | None = None
 
-    @field_validator('phone_number')
+    @field_validator('phone_number', 'company_name')
     @classmethod
-    def phone_not_blank(cls, v: str | None) -> str | None:
-        # None means "not changing phone" (e.g. a lang-only update) — allowed.
-        # But if phone is being set, it cannot be blanked out.
+    def not_blank(cls, v: str | None) -> str | None:
+        # None means "not changing this field" — allowed. But if it is being
+        # set, it cannot be blanked out.
         if v is not None and not v.strip():
-            raise ValueError('phone_number cannot be empty')
+            raise ValueError('value cannot be empty')
         return v

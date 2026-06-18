@@ -21,6 +21,7 @@ from app.services.auth import (
 )
 from app.services.email_service import send_verification_email, send_reset_email
 from app.services import credits as credits_service
+from app.services import company_service
 from app.routers.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -44,15 +45,18 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await get_user_by_email(db, payload.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    company = await company_service.get_or_create(db, payload.company_name)
     user = User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
         phone_number=payload.phone_number or None,
+        company=company,  # sets company_id and keeps the relationship loaded
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    await db.refresh(user, attribute_names=['company'])  # keep company loaded for the response
     token = create_email_token(user.email, "verify", expire_hours=24)
     await send_verification_email(user.email, token)
     return user
@@ -141,6 +145,7 @@ async def logout(response: Response):
 
 async def _user_read_with_credits(db: AsyncSession, user: User) -> UserRead:
     """Build a UserRead with credits_available/used/total computed from the ledger."""
+    await db.refresh(user, attribute_names=['company'])  # ensure company_name resolves
     snapshot = await credits_service.compute_account_snapshot(db, user)
     base = UserRead.model_validate(user)
     return base.model_copy(update=snapshot)
@@ -167,6 +172,10 @@ async def update_me(
         current_user.phone_number = payload.phone_number.strip()
     if payload.lang is not None:
         current_user.lang = payload.lang
+    if payload.company_name is not None:
+        # Validated non-blank; resolve to a Company (get-or-create) and assign.
+        # Project sharing is derived from this company live — nothing else to do.
+        current_user.company = await company_service.get_or_create(db, payload.company_name)
     await db.commit()
     await db.refresh(current_user)
     return await _user_read_with_credits(db, current_user)

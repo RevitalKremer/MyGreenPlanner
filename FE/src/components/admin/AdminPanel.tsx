@@ -7,13 +7,14 @@ import ProductsTab from './ProductsTab'
 import PanelTypesTab from './PanelTypesTab'
 import SettingsTab from './SettingsTab'
 import UsersTab from './UsersTab'
+import ProjectsTab from './ProjectsTab'
 import CreditsTab from './CreditsTab'
 import { useLang } from '../../i18n/LangContext'
 
 const TAB_KEYS = [
   // 'credits' includes Monetization as a sub-tab so all credits-related
   // management stays in one place.
-  'users', 'credits', 'panel-types', 'products', 'settings',
+  'users', 'projects', 'credits', 'panel-types', 'products', 'settings',
 ] as const
 
 export default function AdminPanel({ onClose, currentUserId }) {
@@ -21,6 +22,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
   const [activeTab, setActiveTab] = useState<string>('users')
   const TAB_LABEL: Record<string, string> = {
     'users':       t('admin.tab.users'),
+    'projects':    t('admin.tab.projects'),
     'credits':     t('admin.tab.credits'),
     'panel-types': t('admin.tab.panels'),
     'products':    t('admin.tab.products'),
@@ -69,6 +71,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
         {activeTab === 'users'        && <UsersTab currentUserId={currentUserId} />}
+        {activeTab === 'projects'     && <ProjectsTab />}
         {activeTab === 'credits'      && <CreditsTab />}
         {activeTab === 'panel-types'  && <PanelTypesTab />}
         {activeTab === 'products'     && <ProductsTab />}
