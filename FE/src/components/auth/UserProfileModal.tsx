@@ -16,6 +16,7 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
   const { t } = useLang()
   const [fullName, setFullName] = useState(user.full_name ?? '')
   const [phone, setPhone] = useState(user.phone_number ?? '')
+  const [company, setCompany] = useState(user.company_name ?? '')
   const [focused, setFocused] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -28,7 +29,12 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
     setSaved(false)
     setLoading(true)
     try {
-      await onSave({ full_name: fullName.trim(), phone_number: phone.trim() })
+      await onSave({
+        full_name: fullName.trim(),
+        phone_number: phone.trim(),
+        // Only send company when set — leaving it blank doesn't clear it.
+        ...(company.trim() ? { company_name: company.trim() } : {}),
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (err) {
@@ -112,6 +118,19 @@ export default function UserProfileModal({ user, onClose, onSave, onSignOut = nu
               onFocus={() => setFocused('phone')} onBlur={() => setFocused(null)}
               placeholder={t('profile.phonePlaceholder')} required
               style={inputStyle(focused === 'phone')}
+            />
+          </div>
+
+          {/* Company (optional edit) */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: TEXT_SECONDARY, marginBottom: '0.4rem' }}>
+              {t('profile.company')}
+            </label>
+            <input
+              type="text" value={company} onChange={e => setCompany(e.target.value)}
+              onFocus={() => setFocused('company')} onBlur={() => setFocused(null)}
+              placeholder={t('profile.companyPlaceholder')}
+              style={inputStyle(focused === 'company')}
             />
           </div>
 

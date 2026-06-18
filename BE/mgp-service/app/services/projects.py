@@ -173,18 +173,27 @@ async def list_projects(
     limit: int | None = None,
     offset: int = 0,
     search: str | None = None,
+    company_id: uuid.UUID | None = None,
 ) -> tuple[list[Project], int]:
     """List projects with optional pagination and search.
-    If is_admin=True, return all projects; otherwise filter by owner_id.
+    If is_admin=True, return all projects; otherwise return the user's own
+    projects plus any owned by members of their company (company-level sharing).
     Returns tuple of (projects_list, total_count).
     """
     from sqlalchemy import func, or_
 
-    # Build base query
+    # Build base query. Eager-load owner everywhere so the list can label who
+    # owns each (shared) project.
     if is_admin:
         query = select(Project).options(selectinload(Project.owner))
+    elif company_id is not None:
+        # Own projects OR those owned by a member of the same company (derived
+        # from the owner's current company via a join — no column on Project).
+        query = (select(Project).options(selectinload(Project.owner))
+                 .join(User, Project.owner_id == User.id)
+                 .where(or_(Project.owner_id == owner_id, User.company_id == company_id)))
     else:
-        query = select(Project).where(Project.owner_id == owner_id)
+        query = select(Project).options(selectinload(Project.owner)).where(Project.owner_id == owner_id)
 
     # Apply search filter
     if search and search.strip():
@@ -236,7 +245,16 @@ async def get_project_for_user(
     """
     query = select(Project).where(Project.id == project_id)
     if user.role.value != "admin":
-        query = query.where(Project.owner_id == user.id)
+        # Owner OR a member of the OWNER's company (company-level sharing,
+        # derived live from the owner's current company — no column on Project).
+        if user.company_id is not None:
+            from sqlalchemy import or_
+            query = query.join(User, Project.owner_id == User.id).where(or_(
+                Project.owner_id == user.id,
+                User.company_id == user.company_id,
+            ))
+        else:
+            query = query.where(Project.owner_id == user.id)
     project = (await db.execute(query)).scalar_one_or_none()
     if project is not None and isinstance(project.data, dict):
         areas = project.data.get('step2', {}).get('areas', [])
@@ -2524,14 +2542,20 @@ async def update_project_step(
     # credits is surfaced through the same StepTransitionInvalidError channel
     # as other 2→3 validations.
     if new_step > 2 and project.credits_charged_at is None and current_user is not None:
-        try:
-            await credits_service.charge_for_project(db, current_user, project)
-        except credits_service.InsufficientCreditsError as e:
-            raise StepTransitionInvalidError(old_step, new_step, [{
-                'code': 'insufficientCredits',
-                'field': 'credits',
-                'params': {'required': e.required, 'available': e.available},
-            }])
+        # Company sharing: the project OWNER pays, regardless of which member
+        # advances it. An admin acting on someone's project never triggers a
+        # charge (actor-admin skip); charge_for_project also no-ops if the payer
+        # is an admin or the project is already charged.
+        if current_user.role.value != 'admin':
+            payer = current_user if project.owner_id == current_user.id else await db.get(User, project.owner_id)
+            try:
+                await credits_service.charge_for_project(db, payer, project)
+            except credits_service.InsufficientCreditsError as e:
+                raise StepTransitionInvalidError(old_step, new_step, [{
+                    'code': 'insufficientCredits',
+                    'field': 'credits',
+                    'params': {'required': e.required, 'available': e.available},
+                }])
 
     data = copy.deepcopy(project.data or {})
     cleared = []

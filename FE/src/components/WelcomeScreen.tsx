@@ -104,7 +104,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
     onCreateProject({ name: projectName.trim(), client_name: clientName.trim(), location: location.trim(), date, roofSpec })
   }
 
-  const handleAuthSuccess = async (tab, email, password, fullName, phone) => {
+  const handleAuthSuccess = async (tab, email, password, fullName, phone, company) => {
     if (tab === 'login') {
       await onLogin(email, password)
       setShowAuth(false)
@@ -113,7 +113,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
         setOpenFormAfterLogin(false)
       }
     } else {
-      await onRegister(email, password, fullName, phone)
+      await onRegister(email, password, fullName, phone, company)
       // Don't close — AuthModal transitions to 'registered' screen internally.
       // openFormAfterLogin stays set so a follow-up login (after email verify)
       // still opens the form.
@@ -314,11 +314,16 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
               }}>
               {cloudProjects.map(p => {
                 const isEditing = editingId === p.id
+                // Own vs company-shared (owned by a colleague). Emphasize own
+                // projects with a PRIMARY left accent; shared ones stay muted
+                // and show the owner's email (set by the BE only for shared).
+                const isOwn = !!user && p.owner_id === user.id
                 return (
                   <div key={p.id} style={{
                     background: 'white', borderRadius: '10px',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
                     border: `1.5px solid ${isEditing ? TEXT_DARK : BORDER_LIGHT}`,
+                    borderLeft: isEditing ? undefined : `4px solid ${isOwn ? PRIMARY : BORDER_FAINT}`,
                     padding: '0.75rem 1rem',
                     display: 'flex', alignItems: 'center', gap: '1rem',
                   }}>
@@ -395,8 +400,13 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                       // Display mode
                       <>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {p.name}
+                          <div style={{ fontSize: '0.9rem', fontWeight: isOwn ? '800' : '600', color: isOwn ? TEXT_DARK : TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                            {!isOwn && (
+                              <span style={{ flexShrink: 0, fontSize: '0.62rem', fontWeight: '700', color: TEXT_MUTED, background: BORDER_FAINT, borderRadius: '10px', padding: '0.05rem 0.45rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                {t('welcome.sharedTag')}
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: TEXT_FAINT, marginTop: '2px' }}>
                             {p.client_name ? `${p.client_name} · ` : ''}
@@ -405,7 +415,10 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                               ? `${t(ROOF_TYPE_I18N[p.roof_spec.type])} · `
                               : ''}
                             {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                            {user.role === 'admin' && p.owner_email && ` · ${p.owner_email}`}
+                            {/* owner_email is sent by the BE only for admins and for
+                                company-shared projects (owned by a colleague) — so its
+                                mere presence means "show who owns this". */}
+                            {p.owner_email && ` · ${p.owner_email}`}
                           </div>
                         </div>
                         <button

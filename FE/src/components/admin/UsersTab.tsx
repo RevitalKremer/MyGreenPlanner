@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getUsers, updateUser, deleteUser } from '../../services/adminApi'
+import { getUsers, updateUser, deleteUser, getCompanies } from '../../services/adminApi'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG,
@@ -43,6 +43,15 @@ export default function UsersTab({ currentUserId }) {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState({}) // { [id]: true }
   const [saveErr, setSaveErr] = useState({})
+  const [companies, setCompanies] = useState([]) // [{id, name}] for the assign picker
+  // Demotion modal: set to the user being demoted to 'user' who has no company.
+  const [demoteUser, setDemoteUser] = useState(null)
+  const [demoteCompany, setDemoteCompany] = useState('')
+  const [demoteErr, setDemoteErr] = useState(null)
+
+  useEffect(() => {
+    getCompanies().then(setCompanies).catch(() => {})
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -57,17 +66,56 @@ export default function UsersTab({ currentUserId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleRoleChange = async (user, role) => {
+  // Shared: PUT a patch for one user, manage per-row saving/error, swap the row.
+  const applyPatch = async (user, patch) => {
     setSaving(s => ({ ...s, [user.id]: true }))
     setSaveErr(e => ({ ...e, [user.id]: null }))
     try {
-      const updated = await updateUser(user.id, { role })
+      const updated = await updateUser(user.id, patch)
       setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+      return true
     } catch (err) {
       setSaveErr(e => ({ ...e, [user.id]: err.message }))
+      return false
     } finally {
       setSaving(s => ({ ...s, [user.id]: false }))
     }
+  }
+
+  // Refresh the picker list when a brand-new company name was just used.
+  const refreshCompaniesIfNew = (name) => {
+    if (name && !companies.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+      getCompanies().then(setCompanies).catch(() => {})
+    }
+  }
+
+  const handleRoleChange = async (user, role) => {
+    // Atomic demotion: a user must belong to a company, but admins don't. When
+    // demoting a company-less (ex-admin) user, open the modal to collect a
+    // company and send it in the same update so they're never left company-less.
+    if (role === 'user' && !user.company_id) {
+      setDemoteUser(user); setDemoteCompany(''); setDemoteErr(null)
+      return
+    }
+    await applyPatch(user, { role })
+  }
+
+  const confirmDemote = async () => {
+    const name = demoteCompany.trim()
+    if (!name) { setDemoteErr(t('admin.users.companyRequired')); return }
+    const user = demoteUser
+    setDemoteUser(null)
+    const ok = await applyPatch(user, { role: 'user', company_name: name })
+    if (ok) refreshCompaniesIfNew(name)
+  }
+
+  const handleCompanyChange = async (user, raw) => {
+    const trimmed = String(raw).trim()
+    const cur = user.company_name ?? ''
+    if (trimmed === cur) return // no-op (covers blur without edit)
+    // Empty clears the company (company_id: null); else get-or-create by name.
+    const ok = await applyPatch(user, trimmed === '' ? { company_id: null } : { company_name: trimmed })
+    if (ok) refreshCompaniesIfNew(trimmed)
   }
 
   const handleToggleActive = async (user) => {
@@ -127,12 +175,53 @@ export default function UsersTab({ currentUserId }) {
     t('admin.users.col.role'),
     t('admin.users.col.status'),
     t('admin.users.col.joined'),
+    t('admin.users.col.company'),
     t('admin.users.col.discount'),
     t('admin.common.actions'),
   ]
 
   return (
     <div>
+      {/* Shared options for every row's company <input list="admin-companies">. */}
+      <datalist id="admin-companies">
+        {companies.map(c => <option key={c.id} value={c.name} />)}
+      </datalist>
+
+      {/* Atomic-demotion modal: pick/enter a company for a user being demoted
+          from admin (admins are company-less, regular users must have one). */}
+      {demoteUser && (
+        <div
+          onClick={() => setDemoteUser(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 8px 40px rgba(0,0,0,0.18)', width: '100%', maxWidth: '380px', padding: '1.5rem' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: '700', color: TEXT_DARKEST, marginBottom: '0.4rem' }}>
+              {t('admin.users.demoteCompanyTitle')}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: TEXT_SECONDARY, marginBottom: '0.9rem', lineHeight: 1.5 }}>
+              {t('admin.users.demoteCompanyPrompt', { name: demoteUser.full_name })}
+            </div>
+            <input
+              type="text" list="admin-companies" autoFocus
+              value={demoteCompany}
+              onChange={e => { setDemoteCompany(e.target.value); if (demoteErr) setDemoteErr(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') confirmDemote(); if (e.key === 'Escape') setDemoteUser(null) }}
+              placeholder={t('admin.users.col.company')}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.7rem', borderRadius: '8px', border: `1.5px solid ${demoteErr ? ERROR : BORDER_LIGHT}`, fontSize: '0.9rem', outline: 'none' }}
+            />
+            {demoteErr && <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: ERROR }}>{demoteErr}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.1rem' }}>
+              <button onClick={() => setDemoteUser(null)} style={{ padding: '0.5rem 1rem', borderRadius: '7px', border: `1px solid ${BORDER_LIGHT}`, background: BG_SUBTLE, color: TEXT_SECONDARY, fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer' }}>
+                {t('common.cancel')}
+              </button>
+              <button onClick={confirmDemote} style={{ padding: '0.5rem 1.2rem', borderRadius: '7px', border: 'none', background: PRIMARY, color: TEXT, fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer' }}>
+                {t('common.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ fontSize: '0.78rem', color: TEXT_SECONDARY, marginBottom: '1rem' }}>
         {t('admin.users.total', { count: users.length })}
       </div>
@@ -219,6 +308,29 @@ export default function UsersTab({ currentUserId }) {
                 {/* Joined */}
                 <td style={{ padding: '0.6rem 0.75rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                   {new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                </td>
+
+                {/* Company — editable for non-admins (pick existing via datalist
+                    or type a new one); admins are company-less. */}
+                <td style={{ padding: '0.6rem 0.75rem' }}>
+                  {canEdit(user) && user.role !== 'admin' ? (
+                    <input
+                      type="text"
+                      list="admin-companies"
+                      defaultValue={user.company_name ?? ''}
+                      disabled={!!saving[user.id]}
+                      placeholder="—"
+                      title={t('admin.users.companyTooltip')}
+                      onBlur={e => handleCompanyChange(user, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      style={{
+                        width: '9rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
+                        border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
+                      }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: TEXT_VERY_LIGHT }}>—</span>
+                  )}
                 </td>
 
                 {/* Discount % — null/empty = normal price */}

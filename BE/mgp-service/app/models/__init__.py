@@ -1,3 +1,4 @@
+from app.models.company import Company
 from app.models.user import User
 from app.models.project import Project
 from app.models.project_image import ProjectImage

@@ -18,6 +18,13 @@ export const deleteUser = async (id) => {
   if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Delete failed') }
 }
 
+// Companies — list for the Users-tab assignment picker.
+export const getCompanies = (): Promise<{ id: string; name: string }[]> =>
+  mgpRequest('/admin/companies').then(r => {
+    if (!r.ok) throw new Error('Failed to load companies')
+    return r.json()
+  })
+
 // Products
 export const getProducts = (productType) => mgpRequest(`/admin/products${productType ? `?product_type=${productType}` : ''}`).then(r => r.json())
 export const createProduct = (data) => mgpRequest('/admin/products', { method: 'POST', body: JSON.stringify(data) }).then(r => r.json())

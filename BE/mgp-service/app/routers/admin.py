@@ -2,6 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -13,11 +14,12 @@ from app.schemas.user import (
     UserRead, UserListResponse, UserUpdate,
     AdminGrantCreditsRequest, AdminRefundProjectRequest, AdminDismissRefundInboxRequest,
 )
+from app.schemas.company import CompanyRead
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from app.schemas.setting import SettingRead, SettingUpdate
 from app.schemas.credit_transaction import LedgerResponse, CreditTransactionRead, PendingRefundsResponse, PendingRefundRow
 from app.routers.deps import require_admin
-from app.services import settings_cache, credits as credits_service
+from app.services import settings_cache, credits as credits_service, company_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -44,14 +46,17 @@ async def list_users(
     detail pane fetches the full snapshot via the ledger endpoint when
     a user is selected.
     """
+    from app.models.company import Company
     base = select(User)
     clean_search = (search or '').strip()
     if clean_search:
         pattern = f"%{clean_search}%"
         from sqlalchemy import or_
-        base = base.where(or_(
+        # Outer-join Company so the search can also match the company name.
+        base = base.outerjoin(Company, User.company_id == Company.id).where(or_(
             User.email.ilike(pattern),
             User.full_name.ilike(pattern),
+            Company.name.ilike(pattern),
         ))
 
     total_rows = (await db.execute(
@@ -59,9 +64,11 @@ async def list_users(
     )).scalar_one()
 
     page = await db.execute(
-        base.order_by(User.created_at).offset(offset).limit(limit)
+        base.options(selectinload(User.company))
+            .order_by(User.created_at).offset(offset).limit(limit)
     )
     users = list(page.scalars().all())
+    # company eager-loaded → UserRead.company_name resolves via the model property.
     rows = [
         UserRead.model_validate(u).model_copy(update={'credits_available': u.credits_balance})
         for u in users
@@ -88,14 +95,43 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify the system administrator")
     if user.id == current_admin.id and payload.role is not None and payload.role != current_admin.role:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change your own role")
+
     # exclude_unset (not exclude_none): only touch fields the client actually
     # sent, but honor an explicit null — e.g. clearing discount_percent back
     # to "no discount". Omitted fields are left untouched.
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    # Company is set via the relationship, not a plain column write — pull both
+    # keys out of the generic loop and resolve them explicitly below.
+    company_name = fields.pop('company_name', None)
+    company_id_sent = 'company_id' in fields
+    company_id = fields.pop('company_id', None)
+    for field, value in fields.items():
         setattr(user, field, value)
+
+    if company_name:  # create-or-reuse a company by name (takes precedence)
+        user.company = await company_service.get_or_create(db, company_name)
+    elif company_id_sent:  # select an existing company, or explicit null to clear
+        user.company_id = company_id
+
+    # Admins must not belong to a company — promotion overrides any assignment.
+    # (Project sharing is derived from the owner's company, so changing a user's
+    # company immediately re-scopes their projects — nothing to re-stamp.)
+    if user.role == UserRole.admin:
+        user.company_id = None
+
     await db.commit()
     await db.refresh(user)
+    await db.refresh(user, attribute_names=['company'])  # for UserRead.company_name
     return user
+
+
+@router.get("/companies", response_model=list[CompanyRead])
+async def list_companies(
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """All companies (alphabetical) — populates the admin user-assignment picker."""
+    return await company_service.list_companies(db)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
