@@ -1,19 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getCompanies, updateCompany, deleteCompany, AdminCompany } from '../../services/adminApi'
+import LinkCell from './LinkCell'
 import {
   TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, ERROR, DANGER,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 
-export default function CompaniesTab() {
+export default function CompaniesTab({ onNavigate = null, navToken = 0, initialSearch = '' }: { onNavigate?: ((t: any) => void) | null; navToken?: number; initialSearch?: string }) {
   const { t } = useLang()
   const [companies, setCompanies] = useState<AdminCompany[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saveErr, setSaveErr] = useState<Record<string, string | null>>({})
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
+  // Apply an inbound cross-link search once per navigation (key-guarded).
+  const lastNavTok = useRef(navToken)
+  useEffect(() => {
+    if (navToken && navToken !== lastNavTok.current) { lastNavTok.current = navToken; setSearch(initialSearch) }
+  }, [navToken]) // eslint-disable-line react-hooks/exhaustive-deps
   // Delete modal: the company being deleted + chosen target to move members to.
   const [deleteTarget, setDeleteTarget] = useState<AdminCompany | null>(null)
   const [moveToId, setMoveToId] = useState('')
@@ -171,8 +177,12 @@ export default function CompaniesTab() {
                       style={{ width: '4.5rem', padding: '0.25rem 0.5rem', borderRadius: '6px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white' }}
                     />
                   </td>
-                  {/* Members */}
-                  <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>{c.member_count}</td>
+                  {/* Members — links to Users filtered by this company (when > 0) */}
+                  <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>
+                    {onNavigate && c.member_count > 0
+                      ? <LinkCell title={t('admin.link.toMembers')} onClick={() => onNavigate({ tab: 'users', subTab: 'users', search: c.name })}>{c.member_count}</LinkCell>
+                      : c.member_count}
+                  </td>
                   {/* Actions */}
                   <td style={{ padding: '0.6rem 0.75rem' }}>
                     <button

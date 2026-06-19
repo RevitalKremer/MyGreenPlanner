@@ -651,6 +651,10 @@ const he = {
   // Users tab
   'admin.users.subtab.users':     'משתמשים',
   'admin.users.subtab.companies': 'חברות',
+  'admin.link.toMembers':         'הצג משתמשים',
+  'admin.link.toCompany':         'נהל את החברה',
+  'admin.link.toLedger':          'הצג יומן קרדיטים',
+  'admin.link.toProject':         'הצג בפרויקטים',
   'admin.companies.searchPlaceholder': 'חיפוש חברות…',
   'admin.companies.total':        'סה״כ {count} חברות',
   'admin.companies.loadFailed':   'טעינת החברות נכשלה',

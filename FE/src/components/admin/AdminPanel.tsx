@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   TEXT_DARKEST, TEXT_LIGHT, TEXT_SECONDARY, BORDER_FAINT, BORDER_LIGHT, BG_SUBTLE, PRIMARY, TEXT,
@@ -20,6 +20,17 @@ const TAB_KEYS = [
 export default function AdminPanel({ onClose, currentUserId }) {
   const { t } = useLang()
   const [activeTab, setActiveTab] = useState<string>('users')
+  // Cross-tab navigation: a target tab gets a `nav` directive (subTab/search/
+  // selectEmail) with a bumped `key` so the destination tab re-applies it even
+  // if it was already mounted. Each tab reads only the nav aimed at it.
+  const [nav, setNav] = useState<{ tab: string; subTab?: string; search?: string; selectEmail?: string; key: number } | null>(null)
+  const navSeq = useRef(0)
+  const navigate = (target: { tab: string; subTab?: string; search?: string; selectEmail?: string }) => {
+    navSeq.current += 1
+    setNav({ ...target, key: navSeq.current })
+    setActiveTab(target.tab)
+  }
+  const navFor = (tab: string) => (nav && nav.tab === tab ? nav : null)
   const TAB_LABEL: Record<string, string> = {
     'users':       t('admin.tab.users'),
     'projects':    t('admin.tab.projects'),
@@ -56,7 +67,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
         flexShrink: 0, padding: '0 1.75rem', background: 'white',
       }}>
         {TAB_KEYS.map(key => (
-          <button key={key} onClick={() => setActiveTab(key)} style={{
+          <button key={key} onClick={() => { setActiveTab(key); setNav(null) }} style={{
             padding: '0.65rem 1rem', background: 'none', border: 'none', cursor: 'pointer',
             fontSize: '0.88rem', fontWeight: activeTab === key ? '700' : '500',
             color: activeTab === key ? TEXT_DARKEST : TEXT_LIGHT,
@@ -70,9 +81,9 @@ export default function AdminPanel({ onClose, currentUserId }) {
 
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
-        {activeTab === 'users'        && <UsersTab currentUserId={currentUserId} />}
-        {activeTab === 'projects'     && <ProjectsTab />}
-        {activeTab === 'credits'      && <CreditsTab />}
+        {activeTab === 'users'        && <UsersTab currentUserId={currentUserId} onNavigate={navigate} nav={navFor('users')} />}
+        {activeTab === 'projects'     && <ProjectsTab onNavigate={navigate} nav={navFor('projects')} />}
+        {activeTab === 'credits'      && <CreditsTab onNavigate={navigate} nav={navFor('credits')} />}
         {activeTab === 'panel-types'  && <PanelTypesTab />}
         {activeTab === 'products'     && <ProductsTab />}
         {activeTab === 'settings'     && <SettingsTab />}

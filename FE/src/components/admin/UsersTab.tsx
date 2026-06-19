@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getUsers, updateUser, deleteUser, getCompanies } from '../../services/adminApi'
 import CompaniesTab from './CompaniesTab'
+import LinkCell from './LinkCell'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG,
@@ -12,9 +13,15 @@ const ROLES = ['user', 'admin']
 
 // Wrapper: sub-tabs for Users and Companies (mirrors the Credits tab's sub-tab
 // structure). Company discounts are managed in the Companies sub-tab.
-export default function UsersTab({ currentUserId }) {
+export default function UsersTab({ currentUserId, onNavigate = null, nav = null }) {
   const { t } = useLang()
   const [subTab, setSubTab] = useState<'users' | 'companies'>('users')
+  // Apply an inbound navigation directive (switch sub-tab). Panes stay mounted
+  // (display toggle) so a key-guarded effect inside each applies the search
+  // exactly once per navigation — no stale re-apply on manual sub-tab switches.
+  useEffect(() => { if (nav?.subTab) setSubTab(nav.subTab) }, [nav?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const usersNav = nav && (nav.subTab ?? 'users') === 'users' ? nav : null
+  const companiesNav = nav && nav.subTab === 'companies' ? nav : null
   return (
     <div style={{ padding: '1rem 0' }}>
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.1rem', borderBottom: `1px solid ${BORDER_FAINT}` }}>
@@ -37,8 +44,12 @@ export default function UsersTab({ currentUserId }) {
           </button>
         ))}
       </div>
-      {subTab === 'users' && <UsersListPane currentUserId={currentUserId} />}
-      {subTab === 'companies' && <CompaniesTab />}
+      <div style={{ display: subTab === 'users' ? 'block' : 'none' }}>
+        <UsersListPane currentUserId={currentUserId} onNavigate={onNavigate} navToken={usersNav?.key ?? 0} initialSearch={usersNav?.search ?? ''} />
+      </div>
+      <div style={{ display: subTab === 'companies' ? 'block' : 'none' }}>
+        <CompaniesTab onNavigate={onNavigate} navToken={companiesNav?.key ?? 0} initialSearch={companiesNav?.search ?? ''} />
+      </div>
     </div>
   )
 }
@@ -70,7 +81,7 @@ function StatusDot({ active, verified, t }) {
   )
 }
 
-function UsersListPane({ currentUserId }) {
+function UsersListPane({ currentUserId, onNavigate = null, navToken = 0, initialSearch = '' }) {
   const { t } = useLang()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -85,9 +96,17 @@ function UsersListPane({ currentUserId }) {
   // Search: searchInput mirrors typing; appliedSearch is the debounced (350 ms)
   // value sent to the BE (matches email / name / company). Useful to list all
   // users of one company by searching the company name.
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
+  const [searchInput, setSearchInput] = useState(initialSearch)
+  const [appliedSearch, setAppliedSearch] = useState(initialSearch)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Apply an inbound cross-link search exactly once per navigation (key-guarded).
+  const lastNavTok = useRef(navToken)
+  useEffect(() => {
+    if (navToken && navToken !== lastNavTok.current) {
+      lastNavTok.current = navToken
+      setSearchInput(initialSearch); setAppliedSearch(initialSearch)
+    }
+  }, [navToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     getCompanies().then(setCompanies).catch(() => {})
@@ -306,8 +325,12 @@ function UsersListPane({ currentUserId }) {
                   </div>
                 </td>
 
-                {/* Email */}
-                <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>{user.email}</td>
+                {/* Email — links to the user's credit ledger (Credits ▸ User lookup) */}
+                <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>
+                  {onNavigate
+                    ? <LinkCell title={t('admin.link.toLedger')} onClick={() => onNavigate({ tab: 'credits', subTab: 'lookup', selectEmail: user.email })}>{user.email}</LinkCell>
+                    : user.email}
+                </td>
 
                 {/* Role */}
                 <td style={{ padding: '0.6rem 0.75rem' }}>
@@ -364,20 +387,33 @@ function UsersListPane({ currentUserId }) {
                     or type a new one); admins are company-less. */}
                 <td style={{ padding: '0.6rem 0.75rem' }}>
                   {canEdit(user) && user.role !== 'admin' ? (
-                    <input
-                      type="text"
-                      list="admin-companies"
-                      defaultValue={user.company_name ?? ''}
-                      disabled={!!saving[user.id]}
-                      placeholder="—"
-                      title={t('admin.users.companyTooltip')}
-                      onBlur={e => handleCompanyChange(user, e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                      style={{
-                        width: '9rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
-                        border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
-                      }}
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <input
+                        type="text"
+                        list="admin-companies"
+                        defaultValue={user.company_name ?? ''}
+                        disabled={!!saving[user.id]}
+                        placeholder="—"
+                        title={t('admin.users.companyTooltip')}
+                        onBlur={e => handleCompanyChange(user, e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        style={{
+                          width: '9rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
+                          border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
+                        }}
+                      />
+                      {/* ↗ to manage this company (Companies sub-tab, filtered) */}
+                      {onNavigate && user.company_name && (
+                        <button
+                          type="button"
+                          title={t('admin.link.toCompany')}
+                          onClick={() => onNavigate({ tab: 'users', subTab: 'companies', search: user.company_name })}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: PRIMARY, display: 'inline-flex', alignItems: 'center' }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <span style={{ fontSize: '0.8rem', color: TEXT_VERY_LIGHT }}>—</span>
                   )}

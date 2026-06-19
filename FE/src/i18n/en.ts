@@ -653,6 +653,10 @@ const en = {
   // Users tab
   'admin.users.subtab.users':     'Users',
   'admin.users.subtab.companies': 'Companies',
+  'admin.link.toMembers':         'View members in Users',
+  'admin.link.toCompany':         'Manage this company',
+  'admin.link.toLedger':          'View credit ledger',
+  'admin.link.toProject':         'View in Projects',
   'admin.companies.searchPlaceholder': 'Search companies…',
   'admin.companies.total':        '{count} compan(ies)',
   'admin.companies.loadFailed':   'Failed to load companies',

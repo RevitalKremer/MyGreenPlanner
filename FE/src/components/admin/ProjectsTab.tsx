@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { listProjects, updateProject, deleteProject } from '../../services/projectsApi'
 import ReassignOwnerModal from './ReassignOwnerModal'
+import LinkCell from './LinkCell'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, ERROR, ERROR_BG, DANGER,
@@ -9,7 +10,7 @@ import { useLang } from '../../i18n/LangContext'
 
 const PAGE_SIZE = 50
 
-export default function ProjectsTab() {
+export default function ProjectsTab({ onNavigate = null, nav = null }: { onNavigate?: ((t: any) => void) | null; nav?: any }) {
   const { t } = useLang()
   const [rows, setRows] = useState<any[]>([])
   const [total, setTotal] = useState(0)
@@ -17,9 +18,17 @@ export default function ProjectsTab() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
+  const [searchInput, setSearchInput] = useState(nav?.search ?? '')
+  const [appliedSearch, setAppliedSearch] = useState(nav?.search ?? '')
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Apply an inbound cross-link search once per navigation (key-guarded).
+  const lastNavTok = useRef(nav?.key ?? 0)
+  useEffect(() => {
+    if (nav?.key && nav.key !== lastNavTok.current) {
+      lastNavTok.current = nav.key
+      setSearchInput(nav.search ?? ''); setAppliedSearch(nav.search ?? '')
+    }
+  }, [nav?.key]) // eslint-disable-line react-hooks/exhaustive-deps
   // Reassign modal + local owner overrides so the row updates without a reload.
   const [reassign, setReassign] = useState<any>(null)
   const [ownerOverrides, setOwnerOverrides] = useState<Record<string, string>>({})
@@ -177,7 +186,12 @@ export default function ProjectsTab() {
                 <tr key={p.id} style={{ borderBottom: `1px solid ${BORDER_FAINT}` }}>
                   <td style={{ padding: '0.6rem 0.75rem', fontWeight: '600', color: TEXT_DARKEST }}>{p.name}</td>
                   <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>{p.client_name || '—'}</td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>{ownerOverrides[p.id] ?? p.owner_email ?? '—'}</td>
+                  <td style={{ padding: '0.6rem 0.75rem', color: TEXT_SECONDARY }}>
+                    {(() => { const oe = ownerOverrides[p.id] ?? p.owner_email
+                      return onNavigate && oe
+                        ? <LinkCell title={t('admin.link.toLedger')} onClick={() => onNavigate({ tab: 'credits', subTab: 'lookup', selectEmail: oe })}>{oe}</LinkCell>
+                        : (oe ?? '—') })()}
+                  </td>
                   <td style={{ padding: '0.6rem 0.75rem', color: TEXT_LIGHT, whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                     {new Date(p.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                   </td>
