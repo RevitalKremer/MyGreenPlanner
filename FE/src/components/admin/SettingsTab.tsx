@@ -32,9 +32,9 @@ export default function SettingsTab() {
 
   useEffect(() => {
     getSettings()
-      // Monetization rows have their own dedicated admin page; keep this
-      // tab focused on engineering/materials settings.
-      .then(data => { setSettings(data.filter(s => s.section !== 'monetization')); setLoading(false) })
+      // Monetization + promotions rows have their own dedicated admin pages;
+      // keep this tab focused on engineering/materials settings.
+      .then(data => { setSettings(data.filter(s => s.section !== 'monetization' && s.section !== 'promotions')); setLoading(false) })
       .catch(() => { setError(t('admin.settings.failedLoad')); setLoading(false) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

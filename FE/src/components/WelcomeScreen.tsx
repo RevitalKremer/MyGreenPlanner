@@ -25,7 +25,7 @@ const IconPlus = () => (
   </svg>
 )
 
-export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, onOpenAccount, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken, openLoginOnMount = false, onClearOpenLogin, trialGrantCredits = 0 }) {
+export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegister, onLogout, onUpdateProfile, onOpenAccount, onAdminClose = null, authLoading, cloudProjects, cloudProjectsLoading, totalProjectsCount, hasMoreProjects, onLoadCloudProject, onUpdateCloudProject, onDeleteCloudProject, onLoadMoreProjects, onProjectsSearch, projectsSearch, onForgotPassword, onResetPassword, appConfigReady = false, resetToken = null, onClearResetToken, openLoginOnMount = false, onClearOpenLogin, trialGrantCredits = 0 }) {
   const { t } = useLang()
   const [mode, setMode] = useState(null)
   const [showAuth, setShowAuth] = useState(!!resetToken || !!openLoginOnMount)
@@ -162,6 +162,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
             onSignOut={onLogout}
             onUpdateProfile={onUpdateProfile}
             onOpenAccount={onOpenAccount}
+            onAdminClose={onAdminClose}
             dark={false}
           />
         )}

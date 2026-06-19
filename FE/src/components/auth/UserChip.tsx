@@ -27,7 +27,7 @@ const PersonIcon = ({ size = 22, color = 'currentColor' }) => (
  *   non-admin → MyAccount modal (credits + profile + sign-out live there)
  *   admin     → UserProfileModal (profile + sign-out live there)
  */
-export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, onOpenAccount, dark = false }) {
+export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, onOpenAccount, onAdminClose = null, dark = false }) {
   const { t } = useLang()
   const [showProfile, setShowProfile] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
@@ -100,7 +100,7 @@ export default function UserChip({ user, onSignIn, onSignOut, onUpdateProfile, o
         />
       )}
       {showAdmin && user?.role === 'admin' && (
-        <AdminPanel onClose={() => setShowAdmin(false)} currentUserId={user.id} />
+        <AdminPanel onClose={() => { setShowAdmin(false); onAdminClose?.() }} currentUserId={user.id} />
       )}
     </>
   )

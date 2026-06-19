@@ -4,6 +4,7 @@ import {
   TEXT_DARKEST, TEXT_LIGHT, TEXT_SECONDARY, BORDER_FAINT, BORDER_LIGHT, BG_SUBTLE, PRIMARY, TEXT,
 } from '../../styles/colors'
 import MaterialsTab from './MaterialsTab'
+import PromotionsTab from './PromotionsTab'
 import SettingsTab from './SettingsTab'
 import UsersTab from './UsersTab'
 import ProjectsTab from './ProjectsTab'
@@ -13,7 +14,7 @@ import { useLang } from '../../i18n/LangContext'
 const TAB_KEYS = [
   // 'credits' includes Monetization as a sub-tab so all credits-related
   // management stays in one place.
-  'users', 'projects', 'credits', 'materials', 'settings',
+  'users', 'projects', 'credits', 'materials', 'settings', 'promotions',
 ] as const
 
 export default function AdminPanel({ onClose, currentUserId }) {
@@ -35,6 +36,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
     'projects':    t('admin.tab.projects'),
     'credits':     t('admin.tab.credits'),
     'materials':   t('admin.tab.materials'),
+    'promotions':  t('admin.tab.promotions'),
     'settings':    t('admin.tab.settings'),
   }
 
@@ -83,6 +85,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
         {activeTab === 'projects'     && <ProjectsTab onNavigate={navigate} nav={navFor('projects')} />}
         {activeTab === 'credits'      && <CreditsTab onNavigate={navigate} nav={navFor('credits')} />}
         {activeTab === 'materials'    && <MaterialsTab />}
+        {activeTab === 'promotions'   && <PromotionsTab />}
         {activeTab === 'settings'     && <SettingsTab />}
       </div>
     </div>,
