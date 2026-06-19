@@ -133,5 +133,10 @@ export function useAuth() {
     }
   }, [])
 
-  return { user, authLoading, login, logout, register, updateProfile, forgotPassword, resetPassword, verifyEmail, refreshMe }
+  const resendVerification = useCallback(async () => {
+    const res = await mgpRequest('/auth/resend-verification', { method: 'POST' })
+    if (!res.ok) throw new Error('Failed to resend verification email')
+  }, [])
+
+  return { user, authLoading, login, logout, register, updateProfile, forgotPassword, resetPassword, verifyEmail, resendVerification, refreshMe }
 }

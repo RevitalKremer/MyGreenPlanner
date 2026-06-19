@@ -19,6 +19,7 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
+import VerifyBanner from './components/VerifyBanner'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
@@ -689,6 +690,7 @@ function App() {
   if (s.appScreen === 'welcome') {
     return (
       <>
+        <VerifyBanner user={auth.user} onResend={auth.resendVerification} />
         <WelcomeScreen
           onCreateProject={s.handleCreateProject}
           user={auth.user}
@@ -723,6 +725,7 @@ function App() {
             onClose={() => setShowMyAccount(false)}
             onRefresh={auth.refreshMe}
             onUpdateProfile={auth.updateProfile}
+            onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}
@@ -858,6 +861,8 @@ function App() {
 
         </div>
       </header>
+
+      <VerifyBanner user={auth.user} onResend={auth.resendVerification} />
 
       <main className="app-main">
         {s.currentStep === 1 && (
@@ -1116,6 +1121,7 @@ function App() {
             onClose={() => setShowMyAccount(false)}
             onRefresh={auth.refreshMe}
             onUpdateProfile={auth.updateProfile}
+            onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}
