@@ -274,6 +274,25 @@ async def get_project(
     return project
 
 
+@router.get("/{project_id}/owner")
+async def get_project_owner(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Owner display details for the proposal/report title block — the project
+    OWNER's name/email/company (not the current viewer's)."""
+    from app.models.company import Company
+    owner = await db.get(User, project.owner_id)
+    company = await db.get(Company, owner.company_id) if owner and owner.company_id else None
+    return {
+        "full_name": owner.full_name if owner else None,
+        "email": owner.email if owner else None,
+        "company_name": company.name if company else None,
+    }
+
+
 @router.put("/{project_id}", response_model=ProjectRead)
 async def update_project(
     project_id: uuid.UUID,

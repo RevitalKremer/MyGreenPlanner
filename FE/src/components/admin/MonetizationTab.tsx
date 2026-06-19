@@ -131,15 +131,16 @@ export default function MonetizationTab() {
                   <button
                     onClick={() => handleSave(s)}
                     disabled={!dirty || saving[s.key]}
+                    title={saved[s.key] ? t('admin.common.saved') : t('admin.common.save')}
                     style={{
-                      flex: '0 0 64px', height: 36,
-                      padding: '0 0.85rem', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700,
-                      border: 'none', cursor: dirty && !saving[s.key] ? 'pointer' : 'default',
-                      background: saved[s.key] ? SUCCESS_BG : dirty ? PRIMARY : BORDER_FAINT,
-                      color: saved[s.key] ? SUCCESS : dirty ? TEXT : TEXT_VERY_LIGHT,
+                      flex: '0 0 36px', height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'none', border: 'none', cursor: dirty && !saving[s.key] ? 'pointer' : 'default',
+                      color: saved[s.key] ? SUCCESS : dirty ? PRIMARY : TEXT_VERY_LIGHT,
                     }}
                   >
-                    {saved[s.key] ? t('admin.common.saved') : saving[s.key] ? '…' : t('admin.common.save')}
+                    {saving[s.key]
+                      ? <span style={{ fontSize: '0.85rem' }}>…</span>
+                      : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>}
                   </button>
                 </div>
               )

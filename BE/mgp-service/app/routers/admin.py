@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -15,7 +15,7 @@ from app.schemas.user import (
     AdminGrantCreditsRequest, AdminRefundProjectRequest, AdminDismissRefundInboxRequest,
     AdminReassignProjectOwnerRequest,
 )
-from app.schemas.company import CompanyRead
+from app.schemas.company import CompanyRead, CompanyUpdate
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from app.schemas.setting import SettingRead, SettingUpdate
 from app.schemas.credit_transaction import LedgerResponse, CreditTransactionRead, PendingRefundsResponse, PendingRefundRow
@@ -98,8 +98,8 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot change your own role")
 
     # exclude_unset (not exclude_none): only touch fields the client actually
-    # sent, but honor an explicit null — e.g. clearing discount_percent back
-    # to "no discount". Omitted fields are left untouched.
+    # sent, but honor an explicit null — e.g. clearing company_id. Omitted
+    # fields are left untouched.
     fields = payload.model_dump(exclude_unset=True)
     # Company is set via the relationship, not a plain column write — pull both
     # keys out of the generic loop and resolve them explicitly below.
@@ -131,8 +131,85 @@ async def list_companies(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """All companies (alphabetical) — populates the admin user-assignment picker."""
-    return await company_service.list_companies(db)
+    """All companies (alphabetical) with member counts — powers the admin
+    Companies tab and the Users-tab assignment picker."""
+    return [
+        CompanyRead(
+            id=c.id, name=c.name, member_count=cnt,
+            discount_percent=float(c.discount_percent) if c.discount_percent is not None else None,
+        )
+        for c, cnt in await company_service.list_companies(db)
+    ]
+
+
+@router.put("/companies/{company_id}", response_model=CompanyRead)
+async def update_company(
+    company_id: str,
+    payload: CompanyUpdate,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a company and/or set its client discount. The discount applies to
+    proposals for all projects owned by the company's members."""
+    from app.models.company import Company
+    company = (await db.execute(
+        select(Company).where(Company.id == uuid.UUID(company_id))
+    )).scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if 'name' in fields:
+        new_name = fields['name'].strip()
+        norm = company_service.normalize_name(new_name)
+        clash = (await db.execute(
+            select(Company).where(Company.normalized_name == norm, Company.id != company.id)
+        )).scalar_one_or_none()
+        if clash is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A company with that name already exists")
+        company.name = new_name
+        company.normalized_name = norm
+    if 'discount_percent' in fields:  # honor explicit null to clear
+        company.discount_percent = fields['discount_percent']
+
+    await db.commit()
+    await db.refresh(company)
+    cnt = await company_service.member_count(db, company.id)
+    return CompanyRead(
+        id=company.id, name=company.name, member_count=cnt,
+        discount_percent=float(company.discount_percent) if company.discount_percent is not None else None,
+    )
+
+
+@router.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company(
+    company_id: str,
+    move_to: str | None = Query(None, description="Company id to move this company's members to. Omitted → members become company-less."),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a company. Its members are moved to `move_to` if given, otherwise
+    left company-less (company_id = NULL). Projects follow their owner's company
+    automatically, so nothing else needs reassigning."""
+    from app.models.company import Company
+    cid = uuid.UUID(company_id)
+    company = (await db.execute(select(Company).where(Company.id == cid))).scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+
+    target_id = None
+    if move_to:
+        target_id = uuid.UUID(move_to)
+        if target_id == cid:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot move members to the company being deleted")
+        target = (await db.execute(select(Company).where(Company.id == target_id))).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target company not found")
+
+    # Reassign members (to target or NULL) before deleting the company.
+    await db.execute(update(User).where(User.company_id == cid).values(company_id=target_id))
+    await db.delete(company)
+    await db.commit()
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

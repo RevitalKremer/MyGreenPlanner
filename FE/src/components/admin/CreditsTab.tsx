@@ -14,6 +14,7 @@ import {
   dismissRefundInbox,
 } from '../../services/adminApi'
 import MonetizationTab from './MonetizationTab'
+import LinkCell from './LinkCell'
 import { useLang } from '../../i18n/LangContext'
 
 
@@ -52,9 +53,14 @@ function formatDate(iso: string | null | undefined): string {
  * No admin can call this without auth — every action goes through admin-only
  * endpoints. The tab is only mounted inside AdminPanel which is gated by role.
  */
-export default function CreditsTab() {
+export default function CreditsTab({ onNavigate = null, nav = null }: { onNavigate?: ((t: any) => void) | null; nav?: any }) {
   const { t } = useLang()
   const [subTab, setSubTab] = useState<'pending' | 'lookup' | 'monetization'>('pending')
+  // Apply an inbound nav directive (e.g. open User-lookup for an email). Panes
+  // stay mounted (display toggle) so the lookup pane applies the email exactly
+  // once per navigation without remount staleness.
+  useEffect(() => { if (nav?.subTab) setSubTab(nav.subTab) }, [nav?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const lookupNav = nav && nav.subTab === 'lookup' ? nav : null
 
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -80,9 +86,9 @@ export default function CreditsTab() {
         ))}
       </div>
 
-      {subTab === 'pending'      && <PendingRefundsPane />}
-      {subTab === 'lookup'       && <UserLookupPane />}
-      {subTab === 'monetization' && <MonetizationTab />}
+      <div style={{ display: subTab === 'pending' ? 'block' : 'none' }}><PendingRefundsPane onNavigate={onNavigate} /></div>
+      <div style={{ display: subTab === 'lookup' ? 'block' : 'none' }}><UserLookupPane navToken={lookupNav?.key ?? 0} navEmail={lookupNav?.selectEmail ?? ''} /></div>
+      <div style={{ display: subTab === 'monetization' ? 'block' : 'none' }}><MonetizationTab /></div>
     </div>
   )
 }
@@ -94,7 +100,7 @@ export default function CreditsTab() {
 const PAGE_SIZE = 50
 
 
-function PendingRefundsPane() {
+function PendingRefundsPane({ onNavigate = null }: { onNavigate?: ((t: any) => void) | null }) {
   const { t } = useLang()
   const [rows, setRows] = useState<any[]>([])
   const [totalRows, setTotalRows] = useState(0)
@@ -238,8 +244,16 @@ function PendingRefundsPane() {
               borderTop: i > 0 ? `1px solid ${BORDER_FAINT}` : 'none',
               background: 'white',
             }}>
-              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.project_name}</div>
-              <div style={{ fontSize: '0.82rem', color: TEXT_DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.owner_email}</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: TEXT_DARKEST, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {onNavigate
+                  ? <LinkCell title={t('admin.link.toProject')} onClick={() => onNavigate({ tab: 'projects', search: r.project_name })}>{r.project_name}</LinkCell>
+                  : r.project_name}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: TEXT_DARK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {onNavigate && r.owner_email
+                  ? <LinkCell title={t('admin.link.toLedger')} onClick={() => onNavigate({ tab: 'credits', subTab: 'lookup', selectEmail: r.owner_email })}>{r.owner_email}</LinkCell>
+                  : r.owner_email}
+              </div>
               <div style={{ fontSize: '0.78rem', color: TEXT_MUTED }}>{formatDate(r.quotation_requested_at)}</div>
               <div style={{ fontSize: '0.78rem', color: TEXT_MUTED }}>{formatDate(r.charged_at)}</div>
               <div style={{ fontSize: '0.92rem', fontWeight: 700, color: TEXT_DARKEST, textAlign: 'right' }}>{r.charge_amount}</div>
@@ -310,7 +324,7 @@ function PendingRefundsPane() {
 // ── User lookup → balance + ledger + grant + refund-by-project ──────────────
 
 
-function UserLookupPane() {
+function UserLookupPane({ navToken = 0, navEmail = '' }: { navToken?: number; navEmail?: string }) {
   const { t } = useLang()
   // ── User list (left rail) — server-paginated + debounced search ────────
   const [users, setUsers] = useState<any[]>([])
@@ -318,9 +332,13 @@ function UserLookupPane() {
   const [usersHasMore, setUsersHasMore] = useState(false)
   const [usersLoading, setUsersLoading] = useState(true)
   const [usersLoadingMore, setUsersLoadingMore] = useState(false)
-  const [userSearchInput, setUserSearchInput] = useState('')
-  const [appliedUserSearch, setAppliedUserSearch] = useState('')
+  const [userSearchInput, setUserSearchInput] = useState(navEmail)
+  const [appliedUserSearch, setAppliedUserSearch] = useState(navEmail)
   const userSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cross-link target: when navigated here with an email, pre-fill the search
+  // and auto-select the matching user once the list loads.
+  const pendingSelect = useRef<string | null>(navEmail ? navEmail.toLowerCase() : null)
+  const lastNavTok = useRef(navToken)
 
   // ── Selected user (independent of the list — survives filtering) ──────
   const [selectedUser, setSelectedUser] = useState<any | null>(null)
@@ -392,6 +410,24 @@ function UserLookupPane() {
     }
   }
   useEffect(() => { loadUsersFirstPage(appliedUserSearch) }, [appliedUserSearch])
+
+  // Inbound navigation (already-mounted pane): re-filter to the email + queue
+  // auto-select. Key-guarded so it fires once per navigation.
+  useEffect(() => {
+    if (navToken && navToken !== lastNavTok.current) {
+      lastNavTok.current = navToken
+      setUserSearchInput(navEmail); setAppliedUserSearch(navEmail)
+      pendingSelect.current = navEmail ? navEmail.toLowerCase() : null
+    }
+  }, [navToken]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-select the user matching a pending cross-link email once the list loads.
+  useEffect(() => {
+    if (pendingSelect.current && users.length) {
+      const m = users.find(u => (u.email || '').toLowerCase() === pendingSelect.current)
+      if (m) { setSelectedUser(m); pendingSelect.current = null }
+    }
+  }, [users])
 
   const loadMoreUsers = async () => {
     if (!usersHasMore || usersLoadingMore) return

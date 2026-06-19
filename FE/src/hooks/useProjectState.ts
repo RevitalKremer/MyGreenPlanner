@@ -1180,6 +1180,7 @@ export function useProjectState() {
     products, productByType, altsByType,
     // App config readiness (appDefaults + panelSpec loaded)
     appConfigReady,
+    refreshAppSettings,
     // Cloud
     cloudProjectId, setCloudProjectId,
     handleSaveProject,
