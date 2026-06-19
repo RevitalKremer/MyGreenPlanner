@@ -47,9 +47,13 @@ function EditRow({ product, onSave, onCancel, t }) {
         </select>
       </td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.35rem' }}>
-          <button onClick={handleSave} style={{ padding: '0.3rem 0.7rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '5px', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.save')}</button>
-          <button onClick={onCancel} style={{ padding: '0.3rem 0.7rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.78rem', cursor: 'pointer' }}>{t('admin.common.cancel')}</button>
+        <div style={{ display: 'flex', gap: '0.25rem' }}>
+          <button onClick={handleSave} title={t('admin.common.save')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: SUCCESS, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </button>
+          <button onClick={onCancel} title={t('admin.common.cancel')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
       </td>
     </tr>
@@ -176,14 +180,14 @@ export default function PanelTypesTab() {
                     </button>
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button onClick={() => { setEditingId(p.id); setAddingNew(false) }}
-                        style={{ padding: '0.2rem 0.55rem', background: BORDER_FAINT, color: TEXT_SECONDARY, border: 'none', borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        {t('admin.common.edit')}
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <button onClick={() => { setEditingId(p.id); setAddingNew(false) }} title={t('admin.common.edit')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button onClick={() => handleDelete(p.id)}
-                        style={{ padding: '0.2rem 0.55rem', background: 'transparent', color: DANGER, border: `1px solid ${DANGER}`, borderRadius: '5px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        {t('admin.common.del')}
+                      <button onClick={() => handleDelete(p.id)} title={t('admin.common.delete')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: DANGER, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                       </button>
                     </div>
                   </td>

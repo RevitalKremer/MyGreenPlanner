@@ -18,12 +18,25 @@ export const deleteUser = async (id) => {
   if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Delete failed') }
 }
 
-// Companies — list for the Users-tab assignment picker.
-export const getCompanies = (): Promise<{ id: string; name: string }[]> =>
+// Companies — list (with discount + member count) for the Companies tab and the
+// Users-tab assignment picker.
+export type AdminCompany = { id: string; name: string; discount_percent: number | null; member_count: number }
+export const getCompanies = (): Promise<AdminCompany[]> =>
   mgpRequest('/admin/companies').then(r => {
     if (!r.ok) throw new Error('Failed to load companies')
     return r.json()
   })
+export const updateCompany = (id: string, data: { name?: string; discount_percent?: number | null }): Promise<AdminCompany> =>
+  mgpRequest(`/admin/companies/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then(async r => {
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'Update failed') }
+    return r.json()
+  })
+// Delete a company; optionally move its members to `moveTo` (else company-less).
+export const deleteCompany = async (id: string, moveTo: string | null = null) => {
+  const qs = moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : ''
+  const r = await mgpRequest(`/admin/companies/${id}${qs}`, { method: 'DELETE' })
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'Delete failed') }
+}
 
 // Reassign a project's owner (admin). Sharing follows the new owner's company.
 export const reassignProjectOwner = (projectId: string, userId: string): Promise<{ owner_id: string; owner_email: string }> =>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT } from '../styles/colors'
+import { PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARK, TEXT_MUTED, TEXT_FAINT, TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT, DANGER } from '../styles/colors'
 import AuthModal from './auth/AuthModal'
 import UserChip from './auth/UserChip'
 import ProjectForm from './ProjectForm'
@@ -479,7 +479,7 @@ export default function WelcomeScreen({ onCreateProject, user, onLogin, onRegist
                           title={t('welcome.deleteProject')}
                           style={{
                             background: 'none', border: 'none', cursor: 'pointer',
-                            color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'flex', alignItems: 'center',
+                            color: DANGER, padding: '0.3rem', display: 'flex', alignItems: 'center',
                           }}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

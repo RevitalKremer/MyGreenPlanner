@@ -6,11 +6,12 @@ row. The original casing is preserved on `name` for display.
 """
 import re
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company import Company
+from app.models.user import User
 
 
 def normalize_name(name: str) -> str:
@@ -45,8 +46,19 @@ async def get_or_create(db: AsyncSession, name: str) -> Company:
     return company
 
 
-async def list_companies(db: AsyncSession) -> list[Company]:
-    """All companies, alphabetical — used to populate the admin assignment picker."""
-    return list((await db.execute(
-        select(Company).order_by(Company.name)
-    )).scalars().all())
+async def list_companies(db: AsyncSession) -> list[tuple[Company, int]]:
+    """All companies (alphabetical) with their member count. Used by the admin
+    Companies tab and the Users-tab assignment picker."""
+    rows = (await db.execute(
+        select(Company, func.count(User.id))
+        .outerjoin(User, User.company_id == Company.id)
+        .group_by(Company.id)
+        .order_by(Company.name)
+    )).all()
+    return [(c, cnt) for c, cnt in rows]
+
+
+async def member_count(db: AsyncSession, company_id) -> int:
+    return (await db.execute(
+        select(func.count(User.id)).where(User.company_id == company_id)
+    )).scalar_one()

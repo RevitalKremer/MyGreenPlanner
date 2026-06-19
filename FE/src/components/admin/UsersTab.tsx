@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getUsers, updateUser, deleteUser, getCompanies } from '../../services/adminApi'
+import CompaniesTab from './CompaniesTab'
 import {
   PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG,
@@ -8,6 +9,39 @@ import {
 import { useLang } from '../../i18n/LangContext'
 
 const ROLES = ['user', 'admin']
+
+// Wrapper: sub-tabs for Users and Companies (mirrors the Credits tab's sub-tab
+// structure). Company discounts are managed in the Companies sub-tab.
+export default function UsersTab({ currentUserId }) {
+  const { t } = useLang()
+  const [subTab, setSubTab] = useState<'users' | 'companies'>('users')
+  return (
+    <div style={{ padding: '1rem 0' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.1rem', borderBottom: `1px solid ${BORDER_FAINT}` }}>
+        {[
+          { key: 'users', label: t('admin.users.subtab.users') },
+          { key: 'companies', label: t('admin.users.subtab.companies') },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key as any)}
+            style={{
+              padding: '0.55rem 0.95rem', background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '0.86rem', fontWeight: subTab === tab.key ? 700 : 500,
+              color: subTab === tab.key ? TEXT_DARKEST : TEXT_LIGHT,
+              borderBottom: `2px solid ${subTab === tab.key ? TEXT_DARKEST : 'transparent'}`,
+              marginBottom: '-1px',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'users' && <UsersListPane currentUserId={currentUserId} />}
+      {subTab === 'companies' && <CompaniesTab />}
+    </div>
+  )
+}
 
 function RoleBadge({ role, t }) {
   const isAdmin = role === 'admin'
@@ -36,7 +70,7 @@ function StatusDot({ active, verified, t }) {
   )
 }
 
-export default function UsersTab({ currentUserId }) {
+function UsersListPane({ currentUserId }) {
   const { t } = useLang()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -144,25 +178,6 @@ export default function UsersTab({ currentUserId }) {
     }
   }
 
-  const handleDiscountChange = async (user, raw) => {
-    const trimmed = String(raw).trim()
-    // Empty input clears the discount back to null (normal price).
-    const next = trimmed === '' ? null : Math.min(100, Math.max(0, parseFloat(trimmed)))
-    if (next !== null && Number.isNaN(next)) return
-    const cur = user.discount_percent ?? null
-    if (next === cur) return // no-op (covers blur without edit)
-    setSaving(s => ({ ...s, [user.id]: true }))
-    setSaveErr(e => ({ ...e, [user.id]: null }))
-    try {
-      const updated = await updateUser(user.id, { discount_percent: next })
-      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
-    } catch (err) {
-      setSaveErr(e => ({ ...e, [user.id]: err.message }))
-    } finally {
-      setSaving(s => ({ ...s, [user.id]: false }))
-    }
-  }
-
   const handleDelete = async (user) => {
     if (!confirm(t('admin.users.deleteConfirm', { name: user.full_name, email: user.email }))) return
     setSaving(s => ({ ...s, [user.id]: true }))
@@ -191,7 +206,6 @@ export default function UsersTab({ currentUserId }) {
     t('admin.users.col.status'),
     t('admin.users.col.joined'),
     t('admin.users.col.company'),
-    t('admin.users.col.discount'),
     t('admin.common.actions'),
   ]
 
@@ -369,32 +383,6 @@ export default function UsersTab({ currentUserId }) {
                   )}
                 </td>
 
-                {/* Discount % — null/empty = normal price */}
-                <td style={{ padding: '0.6rem 0.75rem' }}>
-                  {canEdit(user) ? (
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      defaultValue={user.discount_percent ?? ''}
-                      disabled={!!saving[user.id]}
-                      placeholder="—"
-                      title={t('admin.users.discountTooltip')}
-                      onBlur={e => handleDiscountChange(user, e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                      style={{
-                        width: '4.5rem', padding: '0.25rem 0.5rem', borderRadius: '6px',
-                        border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', background: 'white',
-                      }}
-                    />
-                  ) : (
-                    <span style={{ fontSize: '0.8rem', color: TEXT_SECONDARY }}>
-                      {user.discount_percent != null ? `${user.discount_percent}%` : '—'}
-                    </span>
-                  )}
-                </td>
-
                 {/* Actions */}
                 <td style={{ padding: '0.6rem 0.75rem' }}>
                   {saveErr[user.id] && (
@@ -405,13 +393,11 @@ export default function UsersTab({ currentUserId }) {
                       onClick={() => handleDelete(user)}
                       disabled={!!saving[user.id]}
                       title={t('admin.users.deleteTooltip')}
-                      style={{
-                        background: 'none', border: `1px solid ${BORDER_LIGHT}`, cursor: 'pointer',
-                        color: DANGER, borderRadius: '6px', padding: '0.25rem 0.55rem',
-                        fontSize: '0.75rem', fontWeight: '600',
-                      }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: DANGER, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}
                     >
-                      {t('admin.common.delete')}
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
                     </button>
                   ) : (
                     <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT }}>
