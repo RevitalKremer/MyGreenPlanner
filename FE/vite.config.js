@@ -27,6 +27,9 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: false,
         clientsClaim: false,
+        // Main JS bundle exceeds the 2 MiB default; raise the precache cap so
+        // the build succeeds and the app shell is still cached offline.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       manifest: {
         name: 'MyGreenPlanner',
