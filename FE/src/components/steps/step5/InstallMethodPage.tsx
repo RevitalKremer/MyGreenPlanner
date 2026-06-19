@@ -23,7 +23,7 @@ export default function InstallMethodPage({
   panels = [], uploadedImageData, imageSrc,
   roofType = 'concrete',
   areas = [],
-  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, owner,
 }) {
   const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
@@ -48,7 +48,7 @@ export default function InstallMethodPage({
       totalKw={totalKw}
       count={nonEmptyPanels.length}
       date={date}
-      user={user}
+      owner={owner}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{

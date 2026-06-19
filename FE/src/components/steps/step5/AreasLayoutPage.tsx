@@ -12,7 +12,7 @@ const PAD = 12  // print mode — minimal padding
 export default function AreasLayoutPage({
   panels = [], areas = [] as any[],
   uploadedImageData, imageSrc,
-  project, projectId, panelType, panelWp, totalKw, date, pageRef, user,
+  project, projectId, panelType, panelWp, totalKw, date, pageRef, owner,
 }) {
   const { t } = useLang()
   const nonEmptyPanels = useMemo(() => panels.filter(p => !p.isEmpty), [panels])
@@ -62,7 +62,7 @@ export default function AreasLayoutPage({
       totalKw={totalKw}
       count={panels.length}
       date={date}
-      user={user}
+      owner={owner}
     >
       <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
         <div style={{

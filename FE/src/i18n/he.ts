@@ -579,6 +579,7 @@ const he = {
   'step5.tb.date':         'תאריך',
   'step5.tb.location':     'מיקום',
   'step5.tb.createdBy':    'נוצר ע״י',
+  'step5.tb.company':      'חברה',
 
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step5.pdf.area':   '{n} אזור',

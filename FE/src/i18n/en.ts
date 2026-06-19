@@ -580,6 +580,7 @@ const en = {
   'step5.tb.date':         'Date',
   'step5.tb.location':     'Location',
   'step5.tb.createdBy':    'Created By',
+  'step5.tb.company':      'Company',
 
   // ── Step 4 – PDF page headers ─────────────────────────────────────────────
   'step5.pdf.area':   'Area {n}',
