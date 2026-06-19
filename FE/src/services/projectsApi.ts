@@ -50,6 +50,13 @@ export async function getProject(id) {
   return res.json()
 }
 
+// Project OWNER display details for the report title block (name/email/company).
+export async function getProjectOwner(id: string): Promise<{ full_name: string | null; email: string | null; company_name: string | null }> {
+  const res = await mgpRequest(`/projects/${id}/owner`)
+  if (!res.ok) throw new Error('Failed to load project owner')
+  return res.json()
+}
+
 export async function getConstructionData(id: string): Promise<{ data: ProjectData }> {
   const res = await mgpRequest(`/projects/${id}/construction-data`)
   if (!res.ok) throw new Error('Failed to fetch construction data')

@@ -25,8 +25,6 @@ class UserRead(BaseModel):
     is_verified: bool
     is_sysadmin: bool
     lang: str = 'en'
-    # Admin-set client discount, percent 0–100. None = no discount.
-    discount_percent: float | None = None
     # Company membership. company_name resolved from the relationship (None for
     # admins/legacy). Surfaced for sharing + admin/marketing views.
     company_id: uuid.UUID | None = None
@@ -87,9 +85,6 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     is_active: bool | None = None
     role: UserRole | None = None
-    # Percent 0–100. Send null explicitly to clear (back to normal price).
-    # The router applies fields with exclude_unset, so an explicit null sticks.
-    discount_percent: float | None = Field(default=None, ge=0, le=100)
     # Company assignment (admin). `company_id` selects an existing company or
     # clears (explicit null); `company_name` creates a new one (get-or-create).
     # When both are sent, company_name wins. Honored via exclude_unset.

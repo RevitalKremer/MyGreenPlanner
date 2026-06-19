@@ -98,6 +98,16 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
 
+@router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_verification(current_user: User = Depends(get_current_user)):
+    """Re-send the email-verification link to the logged-in user. No-op (still
+    204) if they're already verified, so the FE can call it idempotently."""
+    if current_user.is_verified:
+        return
+    token = create_email_token(current_user.email, "verify", expire_hours=24)
+    await send_verification_email(current_user.email, token)
+
+
 @router.post("/login", response_model=Token)
 async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     user = await authenticate_user(db, payload.email, payload.password)

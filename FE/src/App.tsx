@@ -19,6 +19,8 @@ import { useProjectState } from './hooks/useProjectState'
 import { useAuth } from './hooks/useAuth'
 import AuthModal from './components/auth/AuthModal'
 import UserChip from './components/auth/UserChip'
+import VerifyBanner from './components/VerifyBanner'
+import PromoBanner from './components/PromoBanner'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
@@ -686,9 +688,16 @@ function App() {
     />
   )
 
+  // Top banner — priority: amber warning (unverified) first; otherwise the
+  // green admin promo (if a message is set). Shown across both app screens.
+  const topBanner = (auth.user && !auth.user.is_verified)
+    ? <VerifyBanner user={auth.user} onResend={auth.resendVerification} />
+    : <PromoBanner promo={s.appDefaults} />
+
   if (s.appScreen === 'welcome') {
     return (
       <>
+        {topBanner}
         <WelcomeScreen
           onCreateProject={s.handleCreateProject}
           user={auth.user}
@@ -697,6 +706,7 @@ function App() {
           onLogout={handleLogout}
           onUpdateProfile={auth.updateProfile}
           onOpenAccount={() => setShowMyAccount(true)}
+          onAdminClose={s.refreshAppSettings}
           authLoading={auth.authLoading}
           cloudProjects={cloudProjects}
           cloudProjectsLoading={cloudProjectsLoading}
@@ -723,6 +733,7 @@ function App() {
             onClose={() => setShowMyAccount(false)}
             onRefresh={auth.refreshMe}
             onUpdateProfile={auth.updateProfile}
+            onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}
@@ -835,6 +846,7 @@ function App() {
               onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
               onOpenAccount={() => setShowMyAccount(true)}
+              onAdminClose={s.refreshAppSettings}
               dark
             />
 
@@ -858,6 +870,8 @@ function App() {
 
         </div>
       </header>
+
+      {topBanner}
 
       <main className="app-main">
         {s.currentStep === 1 && (
@@ -1116,6 +1130,7 @@ function App() {
             onClose={() => setShowMyAccount(false)}
             onRefresh={auth.refreshMe}
             onUpdateProfile={auth.updateProfile}
+            onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
           />
         )}

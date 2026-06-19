@@ -7,7 +7,7 @@ import BOMView from './step3/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { PDFDocument } from 'pdf-lib'
-import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail, requestQuotation } from '../../services/projectsApi'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail, requestQuotation, getProjectOwner } from '../../services/projectsApi'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
 import AreasLayoutPage from './step5/AreasLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
@@ -42,7 +42,7 @@ function LV({ label, value, vStyle = null }) {
 // Layout (9 cols, 2 rows):
 // Row1: [תבנית] [מספר פרויקט] [approval↕rowspan2] [הספק כולל] [סוג פאנל←colspan2] [שם פרויקט←colspan2] [logo↕rowspan2]
 // Row2: [לאישור] [blank]       [spanned]           [blank]     [הספק]  [כמות]       [תאריך] [מיקום]       [spanned]
-function TitleBlock({ project, projectId, panelType, totalKw, count, date, panelWp, pageName, user, t }) {
+function TitleBlock({ project, projectId, panelType, totalKw, count, date, panelWp, pageName, owner, t }) {
   const projectName = project?.name     || '<project name>'
   const location    = project?.location || '<location>'
   const dateStr     = date || new Date().toLocaleDateString('he-IL')
@@ -78,9 +78,15 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
             <LV label={t('step5.tb.projectNum')} value={projectId || '—'} vStyle={{ fontSize: '5px', wordBreak: 'break-all', lineHeight: 1.1 }} />
           </Cell>
 
-          {/* col3 row1: created by name */}
+          {/* col3 row1: created by — owner name + email */}
           <Cell>
-            <LV label={t('step5.tb.createdBy')} value={user?.full_name || '—'} />
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+              <div style={LBL}>{t('step5.tb.createdBy')}</div>
+              <div>
+                <div style={VAL}>{owner?.full_name || '—'}</div>
+                {owner?.email && <div style={{ ...VAL, fontSize: '6px', fontWeight: '400' }}>{owner.email}</div>}
+              </div>
+            </div>
           </Cell>
 
           {/* col4 row1: total power */}
@@ -121,11 +127,9 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
             <span style={{ background: ERROR_DARK, color: WHITE, fontWeight: '900', fontSize: '10px', borderRadius: '2px', padding: '1px 5px' }}>!</span>
           </td>
 
-          {/* col3 row2: created by email */}
+          {/* col3 row2: company name (when available) */}
           <Cell>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-              <div style={{ ...VAL, fontSize: '6px', fontWeight: '400' }}>{user?.email || '—'}</div>
-            </div>
+            <LV label={t('step5.tb.company')} value={owner?.company_name || '—'} />
           </Cell>
 
           {/* col4 row2: blank */}
@@ -160,7 +164,7 @@ function TitleBlock({ project, projectId, panelType, totalKw, count, date, panel
 }
 
 // ─── Single CAD page ──────────────────────────────────────────────────────────
-export function CadPage({ project, projectId, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, user }) {
+export function CadPage({ project, projectId, panelType, panelWp, totalKw, count, date, children, pageRef, pageName, owner }) {
   const { t } = useLang()
   // Scale: represent A4 landscape at ~96dpi equivalent (~3.78px/mm) but scaled down for screen
   const scale = 3.2  // px per mm for screen preview
@@ -222,7 +226,7 @@ export function CadPage({ project, projectId, panelType, panelWp, totalKw, count
           count={count}
           date={date}
           pageName={pageName}
-          user={user}
+          owner={owner}
           t={t}
         />
       </div>
@@ -280,6 +284,12 @@ export default function Step5PdfReport({
   const [bomItems, setBomItems] = useState([])
   const [bomLoading, setBomLoading] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle')
+  // Project OWNER details for the title block (not the logged-in viewer).
+  const [owner, setOwner] = useState<{ full_name: string | null; email: string | null; company_name: string | null } | null>(null)
+  useEffect(() => {
+    if (!projectId) { setOwner(null); return }
+    getProjectOwner(projectId).then(setOwner).catch(() => setOwner(null))
+  }, [projectId])
 
   // ── Get Quotation state ────────────────────────────────────────────────
   // Local mirror of project.quotation_requested_at so the button label can
@@ -938,7 +948,7 @@ export default function Step5PdfReport({
               pageRef={page1Ref}
               panels={panels}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
             />
           </ScaledPage>
 
@@ -947,7 +957,7 @@ export default function Step5PdfReport({
               pageRef={page2Ref}
               panels={panels} areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
-              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
             />
           </ScaledPage>
 
@@ -958,7 +968,7 @@ export default function Step5PdfReport({
               areas={areas}
               uploadedImageData={uploadedImageData} imageSrc={imageSrc}
               roofType={roofType}
-              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
             />
           </ScaledPage>
 
@@ -970,7 +980,7 @@ export default function Step5PdfReport({
               trapSettingsMap={trapSettingsMap} trapLineRailsMap={trapLineRailsMap}
               trapRCMap={trapRCMap} customBasesMap={customBasesMap}
               beBasesData={beBasesData} beTrapezoidsData={beTrapezoidsData}
-              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
             />
           </ScaledPage>
 
@@ -982,7 +992,7 @@ export default function Step5PdfReport({
               trapSettingsMap={trapSettingsMap}
               beRailsData={beRailsData}
               rectAreas={rectAreas}
-              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+              project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
             />
           </ScaledPage>
 
@@ -1009,7 +1019,7 @@ export default function Step5PdfReport({
                   beDetailData={beTrapezoidsData?.[repId]}
                   fullTrapGhost={fullTrapGhostMap[repId] ?? null}
                   count={groupCount}
-                  project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} user={user}
+                  project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
                 />
               </ScaledPage>
             )

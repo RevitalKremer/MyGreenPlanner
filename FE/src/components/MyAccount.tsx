@@ -3,7 +3,7 @@ import {
   PRIMARY, PRIMARY_BG, TEXT, TEXT_DARKEST, TEXT_DARK, TEXT_MUTED, TEXT_FAINT,
   TEXT_VERY_LIGHT, TEXT_SECONDARY,
   BORDER_LIGHT, BORDER_FAINT, BG_FAINT, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
-  MODAL_SCRIM, MODAL_SHADOW,
+  MODAL_SCRIM, MODAL_SHADOW, AMBER_DARK, AMBER_BG, AMBER_BORDER,
 } from '../styles/colors'
 import { useLang } from '../i18n/LangContext'
 
@@ -23,8 +23,18 @@ import { useLang } from '../i18n/LangContext'
  *   contactEmail     — shown in the "request top-up" hint (currently company
  *                      support email until payments land)
  */
-export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = null, onSignOut = null, contactEmail = 'support@mygreenplanner.com' }) {
+export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = null, onResendVerification = null, onSignOut = null, contactEmail = 'office@sadot-energy.co.il' }) {
   const { t } = useLang()
+  // Email verification state (unverified users can re-send the link).
+  const [verifySending, setVerifySending] = useState(false)
+  const [verifySent, setVerifySent] = useState(false)
+  const handleResend = async () => {
+    if (!onResendVerification) return
+    setVerifySending(true)
+    try { await onResendVerification(); setVerifySent(true) }
+    catch (e) { /* swallow — keep it simple */ }
+    finally { setVerifySending(false) }
+  }
   // Inline profile editor — toggled by the "Edit profile" button on the user
   // row. Keeps everything in one modal instead of nesting a second one.
   const [editingProfile, setEditingProfile] = useState(false)
@@ -182,6 +192,23 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
               <div style={{ fontSize: '0.78rem', color: TEXT_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.email}
               </div>
+              {!user?.is_verified && (
+                <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em',
+                    color: AMBER_DARK, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`,
+                    borderRadius: 999, padding: '1px 7px',
+                  }}>{t('account.unverified')}</span>
+                  {onResendVerification && (verifySent
+                    ? <span style={{ fontSize: '0.72rem', fontWeight: 700, color: SUCCESS }}>{t('verify.sent')}</span>
+                    : <button
+                        onClick={handleResend}
+                        disabled={verifySending}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: verifySending ? 'default' : 'pointer', color: PRIMARY, fontSize: '0.72rem', fontWeight: 700, textDecoration: 'underline' }}
+                      >{verifySending ? t('verify.sending') : t('verify.resend')}</button>
+                  )}
+                </div>
+              )}
             </div>
             {onUpdateProfile && (
               <button

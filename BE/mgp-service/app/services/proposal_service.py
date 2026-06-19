@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
 from app.models.user import User
+from app.models.company import Company
 from app.services import bom_service
 
 
@@ -496,12 +497,13 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
         elif element == 'block_50x24x15':
             blocks_weight += total_weight
 
-    # Client discount comes from the project OWNER's account (admin-set).
+    # Client discount comes from the project owner's COMPANY (admin-set).
     # None / 0 → normal price (no discount applied).
     owner = await db.get(User, project.owner_id)
+    company = await db.get(Company, owner.company_id) if owner and owner.company_id else None
     discount = (
-        float(owner.discount_percent)
-        if owner is not None and owner.discount_percent is not None
+        float(company.discount_percent)
+        if company is not None and company.discount_percent is not None
         else None
     )
 
