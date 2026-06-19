@@ -3,8 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   TEXT_DARKEST, TEXT_LIGHT, TEXT_SECONDARY, BORDER_FAINT, BORDER_LIGHT, BG_SUBTLE, PRIMARY, TEXT,
 } from '../../styles/colors'
-import ProductsTab from './ProductsTab'
-import PanelTypesTab from './PanelTypesTab'
+import MaterialsTab from './MaterialsTab'
 import SettingsTab from './SettingsTab'
 import UsersTab from './UsersTab'
 import ProjectsTab from './ProjectsTab'
@@ -14,7 +13,7 @@ import { useLang } from '../../i18n/LangContext'
 const TAB_KEYS = [
   // 'credits' includes Monetization as a sub-tab so all credits-related
   // management stays in one place.
-  'users', 'projects', 'credits', 'panel-types', 'products', 'settings',
+  'users', 'projects', 'credits', 'materials', 'settings',
 ] as const
 
 export default function AdminPanel({ onClose, currentUserId }) {
@@ -35,8 +34,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
     'users':       t('admin.tab.users'),
     'projects':    t('admin.tab.projects'),
     'credits':     t('admin.tab.credits'),
-    'panel-types': t('admin.tab.panels'),
-    'products':    t('admin.tab.products'),
+    'materials':   t('admin.tab.materials'),
     'settings':    t('admin.tab.settings'),
   }
 
@@ -84,8 +82,7 @@ export default function AdminPanel({ onClose, currentUserId }) {
         {activeTab === 'users'        && <UsersTab currentUserId={currentUserId} onNavigate={navigate} nav={navFor('users')} />}
         {activeTab === 'projects'     && <ProjectsTab onNavigate={navigate} nav={navFor('projects')} />}
         {activeTab === 'credits'      && <CreditsTab onNavigate={navigate} nav={navFor('credits')} />}
-        {activeTab === 'panel-types'  && <PanelTypesTab />}
-        {activeTab === 'products'     && <ProductsTab />}
+        {activeTab === 'materials'    && <MaterialsTab />}
         {activeTab === 'settings'     && <SettingsTab />}
       </div>
     </div>,
