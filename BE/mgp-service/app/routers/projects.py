@@ -24,6 +24,7 @@ from app.services import base_service
 from app.services import trapezoid_detail_service
 from app.services import bom_service
 from app.services import proposal_service
+from app.services import production_service
 from app.services import settings_cache
 from app.services import email_service
 from app.services import monday_service
@@ -817,6 +818,44 @@ async def download_proposal(
     )
 
 
+@router.get("/{project_id}/production.xlsx")
+async def download_production(
+    project_id: uuid.UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Generate the Hebrew production-instructions xlsx (saw cuts + punch
+    operations). Admin-only — it carries shop-floor manufacturing detail, not
+    customer-facing pricing."""
+    try:
+        xlsx_bytes = production_service.generate_production(project)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'production'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_production_{today}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': _attachment_disposition(filename)},
+    )
+
+
+def _build_production_attachment(project, safe_name: str, today: str, xlsx_mime: str, logger):
+    """Generate the production-instructions xlsx as a Monday attachment tuple.
+
+    Best-effort: returns None (and logs) on any failure so the proposal upload
+    to the PQ item still succeeds when production data is incomplete."""
+    try:
+        prod_bytes = production_service.generate_production(project)
+        return (f"{safe_name}_production_{today}.xlsx", prod_bytes, xlsx_mime)
+    except Exception:
+        logger.exception("Production xlsx generation failed for project %s", project.id)
+        return None
+
+
 def _attachment_disposition(filename: str) -> str:
     """RFC 5987-compliant Content-Disposition value with both an ASCII
     fallback and a UTF-8 percent-encoded form, so Hebrew project names
@@ -916,6 +955,9 @@ async def send_report_email(
         monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
         if pdf_bytes is not None:
             monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
+        prod_attachment = _build_production_attachment(project, safe_name, today, XLSX_MIME, logger)
+        if prod_attachment is not None:
+            monday_attachments.append(prod_attachment)
         monday_result = await monday_service.upload_proposal(
             project_id=str(project_id),
             project_name=project.name or str(project_id),
@@ -1001,6 +1043,9 @@ async def request_quotation(
     monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
     if pdf_bytes is not None:
         monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
+    prod_attachment = _build_production_attachment(project, safe_name, today_str, XLSX_MIME, logger)
+    if prod_attachment is not None:
+        monday_attachments.append(prod_attachment)
 
     # Quotation routing — fall back to the main board when the dedicated one
     # isn't configured. Empty strings count as "not configured".

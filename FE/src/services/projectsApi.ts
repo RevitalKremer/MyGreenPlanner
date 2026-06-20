@@ -186,6 +186,13 @@ export async function downloadProposal(id, projectName = 'proposal') {
   await _downloadFromServer(`/projects/${id}/proposal.xlsx`, `${safeName}_proposal_${date}.xlsx`)
 }
 
+export async function downloadProduction(id, projectName = 'production') {
+  // Admin-only: saw-cut + punch production instructions (Hebrew, regardless of lang).
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/production.xlsx`, `${safeName}_production_${date}.xlsx`)
+}
+
 export async function downloadProposalPdf(id, content: string[], projectName = 'proposal') {
   // content ∈ ['pricing', 'quantities'] — subset or both, must match BE endpoint.
   const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')

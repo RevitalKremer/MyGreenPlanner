@@ -7,7 +7,7 @@ import BOMView from './step3/BOMView'
 import TrapDetailPage from './step5/TrapDetailPage'
 import { buildTrapezoidGroups, buildFullTrapGhost } from './step3/tabUtils'
 import { PDFDocument } from 'pdf-lib'
-import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, fetchProposalPdfBytes, sendReportEmail, requestQuotation, getProjectOwner } from '../../services/projectsApi'
+import { getBOM, computeBOM, recalcBOM, saveBomDeltas, downloadProposal, downloadProduction, fetchProposalPdfBytes, sendReportEmail, requestQuotation, getProjectOwner } from '../../services/projectsApi'
 import PanelsLayoutPage from './step5/PanelsLayoutPage'
 import AreasLayoutPage from './step5/AreasLayoutPage'
 import RailsLayoutPage from './step5/RailsLayoutPage'
@@ -879,7 +879,23 @@ export default function Step5PdfReport({
                   border: 'none', borderRadius: '5px', fontSize: '0.78rem', fontWeight: '700',
                   cursor: 'pointer', textAlign: 'left',
                 }}
-              >↓ Excel</button>
+              >↓ Proposal file</button>
+
+              {/* Production instructions (saw cuts + punch) — admin-only */}
+              <button
+                onClick={async () => {
+                  setMenuOpen(false)
+                  try {
+                    await downloadProduction(projectId, project?.name)
+                  }
+                  catch (err) { console.error('Failed to generate production instructions:', err); alert('Failed to generate production instructions') }
+                }}
+                style={{
+                  padding: '0.35rem 0.75rem', background: PRIMARY, color: WHITE,
+                  border: 'none', borderRadius: '5px', fontSize: '0.78rem', fontWeight: '700',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >↓ Production file</button>
 
               {/* Divider */}
               <div style={{ borderTop: `1px solid ${BORDER}`, margin: '0.25rem 0' }} />
