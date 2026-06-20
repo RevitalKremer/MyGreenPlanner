@@ -443,7 +443,7 @@ export default function Step3Sidebar({
                   {areaLabel(areaKey, i)}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, marginTop: '2px' }}>
-                  {rc.panelCount} panels · {rc.angle}° · {rc.numTrapezoids} frames
+                  {rc.panelCount} panels · {rc.angle}°
                 </div>
                 <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER }}>
                   Rail: {fmt(rc.rowLength / 100)} m
