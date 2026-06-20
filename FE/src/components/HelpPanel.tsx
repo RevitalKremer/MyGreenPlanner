@@ -162,6 +162,10 @@ const HELP = {
         a: 'Export Excel downloads the BOM with project metadata. Export PDF rasterises every page to a multi-page A4-landscape PDF.'
       },
       {
+        q: 'What is the Production export? (admin)',
+        a: 'Admins get a "↓ Production" button next to Excel. It downloads a Hebrew production-instructions workbook with two sheets: "מסור" (saw) lists every cut — trapezoid members (base, יתר, legs, diagonals), external diagonals, and rails — grouped per area; "מנקבת" (puncher) lists the punch operations per trapezoid (base/slope beams by angle side with hole diameter, plus oval leg/diagonal punches). The same workbook is auto-attached to the Monday PQ item when a report is sent or a quotation is requested.'
+      },
+      {
         q: EXAMPLE_TAG,
         a: 'The BOM lists: 1 panel type × N panels, 2 rails per panel line (front + back) split into stock lengths, blocks under each base, and the auxiliary set defined for concrete roofs. The PDF is 5 system pages + 1 detail page for A1.'
       },
