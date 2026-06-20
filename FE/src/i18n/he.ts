@@ -347,6 +347,7 @@ const he = {
   'step3.param.panelGapCm':          'מרווח פנלים (ס"מ)',
   'step3.param.lineGapCm':           'מרווח שורות (ס"מ)',
   'step3.param.angleProfileSizeMm':  'גודל פרופיל זווית (מ"מ)',
+  'step3.param.angleProfileStockLengths': 'אורכי מלאי פרופיל זווית (מ"מ)',
   'step3.param.panelThickCm':        'עובי פנל (ס"מ)',
   'step3.param.reverseBlockPunches': 'הפוך ניקובי בלוק',
   'step3.param.railRoundThresholdCm':'סף עיגול קושרת (ס"מ)',

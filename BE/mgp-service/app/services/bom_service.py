@@ -266,6 +266,11 @@ def _derive_row_construction(
     num_blocks = 0
     num_block_punches = 0
     num_other_punches = 0
+    # Spliced-beam connectors: one per joint on a split base/slope beam. The two
+    # bolt holes per joint are origin='connector' punches that fall into the
+    # "other" bucket above, so each connector already pulls 2 hex bolts + 2 flange
+    # nuts through _compute_bolt_bom — only the connector element is added here.
+    num_beam_connectors = 0
     for tid, count in trap_instance_counts.items():
         ct = ct_by_id.get(tid)
         if not ct or count <= 0:
@@ -279,6 +284,9 @@ def _derive_row_construction(
         block_p = sum(1 for p in t_punches if p.get('origin') == 'block')
         num_block_punches += count * block_p
         num_other_punches += count * (len(t_punches) - block_p)
+        num_beam_connectors += count * (
+            (t_geom.get('baseBeamConnectorCount') or 0) + (t_geom.get('topBeamConnectorCount') or 0)
+        )
         cm = (t_geom.get('baseBeamLength') or t_geom.get('baseLength') or 0)
         cm += t_geom.get('topBeamLength') or 0
         for leg in t_legs:
@@ -320,6 +328,7 @@ def _derive_row_construction(
         'numBlocks': num_blocks,
         'numBlockPunches': num_block_punches,
         'numOtherPunches': num_other_punches,
+        'numBeamConnectors': num_beam_connectors,
     }
 
 
@@ -380,6 +389,19 @@ def _compute_trapezoid_bom(rc: dict, _area_label: str, products_by_type: dict) -
             'qty': count,
         })
     return rows
+
+
+def _compute_beam_connector_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
+    """One angle-profile connector per spliced-beam joint (base or slope beam cut
+    into multiple pieces). The joint's two bolts + flange nuts are emitted by
+    _compute_bolt_bom from the origin='connector' punches, so only the connector
+    element itself is added here. Section `trapezoids` keeps it with the frame."""
+    qty = rc.get('numBeamConnectors', 0)
+    if qty <= 0:
+        return []
+    element = _alt_group_default(products_by_type, _BEAM_CONNECTOR_ANCHOR)
+    return [{'areaLabel': area_label, 'element': element, 'section': 'trapezoids',
+             'totalLengthM': None, 'qty': qty}]
 
 
 def _compute_external_diagonal_bom(rc: dict, area_label: str, products_by_type: dict) -> list[dict]:
@@ -502,6 +524,7 @@ def _alt_group_default(products_by_type: dict, anchor_key: str) -> str:
 _ANGLE_PROFILE_ANCHOR        = 'angle_profile_40x40'
 _RAIL_ANCHOR                 = 'rail_40x40'
 _RAIL_CONNECTOR_ANCHOR       = 'rail_connector'
+_BEAM_CONNECTOR_ANCHOR       = 'angle_connector_10cm'
 _BLOCK_ANCHOR                = 'block_50x24x15'
 _END_CLAMP_ANCHOR            = 'end_panel_clamp'
 _GROUNDING_CLAMP_ANCHOR      = 'grounding_panel_clamp'
@@ -789,6 +812,7 @@ def build_bom(
         elif roof_type in ('iskurit', 'insulated_panel'):
             # Full frame, no blocks, add screws
             rows += _compute_trapezoid_bom(rc, area_label, p)
+            rows += _compute_beam_connector_bom(rc, area_label, p)
             rows += _compute_external_diagonal_bom(rc, area_label, p)
             rows += _compute_rail_bom(rc, area_label, p)
             rows += _compute_panel_clamp_bom(rc, area_label, p)
@@ -797,6 +821,7 @@ def build_bom(
         else:
             # Concrete (default): full BOM
             rows += _compute_trapezoid_bom(rc, area_label, p)
+            rows += _compute_beam_connector_bom(rc, area_label, p)
             rows += _compute_external_diagonal_bom(rc, area_label, p)
             rows += _compute_rail_bom(rc, area_label, p)
             rows += _compute_block_bom(rc, area_label, p)

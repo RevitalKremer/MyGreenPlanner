@@ -492,6 +492,135 @@ def _compute_structural_punches(
     return punches
 
 
+# ── Beam splicing ──────────────────────────────────────────────────────────────
+# A base or slope beam longer than the largest angle-profile stock length cannot
+# be one piece: it is cut into N near-equal butt-joined pieces bridged by an
+# angle-profile connector (with a bolt punch on each piece at the joint). The
+# slope beam and no-block (iskurit / insulated-panel) base beams split into equal
+# pieces; a concrete base snaps each interior joint to the nearest block centre so
+# the splice sits over a support. Joints are nudged off any leg/diagonal punch.
+
+# Origins a joint must not land on (a splice can't share a leg/diagonal bolt hole).
+_JOINT_ORIGINS_TO_AVOID = ('outerLeg', 'innerLeg', 'diagonal')
+
+
+def _nearest(values: list[float], target: float) -> float:
+    return min(values, key=lambda v: abs(v - target)) if values else target
+
+
+def _nudge_off_punches(joint: float, punch_positions: list[float], clearance_cm: float,
+                       lo: float, hi: float) -> float:
+    """If a structural punch sits within `clearance_cm` of the joint, shift the
+    joint to the near edge of that punch's keep-clear zone (whichever side moves
+    least), clamped to [lo, hi]. Best-effort single pass."""
+    if clearance_cm <= 0:
+        return joint
+    conflict = next((p for p in punch_positions if abs(p - joint) < clearance_cm), None)
+    if conflict is None:
+        return joint
+    left, right = conflict - clearance_cm, conflict + clearance_cm
+    cand = left if abs(left - joint) <= abs(right - joint) else right
+    return min(max(cand, lo), hi)
+
+
+def _split_beam_segments(
+    length_cm: float,
+    stock_lengths_mm: list[int],
+    *,
+    blocks: list[dict] | None = None,
+    block_length_cm: float = 0.0,
+    avoid_positions: list[float] | None = None,
+    clearance_cm: float = 0.0,
+    min_piece_cm: float = 1.0,
+) -> list[dict]:
+    """Split a beam of `length_cm` into butt-joined pieces, each <= the largest
+    stock length. Returns a single segment when no split is needed.
+
+    Each segment: {idx, startCm, endCm, lengthCm, lengthMm, jointAtFrontCm?}
+    (`jointAtFrontCm` is present on every non-final segment). Segment coordinates
+    are in the beam's own rear->front frame (the same one `punches[].positionCm`
+    uses), so consumers need no conversion.
+    """
+    max_stock_cm = max(stock_lengths_mm) / 10 if stock_lengths_mm else 0
+    n = max(1, math.ceil(round(length_cm, 6) / max_stock_cm)) if max_stock_cm > 0 else 1
+    if n <= 1:
+        return [{'idx': 0, 'startCm': 0.0, 'endCm': _r(length_cm),
+                 'lengthCm': _r(length_cm), 'lengthMm': round(length_cm * 10)}]
+
+    # Ideal equal joints.
+    joints = [length_cm * i / n for i in range(1, n)]
+
+    # Concrete base: snap each joint to the nearest block centre (splice over a support).
+    if blocks:
+        centres = sorted(b['positionCm'] + block_length_cm / 2 for b in blocks)
+        joints = [_nearest(centres, j) for j in joints]
+
+    # Keep the splice clear of leg/diagonal punches.
+    avoid = avoid_positions or []
+    joints = [
+        _nudge_off_punches(j, avoid, clearance_cm, min_piece_cm, length_cm - min_piece_cm)
+        for j in joints
+    ]
+    joints = sorted({round(min(max(j, min_piece_cm), length_cm - min_piece_cm), 1) for j in joints})
+
+    # Validate: every resulting piece must stay within [min_piece, max_stock].
+    # If snapping/nudging broke that, fall back to pure equal division (which is
+    # within stock by construction since n = ceil(length / max_stock)).
+    bounds = [0.0] + joints + [length_cm]
+    ok = len(joints) == n - 1 and all(
+        min_piece_cm <= bounds[k + 1] - bounds[k] <= max_stock_cm + 0.05
+        for k in range(len(bounds) - 1)
+    )
+    if not ok:
+        joints = [round(length_cm * i / n, 1) for i in range(1, n)]
+        bounds = [0.0] + joints + [length_cm]
+
+    segments = []
+    for i in range(len(bounds) - 1):
+        start, end = bounds[i], bounds[i + 1]
+        seg = {'idx': i, 'startCm': _r(start), 'endCm': _r(end),
+               'lengthCm': _r(end - start), 'lengthMm': round((end - start) * 10)}
+        if i < len(bounds) - 2:
+            seg['jointAtFrontCm'] = _r(end)
+        segments.append(seg)
+    return segments
+
+
+def _segment_index(segments: list[dict], pos: float) -> int:
+    """Index of the piece that contains beam-coordinate `pos` (last segment whose
+    start is at or before pos)."""
+    for i in range(len(segments) - 1, -1, -1):
+        if pos >= segments[i]['startCm'] - 0.05:
+            return i
+    return 0
+
+
+def _tag_punch_segments(punches: list[dict], segments: list[dict], beam_type: str) -> None:
+    """Set `segmentIdx` + `piecePositionCm` (position from that piece's rear end)
+    on every punch of `beam_type`."""
+    for p in punches:
+        if p.get('beamType') != beam_type:
+            continue
+        pos = p.get('positionCm', 0)
+        idx = _segment_index(segments, pos)
+        p['segmentIdx'] = idx
+        p['piecePositionCm'] = _r(pos - segments[idx]['startCm'])
+
+
+def _make_joint_punches(segments: list[dict], beam_type: str, inset_cm: float) -> list[dict]:
+    """Two `origin='connector'` punches per joint (one per adjoining piece),
+    `inset_cm` back from the joint on each side."""
+    out = []
+    for i in range(len(segments) - 1):
+        joint = segments[i]['endCm']
+        rp, fp = joint - inset_cm, joint + inset_cm
+        out.append({'beamType': beam_type, 'positionCm': _r(rp), 'origin': 'connector',
+                    'segmentIdx': i, 'piecePositionCm': _r(rp - segments[i]['startCm'])})
+        out.append({'beamType': beam_type, 'positionCm': _r(fp), 'origin': 'connector',
+                    'segmentIdx': i + 1, 'piecePositionCm': _r(fp - segments[i + 1]['startCm'])})
+    return out
+
+
 # ── Main computation ──────────────────────────────────────────────────────────
 
 def compute_trapezoid_details(
@@ -746,6 +875,41 @@ def compute_trapezoid_details(
             p['reversedPositionCm'], p['positionCm'] = _block_punch_reversed(base_beam_length, p['positionCm'])
         elif p['beamType'] == 'slope' and p['origin'] != 'rail':
             p['reversedPositionCm'] = _r(top_beam_length - p['positionCm'])
+
+    # ── Beam splicing: split beams longer than the largest angle-profile stock ──
+    # Runs last, on the finalised beam lengths / punches. Un-split beams are left
+    # untouched (no segments, no segmentIdx) so existing data/consumers are
+    # unchanged; a split beam gains geometry.*BeamSegments, per-punch segmentIdx /
+    # piecePositionCm, and two origin='connector' joint punches per joint.
+    stock_lengths_mm = settings.get('angleProfileStockLengths') or []
+    if stock_lengths_mm and max(stock_lengths_mm) > 0:
+        connector_inset_cm = settings.get('connectorPunchInsetCm', 3)
+        base_avoid = [p['positionCm'] for p in punches
+                      if p['beamType'] == 'base' and p['origin'] in _JOINT_ORIGINS_TO_AVOID]
+        slope_avoid = [p['positionCm'] for p in punches
+                       if p['beamType'] == 'slope' and p['origin'] in _JOINT_ORIGINS_TO_AVOID]
+        base_segments = _split_beam_segments(
+            base_beam_length, stock_lengths_mm,
+            blocks=blocks, block_length_cm=block_length_cm,
+            avoid_positions=base_avoid, clearance_cm=punch_overlap_margin,
+        )
+        slope_segments = _split_beam_segments(
+            top_beam_length, stock_lengths_mm,
+            avoid_positions=slope_avoid, clearance_cm=punch_overlap_margin,
+        )
+        if len(base_segments) > 1:
+            _tag_punch_segments(punches, base_segments, 'base')
+            punches += _make_joint_punches(base_segments, 'base', connector_inset_cm)
+            geometry['baseBeamSegments'] = base_segments
+            geometry['baseBeamConnectorCount'] = len(base_segments) - 1
+        if len(slope_segments) > 1:
+            _tag_punch_segments(punches, slope_segments, 'slope')
+            slope_joints = _make_joint_punches(slope_segments, 'slope', connector_inset_cm)
+            for jp in slope_joints:  # parity with other slope punches (line ~748)
+                jp['reversedPositionCm'] = _r(top_beam_length - jp['positionCm'])
+            punches += slope_joints
+            geometry['topBeamSegments'] = slope_segments
+            geometry['topBeamConnectorCount'] = len(slope_segments) - 1
 
     bases_effective = (bases_data or {}).get('effectiveBasesSettings')
 

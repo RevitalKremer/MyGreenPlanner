@@ -300,6 +300,15 @@ class ComputedTrapezoid(_StrictBase):
     #   originCm                         — coordinate origin in global panel coords (cm)
     #   panelEdgeToFirstRailCm, panelEdgeToLastRailCm, railToRailCm, overhangCm
     #   beamThickCm, panelThickCm, blockHeightCm, blockLengthCm, crossRailHeightCm
+    #   baseBeamSegments, topBeamSegments — present only when a beam is longer than
+    #                                      the largest angleProfileStockLengths and is
+    #                                      cut into spliced pieces. list[dict]:
+    #                                      {idx, startCm, endCm, lengthCm, lengthMm,
+    #                                       jointAtFrontCm?(non-final)}. Absent ⇒ single
+    #                                      piece. Coords are the beam's rear->front frame
+    #                                      (same as punches[].positionCm).
+    #   baseBeamConnectorCount, topBeamConnectorCount — len(segments)-1 (joints needing a
+    #                                      splice connector); absent ⇒ 0.
     #   extensions                       — list[TrapExtension] (dict form: {frontExtMm, backExtMm}).
     #                                      Index 0 is the trap's BE-default base-beam extension
     #                                      (zero for concrete & parallel-purlin; non-zero for
@@ -314,7 +323,10 @@ class ComputedTrapezoid(_StrictBase):
     # (slope length is identical for every block — derive on consumers as
     # geometry.blockLengthCm / cos(geometry.angle))
     punches: list[dict] = Field(default_factory=list)
-    # punches[]: beamType ('base'|'slope'), positionCm, origin ('outerLeg'|'innerLeg'|'rail'|'diagonal'|'block')
+    # punches[]: beamType ('base'|'slope'), positionCm, origin ('outerLeg'|'innerLeg'|'rail'|'diagonal'|'block'|'connector')
+    #   'connector' = splice bolt hole at a spliced-beam joint (2 per joint, one per piece).
+    #   On spliced beams every punch also carries: segmentIdx (which physical piece) and
+    #   piecePositionCm (position from that piece's rear end). Absent ⇒ segmentIdx 0, piecePositionCm == positionCm.
     diagonals: list[dict] = Field(default_factory=list)
     # diagonals[]: spanIdx, topDistFromLegCm, botDistFromLegCm, punchSpanCm (server-computed), lengthCm, isDouble, disabled
 
