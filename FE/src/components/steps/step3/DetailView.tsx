@@ -416,6 +416,18 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   const makePunchPoints = (beamType, excludeOrigin, atFn, labelFor, liveDiagPoints?) =>
     buildPunchPoints(punches, beamType, excludeOrigin, atFn, labelFor, liveDiagPoints)
 
+  // For a spliced beam, convert a full-beam cm position to its per-piece label:
+  // forward distance from the piece's rear end, or (reversed) from its far end.
+  // Used for live diagonal punch labels so they match the per-piece convention
+  // the static punches already use via piecePositionCm.
+  const pieceLabelCm = (posCm, segs, reversed) => {
+    const list = segs ?? []
+    const seg = list.find(s => posCm >= s.startCm - 0.05 && posCm <= s.endCm + 0.05) ?? list[list.length - 1]
+    if (!seg) return posCm
+    const piecePos = posCm - seg.startCm
+    return reversed ? (seg.lengthCm - piecePos) : piecePos
+  }
+
   // Panel start/end positions — includes perpendicular offset to match rendered panel bar
   const panelBottomPos = (dCm) => {
     const sx = atSlope(dCm).x
@@ -519,6 +531,10 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 panelOffsetPx={PANEL_OFFSET_PX}
                 panelThickPx={PANEL_THICK_PX}
                 SC={SC}
+                baseBeamSegments={geom.baseBeamSegments}
+                topBeamSegments={geom.topBeamSegments}
+                baseBeamLengthCm={baseBeamLengthCm}
+                topBeamLengthCm={topBeamLength}
               />
 
               {/* ── Block punch labels (decoration on top of block rects) ── */}
@@ -890,8 +906,16 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                 const bbX0 = legX0 - flp * SC
                 const bbW = baseBeamLen * SC
                 const atBase = (posCm) => bbX0 + (posCm / baseBeamLen) * bbW
-                const baseLiveDiag = liveDiagPunches.map(d => ({ x: atBase(d.botPosCm), label: fmt(d.botPosCm), origin: 'diagonal' }))
-                const points = makePunchPoints('base', 'block', atBase, p => fmt(p.positionCm), baseLiveDiag)
+                // Spliced base: label each punch by its position along its own
+                // piece (matches the per-piece puncher sheet); break the bar.
+                const baseSegs = geom.baseBeamSegments
+                const isBaseSplit = (baseSegs?.length ?? 0) > 1
+                const baseLabel = (p) => fmt(isBaseSplit && p.piecePositionCm != null ? p.piecePositionCm : p.positionCm)
+                const baseLiveDiag = liveDiagPunches.map(d => ({ x: atBase(d.botPosCm), label: fmt(isBaseSplit ? pieceLabelCm(d.botPosCm, baseSegs, false) : d.botPosCm), origin: 'diagonal' }))
+                const points = makePunchPoints('base', 'block', atBase, baseLabel, baseLiveDiag)
+                const segments = isBaseSplit
+                  ? baseSegs.map(s => ({ x0: atBase(s.startCm), x1: atBase(s.endCm), lengthCm: s.lengthCm }))
+                  : undefined
                 return <DetailPunchSketch which="bot" ry={blockBotY + 150}
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={points} activeDiags={activeDiags}
@@ -900,18 +924,34 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
                   activeBoundL={bbX0} activeBoundR={bbX0 + bbW}
-                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.baseBeamPunches" />
+                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.baseBeamPunches" segments={segments} />
               })()}
 
               {/* ── Slope beam punch sketch ── */}
               {showPunches && (() => {
                 const slopeLen = topBeamLength
                 const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
-                const slopeLabel = (p) => fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm)
+                const slopeSegs = geom.topBeamSegments
+                const isSlopeSplit = (slopeSegs?.length ?? 0) > 1
+                const slopeSegLen = isSlopeSplit
+                  ? Object.fromEntries(slopeSegs.map(s => [s.idx, s.lengthCm]))
+                  : {}
+                // Spliced slope: label per piece, honoring the reverse setting
+                // (segment length − piecePositionCm); else full-beam position.
+                const slopeLabel = (p) => {
+                  if (isSlopeSplit && p.piecePositionCm != null) {
+                    const segLen = slopeSegLen[p.segmentIdx ?? 0] ?? slopeLen
+                    return fmt(reverseBlockPunches ? segLen - p.piecePositionCm : p.piecePositionCm)
+                  }
+                  return fmt(reverseBlockPunches && p.reversedPositionCm != null ? p.reversedPositionCm : p.positionCm)
+                }
                 // Diagonal punches must honor the reverse setting too — mirror the BE
                 // slope reverse (top_beam_length - positionCm) so they match the rail punches.
-                const slopeLiveDiag = liveDiagPunches.map(d => ({ x: atSlope2(d.topPosCm), label: fmt(reverseBlockPunches ? slopeLen - d.topPosCm : d.topPosCm), origin: 'diagonal' }))
+                const slopeLiveDiag = liveDiagPunches.map(d => ({ x: atSlope2(d.topPosCm), label: fmt(isSlopeSplit ? pieceLabelCm(d.topPosCm, slopeSegs, reverseBlockPunches) : (reverseBlockPunches ? slopeLen - d.topPosCm : d.topPosCm)), origin: 'diagonal' }))
                 const points = makePunchPoints('slope', 'rail', atSlope2, slopeLabel, slopeLiveDiag)
+                const segments = isSlopeSplit
+                  ? slopeSegs.map(s => ({ x0: atSlope2(s.startCm), x1: atSlope2(s.endCm), lengthCm: s.lengthCm }))
+                  : undefined
                 return <DetailPunchSketch which="top" ry={blockBotY + 72}
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={points} activeDiags={activeDiags}
@@ -920,7 +960,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
                   activeBoundL={activeBoundL} activeBoundR={activeBoundR}
-                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.slopeBeamPunches" />
+                  fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.slopeBeamPunches" segments={segments} />
               })()}
 
             </svg>

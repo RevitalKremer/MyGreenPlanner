@@ -90,11 +90,12 @@ _LABEL_DOUBLE = ' (כפול)'
 # block + rail punches sit on side 2. Diameter is a label, since leg/diagonal
 # punches (built separately, below) are oval rather than round.
 _PUNCH_TYPE_MAP = {
-    'outerLeg': {'side': 1, 'diameter': '9mm'},
-    'innerLeg': {'side': 1, 'diameter': '9mm'},
-    'diagonal': {'side': 1, 'diameter': '9mm'},
-    'rail':     {'side': 2, 'diameter': '9mm'},
-    'block':    {'side': 2, 'diameter': '13mm'},
+    'outerLeg':  {'side': 1, 'diameter': '9mm'},
+    'innerLeg':  {'side': 1, 'diameter': '9mm'},
+    'diagonal':  {'side': 1, 'diameter': '9mm'},
+    'rail':      {'side': 2, 'diameter': '9mm'},
+    'block':     {'side': 2, 'diameter': '13mm'},
+    'connector': {'side': 1, 'diameter': '9mm'},  # splice bolt hole at a spliced-beam joint
 }
 _PUNCH_DEFAULT = {'side': 1, 'diameter': '9mm'}
 
@@ -143,17 +144,35 @@ def _trap_instance_counts(computed_area: dict) -> dict[str, int]:
     return counts
 
 
+def _beam_parts(geom: dict, segments_key: str, kind: str, label: str,
+                full_len: float, count: int) -> list[dict]:
+    """Cut part(s) for one beam. A spliced beam (segments_key present with >1
+    piece) yields one part per physical piece ('label 1/2', 'label 2/2', …),
+    each tagged with `segmentIdx` so the punch builder can list that piece's own
+    holes. An un-split beam yields a single part (segmentIdx 0)."""
+    segs = geom.get(segments_key) or []
+    if len(segs) > 1:
+        n = len(segs)
+        return [
+            {'kind': kind, 'desc': f'{label} {i + 1}/{n}',
+             'length': _round_cm(s.get('lengthCm', s['endCm'] - s['startCm'])),
+             'qty': count, 'segmentIdx': i}
+            for i, s in enumerate(segs)
+        ]
+    return [{'kind': kind, 'desc': label, 'length': full_len, 'qty': count, 'segmentIdx': 0}]
+
+
 def _trap_parts(ct: dict, count: int) -> list[dict]:
     """Ordered list of cut parts for one trapezoid type, each carrying the five
     shared columns (area filled by the caller) plus a `kind` tag the punch
-    builder uses. NOT grouped — one entry per beam / leg / diagonal."""
+    builder uses. NOT grouped — one entry per beam piece / leg / diagonal."""
     geom = ct.get('geometry') or {}
     base_len = _round_cm(geom.get('baseBeamLength') or geom.get('baseLength') or 0)
     slope_len = _round_cm(geom.get('topBeamLength') or 0)
 
     parts: list[dict] = [
-        {'kind': 'base',  'desc': _LABEL_BASE,  'length': base_len,  'qty': count},
-        {'kind': 'slope', 'desc': _LABEL_SLOPE, 'length': slope_len, 'qty': count},
+        *_beam_parts(geom, 'baseBeamSegments', 'base', _LABEL_BASE, base_len, count),
+        *_beam_parts(geom, 'topBeamSegments', 'slope', _LABEL_SLOPE, slope_len, count),
     ]
 
     leg_n = 0
@@ -281,7 +300,17 @@ def build_punch_rows(data: dict) -> list[dict]:
             }
             if part['kind'] in ('base', 'slope'):
                 beam_type = part['kind']  # punches[].beamType is 'base' | 'slope'
+                seg_key = 'baseBeamSegments' if beam_type == 'base' else 'topBeamSegments'
+                is_split = len((ct.get('geometry') or {}).get(seg_key) or []) > 1
                 beam_punches = [p for p in punches if p.get('beamType') == beam_type]
+                # On a split beam each part is one physical piece: restrict to that
+                # piece's punches and measure each from the piece's own end.
+                if is_split:
+                    seg_idx = part.get('segmentIdx', 0)
+                    beam_punches = [p for p in beam_punches if p.get('segmentIdx', 0) == seg_idx]
+                    pos_key = 'piecePositionCm'
+                else:
+                    pos_key = 'positionCm'
                 for side in (1, 2):
                     side_punches = [
                         p for p in beam_punches
@@ -293,7 +322,7 @@ def build_punch_rows(data: dict) -> list[dict]:
                     })
                     rows.append({
                         **base5,
-                        'punch_loc': _fmt_positions([p.get('positionCm', 0) for p in side_punches]),
+                        'punch_loc': _fmt_positions([p.get(pos_key, p.get('positionCm', 0)) for p in side_punches]),
                         'side': side,
                         'diameter': ', '.join(diameters),
                     })

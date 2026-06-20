@@ -81,6 +81,8 @@ export const TRAP_BLOCK_FILL        = '#c0c0c0'  // concrete block fill
 export const TRAP_BLOCK_STROKE      = '#777'     // concrete block stroke
 export const TRAP_L_PROFILE_FILL    = '#40404080'  // main beam fill
 export const TRAP_L_PROFILE_STROKE  = '#606060'  // main beam stroke
+export const BEAM_CONNECTOR_FILL    = '#f4433680'  // splice connector marker fill (spliced base/slope beam joint) — red
+export const BEAM_CONNECTOR_STROKE  = '#c0392b'  // splice connector marker stroke — dark red
 
 // External diagonal (BasesPlanTab) — cyan for visibility over panels
 export const DIAGONAL_STROKE = 'cyan' // '#00ACC1'  // external diagonal line + fill dot

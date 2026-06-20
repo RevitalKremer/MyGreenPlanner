@@ -110,6 +110,10 @@ const HELP = {
         a: 'When the last stock cut would be tiny (default: under 50 cm — controlled by Rail Min Cut), the BE merges it with the preceding cut and splits the pair into two equal halves rounded up to the 5 cm cutting grid. Example: a 6.05 m rail becomes two 3.05 m pieces instead of 6.00 m + 0.05 m. Set Rail Min Cut to 0 to disable.'
       },
       {
+        q: 'Why is a base or slope beam shown as two pieces with a connector?',
+        a: 'Angle profile is sold in fixed stock lengths (default 3.9 m / 6.0 m — the Angle Profile Stock Lengths admin setting). When a beam is longer than the largest stock length it is cut into equal pieces and joined by an angle connector: the slope splits into equal halves, the concrete base splits at its nearest support block. Each joint adds a connector part (with 2 M8 bolts + flange nuts) and a bolt hole 3 cm from each piece\'s end; the saw and puncher sheets list each piece separately.'
+      },
+      {
         q: EXAMPLE_TAG,
         a: 'With one area "A" at 12° / 50 cm you\'ll see one trapezoid (A1) and one panel line. On Rails the spacing is auto-derived from panel depth and edge distance; on Bases the base count comes from rail length divided by base spacing, with overhang at each end. Trapezoid Details shows the full cross-section: front rail at 50 cm, back rail higher by panel × sin(12°), plus the block punches under each leg.'
       },

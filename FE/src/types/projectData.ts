@@ -178,6 +178,24 @@ export interface TrapezoidGeometry {
   // `Base.trapezoidId` ("A1" → idx 0, "A1.N" → idx N). See
   // trapExtensionService.ts for helpers.
   extensions?: TrapExtension[]
+  // Spliced-beam pieces — present only when a beam exceeds the largest
+  // angleProfileStockLengths and is cut into multiple pieces (butt-joined,
+  // bridged by an angle connector). Absent ⇒ single piece. Coordinates are in
+  // the beam's rear→front frame (same as Punch.positionCm).
+  baseBeamSegments?: BeamSegment[]
+  topBeamSegments?: BeamSegment[]
+  // Number of splice joints (= segments − 1) per beam; absent ⇒ 0.
+  baseBeamConnectorCount?: number
+  topBeamConnectorCount?: number
+}
+
+export interface BeamSegment {
+  idx: number
+  startCm: number
+  endCm: number
+  lengthCm: number
+  lengthMm: number
+  jointAtFrontCm?: number   // present on every non-final segment
 }
 
 export interface TrapExtension {
@@ -205,9 +223,13 @@ export interface Block {
 export interface Punch {
   beamType: 'base' | 'slope'
   positionCm: number
-  origin: 'outerLeg' | 'innerLeg' | 'rail' | 'diagonal' | 'block'
+  origin: 'outerLeg' | 'innerLeg' | 'rail' | 'diagonal' | 'block' | 'connector'
   reversedPositionCm?: number
   blockIdx?: number
+  // On a spliced beam: which physical piece this punch is on, and its position
+  // measured from that piece's own rear end. Absent ⇒ piece 0 / positionCm.
+  segmentIdx?: number
+  piecePositionCm?: number
 }
 
 export interface Diagonal {

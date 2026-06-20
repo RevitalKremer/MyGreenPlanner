@@ -3,9 +3,15 @@ import {
   TRAP_L_PROFILE_FILL, TRAP_L_PROFILE_STROKE,
   TRAP_BLOCK_FILL, TRAP_BLOCK_STROKE,
   PANEL_BAR_FILL, PANEL_BAR_STROKE,
+  BEAM_CONNECTOR_FILL, BEAM_CONNECTOR_STROKE,
 } from '../../../styles/colors'
 import type { TrapStructureGeometry } from '../../../utils/trapezoidGeometry'
-import type { Leg, Block, PanelLineSegment } from '../../../types/projectData'
+import type { Leg, Block, PanelLineSegment, BeamSegment } from '../../../types/projectData'
+
+// Physical length of the angle splice connector (angle_connector_10cm).
+const CONNECTOR_LEN_CM = 10
+// Small visual gap (px) between adjacent spliced pieces, so the butt joint reads.
+const SEGMENT_GAP_PX = 1
 
 /**
  * Shared structural primitives for the side-view trapezoid: base beam, slope
@@ -72,12 +78,20 @@ interface TrapStructureProps {
   panelOffsetPx: number
   panelThickPx: number
   SC: number
+  // Spliced-beam pieces (from BE geometry). When >1 piece, the beam is drawn
+  // as separate pieces with a splice connector marker over each joint. Absent
+  // or single ⇒ the beam is drawn as one piece (existing behavior).
+  baseBeamSegments?: BeamSegment[]
+  topBeamSegments?: BeamSegment[]
+  baseBeamLengthCm?: number
+  topBeamLengthCm?: number
 }
 
 export default function TrapStructure({
   variant, geometry, beLegs, blocks, diagonals, panelLines, atSlopeX,
   baseY, beamThickPx, blockH, blockLengthCm,
   panelOffsetPx, panelThickPx, SC,
+  baseBeamSegments, topBeamSegments, baseBeamLengthCm, topBeamLengthCm,
 }: TrapStructureProps) {
   const s = variant === 'ghost' ? GHOST_STYLE : MAIN_STYLE
   const dashAttr = s.dash ? { strokeDasharray: s.dash } : {}
@@ -111,12 +125,67 @@ export default function TrapStructure({
 
   return (
     <g {...(isGhost ? { pointerEvents: 'none' as const } : {})}>
-      {/* Base beam — full length including front/rear extensions */}
-      <rect x={baseBeamX0} y={baseY} width={baseBeamW} height={beamThickPx}
-        fill={s.fill} stroke={s.stroke} strokeWidth="1" {...dashAttr} />
+      {/* Base beam — one rect, or one rect per spliced piece + connector marker(s) */}
+      {(() => {
+        const segs = baseBeamSegments
+        if (!segs || segs.length <= 1 || !baseBeamLengthCm) {
+          return (
+            <rect x={baseBeamX0} y={baseY} width={baseBeamW} height={beamThickPx}
+              fill={s.fill} stroke={s.stroke} strokeWidth="1" {...dashAttr} />
+          )
+        }
+        const baseX = (cm: number) => baseBeamX0 + cm * SC
+        const cw = CONNECTOR_LEN_CM * SC
+        return (
+          <>
+            {segs.map((seg, i) => {
+              const left  = i > 0 ? SEGMENT_GAP_PX : 0
+              const right = i < segs.length - 1 ? SEGMENT_GAP_PX : 0
+              const x = baseX(seg.startCm) + left
+              const w = (seg.endCm - seg.startCm) * SC - left - right
+              return (
+                <rect key={`base-seg-${i}`} x={x} y={baseY} width={Math.max(0, w)} height={beamThickPx}
+                  fill={s.fill} stroke={s.stroke} strokeWidth="1" {...dashAttr} />
+              )
+            })}
+            {!isGhost && segs.map((seg, i) => (
+              seg.jointAtFrontCm == null ? null : (
+                <rect key={`base-conn-${i}`} x={baseX(seg.jointAtFrontCm) - cw / 2} y={baseY - 1}
+                  width={cw} height={beamThickPx + 2} rx={1}
+                  fill={BEAM_CONNECTOR_FILL} stroke={BEAM_CONNECTOR_STROKE} strokeWidth="1" />
+              )
+            ))}
+          </>
+        )
+      })()}
 
-      {/* Slope beam — endpoints via leg-center interpolation */}
-      {thickLine('slope', legX0, beamYAt(legX0), legX1, beamYAt(legX1), beamThickPx)}
+      {/* Slope beam — one line, or one line per spliced piece + connector marker(s) */}
+      {(() => {
+        const segs = topBeamSegments
+        if (!segs || segs.length <= 1 || !topBeamLengthCm) {
+          return thickLine('slope', legX0, beamYAt(legX0), legX1, beamYAt(legX1), beamThickPx)
+        }
+        const slopeX = (cm: number) => legX0 + (cm / topBeamLengthCm) * (legX1 - legX0)
+        const cw = CONNECTOR_LEN_CM * SC
+        return (
+          <>
+            {segs.map((seg, i) => {
+              const x1 = slopeX(seg.startCm), x2 = slopeX(seg.endCm)
+              return thickLine(`slope-seg-${i}`, x1, beamYAt(x1), x2, beamYAt(x2), beamThickPx)
+            })}
+            {!isGhost && segs.map((seg, i) => {
+              if (seg.jointAtFrontCm == null) return null
+              const jx = slopeX(seg.jointAtFrontCm), jy = beamYAt(jx)
+              return (
+                <rect key={`slope-conn-${i}`} x={-cw / 2} y={-(beamThickPx + 2) / 2}
+                  width={cw} height={beamThickPx + 2} rx={1}
+                  fill={BEAM_CONNECTOR_FILL} stroke={BEAM_CONNECTOR_STROKE} strokeWidth="1"
+                  transform={`translate(${jx},${jy}) rotate(${beamAngleDeg})`} />
+              )
+            })}
+          </>
+        )
+      })()}
 
       {/* Legs — skip virtual */}
       {beLegs.map((leg, li) => {
