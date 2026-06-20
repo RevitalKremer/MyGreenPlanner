@@ -66,4 +66,4 @@ DevOps/aws/.eip-alloc
 DevOps/aws/.bucket
 DevOps/aws/.env.prod.local
 DevOps/aws/.deploy-role-arn
-BE/mgp-service/app/templates/~$proposal_template.xlsx
+BE/mgp-service/app/templates/~$*.xlsx
