@@ -348,6 +348,7 @@ const en = {
   'step3.param.panelGapCm':          'Panel Gap (cm)',
   'step3.param.lineGapCm':           'Line Gap (cm)',
   'step3.param.angleProfileSizeMm':  'Angle Profile Size (mm)',
+  'step3.param.angleProfileStockLengths': 'Angle Profile Stock Lengths (mm)',
   'step3.param.panelThickCm':        'Panel Thickness (cm)',
   'step3.param.reverseBlockPunches': 'Reverse Block Punches',
   'step3.param.railRoundThresholdCm':'Rail Round Threshold (cm)',
