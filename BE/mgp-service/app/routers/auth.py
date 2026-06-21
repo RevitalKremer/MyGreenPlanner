@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +54,9 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
         full_name=payload.full_name,
         phone_number=payload.phone_number or None,
         company=company,  # sets company_id and keeps the relationship loaded
+        # Stamp consent server-side — the schema already enforced terms_accepted is true.
+        terms_accepted_at=datetime.now(timezone.utc),
+        terms_version=payload.terms_version,
     )
     db.add(user)
     await db.commit()

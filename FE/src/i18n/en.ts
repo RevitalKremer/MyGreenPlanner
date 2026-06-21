@@ -860,6 +860,93 @@ const en = {
   'admin.credits.kind.adminRefund':   'Admin refund',
   'admin.credits.kind.purchase':      'Purchase',
   'admin.credits.kind.projectCharge': 'Project charge',
+
+  // ── Legal: consent gate + Terms / Privacy ────────────────────────────────
+  'legal.close':         'Close',
+  'terms.agreePrefix':   'I have read and agree to the ',
+  'terms.termsLink':     'Terms of Use',
+  'terms.and':           ' and ',
+  'terms.privacyLink':   'Privacy Policy',
+  'terms.agreeSuffix':   '.',
+  'terms.mustAccept':    'You must accept the Terms of Use and Privacy Policy to register.',
+  'terms.title':         'Terms of Use',
+  'privacy.title':       'Privacy Policy',
+
+  'terms.body': `MyGreenPlanner — Terms of Use
+Last updated: 20 June 2026
+
+1. General & Acceptance:
+The MyGreenPlanner platform (the "Platform") is operated by Sadot Renewable Energy Ltd., company no. 516564507, of Derech HaBik'a 49, Yavne'el 1522500, Israel (the "Company"). Contact: office@sadot-energy.co.il. These Terms are a binding agreement between the Company and each registered user (the "User"). Registering, ticking the consent box, or any use of the Platform constitutes full acceptance of these Terms and of the Privacy Policy. A User who does not agree must not use the Platform.
+
+2. The Service:
+The Platform is a cloud-based tool for planning rooftop photovoltaic (solar) installations — including roof marking, panel placement, preliminary structural planning, and generation of proposal documents and a bill of materials (BOM). All outputs are a preliminary proposal only, based on data and settings entered by the User, and do not constitute approved engineering. It is the User's sole responsibility to submit every output for review and approval by a qualified professional (engineer / structural engineer) and to verify compliance with applicable law, standards, and actual site conditions before any execution. The service is provided AS-IS and subject to availability; the Company may add, modify, or discontinue features at its discretion.
+
+3. Registration & Account:
+The User must provide accurate, complete, and current details and keep them updated. The account is personal; the User is responsible for keeping credentials confidential and for all activity under the account, and must notify the Company immediately of any unauthorized use. The Company may suspend or terminate an account, at its reasonable discretion, for breach of these Terms or of law.
+
+4. License:
+Subject to compliance with these Terms and payment of any applicable fees, the User is granted a personal, limited, non-exclusive, non-transferable, and non-assignable license to use the Platform for its own internal purposes only. The license grants no rights beyond that express use.
+
+5. Intellectual Property:
+All intellectual property rights in the Platform — including source code, methods, algorithms, design, interfaces, trademarks, content, and databases — belong and shall remain solely with the Company. The User's only rights are in the data it inputs and the outputs generated for its own projects ("User Data"). The Company may use aggregated, anonymized data (that does not identify a user or customer) to improve the Platform and its services.
+
+6. Prohibited Uses:
+The User shall not, and shall not permit any other party to: (a) copy, reverse-engineer, decompile, disassemble, or extract the Platform's source code or methods; (b) collect information by automated means (bots / scraping) beyond ordinary use; (c) circumvent security or access controls; (d) upload content that infringes third-party rights, law, or a court order; or (e) make the Platform available to any third party that is not the User or its employees.
+
+7. Data & Third-Party Content:
+The User warrants that it holds all rights in the data and content it inputs and that they do not infringe third-party rights. Satellite imagery and map layers are provided by third parties (including GovMap, the Survey of Israel, Google, Mapbox, and Esri) and are subject to their own terms and licenses; the Company is not responsible for their availability, accuracy, or terms of use.
+
+8. Fees:
+Use of the Platform and/or charges per project are made in accordance with the pricing and terms presented to the User from time to time. VAT will be added as required by law. Once a project has been charged it cannot be reset or returned to an initial step, as described in the Platform. Payments made are non-refundable unless expressly stated otherwise or required by law.
+
+9. Limitation of Liability:
+The Platform and its outputs are provided AS-IS, without warranty of any kind. The Company shall not be liable for any direct or indirect damage arising from use of, or reliance on, the Platform or any design or layout it proposed; the User expressly waives any such claim. In any event, the Company's total aggregate liability shall not exceed the total fees paid by the User to the Company in the 12 months preceding the event giving rise to the claim, save for willful misconduct.
+
+10. Indemnification:
+The User shall indemnify the Company for any damage, loss, or expense (including legal fees) caused to it as a result of the User's breach of these Terms or of any law, within 30 days of first written demand.
+
+11. Privacy:
+Use of the Platform is subject to the Privacy Policy, which forms an integral part of these Terms. The Company stores and processes personal data in accordance with the Israeli Privacy Protection Law, 5741-1981.
+
+12. Changes, Termination & Governing Law:
+The Company may update these Terms from time to time; a material change will be brought to users' attention and will take effect upon its publication. Either party may terminate the engagement by notice; termination does not affect obligations already accrued. These Terms are governed by the laws of the State of Israel, and the competent courts of the Northern District shall have exclusive jurisdiction. These Terms constitute the entire agreement between the parties; the invalidity of any clause shall not affect the remaining clauses.`,
+
+  'privacy.body': `MyGreenPlanner — Privacy Policy
+Last updated: 20 June 2026
+
+This Privacy Policy explains how Sadot Renewable Energy Ltd., company no. 516564507, of Derech HaBik'a 49, Yavne'el 1522500, Israel (the "Company"), collects, uses, and protects personal information in connection with the MyGreenPlanner platform (the "Platform"). It forms an integral part of the Terms of Use.
+
+1. Information we collect:
+Account details: full name, email address, phone number, and company name provided at registration.
+Project data: information you enter or generate, including site addresses, satellite-imagery selections, roof and panel layouts, and bills of materials.
+Usage and technical data: log data, device and browser information, and actions taken in the Platform, collected to operate and secure the service.
+
+2. How we use information:
+To provide, operate, and improve the Platform; to create accounts and authenticate users; to generate planning outputs and proposals; to bill for use; to provide support; to maintain security; and to comply with legal obligations.
+
+3. Legal basis:
+We process personal data based on your consent (given at registration), the performance of our agreement with you, and our legitimate interests in operating and securing the Platform, in accordance with the Privacy Protection Law, 5741-1981.
+
+4. Sharing with third parties:
+We do not sell personal data. We share data only with service providers that help us operate the Platform — including cloud hosting (AWS), email delivery, and map and imagery providers (such as GovMap, the Survey of Israel, Google, Mapbox, and Esri) — and where required by law or a competent authority. These providers process data on our behalf or under their own terms.
+
+5. Aggregated and anonymized data:
+We may produce and retain aggregated, anonymized statistics that do not identify any user or customer, and use them to improve the Platform and its services.
+
+6. Data retention:
+We retain personal data for as long as your account is active and as needed to provide the service, and thereafter as required to meet legal, accounting, or reporting obligations.
+
+7. Data security:
+We apply accepted technical and organizational measures to protect personal data, including encrypted transport and access controls. No system is fully secure, and we cannot guarantee absolute security.
+
+8. Your rights:
+Under the Privacy Protection Law you may request to review the personal data we hold about you, to correct it, and to request its deletion. To exercise these rights, contact us at office@sadot-energy.co.il.
+
+9. Data location:
+The Platform is operated using cloud infrastructure that may store data inside or outside Israel, subject to appropriate safeguards.
+
+10. Changes & contact:
+We may update this Policy from time to time; material changes take effect upon publication. For any privacy question, contact Sadot Renewable Energy Ltd. at office@sadot-energy.co.il.`,
 }
 
 export default en

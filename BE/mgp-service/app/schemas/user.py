@@ -13,6 +13,17 @@ class UserCreate(BaseModel):
     phone_number: str = Field(min_length=1)
     # Mandatory at registration — resolved to a Company (get-or-create) on the BE.
     company_name: str = Field(min_length=1)
+    # Consent gate. Must be explicitly true — registration is rejected otherwise.
+    # terms_version records which published revision the user agreed to.
+    terms_accepted: bool
+    terms_version: str | None = None
+
+    @field_validator('terms_accepted')
+    @classmethod
+    def must_accept_terms(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError('Terms of Use and Privacy Policy must be accepted')
+        return v
 
 
 class UserRead(BaseModel):
@@ -30,6 +41,10 @@ class UserRead(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     created_at: datetime
+    # Consent record — surfaced for admin proof-of-consent views. None for
+    # legacy/admin-created rows predating the consent gate.
+    terms_accepted_at: datetime | None = None
+    terms_version: str | None = None
     # Credits snapshot. `available` is the live wallet balance (lifetime).
     # `used` and `total` are CALENDAR-YEAR windowed — only count
     # project_charge rows from Jan 1 of the current year. `total =

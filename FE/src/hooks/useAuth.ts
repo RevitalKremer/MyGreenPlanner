@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { mgpRequest, setAccessToken, clearAccessToken } from '../services/mgpApi'
+import { TERMS_VERSION } from '../utils/legal'
 
 const MGP_API = import.meta.env.VITE_MGP_API_URL || '/api/mgp'
 
@@ -75,7 +76,9 @@ export function useAuth() {
   const register = useCallback(async (email, password, fullName, phone, company) => {
     const res = await mgpRequest('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, full_name: fullName, phone_number: phone || null, company_name: company }),
+      // terms_accepted is gated by the consent checkbox in AuthModal — register()
+      // is never reached without it. terms_version records the agreed revision.
+      body: JSON.stringify({ email, password, full_name: fullName, phone_number: phone || null, company_name: company, terms_accepted: true, terms_version: TERMS_VERSION }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))

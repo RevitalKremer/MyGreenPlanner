@@ -4,6 +4,7 @@ import {
   TEXT_VERY_LIGHT, BORDER_LIGHT, BORDER_FAINT, ERROR, ERROR_BG, SUCCESS, SUCCESS_BG,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
+import LegalModal from './LegalModal'
 
 const inputStyle = (focused): React.CSSProperties => ({
   width: '100%', padding: '0.65rem 0.8rem', boxSizing: 'border-box',
@@ -30,6 +31,8 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
   const [info, setInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [focused, setFocused] = useState(null)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [legalView, setLegalView] = useState(null) // null | 'terms' | 'privacy'
 
   const switchMode = (m) => { setMode(m); setError(null); setInfo(null) }
 
@@ -42,6 +45,7 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
       if (mode === 'login') {
         await onSuccess('login', email, password)
       } else if (mode === 'register') {
+        if (!termsAccepted) throw new Error(t('terms.mustAccept'))
         await onSuccess('register', email, password, fullName, phone, company)
         setMode('registered')
       } else if (mode === 'forgot') {
@@ -294,12 +298,42 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
                 </div>
               )}
 
+              {/* Consent gate — register only. Submit is blocked until ticked. */}
+              {mode === 'register' && (
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                  marginBottom: '1.25rem', cursor: 'pointer',
+                  fontSize: '0.8rem', color: TEXT_SECONDARY, lineHeight: 1.5,
+                }}>
+                  <input
+                    type="checkbox" checked={termsAccepted}
+                    onChange={e => setTermsAccepted(e.target.checked)}
+                    style={{ marginTop: '0.15rem', flexShrink: 0, cursor: 'pointer' }}
+                  />
+                  <span>
+                    {t('terms.agreePrefix')}
+                    <button type="button" onClick={() => setLegalView('terms')} style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      color: TEXT_DARK, textDecoration: 'underline', font: 'inherit',
+                    }}>{t('terms.termsLink')}</button>
+                    {t('terms.and')}
+                    <button type="button" onClick={() => setLegalView('privacy')} style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      color: TEXT_DARK, textDecoration: 'underline', font: 'inherit',
+                    }}>{t('terms.privacyLink')}</button>
+                    {t('terms.agreeSuffix')}
+                  </span>
+                </label>
+              )}
+
               {error && <div style={{ marginBottom: '1rem', padding: '0.6rem 0.8rem', background: ERROR_BG, borderRadius: '8px', fontSize: '0.83rem', color: ERROR }}>{error}</div>}
 
-              <button type="submit" disabled={loading} style={{
+              <button type="submit" disabled={loading || (mode === 'register' && !termsAccepted)} style={{
                 width: '100%', padding: '0.75rem',
-                background: loading ? BORDER_LIGHT : PRIMARY, color: loading ? TEXT_VERY_LIGHT : TEXT,
-                border: 'none', borderRadius: '8px', cursor: loading ? 'default' : 'pointer',
+                background: (loading || (mode === 'register' && !termsAccepted)) ? BORDER_LIGHT : PRIMARY,
+                color: (loading || (mode === 'register' && !termsAccepted)) ? TEXT_VERY_LIGHT : TEXT,
+                border: 'none', borderRadius: '8px',
+                cursor: (loading || (mode === 'register' && !termsAccepted)) ? 'default' : 'pointer',
                 fontWeight: '700', fontSize: '0.95rem', transition: 'background 0.15s',
               }}>
                 {loading ? t('auth.pleaseWait') : mode === 'login' ? t('auth.signIn') : t('auth.createAccount')}
@@ -308,6 +342,8 @@ export default function AuthModal({ onClose, onSuccess, onForgotPassword, onRese
           </>
         )}
       </div>
+
+      {legalView && <LegalModal view={legalView} onClose={() => setLegalView(null)} />}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { AMBER, RAIL_STROKE, RAIL_CONNECTOR, BLACK, BORDER_MID } from '../../../styles/colors'
+import { AMBER, RAIL_STROKE, CONNECTOR_FILL, CONNECTOR_STROKE, BORDER_MID } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 
 /**
@@ -145,7 +145,7 @@ export default function RailsOverlay({
           <rect x={cx - bgW / 2} y={cy - bgH / 2} width={bgW} height={bgH}
             fill="white" fillOpacity={0.7} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-            fontSize={fontSize} fontWeight="700" fill={BLACK}>
+            fontSize={fontSize} fontWeight="700" fill={RAIL_STROKE}>
             {text}
           </text>
         </g>
@@ -174,7 +174,8 @@ export default function RailsOverlay({
         const cx = x1 + ux * frac * railLen, cy = y1 + uy * frac * railLen
         return <rect key={`${prefix}-conn-${rail.railId}-${si}`}
           x={cx - connW / 2} y={cy - connH / 2}
-          width={connW} height={connH} fill={RAIL_CONNECTOR} rx={1}
+          width={connW} height={connH} rx={1}
+          fill={CONNECTOR_FILL} stroke={CONNECTOR_STROKE} strokeWidth={Math.max(0.5, 1 / zoom)}
           transform={`rotate(${ang}, ${cx}, ${cy})`}
           style={{ pointerEvents: 'none' }} />
       })
@@ -223,9 +224,8 @@ export default function RailsOverlay({
       if (!lineRects[pr.line]) lineRects[pr.line] = []
       lineRects[pr.line].push(pr)
     }
-    // Cap font size so a 4-char label fits within one panel width
-    const smallestPanelW = rl.panelLocalRects.reduce((min, pr) => Math.min(min, pr.width), Infinity)
-    const dimMaxFs = isFinite(smallestPanelW) ? (smallestPanelW * sc) / (4 * 0.6) : undefined
+    // Match the material-summary label size so all rail labels share one font size.
+    const labelFontSize = Math.max(9, 11 / zoom)
 
     // Dedupe per (lineIdx, segment-start): each segment needs its own dimensions,
     // but front+back rails of the same segment should not double up. Virtual
@@ -282,7 +282,7 @@ export default function RailsOverlay({
 
       return (
         <g key={`${prefix}-segs-${rail.railId}`}>
-          <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} zoom={zoom} maxFontSize={dimMaxFs} />
+          <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} zoom={zoom} fontSizeOverride={labelFontSize} labelColor={RAIL_STROKE} />
         </g>
       )
     })
@@ -370,7 +370,7 @@ export default function RailsOverlay({
               <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH}
                 fill="white" fillOpacity={0.7} stroke={BORDER_MID} strokeWidth={0.5 / zoom} rx={1 / zoom} />
               <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                fontSize={fontSize} fontWeight="700" fill={BLACK}>
+                fontSize={fontSize} fontWeight="700" fill={RAIL_STROKE}>
                 {text}
               </text>
             </g>
@@ -397,7 +397,8 @@ export default function RailsOverlay({
               out.push(
                 <rect key={`cr-${areaIdx}-${cr.railId}-cut-${si}`}
                   x={cx - connW / 2} y={cy - connH / 2}
-                  width={connW} height={connH} fill={RAIL_CONNECTOR} rx={1}
+                  width={connW} height={connH} rx={1}
+                  fill={CONNECTOR_FILL} stroke={CONNECTOR_STROKE} strokeWidth={Math.max(0.5, 1 / zoom)}
                   transform={`rotate(${ang}, ${cx}, ${cy})`}
                   style={{ pointerEvents: 'none' }}
                 />

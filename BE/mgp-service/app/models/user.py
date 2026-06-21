@@ -26,6 +26,10 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_sysadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     lang: Mapped[str] = mapped_column(String(5), nullable=False, default='en')
+    # Proof of consent to Terms of Use + Privacy Policy, captured at registration.
+    # Nullable for legacy/admin-created rows that predate the consent gate.
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Spendable balance. Admins never spend; their value is informational. Writes
     # always go through services/credits.py so the ledger and balance stay in sync.
     credits_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

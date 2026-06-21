@@ -75,34 +75,59 @@ export const GHOST_STROKE = 'gray'    // border for ghosted structural elements
 export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
 
 // ── Structural beams / blocks ─────────────────────────────────────────────
-// Trapezoid cross-section (DetailView) — lighter for readability against
-// dimension annotations and detail callouts.
-export const TRAP_BLOCK_FILL        = '#c0c0c0'  // concrete block fill
-export const TRAP_BLOCK_STROKE      = '#777'     // concrete block stroke
-export const TRAP_L_PROFILE_FILL    = '#40404080'  // main beam fill
-export const TRAP_L_PROFILE_STROKE  = '#606060'  // main beam stroke
-export const BEAM_CONNECTOR_FILL    = '#f4433680'  // splice connector marker fill (spliced base/slope beam joint) — red
-export const BEAM_CONNECTOR_STROKE  = '#c0392b'  // splice connector marker stroke — dark red
+// ── Functional-semantic schema tokens ──────────────────────────────────────
+// Color encodes a part's ROLE, not decoration, and is shared across all Step-3
+// tabs so the same physical element looks identical everywhere. Canonical
+// tokens are defined first; the per-view names below are aliased onto them.
+//
+//   static structure (beams/legs)  → one neutral steel gray
+//   concrete blocks                → one light concrete gray
+//   cross-rails                    → anodized slate blue-gray
+//   diagonals (height indicator)   → teal
+//   connectors / joints            → purple (one color, one shape)
 
-// External diagonal (BasesPlanTab) — cyan for visibility over panels
-export const DIAGONAL_STROKE = 'cyan' // '#00ACC1'  // external diagonal line + fill dot
+// Static metal — beams, legs (translucent so overlapping rails/dims read through).
+export const STRUCT_FILL    = '#8d8d8d99'  // neutral steel gray fill
+export const STRUCT_STROKE  = '#5c5c5c'    // neutral steel gray stroke
 
-// Bases diagram (BasesPlanTab) — darker so blocks/profiles read clearly
-// against the panel hatching in top-down view.
-export const BLOCK_FILL        = '#4a4a4a'  // concrete block fill
-export const BLOCK_STROKE      = '#1a1a1a'  // concrete block stroke
-export const L_PROFILE_FILL    = '#2a2a2a'  // main beam fill
-export const L_PROFILE_STROKE  = '#1a1a1a'  // main beam stroke
+// Concrete blocks — light, warm-neutral; deliberately lighter than the metal
+// structure so a block sitting on a beam stays legible.
+export const BLOCK_FILL        = '#bdbab2'  // concrete block fill
+export const BLOCK_STROKE      = '#8a8780'  // concrete block stroke
 
-// ── Panel bars ────────────────────────────────────────────────────────────
-export const PANEL_BAR_FILL   = '#6a70ac'  // panel bar fill
-export const PANEL_BAR_STROKE = '#293189'  // panel bar stroke
+// External diagonal (Bases plan) — blueish height indicator, distinct from the
+// gray structural members and visible over the panel hatching. (Internal trap
+// bracing diagonals are NOT this color — they share the structural gray.)
+export const DIAGONAL_STROKE = '#0277bd'  // external diagonal line — blue
+export const DIAGONAL_LABEL  = '#01406e'  // external diagonal label text — dark blue (stands out on translucent-white bg)
+
+// Connectors — single purple joint marker for every splice/stock junction.
+export const CONNECTOR_FILL   = '#7c3aed55'  // joint marker fill — purple
+export const CONNECTOR_STROKE = '#5b21b6'    // joint marker stroke — purple
 
 // ── Cross-rails ───────────────────────────────────────────────────────────
-export const RAIL_FILL = '#7c3aed'  // cross-rail fill
-export const RAIL_STROKE       = '#642165'  // secondary brand RAIL_FILL
-export const RAIL_STROKE_HOVER = '#8a2d8b'  // rail stroke on hover (lighter purple)
-export const RAIL_CONNECTOR    = '#00bcd4'  // cyan connector between rail stock segments
+// Red-brown coated profile — kept clear of the PV-blue panels and the gray structure.
+export const RAIL_FILL = '#a0533f'  // cross-rail fill — red-brown
+export const RAIL_STROKE       = '#6e3324'  // cross-rail stroke — dark red-brown
+export const RAIL_STROKE_HOVER = '#c07a64'  // rail stroke on hover (lighter red-brown)
+// (rail stock connectors now use the unified CONNECTOR_* tokens — see RailsOverlay)
+
+// ── Panel bars (detail cross-section) ───────────────────────────────────────
+// Re-tinted into the PV-blue panel family so they no longer clash with the
+// connector purple.
+export const PANEL_BAR_FILL   = '#7fa8d0'  // panel bar fill — PV blue
+export const PANEL_BAR_STROKE = '#3a6ea5'  // panel bar stroke — PV blue (== PANEL_STROKE_MID)
+
+// ── Per-view aliases → canonical schema tokens ──────────────────────────────
+// Keep existing import names working while unifying the underlying values.
+export const TRAP_BLOCK_FILL        = BLOCK_FILL       // detail concrete block fill
+export const TRAP_BLOCK_STROKE      = BLOCK_STROKE     // detail concrete block stroke
+export const TRAP_L_PROFILE_FILL    = STRUCT_FILL      // detail main beam fill
+export const TRAP_L_PROFILE_STROKE  = STRUCT_STROKE    // detail main beam stroke
+export const L_PROFILE_FILL         = STRUCT_FILL      // plan base/slope beam fill
+export const L_PROFILE_STROKE       = STRUCT_STROKE    // plan base/slope beam stroke
+export const BEAM_CONNECTOR_FILL    = CONNECTOR_FILL   // splice connector marker fill
+export const BEAM_CONNECTOR_STROKE  = CONNECTOR_STROKE // splice connector marker stroke
 
 // ── Punch bar ─────────────────────────────────────────────────────────────
 export const PUNCH_BAR_FILL   = '#d8d8d8'  // punch sketch bar fill
@@ -147,7 +172,7 @@ export const PANEL_MINI_SELECTED = 'rgba(0,62,126,0.7)'    // minimap panel fill
 
 // ── Drawing / arrows ──────────────────────────────────────────────────────
 export const DRAW_COLOR  = '#FF00FF'  // freehand draw color / baseline color
-export const ARROW_COLOR = '#17a9cf'  // dimension arrow color
+export const ARROW_COLOR = '#666666'  // dimension arrow color — neutral gray (annotations stay quiet)
 // Canvas overlays
 export const CANVAS_MASK        = 'rgba(0,0,0,0.6)'     // dark mask over roof polygon area
 export const CANVAS_MINI_BG     = 'rgba(0,0,0,0.25)'    // minimap dark background
