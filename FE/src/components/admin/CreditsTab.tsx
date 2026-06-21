@@ -8,6 +8,7 @@ import {
 import {
   getUsers,
   getCreditLedger,
+  getGlobalLedger,
   grantCredits,
   refundProjectCredits,
   getPendingRefunds,
@@ -55,7 +56,7 @@ function formatDate(iso: string | null | undefined): string {
  */
 export default function CreditsTab({ onNavigate = null, nav = null }: { onNavigate?: ((t: any) => void) | null; nav?: any }) {
   const { t } = useLang()
-  const [subTab, setSubTab] = useState<'pending' | 'lookup' | 'monetization'>('pending')
+  const [subTab, setSubTab] = useState<'pending' | 'lookup' | 'ledger' | 'monetization'>('pending')
   // Apply an inbound nav directive (e.g. open User-lookup for an email). Panes
   // stay mounted (display toggle) so the lookup pane applies the email exactly
   // once per navigation without remount staleness.
@@ -68,6 +69,7 @@ export default function CreditsTab({ onNavigate = null, nav = null }: { onNaviga
         {[
           { key: 'pending',      label: t('admin.credits.subtab.pending') },
           { key: 'lookup',       label: t('admin.credits.subtab.lookup') },
+          { key: 'ledger',       label: t('admin.credits.subtab.ledger') },
           { key: 'monetization', label: t('admin.credits.subtab.monetization') },
         ].map(tab => (
           <button
@@ -88,6 +90,7 @@ export default function CreditsTab({ onNavigate = null, nav = null }: { onNaviga
 
       <div style={{ display: subTab === 'pending' ? 'block' : 'none' }}><PendingRefundsPane onNavigate={onNavigate} /></div>
       <div style={{ display: subTab === 'lookup' ? 'block' : 'none' }}><UserLookupPane navToken={lookupNav?.key ?? 0} navEmail={lookupNav?.selectEmail ?? ''} /></div>
+      <div style={{ display: subTab === 'ledger' ? 'block' : 'none' }}><LedgerPane onNavigate={onNavigate} /></div>
       <div style={{ display: subTab === 'monetization' ? 'block' : 'none' }}><MonetizationTab /></div>
     </div>
   )
@@ -863,6 +866,197 @@ function UserLookupPane({ navToken = 0, navEmail = '' }: { navToken?: number; na
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ── Global ledger — cross-user audit view with kind + date-range filters ──────
+const LEDGER_KIND_OPTIONS = ['admin_grant', 'admin_refund', 'purchase', 'project_charge', 'trial'] as const
+const LEDGER_PERIOD_OPTIONS: { key: string; days: number | null }[] = [
+  { key: 'all', days: null },
+  { key: 'd7',  days: 7 },
+  { key: 'd30', days: 30 },
+  { key: 'd90', days: 90 },
+]
+
+function LedgerPane({ onNavigate = null }: { onNavigate?: ((t: any) => void) | null }) {
+  const { t } = useLang()
+  const [rows, setRows] = useState<any[]>([])
+  const [totals, setTotals] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [kind, setKind] = useState('')
+  const [period, setPeriod] = useState('all')
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const PAGE = 50
+
+  // Resolve the preset to a created_at lower bound; null = all time.
+  const dateFromFor = (periodKey: string): string | null => {
+    const opt = LEDGER_PERIOD_OPTIONS.find(p => p.key === periodKey)
+    if (!opt || opt.days == null) return null
+    const d = new Date()
+    d.setDate(d.getDate() - opt.days)
+    return d.toISOString()
+  }
+
+  const fetchPage = async (offset: number, replace: boolean) => {
+    if (replace) setLoading(true); else setLoadingMore(true)
+    try {
+      const res: any = await getGlobalLedger({
+        limit: PAGE, offset,
+        search: appliedSearch || null,
+        kind: kind || null,
+        dateFrom: dateFromFor(period),
+      })
+      setRows(prev => (replace ? res.rows : [...prev, ...res.rows]))
+      setTotals(res.totals ?? [])
+      setTotal(res.total_rows ?? 0)
+      setHasMore(!!res.has_more)
+    } finally {
+      if (replace) setLoading(false); else setLoadingMore(false)
+    }
+  }
+
+  // Reload from offset 0 whenever any filter changes.
+  useEffect(() => { fetchPage(0, true) }, [appliedSearch, kind, period]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onSearchChange = (v: string) => {
+    setSearchInput(v)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => setAppliedSearch(v.trim()), 300)
+  }
+  const loadMore = () => { if (!loadingMore) fetchPage(rows.length, false) }
+
+  const GRID = '150px 1.4fr 120px 90px 1.6fr 1fr'
+  const controlStyle = {
+    padding: '0.4rem 0.6rem', borderRadius: 7, border: `1px solid ${BORDER_LIGHT}`,
+    fontSize: '0.82rem', outline: 'none', background: 'white', color: TEXT_DARK,
+  }
+  const filtersActive = !!(appliedSearch || kind || period !== 'all')
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: '0.9rem', flexWrap: 'wrap' }}>
+        <input
+          value={searchInput}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder={t('admin.credits.ledger.searchGlobal')}
+          style={{ ...controlStyle, width: 260 }}
+        />
+        <select value={kind} onChange={e => setKind(e.target.value)} style={controlStyle}>
+          <option value="">{t('admin.credits.ledger.allKinds')}</option>
+          {LEDGER_KIND_OPTIONS.map(k => (
+            <option key={k} value={k}>{t(TXN_KIND_TKEY[k])}</option>
+          ))}
+        </select>
+        <select value={period} onChange={e => setPeriod(e.target.value)} style={controlStyle}>
+          {LEDGER_PERIOD_OPTIONS.map(p => (
+            <option key={p.key} value={p.key}>{t(`admin.credits.ledger.period.${p.key}`)}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: '0.72rem', color: TEXT_VERY_LIGHT, whiteSpace: 'nowrap', marginInlineStart: 'auto' }}>
+          {loading ? t('admin.common.loading') : total === 0 ? '—' : `${rows.length} / ${total}`}
+        </span>
+      </div>
+
+      {/* Per-kind totals over the filtered set */}
+      {totals.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.9rem' }}>
+          {LEDGER_KIND_OPTIONS.map(k => {
+            const tot = totals.find((x: any) => x.kind === k)
+            if (!tot) return null
+            return (
+              <div key={k} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: TXN_KIND_BG[k] ?? BG_SUBTLE, borderRadius: 7, padding: '0.35rem 0.6rem',
+              }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: TEXT_DARKEST }}>{t(TXN_KIND_TKEY[k])}</span>
+                <span style={{ fontSize: '0.72rem', color: TEXT_MUTED }}>×{tot.count}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: tot.total < 0 ? ERROR : TEXT_DARKEST }}>
+                  {tot.total > 0 ? '+' : ''}{tot.total}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: TEXT_VERY_LIGHT, fontSize: '0.85rem' }}>{t('admin.common.loading')}</div>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: '1rem', textAlign: 'center', color: TEXT_VERY_LIGHT, fontStyle: 'italic', fontSize: '0.85rem', border: `1px dashed ${BORDER_LIGHT}`, borderRadius: 10 }}>
+          {filtersActive ? t('admin.credits.ledger.emptySearch') : t('admin.credits.ledger.empty')}
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: GRID,
+            gap: '0.5rem', padding: '0.45rem 0.75rem', background: BG_SUBTLE,
+            fontSize: '0.66rem', fontWeight: 700, color: TEXT_VERY_LIGHT,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            <div>{t('admin.credits.ledger.col.date')}</div>
+            <div>{t('admin.credits.ledger.col.user')}</div>
+            <div>{t('admin.credits.ledger.col.kind')}</div>
+            <div style={{ textAlign: 'right' }}>{t('admin.credits.ledger.col.amount')}</div>
+            <div>{t('admin.credits.ledger.col.reason')}</div>
+            <div>{t('admin.credits.ledger.col.project')}</div>
+          </div>
+          {rows.map((r: any, i: number) => (
+            <div key={r.id} style={{
+              display: 'grid', gridTemplateColumns: GRID,
+              gap: '0.5rem', padding: '0.45rem 0.75rem',
+              fontSize: '0.78rem', color: TEXT_DARK,
+              borderTop: i > 0 ? `1px solid ${BORDER_FAINT}` : 'none',
+            }}>
+              <div style={{ color: TEXT_MUTED }}>{formatDate(r.created_at).slice(0, 16)}</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {onNavigate && r.user_email
+                  ? <LinkCell title={t('admin.link.toLedger')} onClick={() => onNavigate({ tab: 'credits', subTab: 'lookup', selectEmail: r.user_email })}>{r.user_email}</LinkCell>
+                  : (r.user_email || '—')}
+              </div>
+              <div>
+                <span style={{
+                  background: TXN_KIND_BG[r.kind] ?? BG_SUBTLE,
+                  padding: '1px 6px', borderRadius: 4,
+                  fontSize: '0.7rem', fontWeight: 700, color: TEXT_DARKEST,
+                }}>{TXN_KIND_TKEY[r.kind] ? t(TXN_KIND_TKEY[r.kind]) : r.kind}</span>
+              </div>
+              <div style={{ textAlign: 'right', fontWeight: 700, color: r.amount < 0 ? ERROR : TEXT_DARKEST }}>
+                {r.amount > 0 ? '+' : ''}{r.amount}
+              </div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason || '—'}</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.project_name
+                  ? (onNavigate
+                      ? <LinkCell title={t('admin.link.toProject')} onClick={() => onNavigate({ tab: 'projects', search: r.project_name })}>{r.project_name}</LinkCell>
+                      : r.project_name)
+                  : (r.project_id ? String(r.project_id).slice(0, 8) + '…' : '—')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasMore && !loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.65rem' }}>
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            style={{
+              background: PRIMARY, color: TEXT, border: 'none', borderRadius: 7,
+              padding: '0.4rem 0.9rem', fontSize: '0.78rem', fontWeight: 700,
+              cursor: loadingMore ? 'default' : 'pointer', opacity: loadingMore ? 0.6 : 1,
+            }}
+          >{loadingMore ? t('admin.common.loading') : t('admin.common.loadMore')}</button>
+        </div>
+      )}
     </div>
   )
 }

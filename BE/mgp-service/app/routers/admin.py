@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, or_, cast, String
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -18,7 +19,10 @@ from app.schemas.user import (
 from app.schemas.company import CompanyRead, CompanyUpdate
 from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from app.schemas.setting import SettingRead, SettingUpdate
-from app.schemas.credit_transaction import LedgerResponse, CreditTransactionRead, PendingRefundsResponse, PendingRefundRow
+from app.schemas.credit_transaction import (
+    LedgerResponse, CreditTransactionRead, PendingRefundsResponse, PendingRefundRow,
+    GlobalLedgerRow, LedgerKindTotal, GlobalLedgerResponse,
+)
 from app.routers.deps import require_admin
 from app.services import settings_cache, credits as credits_service, company_service
 
@@ -346,6 +350,87 @@ async def update_setting(
 async def _user_read_with_credits(db: AsyncSession, user: User) -> UserRead:
     snapshot = await credits_service.compute_account_snapshot(db, user)
     return UserRead.model_validate(user).model_copy(update=snapshot)
+
+
+@router.get("/credits/ledger", response_model=GlobalLedgerResponse)
+async def get_global_ledger(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Substring match on reason, kind, project id/name, or user email."),
+    kind: CreditTxnKind | None = Query(None, description="Filter by transaction kind."),
+    date_from: datetime | None = Query(None, description="Inclusive lower bound on created_at (ISO 8601)."),
+    date_to: datetime | None = Query(None, description="Inclusive upper bound on created_at (ISO 8601)."),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Global credit ledger across all users — admin audit / report view.
+
+    Mirrors the per-user ledger endpoint but drops the user filter and adds
+    kind + date-range filters. Rows carry user_email / project_name (resolved
+    via joins) since this view is cross-user.
+    """
+    conds = []
+    if kind is not None:
+        conds.append(CreditTransaction.kind == kind)
+    if date_from is not None:
+        conds.append(CreditTransaction.created_at >= date_from)
+    if date_to is not None:
+        conds.append(CreditTransaction.created_at <= date_to)
+    clean_search = (search or '').strip()
+    if clean_search:
+        pattern = f"%{clean_search}%"
+        conds.append(or_(
+            CreditTransaction.reason.ilike(pattern),
+            cast(CreditTransaction.kind, String).ilike(pattern),
+            cast(CreditTransaction.project_id, String).ilike(pattern),
+            User.email.ilike(pattern),
+            Project.name.ilike(pattern),
+        ))
+
+    base = (
+        select(CreditTransaction, User.email, Project.name)
+        .join(User, CreditTransaction.user_id == User.id)
+        .outerjoin(Project, CreditTransaction.project_id == Project.id)
+    )
+    if conds:
+        base = base.where(*conds)
+
+    total_rows = (await db.execute(
+        select(func.count()).select_from(base.subquery())
+    )).scalar_one()
+
+    rows_result = await db.execute(
+        base.order_by(CreditTransaction.created_at.desc()).offset(offset).limit(limit)
+    )
+    rows = [
+        GlobalLedgerRow(
+            **CreditTransactionRead.model_validate(txn).model_dump(),
+            user_email=email,
+            project_name=project_name,
+        )
+        for txn, email, project_name in rows_result.all()
+    ]
+
+    # Per-kind aggregates over the FILTERED set (same joins so a search that
+    # references User/Project still resolves); ignores pagination.
+    totals_stmt = (
+        select(CreditTransaction.kind, func.count(), func.coalesce(func.sum(CreditTransaction.amount), 0))
+        .select_from(CreditTransaction)
+        .join(User, CreditTransaction.user_id == User.id)
+        .outerjoin(Project, CreditTransaction.project_id == Project.id)
+    )
+    if conds:
+        totals_stmt = totals_stmt.where(*conds)
+    totals_stmt = totals_stmt.group_by(CreditTransaction.kind)
+    totals_result = await db.execute(totals_stmt)
+    totals = [LedgerKindTotal(kind=k, count=c, total=int(s)) for k, c, s in totals_result.all()]
+
+    return GlobalLedgerResponse(
+        rows=rows,
+        total_rows=total_rows,
+        has_more=(offset + len(rows)) < total_rows,
+        totals=totals,
+    )
 
 
 @router.get("/users/{user_id}/credits/ledger", response_model=LedgerResponse)

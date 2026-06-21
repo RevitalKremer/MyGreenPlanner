@@ -141,9 +141,9 @@ export default function PanelTypesTab() {
               <th style={thStyle}>{t('admin.panels.col.key')}</th>
               <th style={thStyle}>{t('admin.panels.col.name')}</th>
               <th style={thStyle}>{t('admin.panels.col.pn')}</th>
-              <th style={thStyle}>{t('admin.panels.col.lengthCm')}</th>
-              <th style={thStyle}>{t('admin.panels.col.widthCm')}</th>
-              <th style={thStyle}>{t('admin.panels.col.wp')}</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.lengthCm')}</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.widthCm')}</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.wp')}</th>
               <th style={thStyle}>{t('admin.panels.col.status')}</th>
               <th style={thStyle}>{t('admin.common.actions')}</th>
             </tr>

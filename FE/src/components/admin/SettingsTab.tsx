@@ -93,7 +93,7 @@ export default function SettingsTab() {
           </div>
           {/* Column headers */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px auto',
+            display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px 70px',
             alignItems: 'center', gap: '0.5rem',
             padding: '0.3rem 0.85rem',
             borderRadius: '8px 8px 0 0',
@@ -103,7 +103,7 @@ export default function SettingsTab() {
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.min')}</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.max')}</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.step')}</div>
-            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.visible')}</div>
+            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>{t('admin.settings.col.visible')}</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.settings.col.roofTypes')}</div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('admin.common.actions')}</div>
           </div>
@@ -125,7 +125,7 @@ export default function SettingsTab() {
 
               return (
                 <div key={s.key} style={{
-                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px auto',
+                  display: 'grid', gridTemplateColumns: '1fr 160px 100px 100px 80px 80px 140px 70px',
                   alignItems: 'center', gap: '0.5rem',
                   padding: '0.6rem 0.85rem',
                   background: i % 2 === 0 ? 'white' : BG_SUBTLE,

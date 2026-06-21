@@ -596,6 +596,12 @@ const en = {
   'step5.pdf.rails':  'Rails Layout',
   'step5.pdf.installMethod': 'Installation Method',
 
+  // ── Step 5 – report tabs / actions ────────────────────────────────────────
+  'step5.tab.bom':         'Bill of Materials',
+  'step5.tab.pdf':         'PDF Report',
+  'step5.btn.generate':    'Generate',
+  'step5.btn.generatePdf': 'Generate PDF',
+
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':        'My Account',
   'profile.email':        'Email',
@@ -790,6 +796,7 @@ const en = {
   // Credits tab — sub-tabs + lookup + ledger
   'admin.credits.subtab.pending':       'Pending refunds',
   'admin.credits.subtab.lookup':        'User credits',
+  'admin.credits.subtab.ledger':        'Ledger',
   'admin.credits.subtab.monetization':  'Monetization',
 
   'admin.credits.pending.subtitle': 'Projects that requested a quotation and are waiting on a refund decision. Refund once the order signs; dismiss if it won\'t.',
@@ -846,6 +853,7 @@ const en = {
   'admin.credits.ledger.title':              'Ledger',
   'admin.credits.ledger.searchPlaceholder':  'Search by reason, kind, project id…',
   'admin.credits.ledger.col.date':           'Date',
+  'admin.credits.ledger.col.user':           'User',
   'admin.credits.ledger.col.kind':           'Kind',
   'admin.credits.ledger.col.amount':         'Amount',
   'admin.credits.ledger.col.reason':         'Reason',
@@ -853,6 +861,12 @@ const en = {
   'admin.credits.ledger.refundedNote':       '(refunded)',
   'admin.credits.ledger.empty':              'No transactions yet.',
   'admin.credits.ledger.emptySearch':        'No transactions match this search.',
+  'admin.credits.ledger.searchGlobal':       'Search user, reason, project…',
+  'admin.credits.ledger.allKinds':           'All types',
+  'admin.credits.ledger.period.all':         'All time',
+  'admin.credits.ledger.period.d7':          'Last 7 days',
+  'admin.credits.ledger.period.d30':         'Last 30 days',
+  'admin.credits.ledger.period.d90':         'Last 90 days',
   'admin.credits.ledger.failedLoad':         'Failed to load ledger',
 
   'admin.credits.kind.trial':         'Trial grant',
