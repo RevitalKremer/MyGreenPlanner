@@ -290,15 +290,15 @@ export default function ProductsTab() {
               <SortTh colKey="multiplier"       label="×" style={{ width: '1px', textAlign: 'center' }} />
               <SortTh colKey="product_type"     label={t('admin.products.col.category')} />
               <SortTh colKey="name"             label={t('admin.products.col.name')} />
-              <SortTh colKey="name_he"          label={t('admin.products.col.nameHe')} />
+              <SortTh colKey="name_he"          label={t('admin.products.col.nameHe')} style={{ textAlign: 'right' }} />
               <SortTh colKey="part_number"      label={t('admin.products.col.pn')} />
-              <SortTh colKey="price_ils"        label={t('admin.products.col.priceIls')} />
-              <SortTh colKey="weight_kg"        label={t('admin.products.col.weightKg')} />
-              <SortTh colKey="depreciation_pct" label={t('admin.products.col.depPct')} />
-              <SortTh colKey="process_pct"      label={t('admin.products.col.procPct')} />
+              <SortTh colKey="price_ils"        label={t('admin.products.col.priceIls')} style={{ textAlign: 'right' }} />
+              <SortTh colKey="weight_kg"        label={t('admin.products.col.weightKg')} style={{ textAlign: 'right' }} />
+              <SortTh colKey="depreciation_pct" label={t('admin.products.col.depPct')} style={{ textAlign: 'right' }} />
+              <SortTh colKey="process_pct"      label={t('admin.products.col.procPct')} style={{ textAlign: 'right' }} />
               <SortTh colKey="extra"            label={t('admin.products.col.extra')} />
-              <SortTh colKey="alt_group"        label={t('admin.products.col.altGroup')} />
-              <SortTh colKey="is_default"       label={t('admin.products.col.default')} />
+              <SortTh colKey="alt_group"        label={t('admin.products.col.altGroup')} style={{ textAlign: 'center' }} />
+              <SortTh colKey="is_default"       label={t('admin.products.col.default')} style={{ textAlign: 'center' }} />
               <SortTh colKey="active"           label={t('admin.products.col.status')} />
               <th style={thStyle}>{t('admin.common.actions')}</th>
             </tr>
