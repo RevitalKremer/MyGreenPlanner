@@ -35,6 +35,28 @@ class LedgerResponse(BaseModel):
     period_year: int = 0
 
 
+class GlobalLedgerRow(CreditTransactionRead):
+    # Cross-user ledger view needs to show WHO and WHICH project, resolved via
+    # joins (the per-user view doesn't, since the user is fixed).
+    user_email: str | None = None
+    project_name: str | None = None
+
+
+class LedgerKindTotal(BaseModel):
+    kind: CreditTxnKind
+    count: int
+    total: int  # sum(amount) over the filtered set for this kind
+
+
+class GlobalLedgerResponse(BaseModel):
+    rows: list[GlobalLedgerRow]
+    total_rows: int
+    has_more: bool
+    # Per-kind aggregates over the FILTERED set (ignores pagination) — powers
+    # the summary header (e.g. total granted / refunded for the current filter).
+    totals: list[LedgerKindTotal]
+
+
 class PendingRefundRow(BaseModel):
     project_id: uuid.UUID
     project_name: str
