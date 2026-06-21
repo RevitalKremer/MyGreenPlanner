@@ -794,6 +794,7 @@ const he = {
   // Credits tab
   'admin.credits.subtab.pending':       'החזרים ממתינים',
   'admin.credits.subtab.lookup':        'קרדיטים של משתמש',
+  'admin.credits.subtab.ledger':        'יומן תנועות',
   'admin.credits.subtab.monetization':  'מוניטיזציה',
 
   'admin.credits.pending.subtitle': 'פרויקטים שביקשו הצעת מחיר וממתינים להחלטת החזר. החזר לאחר חתימת ההזמנה; בטל אם ההזמנה לא נחתמה.',
@@ -850,6 +851,7 @@ const he = {
   'admin.credits.ledger.title':              'יומן',
   'admin.credits.ledger.searchPlaceholder':  'חפש לפי סיבה, סוג, מזהה פרויקט…',
   'admin.credits.ledger.col.date':           'תאריך',
+  'admin.credits.ledger.col.user':           'משתמש',
   'admin.credits.ledger.col.kind':           'סוג',
   'admin.credits.ledger.col.amount':         'סכום',
   'admin.credits.ledger.col.reason':         'סיבה',
@@ -857,6 +859,12 @@ const he = {
   'admin.credits.ledger.refundedNote':       '(הוחזר)',
   'admin.credits.ledger.empty':              'אין עדיין תנועות.',
   'admin.credits.ledger.emptySearch':        'אין תנועות תואמות לחיפוש.',
+  'admin.credits.ledger.searchGlobal':       'חיפוש משתמש, סיבה, פרויקט…',
+  'admin.credits.ledger.allKinds':           'כל הסוגים',
+  'admin.credits.ledger.period.all':         'כל הזמן',
+  'admin.credits.ledger.period.d7':          '7 ימים אחרונים',
+  'admin.credits.ledger.period.d30':         '30 ימים אחרונים',
+  'admin.credits.ledger.period.d90':         '90 ימים אחרונים',
   'admin.credits.ledger.failedLoad':         'טעינת היומן נכשלה',
 
   'admin.credits.kind.trial':         'קרדיטים חינם',

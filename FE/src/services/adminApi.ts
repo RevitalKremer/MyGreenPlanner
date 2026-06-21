@@ -77,6 +77,23 @@ export const getCreditLedger = (
   return _credits(`/admin/users/${userId}/credits/ledger?${params}`)
 }
 
+// Global ledger — across all users, with kind + date-range filters. Mirrors the
+// per-user ledger's pagination/search; rows carry user_email + project_name.
+export const getGlobalLedger = (
+  opts: {
+    limit?: number; offset?: number; search?: string | null
+    kind?: string | null; dateFrom?: string | null; dateTo?: string | null
+  } = {},
+) => {
+  const { limit = 50, offset = 0, search = null, kind = null, dateFrom = null, dateTo = null } = opts
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (search && search.trim()) params.set('search', search.trim())
+  if (kind) params.set('kind', kind)
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  return _credits(`/admin/credits/ledger?${params}`)
+}
+
 export const grantCredits = (userId: string, payload: { amount: number; reason: string }) =>
   _credits(`/admin/users/${userId}/credits/grant`, { method: 'POST', body: JSON.stringify(payload) })
 
