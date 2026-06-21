@@ -62,6 +62,7 @@ export default function TrapDetailPage({
   trapId, memberIds = null, rc, settings = {}, lineRails = null, panelLines = null,
   beDetailData = null, fullTrapGhost = null, count = null,
   project, projectId, panelType, panelWp, totalKw, date, pageRef, owner,
+  canViewPunches = false,
 }) {
   if (!rc) return null
 
@@ -104,6 +105,7 @@ export default function TrapDetailPage({
             lineRails={lineRails}
             beDetailData={beDetailData}
             fullTrapGhost={fullTrapGhost}
+            canViewPunches={canViewPunches}
             printMode
           />
         </div>
