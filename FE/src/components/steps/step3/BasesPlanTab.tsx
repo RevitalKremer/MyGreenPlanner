@@ -565,44 +565,11 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
         ))
       })}
 
-      {/* Z-order: 0. Panels, 1. Rails, 2. Blocks, 3. Bases, 4. Base IDs, 5. Diagonals, 6. Dimensions, 7. Edit bar */}
+      {/* Z-order (bottom → top): 1. Blocks, 2. Rails (per-row, frameless, cross-row),
+          3. Bases, 4. Base IDs, 4.5 Anchors, 5. Diagonals, 6. Connectors, 7. Dimensions/labels,
+          then the Edit bar overlay on top. */}
 
-                {/* 1. Per-row rails (under bases). Material summary, dimensions
-                    and connectors are disabled in the bases tab; cross-row rails
-                    are rendered separately below the bases layer so the orange
-                    lines aren't covered by the dark base rectangles. */}
-                <RailsOverlay
-                  railLayouts={railLayouts}
-                  rowKeys={expandedTrapIds}
-                  rowGroups={trapGroups}
-                  groupKeyToBeArea={trapKeyToBeArea}
-                  toSvg={toSvg}
-                  sc={sc}
-                  pixelToCmRatio={pixelToCmRatio}
-                  zoom={effZoom}
-                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: true, crossRow: false }}
-                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
-                  selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
-                  trapSettingsMap={trapSettingsMap}
-                />
-
-                {/* 1b. Frameless-area rails (tiles, flat_installation) — independent of the trap-keyed pipeline. */}
-                {tileRailLayouts.length > 0 && (
-                  <RailsOverlay
-                    railLayouts={tileRailLayouts.map(t => t.rl)}
-                    rowKeys={tileRailLayouts.map(t => t.areaLabel)}
-                    rowGroups={{}}
-                    toSvg={toSvg}
-                    sc={sc}
-                    pixelToCmRatio={pixelToCmRatio}
-                    zoom={effZoom}
-                    layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false }}
-                    crossRailEdgeDistMm={globalRailConfig?.crossRailEdgeDistMm ?? 50}
-                    trapSettingsMap={{}}
-                  />
-                )}
-
-                {/* 2. Blocks */}
+                {/* 1. Blocks (bottom layer) */}
                 {sBlocks && liveBeBasesData.map((areaData, ai) => {
                   return (areaData.bases ?? []).map((sb, sbi) => {
                     const trapDetail = beTrapezoidsData?.[sb.trapezoidId]
@@ -646,6 +613,55 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     })
                   })
                 })}
+
+                {/* 2a. Per-row rails — above blocks, below bases. Material summary,
+                    dimensions and connectors are disabled in the bases tab. */}
+                <RailsOverlay
+                  railLayouts={railLayouts}
+                  rowKeys={expandedTrapIds}
+                  rowGroups={trapGroups}
+                  groupKeyToBeArea={trapKeyToBeArea}
+                  toSvg={toSvg}
+                  sc={sc}
+                  pixelToCmRatio={pixelToCmRatio}
+                  zoom={effZoom}
+                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: true, crossRow: false }}
+                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
+                  selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
+                  trapSettingsMap={trapSettingsMap}
+                />
+
+                {/* 2b. Frameless-area rails (tiles, flat_installation) — independent of the trap-keyed pipeline. */}
+                {tileRailLayouts.length > 0 && (
+                  <RailsOverlay
+                    railLayouts={tileRailLayouts.map(t => t.rl)}
+                    rowKeys={tileRailLayouts.map(t => t.areaLabel)}
+                    rowGroups={{}}
+                    toSvg={toSvg}
+                    sc={sc}
+                    pixelToCmRatio={pixelToCmRatio}
+                    zoom={effZoom}
+                    layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false }}
+                    crossRailEdgeDistMm={globalRailConfig?.crossRailEdgeDistMm ?? 50}
+                    trapSettingsMap={{}}
+                  />
+                )}
+
+                {/* 2c. Cross-row rails — grouped with the other rails, above blocks and below bases. */}
+                <RailsOverlay
+                  railLayouts={railLayouts}
+                  rowKeys={expandedTrapIds}
+                  rowGroups={trapGroups}
+                  groupKeyToBeArea={trapKeyToBeArea}
+                  toSvg={toSvg}
+                  sc={sc}
+                  pixelToCmRatio={pixelToCmRatio}
+                  zoom={effZoom}
+                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: false, crossRow: true }}
+                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
+                  selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
+                  trapSettingsMap={trapSettingsMap}
+                />
 
                 {/* 3. Bases + 4. Base IDs */}
                 {sBases && liveBeBasesData.map((areaData, ai) => {
@@ -834,7 +850,58 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   })
                 })}
 
-                {/* 6. Dimensions — per panel row */}
+                {/* 6. Connectors (splice) — above the diagonals, below the labels.
+                    Both beams' joints are shown, centered on the base line: slope joints
+                    map directly (line is slope-axis), base joints are in BASE coords
+                    so they're projected to the slope axis (÷cos, the basis the blocks
+                    layer uses). Rendered ≈ the connector's 10 cm size along the beam. */}
+                {sBases && liveBeBasesData.map((areaData, ai) => {
+                  return (areaData.bases ?? []).map((sb, sbi) => {
+                    const trapGeom = beTrapezoidsData?.[sb.trapezoidId]?.geometry
+                    if (!trapGeom) return null
+                    const topSegs = trapGeom.topBeamSegments, baseSegs = trapGeom.baseBeamSegments
+                    const hasSlope = (topSegs?.length ?? 0) > 1, hasBase = (baseSegs?.length ?? 0) > 1
+                    if (!hasSlope && !hasBase) return null
+                    if ((sb.hookOffsets?.length ?? 0) > 0) return null
+                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
+                    if (!ctx) return null
+                    const { af } = ctx
+                    const { la, lx } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
+                    const profThick = (4 / pixelToCmRatio) * sc
+                    const cosA = Math.cos(((trapGeom.angle ?? 0) * Math.PI) / 180) || 1
+                    const tIsBtt = !!af?.isBtt
+                    const cLine = af?.lines?.find(l => l.lineIdx === sb.panelLineIdx) ?? af?.lines?.[0]
+                    const cty = tIsBtt
+                      ? (cLine?.maxY ?? af.frame.localBounds.maxY) - sb.startCm / pixelToCmRatio - sb.lengthCm / pixelToCmRatio
+                      : (cLine?.minY ?? af.frame.localBounds.minY) + sb.startCm / pixelToCmRatio
+                    const cby = cty + sb.lengthCm / pixelToCmRatio
+                    const connPt = (slopeAxisCm: number) => {
+                      const depth = slopeAxisCm / pixelToCmRatio
+                      const y = tIsBtt ? cby - depth : cty + depth
+                      const sp = localToScreen({ x: lx, y }, af.frame.center, af.frame.angleRad)
+                      const [cx, cy] = toSvg(sp.x, sp.y)
+                      return { cx, cy }
+                    }
+                    const slopeConns = hasSlope ? topSegs.filter((s: any) => s.jointAtFrontCm != null).map((s: any) => connPt(s.jointAtFrontCm)) : []
+                    const baseConns  = hasBase  ? baseSegs.filter((s: any) => s.jointAtFrontCm != null).map((s: any) => connPt(s.jointAtFrontCm / cosA)) : []
+                    const connAlong  = Math.max(8, (5 / pixelToCmRatio) * sc)         // ≈ half the connector length
+                    const connAcross = Math.max(5, (profThick + 5 / effZoom) / 2)     // ≈ half the beam width
+                    const rect = (c: { cx: number; cy: number }, key: string) => (
+                      <rect key={key} x={c.cx - connAlong / 2} y={c.cy - connAcross / 2}
+                        width={connAlong} height={connAcross} rx={1.5}
+                        fill={BEAM_CONNECTOR_FILL} stroke={BEAM_CONNECTOR_STROKE} strokeWidth={0.8 / effZoom}
+                        opacity={0.75} transform={`rotate(${la} ${c.cx} ${c.cy})`} style={{ pointerEvents: 'none' }} />
+                    )
+                    return (
+                      <g key={`conn-${ai}-${sbi}`}>
+                        {slopeConns.map((c, ci) => rect(c, `s-${ci}`))}
+                        {baseConns.map((c, ci) => rect(c, `b-${ci}`))}
+                      </g>
+                    )
+                  })
+                })}
+
+                {/* 7. Dimensions / labels (top layer) — per panel row */}
                 {sDims && liveBeBasesData.map((areaData, ai) => {
                   // Group bases by panelRowIdx
                   const basesByRow = {}
@@ -893,77 +960,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   })
                 })}
 
-                {/* 6.5 Cross-row rails (orange) — drawn ABOVE bases so the
-                    concat'd rails are visible. Per-row rails were drawn under
-                    bases at Z-index 1. */}
-                <RailsOverlay
-                  railLayouts={railLayouts}
-                  rowKeys={expandedTrapIds}
-                  rowGroups={trapGroups}
-                  groupKeyToBeArea={trapKeyToBeArea}
-                  toSvg={toSvg}
-                  sc={sc}
-                  pixelToCmRatio={pixelToCmRatio}
-                  zoom={effZoom}
-                  layers={{ rails: sRails, dimensions: false, materialSummary: false, connectors: false, perRow: false, crossRow: true }}
-                  crossRailEdgeDistMm={trapSettingsMap[trapIds[0]]?.crossRailEdgeDistMm ?? 50}
-                  selectedRowIdx={effTrapId ? trapIds.indexOf(effTrapId) : null}
-                  trapSettingsMap={trapSettingsMap}
-                />
-
-                {/* 6.6 Splice connectors (red, semi-transparent) — drawn on top of
-                    everything so the always-centered base ID never hides them. Both
-                    beams' joints are shown, centered on the base line: slope joints
-                    map directly (line is slope-axis), base joints are in BASE coords
-                    so they're projected to the slope axis (÷cos, the basis the blocks
-                    layer uses). Rendered ≈ the connector's 10 cm size along the beam. */}
-                {sBases && liveBeBasesData.map((areaData, ai) => {
-                  return (areaData.bases ?? []).map((sb, sbi) => {
-                    const trapGeom = beTrapezoidsData?.[sb.trapezoidId]?.geometry
-                    if (!trapGeom) return null
-                    const topSegs = trapGeom.topBeamSegments, baseSegs = trapGeom.baseBeamSegments
-                    const hasSlope = (topSegs?.length ?? 0) > 1, hasBase = (baseSegs?.length ?? 0) > 1
-                    if (!hasSlope && !hasBase) return null
-                    if ((sb.hookOffsets?.length ?? 0) > 0) return null
-                    const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, sb._panelRowIdx)
-                    if (!ctx) return null
-                    const { af } = ctx
-                    const { la, lx } = baseScreenCoords(sb, sbi, { af, pixelToCmRatio, toSvg })
-                    const profThick = (4 / pixelToCmRatio) * sc
-                    const cosA = Math.cos(((trapGeom.angle ?? 0) * Math.PI) / 180) || 1
-                    const tIsBtt = !!af?.isBtt
-                    const cLine = af?.lines?.find(l => l.lineIdx === sb.panelLineIdx) ?? af?.lines?.[0]
-                    const cty = tIsBtt
-                      ? (cLine?.maxY ?? af.frame.localBounds.maxY) - sb.startCm / pixelToCmRatio - sb.lengthCm / pixelToCmRatio
-                      : (cLine?.minY ?? af.frame.localBounds.minY) + sb.startCm / pixelToCmRatio
-                    const cby = cty + sb.lengthCm / pixelToCmRatio
-                    const connPt = (slopeAxisCm: number) => {
-                      const depth = slopeAxisCm / pixelToCmRatio
-                      const y = tIsBtt ? cby - depth : cty + depth
-                      const sp = localToScreen({ x: lx, y }, af.frame.center, af.frame.angleRad)
-                      const [cx, cy] = toSvg(sp.x, sp.y)
-                      return { cx, cy }
-                    }
-                    const slopeConns = hasSlope ? topSegs.filter((s: any) => s.jointAtFrontCm != null).map((s: any) => connPt(s.jointAtFrontCm)) : []
-                    const baseConns  = hasBase  ? baseSegs.filter((s: any) => s.jointAtFrontCm != null).map((s: any) => connPt(s.jointAtFrontCm / cosA)) : []
-                    const connAlong  = Math.max(8, (5 / pixelToCmRatio) * sc)         // ≈ half the connector length
-                    const connAcross = Math.max(5, (profThick + 5 / effZoom) / 2)     // ≈ half the beam width
-                    const rect = (c: { cx: number; cy: number }, key: string) => (
-                      <rect key={key} x={c.cx - connAlong / 2} y={c.cy - connAcross / 2}
-                        width={connAlong} height={connAcross} rx={1.5}
-                        fill={BEAM_CONNECTOR_FILL} stroke={BEAM_CONNECTOR_STROKE} strokeWidth={0.8 / effZoom}
-                        opacity={0.75} transform={`rotate(${la} ${c.cx} ${c.cy})`} style={{ pointerEvents: 'none' }} />
-                    )
-                    return (
-                      <g key={`conn-${ai}-${sbi}`}>
-                        {slopeConns.map((c, ci) => rect(c, `s-${ci}`))}
-                        {baseConns.map((c, ci) => rect(c, `b-${ci}`))}
-                      </g>
-                    )
-                  })
-                })}
-
-                {/* 7. Edit bar */}
+                {/* Edit bar */}
                 {sEditMode && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
                   const af = areaFrames[areaKey]
                   if (!af?.frame?.center) return null
