@@ -13,10 +13,20 @@ import DetailPunchSketch from './DetailPunchSketch'
 import RulerTool from '../../shared/RulerTool'
 import type { ComputedTrapezoid, TrapezoidGeometry, Leg, Block, Punch } from '../../../types/projectData'
 
-export default function DetailView({ rc, trapId = null, twinIds = [] as string[], panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, customBlocks = null as Block[] | null, onCustomBlocksChange = null as null | ((blocks: Block[] | null) => void), onRequestExitEdit = null as null | (() => Promise<boolean>) }) {
+export default function DetailView({ rc, trapId = null, twinIds = [] as string[], panelLines = null, settings = {} as Record<string, any>, lineRails = null, highlightParam = null, beDetailData = null as ComputedTrapezoid | null, effectiveDetailSettings = null, fullTrapGhost = null, paramGroup: PARAM_GROUP = {} as Record<string, any>, reverseBlockPunches = true, onReset = null, onUpdateSetting = null, printMode = false, roofType = 'concrete', purlinDistCm = 0, installationOrientation = null, customBlocks = null as Block[] | null, onCustomBlocksChange = null as null | ((blocks: Block[] | null) => void), onRequestExitEdit = null as null | (() => Promise<boolean>),
+  // Punch marks (block numbers, beam holes, base/slope punch bars) are factory
+  // manufacturing data — admin-only. Non-admins get no "Punches" layer toggle
+  // and never see them. Gates the showPunches default and the LayersPanel toggle.
+  // In the Step-5 PDF (printMode) the toggle is hidden, so an admin's generated
+  // plan — the file pushed to the Monday item — always includes the punches.
+  canViewPunches = false }) {
   const { t } = useLang()
   const [showDimensions,  setShowDimensions]  = useState(true)
-  const [showPunches,     setShowPunches]      = useState(true)
+  const [showPunches,     setShowPunches]      = useState(canViewPunches)
+  // In the interactive view punches follow the (admin-only) layer toggle; in
+  // printMode (the Step-5 PDF capture) they follow canViewPunches directly so
+  // the Monday-bound file can force them on regardless of the on-screen role.
+  const punchesVisible = printMode ? canViewPunches : showPunches
   // Unified edit mode for the trap detail view. When on, diagonal handles are
   // draggable / clickable, the empty beam zones accept new-block clicks, and
   // block rects become movable / deletable. Mirrors the BasesPlanTab pattern.
@@ -540,7 +550,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
               {/* ── Block punch labels (decoration on top of block rects) ── */}
               {/* Hidden while in edit mode — punch labels are tied to the BE-
                   computed block list and would drift as the user drags. */}
-              {showPunches && !editMode && (() => {
+              {punchesVisible && !editMode && (() => {
                 const blockPunches = (beDetailData?.punches ?? []).filter(p => p.origin === 'block')
                 const bw = blockLengthCm * SC
                 return (beDetailData?.blocks ?? []).map((blk, bi) => {
@@ -751,7 +761,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                           style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }} />
                       )}
                     </g>
-                    {showPunches && <text x={lx} y={ly}
+                    {punchesVisible && <text x={lx} y={ly}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="10" fontWeight="700" fill={railStroke}
                       transform={`rotate(${beamAngleDeg}, ${lx}, ${ly})`}
@@ -772,7 +782,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
               })}
 
               {/* ── Punches on beams — non-diagonal from BE, diagonal from local activeDiags ── */}
-              {showPunches && <>
+              {punchesVisible && <>
                 {(beDetailData?.punches ?? []).filter(p => p.origin !== 'diagonal').map((p, i) => {
                   const isBlock = p.origin === 'block'
                   const r = isBlock ? 3.5 : 2
@@ -900,7 +910,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
               </>}
 
               {/* ── Base beam punch sketch ── */}
-              {showPunches && (() => {
+              {punchesVisible && (() => {
                 const baseBeamLen = activeBaseBeamLenCm
                 const flp = beLegs[0]?.positionCm ?? 0
                 const bbX0 = legX0 - flp * SC
@@ -928,7 +938,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
               })()}
 
               {/* ── Slope beam punch sketch ── */}
-              {showPunches && (() => {
+              {punchesVisible && (() => {
                 const slopeLen = topBeamLength
                 const atSlope2 = (posCm) => legX0 + (posCm / slopeLen) * legBW
                 const slopeSegs = geom.topBeamSegments
@@ -1005,7 +1015,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
       {/* ── Layers panel ── */}
       {!printMode && <LayersPanel
         layers={editMode ? [] : [
-          { label: t('step3.layer.punches'),       checked: showPunches,      setter: setShowPunches      },
+          ...(canViewPunches ? [{ label: t('step3.layer.punches'), checked: showPunches, setter: setShowPunches }] : []),
           { label: t('step3.layer.dimensions'),   checked: showDimensions,  setter: setShowDimensions  },
           { label: t('step3.layer.roofLine'),   checked: showRoofLine,    setter: setShowRoofLine     },
           ...(fullTrapGhost ? [{ label: t('step3.layer.ghost'), checked: showGhost, setter: setShowGhost }] : []),

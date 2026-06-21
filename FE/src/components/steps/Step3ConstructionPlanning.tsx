@@ -19,6 +19,7 @@ import type { Block } from '../../types/projectData'
 // ─── Main Step3 component ────────────────────────────────────────────────────
 
 export default function Step3ConstructionPlanning({
+  user = null,
   panels = [], refinedArea, trapezoidConfigs = {}, setTrapezoidConfigs,
   uploadedImageData, imageSrc,
   rectAreas = [],
@@ -46,6 +47,8 @@ export default function Step3ConstructionPlanning({
   isAnyDirtyRef = null,
 }) {
   const { t } = useLang()
+  // Punch marks are factory manufacturing data — only admins may view them.
+  const isAdmin = (user as any)?.role === 'admin'
 
   // ── UI state ───────────────────────────────────────────────────────────
   const [selectedRowIdx, setSelectedRowIdx] = useState(0)
@@ -484,6 +487,7 @@ export default function Step3ConstructionPlanning({
                     resolveAreaRoofSpec(roofType, owning)
                   return (
                     <DetailView
+                      canViewPunches={isAdmin}
                       rc={geo.selectedTrapezoidRC ?? selectedRC} trapId={effectiveSelectedTrapId}
                       twinIds={(beTrapezoidGroups.find(g => g.trapIds.includes(effectiveSelectedTrapId))?.trapIds ?? []).filter(id => id !== effectiveSelectedTrapId)}
                       panelLines={rowData.trapPanelLinesMap[effectiveSelectedTrapId] ?? geo.selectedRowLineDepths}

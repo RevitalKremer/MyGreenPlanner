@@ -201,7 +201,9 @@ export default function TrapStructure({
         )
       })}
 
-      {/* Diagonals — pre-positioned by caller; halfCap extends the rect past the punch points */}
+      {/* Diagonals — pre-positioned by caller; halfCap extends the rect past the
+          punch points. These are internal trap bracing members, so they share the
+          structural gray of the legs/beams (default thickLine style). */}
       {diagonals.map((d, di) =>
         thickLine(`diag-${di}`, d.topX, d.topY, d.botX, d.botY, beamThickPx * 0.75, d.halfCap)
       )}

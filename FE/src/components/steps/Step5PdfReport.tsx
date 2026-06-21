@@ -281,6 +281,10 @@ export default function Step5PdfReport({
   const [activeTab, setActiveTab] = useState(isAdmin ? 'bom' : 'pdf')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
+  // Punch marks are factory data — hidden on screen for non-admins, but the plan
+  // PDF attached to the Monday item must always include them. Flipped on only
+  // for the duration of the PDF capture (buildPlansPdfBytes), then restored.
+  const [exportPunches, setExportPunches] = useState(false)
   const [bomItems, setBomItems] = useState([])
   const [bomLoading, setBomLoading] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle')
@@ -540,6 +544,12 @@ export default function Step5PdfReport({
   // Render mounted plan pages to PDF bytes. Returns null if no pages are mounted
   // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
   const buildPlansPdfBytes = async (): Promise<ArrayBuffer | null> => {
+    // Force punch marks on for the capture so the Monday-bound file always
+    // includes them (they're hidden on screen for non-admins). Two rAFs let
+    // React commit the re-render and the browser paint before rasterizing.
+    setExportPunches(true)
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    try {
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
     // compress: true → zlib on PDF object streams (lossless, no visual change).
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
@@ -577,6 +587,9 @@ export default function Step5PdfReport({
     }
 
     return firstPage ? null : (pdf.output('arraybuffer') as ArrayBuffer)
+    } finally {
+      setExportPunches(false)
+    }
   }
 
   // ── Generate menu ────────────────────────────────────────────────────────
@@ -1034,6 +1047,7 @@ export default function Step5PdfReport({
                   panelLines={trapPanelLinesMap[repId] ?? null}
                   beDetailData={beTrapezoidsData?.[repId]}
                   fullTrapGhost={fullTrapGhostMap[repId] ?? null}
+                  canViewPunches={isAdmin || exportPunches}
                   count={groupCount}
                   project={project} projectId={projectId} panelType={panelType} panelWp={panelWp} totalKw={totalKw} date={dateStr} owner={owner}
                 />

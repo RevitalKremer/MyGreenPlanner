@@ -1017,6 +1017,7 @@ function App() {
         <div style={{ display: s.currentStep === 3 ? undefined : 'none', height: '100%' }}>
           <Step3ConstructionPlanning
             key={step3ResetKey}
+            user={auth.user}
             panels={s.panels}
             refinedArea={s.refinedArea}
             rectAreas={s.rectAreas}
