@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLACK, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, OMEGA_PURPLE, WHITE, PRIMARY, BEAM_CONNECTOR_FILL, BEAM_CONNECTOR_STROKE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_FAINT, BORDER_MID, BG_LIGHT, BG_FAINT, BLUE, BLUE_BG, BLUE_BORDER, BLUE_SELECTED, AMBER_DARK, AMBER, BLOCK_FILL, BLOCK_STROKE, AMBER_BG, AMBER_BORDER, L_PROFILE_STROKE, DIAGONAL_STROKE, DIAGONAL_LABEL, OMEGA_PURPLE, WHITE, PRIMARY, BEAM_CONNECTOR_FILL, BEAM_CONNECTOR_STROKE } from '../../../styles/colors'
 import { consolidateAreaBases, buildTrapAreaMaps, computeExpandedBasePlans, buildAreaFrames, buildBasePlansMap } from '../../../utils/basePlanService'
 import { computeRowRailLayout, buildLineRailsFromBE, buildLineSegmentsFromBE } from '../../../utils/railLayoutService'
 import AreaLabel from '../../shared/AreaLabel'
@@ -812,12 +812,22 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     const diagLabel = (d.diagLengthMm / 1000).toFixed(2)
                     const fs = Math.max(4, dimMaxFontSize != null ? Math.min(11 / effZoom, dimMaxFontSize) : 11 / effZoom)
                     const bgW = diagLabel.length * fs * 0.55 + 6 / effZoom, bgH = fs + 4 / effZoom
+                    // Light open arrowhead at endpoint B (the inward-shifted, lower
+                    // end), pointing along the diagonal. Two barbs swept back from
+                    // the tip; thin + reduced-opacity so it reads as a light marker.
+                    const dirRad = ang * Math.PI / 180
+                    const ahLen = Math.max(5, 9 / effZoom), ahBarb = 0.5
+                    const ahx1 = x2 - ahLen * Math.cos(dirRad - ahBarb), ahy1 = y2 - ahLen * Math.sin(dirRad - ahBarb)
+                    const ahx2 = x2 - ahLen * Math.cos(dirRad + ahBarb), ahy2 = y2 - ahLen * Math.sin(dirRad + ahBarb)
                     return (
                       <g key={`diag-${ai}-${di}`}>
                           <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={DIAGONAL_STROKE} strokeWidth={PROFILE_THICK} />
+                          <polyline points={`${ahx1},${ahy1} ${x2},${y2} ${ahx2},${ahy2}`}
+                            fill="none" stroke={DIAGONAL_STROKE} strokeOpacity={0.55}
+                            strokeWidth={Math.max(0.75, 1.2 / effZoom)} strokeLinecap="round" strokeLinejoin="round" />
                           <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
                             <rect x={mx - bgW/2} y={my - bgH/2} width={bgW} height={bgH} fill="white" fillOpacity={0.45} stroke={BORDER_MID} strokeWidth={0.5/effZoom} rx={1/effZoom} />
-                            <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={BLACK}>{diagLabel}</text>
+                            <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight="700" fill={DIAGONAL_LABEL}>{diagLabel}</text>
                           </g>
                       </g>
                     )
@@ -877,7 +887,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
                     return (
                       <g key={`area-ann-${ai}-r${ri}`} style={hlStyle}>
-                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} maxFontSize={dimMaxFontSize} />
+                        <DimensionAnnotation measurePts={measurePts} annPts={annPts} labels={labels} colors={segColors} zoom={effZoom} fontSizeOverride={Math.max(9, 11 / effZoom)} />
                       </g>
                     )
                   })

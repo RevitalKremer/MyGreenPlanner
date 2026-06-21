@@ -10,11 +10,15 @@ import { TEXT_SECONDARY, BLACK } from '../../../styles/colors'
  *   zoom        number
  *   color       string         — default colour for all segments
  *   colors      [string, ...]  — optional per-segment colour override
+ *   labelColor  string         — colour for the label text (default black)
  *   maxFontSize number         — cap font size (useful when panels are small)
+ *   fontSizeOverride number    — use this exact font size, ignoring zoom/maxFontSize
  */
-export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, maxFontSize = 12 }) {
+export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, color = TEXT_SECONDARY, colors = null, labelColor = BLACK, maxFontSize = 12, fontSizeOverride = null }) {
   const TICK = 4 / zoom
-  const fontSize = maxFontSize != null ? Math.min(14 / zoom, maxFontSize) : 14 / zoom
+  const fontSize = fontSizeOverride != null
+    ? fontSizeOverride
+    : (maxFontSize != null ? Math.min(14 / zoom, maxFontSize) : 14 / zoom)
 
   return (
     <g>
@@ -51,7 +55,7 @@ export default function DimensionAnnotation({ measurePts, annPts, labels, zoom, 
             <line x1={ax2 - px * TICK} y1={ay2 - py * TICK} x2={ax2 + px * TICK} y2={ay2 + py * TICK} stroke={c} strokeWidth={1.2 / zoom} />
             <g transform={`rotate(${labelAngle} ${mx} ${my})`}>
               <rect x={mx - bgW / 2} y={my - bgH / 2} width={bgW} height={bgH} fill="white" fillOpacity={0.7} stroke="#ccc" strokeWidth={0.5 / zoom} rx={1 / zoom} />
-              <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={BLACK}>{label}</text>
+              <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} fontWeight="700" fill={labelColor}>{label}</text>
             </g>
           </g>
         )
