@@ -595,6 +595,12 @@ const he = {
   'step5.pdf.rails':  'פריסת קושרות',
   'step5.pdf.installMethod': 'שיטת התקנה',
 
+  // ── Step 5 – report tabs / actions ────────────────────────────────────────
+  'step5.tab.bom':         'כתב כמויות',
+  'step5.btn.generate':    'הפקה',
+  'step5.tab.pdf':         'PDF דו"ח',
+  'step5.btn.generatePdf': 'PDF הפקת',
+
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':              'החשבון שלי',
   'profile.email':              'אימייל',

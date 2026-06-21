@@ -734,11 +734,11 @@ export default function Step5PdfReport({
 
   const tabs = isAdmin
     ? [
-        { key: 'bom', label: 'Bill of Materials' },
-        { key: 'pdf', label: 'PDF Report' },
+        { key: 'bom', label: t('step5.tab.bom') },
+        { key: 'pdf', label: t('step5.tab.pdf') },
       ]
     : [
-        { key: 'pdf', label: 'PDF Report' },
+        { key: 'pdf', label: t('step5.tab.pdf') },
       ]
 
   return (
@@ -844,7 +844,7 @@ export default function Step5PdfReport({
               cursor: (projectId && !isExporting) ? 'pointer' : 'not-allowed',
               opacity: (projectId && !isExporting) ? 1 : 0.5,
             }}
-          >↓ Generate PDF</button>
+          >↓ {t('step5.btn.generatePdf')}</button>
         ) : (
         <div style={{ position: 'relative' }}>
           <button
@@ -859,7 +859,7 @@ export default function Step5PdfReport({
               cursor: projectId ? 'pointer' : 'not-allowed',
               opacity: projectId ? 1 : 0.5,
             }}
-          >↓ Generate ▾</button>
+          >↓ {t('step5.btn.generate')} ▾</button>
 
           {menuOpen && (
             <div
@@ -944,7 +944,7 @@ export default function Step5PdfReport({
                   border: 'none', borderRadius: '5px', fontSize: '0.78rem', fontWeight: '700',
                   cursor: anyPdfChecked ? 'pointer' : 'not-allowed',
                 }}
-              >↓ Generate PDF</button>
+              >↓ {t('step5.btn.generatePdf')}</button>
             </div>
           )}
         </div>

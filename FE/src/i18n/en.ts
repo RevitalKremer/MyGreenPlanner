@@ -596,6 +596,12 @@ const en = {
   'step5.pdf.rails':  'Rails Layout',
   'step5.pdf.installMethod': 'Installation Method',
 
+  // ── Step 5 – report tabs / actions ────────────────────────────────────────
+  'step5.tab.bom':         'Bill of Materials',
+  'step5.tab.pdf':         'PDF Report',
+  'step5.btn.generate':    'Generate',
+  'step5.btn.generatePdf': 'Generate PDF',
+
   // ── User profile modal ───────────────────────────────────────────────────
   'profile.title':        'My Account',
   'profile.email':        'Email',
