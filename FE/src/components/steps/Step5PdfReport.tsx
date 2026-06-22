@@ -543,12 +543,16 @@ export default function Step5PdfReport({
 
   // Render mounted plan pages to PDF bytes. Returns null if no pages are mounted
   // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
-  const buildPlansPdfBytes = async (): Promise<ArrayBuffer | null> => {
-    // Force punch marks on for the capture so the Monday-bound file always
-    // includes them (they're hidden on screen for non-admins). Two rAFs let
-    // React commit the re-render and the browser paint before rasterizing.
-    setExportPunches(true)
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const buildPlansPdfBytes = async (forcePunches = false): Promise<ArrayBuffer | null> => {
+    // Punch marks are factory data. They render per the viewing role (admin
+    // only) UNLESS forcePunches is set — used solely for the file attached to
+    // the Monday item (Get Quotation), so a non-admin's plain "Generate PDF"
+    // download never contains them. Two rAFs let React commit the re-render
+    // and the browser paint before rasterizing.
+    if (forcePunches) {
+      setExportPunches(true)
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    }
     try {
     const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
     // compress: true → zlib on PDF object streams (lossless, no visual change).
@@ -588,7 +592,7 @@ export default function Step5PdfReport({
 
     return firstPage ? null : (pdf.output('arraybuffer') as ArrayBuffer)
     } finally {
-      setExportPunches(false)
+      if (forcePunches) setExportPunches(false)
     }
   }
 
@@ -698,7 +702,7 @@ export default function Step5PdfReport({
           setActiveTab('pdf')
           await new Promise(resolve => requestAnimationFrame(resolve))
         }
-        planBytes = await buildPlansPdfBytes()
+        planBytes = await buildPlansPdfBytes(true)  // Monday attachment → always include punches
         if (planBytes) {
           const safeName = (project?.name || 'report').replace(/[\/\\:*?"<>|]/g, '_')
           const dateStr  = new Date().toISOString().split('T')[0]
