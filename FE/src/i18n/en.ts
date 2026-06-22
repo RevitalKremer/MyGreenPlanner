@@ -194,6 +194,13 @@ const en = {
   'final.electricalApproval': 'Electrician approval',
   'final.notIncluded':        'Not included',
   'final.finish':             'Finish',
+  'final.basic.panels':       'Total panels',
+  'final.basic.totalKw':      'Total DC power',
+  'final.basic.areas':        'Areas',
+  'final.basic.panelType':    'Panel type',
+  'final.basic.roofType':     'Roof type',
+  'final.exportExcel':        '↓ Export Excel',
+  'final.production':         '↓ Production',
 
   // ── Step 5: Plan Approval ────────────────────────────────────────────────
   'step5.title':           'Plan Approval',

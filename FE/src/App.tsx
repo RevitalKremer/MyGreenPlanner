@@ -142,6 +142,9 @@ function App() {
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
+  // Step 5 publishes its PDF / quotation handlers here so the Summary hub can
+  // trigger them while Step 5 is mounted off-screen.
+  const step5ExportRef = useRef<any>(null)
   // Mirrors `settings.isAnyDirty` from useStep3Settings. Used by Start Over
   // to skip the confirm prompt when there's nothing to lose. Default `true`
   // so before step 3 has mounted (or on a fresh project), Start Over still
@@ -150,8 +153,11 @@ function App() {
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
+  // Must cover every step ≥3 (not just 3/5): the Summary hub (step 10) mounts
+  // Step 5 off-screen to generate the PDF/quotation, which needs rails/bases
+  // data — so a cold reload landing on the Summary still has to fetch it.
   useEffect(() => {
-    if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
+    if (s.currentStep >= 3 && s.cloudProjectId) {
       getConstructionData(s.cloudProjectId)
         .then(applyBeResult)
         .catch(console.error)
@@ -1064,9 +1070,14 @@ function App() {
           />
         )}
 
-        {s.currentStep === 5 && (
+        {(s.currentStep === 5 || isLastStep(s.currentStep)) && (
+          <div style={isLastStep(s.currentStep)
+            ? { position: 'absolute', width: '100vw', height: '100vh', left: '-99999px', top: 0, overflow: 'hidden', pointerEvents: 'none' }
+            : { height: '100%' }}>
           <Step5PdfReport
             user={auth.user}
+            exportApiRef={step5ExportRef}
+            hideActions={true}
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -1098,6 +1109,7 @@ function App() {
             productByType={s.productByType}
             altsByType={s.altsByType}
           />
+          </div>
         )}
 
         {s.currentStep === 6 && (
@@ -1135,6 +1147,17 @@ function App() {
 
         {isLastStep(s.currentStep) && (
           <FinalSummary
+            projectId={s.cloudProjectId}
+            projectName={s.currentProject?.name}
+            isAdmin={auth.user?.role === 'admin'}
+            panelCount={(s.panels || []).filter((p: any) => !p.isEmpty).length}
+            totalKw={(s.panels || []).filter((p: any) => !p.isEmpty).length * (s.panelSpec?.kw || 0) / 1000}
+            areaCount={(s.areas || []).length}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            hasRequestedQuotation={!!s.currentProject?.quotation_requested_at}
+            onGetQuotation={() => step5ExportRef.current?.requestQuotation?.()}
+            onDownloadPdf={() => step5ExportRef.current?.generatePdf?.()}
             inverters={s.step6Inverters}
             stringsCount={(s.step7Strings || []).length}
             electricalApproval={s.step8PlanApproval}

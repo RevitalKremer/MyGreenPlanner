@@ -193,6 +193,13 @@ const he = {
   'final.electricalApproval': 'אישור חשמלאי',
   'final.notIncluded':        'לא נכלל',
   'final.finish':             'סיום',
+  'final.basic.panels':       'סך פאנלים',
+  'final.basic.totalKw':      'הספק DC כולל',
+  'final.basic.areas':        'אזורים',
+  'final.basic.panelType':    'סוג פאנל',
+  'final.basic.roofType':     'סוג גג',
+  'final.exportExcel':        '↓ ייצוא Excel',
+  'final.production':         '↓ ייצור',
 
   // ── שלב 5: אישור תכנית ───────────────────────────────────────────────────
   'step5.title':           'אישור תכנית',

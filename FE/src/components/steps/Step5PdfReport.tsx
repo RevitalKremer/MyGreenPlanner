@@ -266,6 +266,11 @@ export default function Step5PdfReport({
   // App.tsx merges it into currentProject so the button label survives
   // navigations / remounts.
   onQuotationRequested = null,
+  // Tier 2: the Summary page is the deliverables hub. It triggers PDF /
+  // quotation through this ref (Step 5 stays mounted off-screen so its plan
+  // pages can still be rasterized). `hideActions` slims Step 5's own toolbar.
+  exportApiRef = null,
+  hideActions = false,
 }) {
   // Admins see the full step 5 surface (BOM tab + Excel + pricing-bearing
   // PDF sections). Non-admins see only the plans-only PDF + the Get Quotation
@@ -732,6 +737,22 @@ export default function Step5PdfReport({
     }
   }
 
+  // Publish the export handlers so the Summary hub can trigger them while
+  // Step 5 is mounted off-screen. No dep array: re-publish every render so the
+  // closures capture the latest state (pdfContent, activeTab, quotation flag).
+  useEffect(() => {
+    if (!exportApiRef) return
+    exportApiRef.current = {
+      generatePdf: handleGeneratePdf,
+      requestQuotation: handleRequestQuotation,
+      isAdmin,
+      hasRequestedQuotation,
+      isExporting,
+      requestingQuotation,
+    }
+    return () => { if (exportApiRef) exportApiRef.current = null }
+  })
+
   const dateStr = new Date().toLocaleDateString('he-IL')
 
   const tabs = isAdmin
@@ -798,6 +819,9 @@ export default function Step5PdfReport({
         ))}
         <div style={{ flex: 1 }} />
 
+        {/* The action cluster moves to the Summary hub (Tier 2); hidden here
+            when `hideActions` is set, but the handlers stay live via exportApiRef. */}
+        {!hideActions && (<>
         {/* ── Get Quotation ──
             Available to all roles. Pushes the project to the Sadot
             quotation board on Monday. No credit movement here — the refund
@@ -951,6 +975,7 @@ export default function Step5PdfReport({
           )}
         </div>
         )}
+        </>)}
       </div>
 
       {/* BOM tab */}
