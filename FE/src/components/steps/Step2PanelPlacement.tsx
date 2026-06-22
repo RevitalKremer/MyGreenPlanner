@@ -426,7 +426,12 @@ export default function Step2PanelPlacement({
       subRow: MutationSubRow, colCenters: Map<number, number>, frame: AreaFrame,
     ) => {
       const sortedCenters = [...colCenters.entries()].sort((a, b) => a[0] - b[0])
-      const fallbackPanelDim = (frame.isTilted || !frame.av) ? (subRow.panels[0]?.width ?? 50) : (subRow.panels[0]?.height ?? 50)
+      // Single-column fallback: half-panel padding from the actual panel's px
+      // size (adapts to any panel type) — intended axis, then the other axis;
+      // 0 only if the sub-row has no panel (the envelope union below still
+      // bounds it). No hardcoded panel dimension.
+      const p0 = subRow.panels[0]
+      const fallbackPanelDim = ((frame.isTilted || !frame.av) ? p0?.width : p0?.height) ?? p0?.width ?? p0?.height ?? 0
       const colWidth = sortedCenters.length >= 2
         ? Math.abs(sortedCenters[1][1] - sortedCenters[0][1])
         : fallbackPanelDim

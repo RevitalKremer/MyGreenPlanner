@@ -142,6 +142,7 @@ export function useProjectState() {
     backendStatus,
     appConfigReady,
     refreshAppSettings,
+    refreshPanelTypes,
   } = useAppConfig({
     panelType, currentProject,
     // For mixed projects, paramSchemaForRoof unions the types of each area's
@@ -1126,6 +1127,7 @@ export function useProjectState() {
     // Step 2
     refinedArea,
     panelTypes,
+    refreshPanelTypes,
     panelType, setPanelType,
     referenceLine, setReferenceLine,
     referenceLineLengthCm, setReferenceLineLengthCm,
