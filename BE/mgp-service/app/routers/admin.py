@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.product import Product
+from app.models.product import Product, SADOT_EQUIPMENT_TYPES
 from app.models.setting import AppSetting
 from app.models.project import Project
 from app.models.credit_transaction import CreditTransaction, CreditTxnKind
@@ -246,8 +246,15 @@ async def list_products(
 ):
     q = select(Product)
     if product_type == 'material':
-        # Backwards-compatible alias: every non-panel category counts as a material.
-        q = q.where(Product.product_type != 'panel')
+        # Backwards-compatible alias: every non-panel category counts as a
+        # material — except Sadot Energy equipment, which has its own catalog.
+        q = q.where(
+            Product.product_type != 'panel',
+            Product.product_type.notin_(SADOT_EQUIPMENT_TYPES),
+        )
+    elif product_type == 'sadot':
+        # Alias: all Sadot Energy equipment (inverters/batteries/dongles/…).
+        q = q.where(Product.product_type.in_(SADOT_EQUIPMENT_TYPES))
     elif product_type is not None:
         q = q.where(Product.product_type == product_type)
     result = await db.execute(q.order_by(Product.name))

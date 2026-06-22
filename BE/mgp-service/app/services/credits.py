@@ -81,6 +81,11 @@ def _project_cost() -> int:
     return int(val)
 
 
+def _electrical_cost() -> int:
+    val = settings_cache.get_setting('electricalCostCredits', default=0)
+    return int(val)
+
+
 # ── Public API ────────────────────────────────────────────────────────────
 
 
@@ -254,6 +259,53 @@ async def charge_for_project(db: AsyncSession, user: User, project: Project) -> 
     ))
 
 
+async def charge_for_electrical(db: AsyncSession, user: User, project: Project) -> None:
+    """Debit the configured electrical cost on first 6→7 transition.
+
+    NON-REFUNDABLE: recorded with kind='electrical_charge', which the
+    pending-refunds inbox and admin_refund_for_project (both scoped to
+    'project_charge') deliberately ignore. Idempotent via
+    project.electrical_charged_at, mirroring charge_for_project.
+
+    Raises:
+      InsufficientCreditsError — balance < cost (caller maps to step error).
+    """
+    if user.role.value == 'admin':
+        return
+
+    if project.electrical_charged_at is not None:
+        return
+
+    cost = _electrical_cost()
+    if cost <= 0:
+        project.electrical_charged_at = datetime.now(timezone.utc)
+        return
+
+    locked = await _lock_user(db, user.id)
+    if locked is None:
+        raise ValueError("User not found")
+
+    # Re-check inside the lock against the freshest DB state.
+    await db.refresh(project, attribute_names=['electrical_charged_at'])
+    if project.electrical_charged_at is not None:
+        return
+
+    if locked.credits_balance < cost:
+        raise InsufficientCreditsError(available=locked.credits_balance, required=cost)
+
+    locked.credits_balance = locked.credits_balance - cost
+    project.electrical_charged_at = datetime.now(timezone.utc)
+
+    db.add(CreditTransaction(
+        user_id=locked.id,
+        project_id=project.id,
+        amount=-cost,
+        kind=CreditTxnKind.electrical_charge,
+        reason=(project.name or str(project.id)),
+        created_by=None,
+    ))
+
+
 def mark_quotation_requested(project: Project) -> None:
     """Stamp the project as having gone through Get Quotation. No credit movement."""
     if project.quotation_requested_at is None:
@@ -269,6 +321,14 @@ def mark_charged_zero(project: Project) -> None:
     and there's nothing to refund. Mirrors the cost<=0 path in charge_for_project."""
     if project.credits_charged_at is None:
         project.credits_charged_at = datetime.now(timezone.utc)
+
+
+def mark_electrical_charged_zero(project: Project) -> None:
+    """Mark a project's electrical step 'charged at 0' (set
+    electrical_charged_at, no ledger row). Used for admin advances through
+    6→7 — admins never spend. Mirrors mark_charged_zero."""
+    if project.electrical_charged_at is None:
+        project.electrical_charged_at = datetime.now(timezone.utc)
 
 
 def dismiss_from_refund_inbox(project: Project, *, admin: User, reason: str | None) -> None:

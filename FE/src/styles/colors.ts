@@ -148,6 +148,14 @@ export const OMEGA_PURPLE          = '#ddd6fe'   // pale purple — omega anchor
 // ── Area overlay palette (AreasTab polygons) ─────────────────────────────
 export const AREA_PALETTE = ['#5fa8e0', '#5ec89a', '#e09455', '#a855d4', '#d4c832', '#32c8c8', '#e05f8a', '#8ae05f']
 
+// ── Electrical string palette (Step 7 string-group coloring) ──────────────
+// Distinct, saturated hues cycled per string so adjacent groups stay legible.
+export const STRING_PALETTE = [
+  '#e6194B', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4',
+  '#f032e6', '#bfef45', '#fabed4', '#469990', '#9A6324', '#800000',
+  '#808000', '#000075', '#a9a9a9', '#e6beff',
+]
+
 // ── Panel layout colors ───────────────────────────────────────────────────
 export const PANEL_LIGHT_BG      = '#cfe3f5'           // unselected panel fill
 export const PANEL_LIGHT_BG_ALT  = '#d1e3f3'           // selected panel fill

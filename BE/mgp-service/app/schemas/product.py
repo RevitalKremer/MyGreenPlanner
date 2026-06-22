@@ -29,6 +29,11 @@ class ProductBase(BaseModel):
     # Bundle: when this product appears in the effective BOM, the named
     # parent emits this product as a child with qty = parent.qty * multiplier.
     bundle: dict | None = None
+    # Electrical spec blob (panels: Voc/Vmp/Isc/Imp/temp coeffs; inverters:
+    # MPPT window, currents, etc.). Free-form JSON.
+    electrical: dict | None = None
+    # Sadot Energy product page URL (Sadot equipment: inverters/batteries/…).
+    sadot_url: str | None = None
 
 
 class ProductCreate(ProductBase):
@@ -54,6 +59,8 @@ class ProductUpdate(BaseModel):
     width_cm: float | None = None
     kw_peak: int | None = None
     bundle: dict | None = None
+    electrical: dict | None = None
+    sadot_url: str | None = None
 
 
 class ProductRead(ProductBase):

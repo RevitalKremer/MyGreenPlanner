@@ -412,6 +412,54 @@ class Step5Data(_StrictBase):
     bomDeltas: Optional[dict] = None
 
 
+# ── Electrical (Tier 2) ─────────────────────────────────────────────────────
+#
+# Steps 6–9 follow the same per-step JSONB convention as construction. The
+# electrical BOM lives in its own table (project_electrical_bom) — only
+# lightweight user data (settings, inverter picks, string assignments, BOM
+# deltas) is stored here.
+
+class SelectedInverter(_StrictBase):
+    """One inverter (or other Sadot equipment) chosen in Step 6."""
+    typeKey: str            # Product.type_key of a Sadot 'inverter' product
+    qty: int = 1
+
+
+class Step6Data(_StrictBase):
+    """Electrical settings + inverter selection.
+
+    `settings` is a free-form param blob driving string auto-generation
+    (design temps with Israel defaults, DC:AC target, …); its schema is
+    refined as the engine matures, so it is kept open here."""
+    settings: Optional[dict] = None
+    inverters: list[SelectedInverter] = Field(default_factory=list)
+
+
+class ElectricalString(_StrictBase):
+    """One PV string — panels in series feeding a single MPPT input."""
+    id: str                              # e.g. 'STR-A-01'
+    areaLabel: str                       # strings never cross areas
+    panelIds: list[int] = Field(default_factory=list)
+    inverterTypeKey: Optional[str] = None
+    mpptIndex: Optional[int] = None
+
+
+class Step7Data(_StrictBase):
+    """String plan — per-area, equal-length strings."""
+    strings: list[ElectricalString] = Field(default_factory=list)
+
+
+class Step8Data(_StrictBase):
+    """Electrician plan approval — same self-attestation shape as Step 4."""
+    planApproval: Optional[PlanApproval] = None
+
+
+class Step9Data(_StrictBase):
+    """Electrical BOM step. The computed BOM lives in project_electrical_bom;
+    only user adjustments are stored here (parallel to step5.bomDeltas)."""
+    bomDeltas: Optional[dict] = None
+
+
 # ── Root ──────────────────────────────────────────────────────────────────────
 
 class ProjectData(_StrictBase):
@@ -424,3 +472,7 @@ class ProjectData(_StrictBase):
     step3: Step3Data = Field(default_factory=Step3Data)
     step4: Step4Data = Field(default_factory=Step4Data)
     step5: Step5Data = Field(default_factory=Step5Data)
+    step6: Step6Data = Field(default_factory=Step6Data)
+    step7: Step7Data = Field(default_factory=Step7Data)
+    step8: Step8Data = Field(default_factory=Step8Data)
+    step9: Step9Data = Field(default_factory=Step9Data)

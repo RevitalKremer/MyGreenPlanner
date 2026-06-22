@@ -94,8 +94,8 @@ export class StepTransitionError extends Error {
   }
 }
 
-export async function updateStep(id, newStep) {
-  const res = await mgpRequest(`/projects/${id}/step?new_step=${newStep}`, { method: 'PUT' })
+export async function updateStep(id, newStep, skip = false) {
+  const res = await mgpRequest(`/projects/${id}/step?new_step=${newStep}${skip ? '&skip=true' : ''}`, { method: 'PUT' })
   if (!res.ok) {
     let body: any = null
     try { body = await res.json() } catch {}
@@ -108,8 +108,8 @@ export async function updateStep(id, newStep) {
   return res.json()
 }
 
-export async function approvePlan(id, strictConsent) {
-  const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}`, {
+export async function approvePlan(id, strictConsent, step = 4) {
+  const res = await mgpRequest(`/projects/${id}/approvePlan?strictConsent=${strictConsent}&step=${step}`, {
     method: 'PUT',
   })
   if (!res.ok) throw new Error('Failed to update plan approval')
@@ -163,6 +163,62 @@ export async function saveBomDeltas(id, deltas) {
     body: JSON.stringify(deltas),
   })
   if (!res.ok) throw new Error('Failed to save BOM deltas')
+  return res.json()
+}
+
+// ── Electrical (Tier 2) ──────────────────────────────────────────────────────
+
+export async function fetchSadotEquipment() {
+  const res = await mgpRequest('/products/sadot-equipment')
+  if (!res.ok) throw new Error('Failed to load Sadot equipment')
+  return res.json()
+}
+
+export async function getInverterSuggestions(id: string) {
+  const res = await mgpRequest(`/projects/${id}/electrical/inverter-suggestions`)
+  if (!res.ok) throw new Error('Failed to load inverter suggestions')
+  return res.json()
+}
+
+export async function generateStrings(id: string) {
+  const res = await mgpRequest(`/projects/${id}/electrical/strings/generate`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to generate string plan')
+  return res.json() // { strings, issues, summary }
+}
+
+export async function validateStrings(id: string, strings: any[]) {
+  const res = await mgpRequest(`/projects/${id}/electrical/strings/validate`, {
+    method: 'POST',
+    body: JSON.stringify({ strings }),
+  })
+  if (!res.ok) throw new Error('Failed to validate string plan')
+  return res.json() // { issues }
+}
+
+export async function computeElectricalBOM(id: string) {
+  const res = await mgpRequest(`/projects/${id}/electrical-bom/compute`, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to compute electrical BOM')
+  return res.json()
+}
+
+export async function recalcElectricalBOM(id: string) {
+  const res = await mgpRequest(`/projects/${id}/electrical-bom/recalc`, { method: 'PUT' })
+  if (!res.ok) throw new Error('Failed to recalc electrical BOM')
+  return res.json()
+}
+
+export async function getElectricalBomEffective(id: string) {
+  const res = await mgpRequest(`/projects/${id}/electrical-bom/effective`)
+  if (!res.ok) throw new Error('Electrical BOM not yet computed')
+  return res.json()
+}
+
+export async function saveElectricalBomDeltas(id: string, deltas: any) {
+  const res = await mgpRequest(`/projects/${id}/electrical-bom/deltas`, {
+    method: 'PUT',
+    body: JSON.stringify(deltas),
+  })
+  if (!res.ok) throw new Error('Failed to save electrical BOM deltas')
   return res.json()
 }
 

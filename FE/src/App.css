@@ -331,6 +331,80 @@
   z-index: 0;
 }
 
+/* ── Compact 3-group step bar ──────────────────────────────────────────── */
+.wizard-phases {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.wizard-phase {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  padding: 0 0.9rem;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* Active group expands to fill the available width; others stay compact. */
+.wizard-phase.active {
+  flex: 1;
+}
+
+/* Thin separators between groups. */
+.wizard-phase:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -0.25rem;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: #e6e6e6;
+}
+
+.wizard-phase-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #c4c4c4;
+  white-space: nowrap;
+}
+
+.wizard-phase.active .wizard-phase-label {
+  color: #5a6600;
+}
+
+.wizard-phase.completed .wizard-phase-label {
+  color: #C4D600;
+}
+
+.wizard-phase-steps {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.7rem;
+  min-height: 30px;
+}
+
+/* Collapsed-group step markers. */
+.wizard-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  align-self: center;
+  transition: background 0.3s ease;
+}
+
+.wizard-dot.completed {
+  background: #C4D600;
+}
+
 .wizard-step {
   display: flex;
   flex-direction: column;

@@ -15,6 +15,7 @@ from app.models.setting import AppSetting
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import bom_service
+from app.services import electrical_bom_service
 from app.services.trapezoid_detail_service import _compute_block_punches, trim_trapezoid, group_identical_trapezoids
 from app.services import settings_cache
 from app.services import credits as credits_service
@@ -24,7 +25,10 @@ from app.utils.panel_geometry import (
     PANEL_V, PANEL_H, PANEL_EV, PANEL_EH, REAL_PANELS
 )
 from app.utils.settings_helpers import resolve_roof_spec, is_frameless_roof_type
-from app.schemas.project_data import Step2Data, Step3Data, Step4Data, Step5Data
+from app.schemas.project_data import (
+    Step2Data, Step3Data, Step4Data, Step5Data,
+    Step6Data, Step7Data, Step8Data, Step9Data,
+)
 
 
 class StepTransitionInvalidError(Exception):
@@ -376,11 +380,22 @@ def _assign_area_ids(data: dict) -> None:
             next_id += 1
 
 
+# Highest step index that carries its own stepN data. Bump as step schemas are
+# added rather than hardcoding the bound at each call site.
+MAX_STEP = 9
+# The closing "Final" summary step is a navigation position only (no stepN
+# data). It is a valid nav target but never charges or stores cleared data.
+FINAL_STEP = 10
+
 _STEP_SCHEMAS = {
     'step2': Step2Data,
     'step3': Step3Data,
     'step4': Step4Data,
     'step5': Step5Data,
+    'step6': Step6Data,
+    'step7': Step7Data,
+    'step8': Step8Data,
+    'step9': Step9Data,
 }
 
 
@@ -2494,6 +2509,7 @@ async def update_project_step(
     db: AsyncSession, project: Project, new_step: int,
     rs=None, bs=None, tds=None,
     current_user: User | None = None,
+    skip: bool = False,
 ) -> dict:
     """
     Transition project to a new step with server-side data cleanup.
@@ -2501,6 +2517,9 @@ async def update_project_step(
     Backward: clears data from steps being navigated away from.
 
     `current_user` is required for the 2→3 charge — pass it from the router.
+    `skip` marks an explicit "skip to summary" jump (steps 5/6 → Final): it
+    bypasses the NON-REFUNDABLE electrical charge so a user who never unlocks
+    the string plan is never billed for it.
     """
     # Infer old step from navigation; if not set, assume one step before new_step
     # (the FE always saves before calling updateStep, so the transition is always ±1)
@@ -2508,7 +2527,7 @@ async def update_project_step(
     old_step = nav_step if nav_step is not None else max(1, new_step - 1)
     if new_step == old_step:
         return {'currentStep': old_step, 'clearedSteps': []}
-    if new_step < 1 or new_step > 5:
+    if new_step < 1 or new_step > FINAL_STEP:
         raise ValueError(f"Invalid step: {new_step}")
 
     # Per-transition validation runs BEFORE any mutation so the FE can stay
@@ -2562,6 +2581,24 @@ async def update_project_step(
                     'params': {'required': e.required, 'available': e.available},
                 }])
 
+    # ── Credits: NON-REFUNDABLE electrical charge on first entry into step 7+ ──
+    # Unlocking the string plan is committed engineering work. Mirrors the 2→3
+    # charge: gated on `new_step > 6 AND electrical_charged_at IS NULL` so a
+    # forged jump can't skip it; admins and already-charged projects no-op.
+    if not skip and new_step > 6 and project.electrical_charged_at is None and current_user is not None:
+        if current_user.role.value == 'admin':
+            credits_service.mark_electrical_charged_zero(project)
+        else:
+            payer = current_user if project.owner_id == current_user.id else await db.get(User, project.owner_id)
+            try:
+                await credits_service.charge_for_electrical(db, payer, project)
+            except credits_service.InsufficientCreditsError as e:
+                raise StepTransitionInvalidError(old_step, new_step, [{
+                    'code': 'insufficientCredits',
+                    'field': 'credits',
+                    'params': {'required': e.required, 'available': e.available},
+                }])
+
     data = copy.deepcopy(project.data or {})
     cleared = []
     rails_result = None
@@ -2569,12 +2606,13 @@ async def update_project_step(
 
     if new_step > old_step:
         # ── Forward transitions: wipe all data from each step being entered ──
-        for s in range(old_step + 1, new_step + 1):
+        # Clamp to MAX_STEP so the dataless Final step never creates a junk key.
+        for s in range(old_step + 1, min(new_step, MAX_STEP) + 1):
             data[f'step{s}'] = {}
             cleared.append(f'step{s}')
     else:
         # ── Backward transitions: wipe all data from each step being left ──
-        for s in range(old_step, new_step, -1):
+        for s in range(min(old_step, MAX_STEP), new_step, -1):
             data[f'step{s}'] = {}
             cleared.append(f'step{s}')
 
@@ -2701,11 +2739,22 @@ async def update_project_step(
             bom_obj = await bom_service.compute_and_save_bom(db, project)
             bom_result = {'items': bom_obj.items, 'id': str(bom_obj.id)}
 
+    # ── Auto-compute the (separate) electrical BOM on entering step 9 ──
+    electrical_bom_result = None
+    if new_step >= 9:
+        await db.refresh(project)
+        existing_ebom = await electrical_bom_service.get_electrical_bom(db, project.id)
+        if not existing_ebom or electrical_bom_service.is_electrical_bom_stale(project.data or {}, existing_ebom):
+            ebom_obj = await electrical_bom_service.compute_and_save_electrical_bom(db, project)
+            electrical_bom_result = {'items': ebom_obj.items, 'id': str(ebom_obj.id)}
+
     # Return full project data — same structure as GET /projects/:id
     await db.refresh(project)
     result = {'currentStep': new_step, 'clearedSteps': cleared, 'data': project.data or {}}
     if bom_result:
         result['bom'] = bom_result
+    if electrical_bom_result:
+        result['electricalBom'] = electrical_bom_result
     return result
 
 
@@ -3613,12 +3662,17 @@ async def reset_tab(
     return await save_tab(db, project, tab, rs, bs, tds)
 
 
-async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool) -> Project:
+async def approve_plan(db: AsyncSession, project: Project, user: User, strict_consent: bool, step: int = 4) -> Project:
+    """Record (or clear) a plan-approval self-attestation on a step's data.
+
+    `step` selects the approval slot: 4 = constructor (construction plan),
+    8 = electrician (electrical plan). Both use the identical PlanApproval
+    shape under data.step{step}.planApproval."""
     data = copy.deepcopy(project.data or {})
-    step4 = data.setdefault('step4', {})
+    step_data = data.setdefault(f'step{step}', {})
 
     if strict_consent:
-        step4['planApproval'] = {
+        step_data['planApproval'] = {
             'date':          date.today().isoformat(),
             'strictConsent': True,
             'performedBy': {
@@ -3628,7 +3682,7 @@ async def approve_plan(db: AsyncSession, project: Project, user: User, strict_co
             },
         }
     else:
-        step4['planApproval'] = None
+        step_data['planApproval'] = None
 
     project.data = data
     flag_modified(project, 'data')

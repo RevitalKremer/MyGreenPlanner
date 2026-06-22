@@ -5,7 +5,7 @@ from sqlalchemy import select
 from itertools import groupby
 
 from app.database import get_db
-from app.models.product import Product
+from app.models.product import Product, SADOT_EQUIPMENT_TYPES
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -61,13 +61,64 @@ class MaterialRead(BaseModel):
 
 @router.get("/materials", response_model=list[MaterialRead])
 async def list_materials(db: AsyncSession = Depends(get_db)):
-    """Return active material products (public endpoint)."""
+    """Return active construction material products (public endpoint).
+
+    Excludes panels and Sadot Energy equipment (inverters/batteries/dongles)
+    — those have their own catalog + electrical BOM stack."""
     result = await db.execute(
         select(Product)
-        .where(Product.active == True, Product.product_type != 'panel')
+        .where(
+            Product.active == True,
+            Product.product_type != 'panel',
+            Product.product_type.notin_(SADOT_EQUIPMENT_TYPES),
+        )
         .order_by(Product.name)
     )
     return list(result.scalars().all())
+
+
+class SadotEquipmentRead(BaseModel):
+    id: str
+    type_key: str
+    product_type: str          # 'inverter' | 'battery' | 'dongle' | …
+    name: str
+    name_he: str | None = None
+    part_number: str | None = None
+    price_ils: float | None = None
+    electrical: dict | None = None
+    sadot_url: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/sadot-equipment", response_model=list[SadotEquipmentRead])
+async def list_sadot_equipment(db: AsyncSession = Depends(get_db)):
+    """Return active Sadot Energy equipment (inverters/batteries/dongles).
+
+    Used by Step 6 (inverter selection) — the FE filters by product_type."""
+    result = await db.execute(
+        select(Product)
+        .where(
+            Product.active == True,
+            Product.product_type.in_(SADOT_EQUIPMENT_TYPES),
+        )
+        .order_by(Product.product_type, Product.name)
+    )
+    products = result.scalars().all()
+    return [
+        SadotEquipmentRead(
+            id=str(p.id),
+            type_key=p.type_key,
+            product_type=p.product_type,
+            name=p.name,
+            name_he=p.name_he,
+            part_number=p.part_number,
+            price_ils=p.price_ils,
+            electrical=p.electrical,
+            sadot_url=p.sadot_url,
+        )
+        for p in products
+    ]
 
 
 class AltMember(BaseModel):
