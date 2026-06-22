@@ -261,6 +261,7 @@ export default function Step5PdfReport({
   beTrapezoidGroups = [],
   bomDeltas = {}, onBomDeltasChange,
   products = [], productByType = {}, altsByType = {},
+  panelTypes = [],
   // Fired with the new ISO timestamp after a successful Get Quotation.
   // App.tsx merges it into currentProject so the button label survives
   // navigations / remounts.
@@ -443,12 +444,9 @@ export default function Step5PdfReport({
     return map
   }, [trapIds, areaGroupMap, beTrapezoidsData, trapPanelLinesMap, trapLineRailsMap, trapRCMap])
 
-  // Parse panel wattage from model name (e.g. "AIKO-G670-..." → 670W)
-  const panelWp = (() => {
-    if (!panelType) return null
-    const m = panelType.match(/[A-Z0-9](\d{3})[^0-9]/)
-    return m ? parseInt(m[1], 10) : null
-  })()
+  // Panel wattage from the selected panel's spec (DB kw_peak) — never parsed
+  // from the model name, which only happens to embed it for some products.
+  const panelWp = (panelType ? panelTypes.find((p: any) => p.id === panelType)?.kw : null) ?? null
   const totalKw = panelWp ? (count * panelWp) / 1000 : null
 
   // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas

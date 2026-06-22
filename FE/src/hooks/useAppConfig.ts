@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { SAM2Service } from '../services/sam2Service'
 import { fetchPanelTypes, fetchAppDefaults, fetchProducts } from '../services/projectsApi'
 import { PANEL_V, PANEL_H } from '../utils/panelCodes.js'
@@ -115,10 +115,18 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
   // ── Fetch on mount ──
   useEffect(() => { checkBackend() }, [])
 
+  // Refetch panel types — exposed so callers (e.g. closing the admin panel,
+  // where panels are added/edited) can refresh the list without a full reload.
+  // Sets unconditionally so removals reflect; keeps the prior list on error
+  // (which is logged, not swallowed).
+  const refreshPanelTypes = useCallback(() => {
+    return fetchPanelTypes()
+      .then(types => setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))))
+      .catch(err => { console.error('Failed to load panel types', err) })
+  }, [])
+
   useEffect(() => {
-    fetchPanelTypes()
-      .then(types => { if (types.length > 0) setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))) })
-      .catch(() => {})
+    refreshPanelTypes()
     fetchAppDefaults()
       .then(setAppSettingsRaw)
       .catch(() => {})
@@ -130,7 +138,7 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
         bundle: p.bundle ?? null,  // {parentType, multiplier} or null
       }))))
       .catch(() => {})
-  }, [])
+  }, [refreshPanelTypes])
 
   const refreshAppSettings = () => {
     fetchAppDefaults().then(setAppSettingsRaw).catch(() => {})
@@ -143,5 +151,6 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
     backendStatus,
     appConfigReady,
     refreshAppSettings,
+    refreshPanelTypes,
   }
 }

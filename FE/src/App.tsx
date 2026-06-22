@@ -706,7 +706,7 @@ function App() {
           onLogout={handleLogout}
           onUpdateProfile={auth.updateProfile}
           onOpenAccount={() => setShowMyAccount(true)}
-          onAdminClose={s.refreshAppSettings}
+          onAdminClose={() => { s.refreshAppSettings(); s.refreshPanelTypes() }}
           authLoading={auth.authLoading}
           cloudProjects={cloudProjects}
           cloudProjectsLoading={cloudProjectsLoading}
@@ -846,7 +846,7 @@ function App() {
               onSignOut={handleLogout}
               onUpdateProfile={auth.updateProfile}
               onOpenAccount={() => setShowMyAccount(true)}
-              onAdminClose={s.refreshAppSettings}
+              onAdminClose={() => { s.refreshAppSettings(); s.refreshPanelTypes() }}
               dark
             />
 
@@ -1084,6 +1084,7 @@ function App() {
             customBasesMap={step4PdfData.customBasesMap}
             trapPanelLinesMap={step4PdfData.trapPanelLinesMap}
             roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            panelTypes={s.panelTypes}
             beRailsData={beRailsData}
             beBasesData={beBasesData}
             beTrapezoidsData={beTrapezoidsData}
