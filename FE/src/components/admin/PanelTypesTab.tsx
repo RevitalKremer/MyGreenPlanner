@@ -36,9 +36,9 @@ function EditRow({ product, onSave, onCancel, t }) {
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'e.g. aiko-g670', { fontFamily: 'monospace' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'e.g. AIKO G670')}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('length_cm', '238.2', { width: '5rem' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('width_cm',  '113.4', { width: '5rem' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('kw_peak',   '670',   { width: '4.5rem' })}</td>
+      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('length_cm', '238.2', { width: '5rem', textAlign: 'right' })}</td>
+      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('width_cm',  '113.4', { width: '5rem', textAlign: 'right' })}</td>
+      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('kw_peak',   '670',   { width: '4.5rem', textAlign: 'right' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
         <select value={String(form.active)} onChange={e => set('active', e.target.value === 'true')}
           style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem' }}>
