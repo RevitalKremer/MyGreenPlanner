@@ -4,6 +4,8 @@ import { generateStrings, validateStrings } from '../../../services/projectsApi'
 import RowActions from '../../shared/RowActions'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from '../step3/LayersPanel'
+import ConfirmDialog from '../../ConfirmDialog'
+import { useConfirm } from '../../../hooks/useConfirm'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import {
   PRIMARY_BG, PRIMARY_DARK,
@@ -52,11 +54,19 @@ function Section({ title, open, onToggle, children }: any) {
 // input it feeds.
 // Pure, self-contained SVG of the strings plan. Exported so the Step 9 PDF can
 // embed it directly (printMode → no interactivity, no selection highlight).
-export function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick, printMode = false }: any) {
+export function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick, printMode = false,
+  editActive = false, editPanelIds = [], editAreaIdx = null, takenPanels = new Set(), onRemoveAt, onInsertAt }: any) {
   const real = (panels || []).filter((p: any) => !p.isEmpty)
   const selIdx = (printMode || !selectedId) ? -1 : (strings || []).findIndex((s: any) => s?.id === selectedId)
   const svgRef = useRef<SVGSVGElement>(null)
   const [dragging, setDragging] = useState<number | null>(null)
+  const [hoverDot, setHoverDot] = useState<number | null>(null)
+  const [dragSeg, setDragSeg] = useState<{ segIndex: number; x: number; y: number } | null>(null)
+
+  const editSet = new Set(editPanelIds)
+  const realById: Record<string, any> = {}
+  for (const p of real) realById[p.id] = p
+  const isSelectable = (p: any) => editActive && !takenPanels.has(p.id) && !editSet.has(p.id) && (editAreaIdx == null || p.area === editAreaIdx)
 
   // panel id → owning string index, for highlight coloring.
   const panelStr = useMemo(() => {
@@ -137,6 +147,25 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
     setDragging(box.idx)
+  }
+
+  // Panel under a viewBox point (axis-aligned hit-test).
+  const hitTestPanel = (x: number, y: number) =>
+    real.find((p: any) => x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height)
+
+  // Drag a chain segment's midpoint → "?" node follows the cursor → drop on a
+  // selectable panel to insert it between that segment's endpoints.
+  const startSegDrag = (e: any, segIndex: number) => {
+    e.stopPropagation(); e.preventDefault()
+    const move = (ev: MouseEvent) => { const u = clientToUser(ev.clientX, ev.clientY); if (u) setDragSeg({ segIndex, x: u.x, y: u.y }) }
+    const up = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
+      const u = clientToUser(ev.clientX, ev.clientY)
+      if (u) { const p = hitTestPanel(u.x, u.y); if (p && isSelectable(p)) onInsertAt?.(segIndex, p.id) }
+      setDragSeg(null)
+    }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+    const u0 = clientToUser(e.clientX, e.clientY); if (u0) setDragSeg({ segIndex, x: u0.x, y: u0.y })
   }
 
   // Per-string series route: the ordered panel centers a string connects in
@@ -232,15 +261,25 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
         const cx = p.x + p.width / 2, cy = p.y + p.height / 2
         const si = panelStr[p.id]
         const assigned = si != null && si >= 0
-        const hi = selIdx >= 0 && si === selIdx
-        const colored = hi || (showStringColors && assigned)
-        const op = hi ? 0.65 : (colored ? (selIdx >= 0 ? 0.4 : 0.6) : 0.85)
+        let fill: string, op: number, clickable: boolean
+        if (editActive) {
+          const inChain = editSet.has(p.id)
+          const sel = isSelectable(p)
+          fill = inChain ? PRIMARY_DARK : PANEL_LIGHT_BG
+          op = inChain ? 0.7 : (sel ? 0.85 : 0.22)
+          clickable = sel
+        } else {
+          const hi = selIdx >= 0 && si === selIdx
+          const colored = hi || (showStringColors && assigned)
+          fill = colored ? stringColor(si) : PANEL_LIGHT_BG
+          op = hi ? 0.65 : (colored ? (selIdx >= 0 ? 0.4 : 0.6) : 0.85)
+          clickable = assigned
+        }
         return (
           <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}
-            onClick={() => !printMode && assigned && onPanelClick?.(p.id)} style={{ cursor: !printMode && assigned ? 'pointer' : 'default' }}>
+            onClick={() => !printMode && clickable && onPanelClick?.(p.id)} style={{ cursor: !printMode && clickable ? 'pointer' : 'default' }}>
             <rect x={p.x} y={p.y} width={p.width} height={p.height}
-              fill={colored ? stringColor(si) : PANEL_LIGHT_BG} fillOpacity={op}
-              stroke={PANEL_DARK} strokeWidth={Math.max(0.5, p.width * 0.012)} />
+              fill={fill} fillOpacity={op} stroke={PANEL_DARK} strokeWidth={Math.max(0.5, p.width * 0.012)} />
           </g>
         )
       })}
@@ -281,102 +320,227 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
           })}
         </g>
       ))}
+
+      {/* edit chain overlay — numbered dots, segment drag-handles, hover-× delete */}
+      {editActive && (() => {
+        const pts = editPanelIds.map((id: any) => realById[id]).filter(Boolean).map((p: any) => ({ x: p.x + p.width / 2, y: p.y + p.height / 2 }))
+        if (!pts.length) return null
+        const col = PRIMARY_DARK
+        const dotR = Math.max(3, lineW * 3)
+        const fs = Math.max(lineW * 3, geo.w * 0.012)
+        return (
+          <g>
+            {pts.length > 1 && <polyline points={pts.map((p: any) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={col} strokeWidth={lineW * 2} strokeLinejoin="round" strokeLinecap="round" />}
+            {/* segment midpoint drag-handles (insert) */}
+            {pts.slice(0, -1).map((p: any, i: number) => {
+              const mx = (p.x + pts[i + 1].x) / 2, my = (p.y + pts[i + 1].y) / 2
+              return <circle key={`seg${i}`} cx={mx} cy={my} r={dotR * 0.65} fill="white" stroke={col} strokeWidth={lineW} style={{ cursor: 'grab' }} onMouseDown={(e) => startSegDrag(e, i)} />
+            })}
+            {/* numbered dots — hover turns the number into a × to delete */}
+            {pts.map((p: any, i: number) => {
+              const hov = hoverDot === i
+              return (
+                <g key={`dot${i}`} onMouseEnter={() => setHoverDot(i)} onMouseLeave={() => setHoverDot(h => (h === i ? null : h))}
+                  onClick={hov ? (e) => { e.stopPropagation(); onRemoveAt?.(i) } : undefined} style={{ cursor: hov ? 'pointer' : 'default' }}>
+                  <circle cx={p.x} cy={p.y} r={dotR} fill={hov ? ERROR_DARK : col} stroke="white" strokeWidth={lineW * 0.6} />
+                  <text x={p.x} y={p.y + fs * 0.35} textAnchor="middle" fontSize={fs} fontWeight={700} fill="white" style={{ pointerEvents: 'none' }}>{hov ? '×' : i + 1}</text>
+                </g>
+              )
+            })}
+            {/* dragging "?" node */}
+            {dragSeg && (
+              <g>
+                <circle cx={dragSeg.x} cy={dragSeg.y} r={dotR} fill="white" stroke={col} strokeWidth={lineW} />
+                <text x={dragSeg.x} y={dragSeg.y + fs * 0.35} textAnchor="middle" fontSize={fs} fontWeight={700} fill={col}>?</text>
+              </g>
+            )}
+          </g>
+        )
+      })()}
     </svg>
   )
 }
 
-// Strings-plan tab — the diagram: control bar (left) + canvas (right).
-// `units`/`ports` are derived once in the host and shared with the Summary tab.
-export default function StringsPlanTab({ projectId, panels, strings, onStringsChange, inverterLayout, onInverterLayoutChange, units, ports }: any) {
+// Strings-plan tab — control bar (left) + canvas (right). Step-3-style edit
+// mode: enter edit → draw/delete/reassign on a local draft → Apply (commit all
+// to the server at once, mode='manual') or Discard. `units`/`ports` are derived
+// in the host and shared with the Summary tab.
+export default function StringsPlanTab({ projectId, panels, strings, onStringsChange, inverterLayout, onInverterLayoutChange, mode, onModeChange, units, ports }: any) {
   const { t } = useLang()
   const [issues, setIssues] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
-  const [busy, setBusy] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [draft, setDraft] = useState<any[]>([])
+  // Single in-progress chain: { stringId: null=new | id, panelIds, areaIdx }.
+  const [chain, setChain] = useState<{ stringId: string | null; panelIds: number[]; areaIdx: number | null } | null>(null)
   const [showInverters, setShowInverters] = useState(true)
   const [showMpptLines, setShowMpptLines] = useState(true)
   const [showStringColors, setShowStringColors] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(true)
   const [invertersOpen, setInvertersOpen] = useState(false)
   const [stringsOpen, setStringsOpen] = useState(true)
+  const confirm = useConfirm()
   const {
     zoom, setZoom, panOffset, panActive, containerRef, contentRef,
     startPan, handleMouseMove, stopPan, resetView, centerView,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
-  // Validate any pre-existing strings on mount so the panel reflects state.
+  // While editing, the diagram + lists read from the local draft.
+  const effStrings = editMode ? draft : (strings || [])
+
   useEffect(() => {
     if (projectId && (strings || []).length) {
       validateStrings(projectId, strings).then(r => setIssues(r.issues || [])).catch(() => {})
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Port capacity / usage for the MPPT reassignment dropdown (free-capacity only).
+  const reValidate = (next: any[]) => {
+    if (projectId && next.length) validateStrings(projectId, next).then(r => setIssues(r.issues || [])).catch(() => {})
+    else setIssues([])
+  }
+
+  // Port capacity / usage (from the effective strings).
   const portUsage = useMemo(() => {
     const used = ports.map(() => 0)
-    ;(strings || []).forEach((s: any) => {
+    ;(effStrings || []).forEach((s: any) => {
       const i = s.mpptIndex
       if (typeof i === 'number' && i >= 0 && i < used.length) used[i]++
     })
     return used
-  }, [ports, strings])
+  }, [ports, effStrings])
   const portCap = (gi: number) => units[ports[gi]?.unitIdx]?.maxStringsPerMppt || 1
   const portFull = (gi: number) => portUsage[gi] >= portCap(gi)
 
-  // Reassign a string to a different MPPT port, then re-validate.
-  const reassignString = (id: string, mpptIndex: number) => {
-    const next = (strings || []).map((s: any) => (s.id === id ? { ...s, mpptIndex } : s))
-    onStringsChange(next)
-    if (projectId) validateStrings(projectId, next).then(r => setIssues(r.issues || [])).catch(() => {})
-  }
-
-  // Inverter layout (position + MPPT side), persisted in step7 data.
+  // Inverter layout (position + MPPT side) — persisted directly (not part of the draft).
   const moveUnit = (idx: number, pos: { x: number; y: number }) =>
     onInverterLayoutChange?.((prev: any) => ({ ...(prev || {}), [idx]: { ...((prev || {})[idx] || {}), ...pos } }))
   const setUnitSide = (idx: number, side: string) =>
     onInverterLayoutChange?.((prev: any) => ({ ...(prev || {}), [idx]: { ...((prev || {})[idx] || {}), side } }))
   const resetLayout = () => onInverterLayoutChange?.({})
 
+  // ── Auto-generate / reset (view mode) ──
   const handleGenerate = async () => {
     if (!projectId) return
-    setBusy(true)
+    if (mode === 'manual' && (strings || []).length) {
+      const ok = await confirm.ask({ message: t('step7.regenWarn'), variant: 'warning', confirmLabel: t('step7.regenerate') })
+      if (!ok) return
+    }
     try {
       const res = await generateStrings(projectId)
       onStringsChange(res.strings || [])
       setIssues(res.issues || [])
       setSummary(res.summary || null)
+      onModeChange?.('auto')
     } catch { /* surfaced via empty result */ }
-    finally { setBusy(false) }
   }
-
-  // Reset clears the whole plan; panels revert to the as-is layout.
-  const handleReset = () => {
+  // Reset is always available — clears the whole plan (auto or manual), fresh start.
+  const handleReset = async () => {
+    const ok = await confirm.ask({ message: t('step7.resetWarn'), variant: 'danger', confirmLabel: t('step7.reset') })
+    if (!ok) return
     onStringsChange([])
-    onInverterLayoutChange?.({})   // also clear inverter positions / sides
-    setIssues([])
-    setSummary(null)
-    setSelectedId(null)
+    onInverterLayoutChange?.({})
+    setIssues([]); setSummary(null); setSelectedId(null)
+    onModeChange?.('auto'); setEditMode(false); setChain(null)
   }
 
-  // Clicking a panel selects its string and opens the Strings area.
+  // ── Edit mode (Step-3 style) ──
+  const enterEdit = () => { setDraft([...(strings || [])]); setEditMode(true); setChain(null) }
+  // Dirty = the draft differs from the persisted plan (used to guard discard).
+  const isDirty = () => JSON.stringify(draft) !== JSON.stringify(strings || [])
+  const applyEdit = () => {
+    onStringsChange(draft); onModeChange?.('manual'); reValidate(draft)
+    setEditMode(false); setChain(null)
+  }
+  const discardEdit = async () => {
+    if (isDirty()) {
+      const ok = await confirm.ask({ message: t('step7.discardWarn'), variant: 'danger', confirmLabel: t('step7.draw.discard') })
+      if (!ok) return
+    }
+    setEditMode(false); setChain(null); setSelectedId(null); reValidate(strings || [])
+  }
+
+  // ── Chain draw / edit (operates on the draft) ──
+  const panelById = useMemo(() => {
+    const m: Record<string, any> = {}
+    ;(panels || []).forEach((p: any) => { if (!p.isEmpty) m[p.id] = p })
+    return m
+  }, [panels])
+  const areaOf = (pid: any) => panelById[pid]?.area
+  const takenPanels = useMemo(() => {
+    const s = new Set<any>()
+    ;(effStrings || []).forEach((st: any) => { if (!chain || st.id !== chain.stringId) (st.panelIds || []).forEach((p: any) => s.add(p)) })
+    return s
+  }, [effStrings, chain])
+
+  const startDraw = () => { setSelectedId(null); setChain({ stringId: null, panelIds: [], areaIdx: null }) }
+  const startEditString = (id: string) => {
+    const s = (draft || []).find((st: any) => st.id === id); if (!s) return
+    setSelectedId(id)
+    setChain({ stringId: id, panelIds: [...(s.panelIds || [])], areaIdx: areaOf((s.panelIds || [])[0]) ?? null })
+  }
+  const cancelChain = () => setChain(null)
+
+  const appendPanel = (pid: any) => setChain(e => {
+    if (!e) return e
+    if (e.panelIds.includes(pid) || takenPanels.has(pid)) return e
+    if (e.areaIdx != null && areaOf(pid) !== e.areaIdx) return e
+    return { ...e, panelIds: [...e.panelIds, pid], areaIdx: e.areaIdx ?? areaOf(pid) ?? null }
+  })
+  const removeAt = (idx: number) => setChain(e => {
+    if (!e) return e
+    const panelIds = e.panelIds.filter((_, i) => i !== idx)
+    return { ...e, panelIds, areaIdx: panelIds.length ? e.areaIdx : null }
+  })
+  const insertAt = (segIndex: number, pid: any) => setChain(e => {
+    if (!e) return e
+    if (e.panelIds.includes(pid) || takenPanels.has(pid)) return e
+    if (e.areaIdx != null && areaOf(pid) !== e.areaIdx) return e
+    const panelIds = [...e.panelIds]
+    panelIds.splice(segIndex + 1, 0, pid)
+    return { ...e, panelIds, areaIdx: e.areaIdx ?? areaOf(pid) ?? null }
+  })
+
+  const finishChain = () => {
+    if (!chain) return
+    const ids = chain.panelIds
+    let next: any[]
+    if (chain.stringId) {
+      next = ids.length
+        ? draft.map((s: any) => (s.id === chain.stringId ? { ...s, panelIds: ids } : s))
+        : draft.filter((s: any) => s.id !== chain.stringId)
+    } else {
+      if (!ids.length) { setChain(null); return }
+      const p0 = panelById[ids[0]]
+      const label = String(p0?.trapezoidId || '').replace(/[^A-Za-z]/g, '') || `A${(p0?.area ?? 0) + 1}`
+      const used = new Set(draft.map((s: any) => s.id))
+      let n = 1; while (used.has(`STR-${label}-${String(n).padStart(2, '0')}`)) n++
+      const id = `STR-${label}-${String(n).padStart(2, '0')}`
+      let firstFree = ports.findIndex((_: any, gi: number) => !portFull(gi))
+      if (firstFree < 0) firstFree = null as any
+      next = [...draft, { id, areaLabel: label, panelIds: ids, inverterTypeKey: units[ports[firstFree]?.unitIdx ?? 0]?.typeKey ?? units[0]?.typeKey ?? null, mpptIndex: firstFree }]
+      setSelectedId(id)
+    }
+    setDraft(next); reValidate(next); setChain(null)
+  }
+
+  const reassignString = (id: string, mpptIndex: number) => {
+    const next = draft.map((s: any) => (s.id === id ? { ...s, mpptIndex } : s))
+    setDraft(next); reValidate(next)
+  }
+  const deleteString = (id: string) => {
+    const next = draft.filter((s: any) => s.id !== id)
+    setDraft(next); reValidate(next)
+    if (selectedId === id) setSelectedId(null)
+  }
+
   const handlePanelClick = (pid: any) => {
-    const s = (strings || []).find((st: any) => (st.panelIds || []).includes(pid))
+    if (chain) { appendPanel(pid); return }
+    const s = (effStrings || []).find((st: any) => (st.panelIds || []).includes(pid))
     if (s) { setSelectedId(s.id); setStringsOpen(true) }
   }
-  const handleInverterClick = () => setInvertersOpen(true)
-
-  // Delete one string; re-validate the remaining set so issues stay accurate.
-  const handleDeleteString = (id: string) => {
-    const next = (strings || []).filter((s: any) => s.id !== id)
-    onStringsChange(next)
-    if (selectedId === id) setSelectedId(null)
-    if (projectId && next.length) {
-      validateStrings(projectId, next).then(r => setIssues(r.issues || [])).catch(() => {})
-    } else {
-      setIssues([])
-    }
-  }
+  const handleInverterClick = () => { if (!chain) setInvertersOpen(true) }
 
   const issueText = (it: any) => {
     const params = { ...(it.params || {}) }
@@ -385,26 +549,21 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
   }
   const errors = issues.filter(i => i.severity === 'error')
   const warnings = issues.filter(i => i.severity === 'warning')
-  const hasStrings = (strings || []).length > 0
+  const hasStrings = (effStrings || []).length > 0
   const hasPanels = (panels || []).some((p: any) => !p.isEmpty)
 
-  // Fit the diagram to the viewport on entry and whenever the layout's overall
-  // footprint changes (strings generated → inverter rack appears).
   useEffect(() => { if (hasPanels) centerView() }, [centerView, hasPanels, hasStrings, units.length])
 
-  // Derived string summary.
   const stats = useMemo(() => {
     const totalPanels = (panels || []).filter((p: any) => !p.isEmpty).length
-    const counts = (strings || []).map((s: any) => (s.panelIds || []).length)
+    const counts = (effStrings || []).map((s: any) => (s.panelIds || []).length)
     return {
-      totalPanels,
-      stringCount: counts.length,
+      totalPanels, stringCount: counts.length,
       perMin: counts.length ? Math.min(...counts) : 0,
       perMax: counts.length ? Math.max(...counts) : 0,
-      inverters: units.length,
-      mpptInputs: ports.length,
+      inverters: units.length, mpptInputs: ports.length,
     }
-  }, [panels, strings, units, ports])
+  }, [panels, effStrings, units, ports])
 
   const detailRow = (label: string, value: any) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.15rem 0' }}>
@@ -413,31 +572,64 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
     </div>
   )
 
+  // LayersPanel action buttons (Step-3 style) — enter/exit + generate/reset.
+  const aPrimary = { color: 'white', background: PRIMARY_DARK, border: `1px solid ${PRIMARY_DARK}`, padding: '0.4rem 0.55rem', fontSize: '0.72rem' }
+  const aNeutral = { color: TEXT_SECONDARY, background: 'white', border: `1px solid ${BORDER}`, padding: '0.4rem 0.55rem', fontSize: '0.72rem' }
+  const aDanger = { color: ERROR_DARK, background: 'white', border: `1px solid ${BORDER}`, padding: '0.4rem 0.55rem', fontSize: '0.72rem' }
+  const layerActions = editMode
+    ? [
+        { label: '+ ' + t('step7.draw.drawString'), onClick: startDraw, style: aPrimary },
+        { label: t('step7.draw.apply'), onClick: applyEdit, style: { ...aPrimary, background: SUCCESS_DARK, border: `1px solid ${SUCCESS_DARK}` } },
+        { label: t('step7.draw.discard'), onClick: discardEdit, style: aDanger },
+      ]
+    : [
+        { label: t('step7.editPlan'), onClick: enterEdit, style: aPrimary },
+        { label: hasStrings ? t('step7.regenerate') : t('step7.generate'), onClick: handleGenerate, style: aNeutral },
+        { label: t('step7.reset'), onClick: handleReset, style: aDanger },
+      ]
+
   return (
     <div style={{ height: '100%', display: 'flex', background: BG_FAINT }}>
       {/* ── Left sidebar (control bar) ── */}
       <div style={{ width: 320, borderRight: `1px solid ${BORDER_FAINT}`, background: 'white', padding: '1.5rem 1.25rem', overflowY: 'auto' }}>
-        <button onClick={handleGenerate} disabled={busy || !projectId}
-          style={{ width: '100%', padding: '0.7rem', background: busy ? BG_LIGHT : PRIMARY_DARK, color: busy ? TEXT_MUTED : 'white', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.95rem', cursor: busy ? 'wait' : 'pointer' }}>
-          {busy ? '…' : (hasStrings ? t('step7.regenerate') : t('step7.generate'))}
-        </button>
-
-        {hasStrings && (
-          <button onClick={handleReset} disabled={busy}
-            style={{ width: '100%', marginTop: '0.5rem', padding: '0.55rem', background: 'none', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: 7, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
-            {t('step7.reset')}
+        {/* edit-mode status / chain toolbar */}
+        {editMode && (
+          chain ? (
+            <div style={{ border: `1px solid ${PRIMARY_DARK}`, borderRadius: 8, padding: '0.7rem', background: PRIMARY_BG, marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: PRIMARY_DARK, marginBottom: 4 }}>
+                {chain.stringId ? t('step7.draw.editing') : t('step7.draw.newString')}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: TEXT_SECONDARY, marginBottom: '0.6rem' }}>{t('step7.draw.hint', { n: chain.panelIds.length })}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={finishChain} disabled={chain.panelIds.length === 0}
+                  style={{ flex: 1, padding: '0.5rem', background: PRIMARY_DARK, color: 'white', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: chain.panelIds.length ? 'pointer' : 'not-allowed', opacity: chain.panelIds.length ? 1 : 0.5 }}>{t('step7.draw.finish')}</button>
+                <button onClick={cancelChain}
+                  style={{ flex: 1, padding: '0.5rem', background: 'none', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: 6, fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>{t('step7.draw.cancel')}</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: PRIMARY_DARK, background: PRIMARY_BG, borderRadius: 6, padding: '0.5rem 0.7rem', marginBottom: '0.5rem', fontWeight: 600 }}>{t('step7.editHint')}</div>
+          )
+        )}
+        {!editMode && !hasStrings && (
+          <button onClick={handleGenerate} disabled={!projectId}
+            style={{ width: '100%', padding: '0.7rem', background: PRIMARY_DARK, color: 'white', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.92rem', cursor: projectId ? 'pointer' : 'not-allowed', opacity: projectId ? 1 : 0.5 }}>
+            {t('step7.generate')}
           </button>
         )}
+        {!editMode && mode === 'manual' && (
+          <div style={{ marginTop: '0.6rem', fontSize: '0.74rem', fontWeight: 700, color: PRIMARY_DARK, background: PRIMARY_BG, borderRadius: 6, padding: '0.3rem 0.5rem', textAlign: 'center' }}>{t('step7.manualBadge')}</div>
+        )}
 
-        {hasStrings && (
+        {hasPanels && (
           <Section title={t('step7.detailsHeading')} open={summaryOpen} onToggle={() => setSummaryOpen(o => !o)}>
             <div style={{ background: PRIMARY_BG, borderRadius: 6, padding: '0.5rem 0.8rem' }}>
               {detailRow(t('step7.detail.panels'), stats.totalPanels)}
-              {detailRow(t('step7.detail.strings'), stats.stringCount)}
-              {detailRow(t('step7.detail.perString'), stats.perMin === stats.perMax ? stats.perMin : `${stats.perMin}–${stats.perMax}`)}
-              {summary && detailRow(t('step7.detail.series'), (summary.seriesMin ?? '—') + '–' + (summary.seriesMax ?? '—'))}
-              {detailRow(t('step7.detail.inverters'), stats.inverters)}
-              {detailRow(t('step7.detail.mppt'), stats.mpptInputs)}
+              {detailRow(t('step7.detail.strings'), hasStrings ? stats.stringCount : '—')}
+              {detailRow(t('step7.detail.perString'), hasStrings ? (stats.perMin === stats.perMax ? stats.perMin : `${stats.perMin}–${stats.perMax}`) : '—')}
+              {detailRow(t('step7.detail.series'), hasStrings && summary ? (summary.seriesMin ?? '—') + '–' + (summary.seriesMax ?? '—') : '—')}
+              {detailRow(t('step7.detail.inverters'), hasStrings ? stats.inverters : '—')}
+              {detailRow(t('step7.detail.mppt'), hasStrings ? stats.mpptInputs : '—')}
             </div>
           </Section>
         )}
@@ -465,21 +657,16 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
 
         {hasStrings && (
           <Section title={t('step7.legend')} open={stringsOpen} onToggle={() => setStringsOpen(o => !o)}>
-            {/* validation */}
             {errors.length === 0 && warnings.length === 0 ? (
               <div style={{ background: SUCCESS_BG, color: SUCCESS_DARK, borderRadius: 6, padding: '0.5rem 0.8rem', fontSize: '0.8rem', marginBottom: '0.6rem' }}>{t('step7.valid')}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: '0.6rem' }}>
-                {errors.map((it, i) => (
-                  <div key={`e${i}`} style={{ background: ERROR_BG, color: ERROR_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.8rem' }}>{issueText(it)}</div>
-                ))}
-                {warnings.map((it, i) => (
-                  <div key={`w${i}`} style={{ background: WARNING_BG, color: WARNING_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.8rem' }}>{issueText(it)}</div>
-                ))}
+                {errors.map((it, i) => (<div key={`e${i}`} style={{ background: ERROR_BG, color: ERROR_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.8rem' }}>{issueText(it)}</div>))}
+                {warnings.map((it, i) => (<div key={`w${i}`} style={{ background: WARNING_BG, color: WARNING_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.8rem' }}>{issueText(it)}</div>))}
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {(strings || []).map((s: any, i: number) => {
+              {(effStrings || []).map((s: any, i: number) => {
                 const sel = selectedId === s.id
                 return (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: TEXT, borderRadius: 6, padding: '0.15rem 0.3rem', background: sel ? PANEL_LIGHT_BG : 'transparent' }}>
@@ -488,15 +675,18 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
                       <span style={{ width: 12, height: 12, borderRadius: 3, background: stringColor(i), flexShrink: 0 }} />
                       <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{s.id} · {t('step7.legendPanels', { n: (s.panelIds || []).length })}</span>
                     </div>
-                    <select value={s.mpptIndex ?? ''} onClick={(e) => e.stopPropagation()}
+                    <select value={s.mpptIndex ?? ''} disabled={!editMode || !!chain} onClick={(e) => e.stopPropagation()}
                       onChange={(e) => reassignString(s.id, Number(e.target.value))} title={t('step7.reassignMppt')}
-                      style={{ fontSize: '0.68rem', padding: '0.1rem 0.15rem', border: `1px solid ${BORDER_FAINT}`, borderRadius: 4, maxWidth: 92 }}>
+                      style={{ fontSize: '0.68rem', padding: '0.1rem 0.15rem', border: `1px solid ${BORDER_FAINT}`, borderRadius: 4, maxWidth: 92, opacity: editMode ? 1 : 0.6 }}>
                       {ports.map((pt: any, gi: number) => {
                         const dis = portFull(gi) && gi !== s.mpptIndex
                         return <option key={gi} value={gi} disabled={dis}>{`INV${pt.unitIdx + 1}·M${pt.portIdx + 1}${dis ? ' ✕' : ''}`}</option>
                       })}
                     </select>
-                    <RowActions onDelete={() => handleDeleteString(s.id)} deleteTitle={t('step7.deleteString')} />
+                    {editMode && (
+                      <RowActions onEdit={!chain ? () => startEditString(s.id) : undefined} onDelete={() => deleteString(s.id)}
+                        editTitle={t('step7.draw.editString')} deleteTitle={t('step7.deleteString')} />
+                    )}
                   </div>
                 )
               })}
@@ -507,8 +697,6 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
 
       {/* ── Canvas ── */}
       <div style={{ flex: 1, minWidth: 0, padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ fontSize: '1.2rem', fontWeight: 700, color: TEXT }}>{t('step7.title')}</div>
-        <div style={{ fontSize: '0.85rem', color: TEXT_SECONDARY, margin: '0.3rem 0 1rem' }}>{t('step7.subtitle')}</div>
         <div ref={containerRef}
           style={{ flex: 1, position: 'relative', background: 'white', border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden', minHeight: 0, cursor: hasPanels ? (panActive ? 'grabbing' : 'grab') : 'default' }}
           onMouseDown={hasPanels ? startPan : undefined} onMouseMove={handleMouseMove} onMouseUp={stopPan} onMouseLeave={stopPan}>
@@ -516,20 +704,20 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
             <>
               <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
                 <div ref={contentRef} style={{ display: 'inline-block', transform: `scale(${zoom})`, transformOrigin: 'top left', padding: '1rem' }}>
-                  <StringCanvas panels={panels} strings={strings} selectedId={selectedId}
+                  <StringCanvas panels={panels} strings={effStrings} selectedId={selectedId}
                     units={hasStrings && showInverters ? units : []} ports={ports}
                     showMpptLines={showMpptLines} showStringColors={showStringColors}
-                    layout={inverterLayout} onMoveUnit={moveUnit}
-                    onPanelClick={handlePanelClick} onInverterClick={handleInverterClick} />
+                    layout={inverterLayout} onMoveUnit={chain ? undefined : moveUnit}
+                    onPanelClick={handlePanelClick} onInverterClick={handleInverterClick}
+                    editActive={!!chain} editPanelIds={chain?.panelIds || []} editAreaIdx={chain?.areaIdx ?? null}
+                    takenPanels={takenPanels} onRemoveAt={removeAt} onInsertAt={insertAt} />
                 </div>
               </div>
-              {hasStrings && (
-                <LayersPanel actions={[]} layers={[
-                  { label: t('step7.layer.inverters'), checked: showInverters, setter: setShowInverters },
-                  { label: t('step7.layer.mpptLines'), checked: showMpptLines, setter: setShowMpptLines },
-                  { label: t('step7.layer.stringColors'), checked: showStringColors, setter: setShowStringColors },
-                ]} />
-              )}
+              <LayersPanel actions={layerActions} layers={hasStrings ? [
+                { label: t('step7.layer.inverters'), checked: showInverters, setter: setShowInverters },
+                { label: t('step7.layer.mpptLines'), checked: showMpptLines, setter: setShowMpptLines },
+                { label: t('step7.layer.stringColors'), checked: showStringColors, setter: setShowStringColors },
+              ] : []} />
               <CanvasNavigator
                 viewZoom={zoom}
                 onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
@@ -546,6 +734,17 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirm.pending}
+        message={confirm.pending?.message ?? ''}
+        title={confirm.pending?.title}
+        variant={confirm.pending?.variant}
+        confirmLabel={confirm.pending?.confirmLabel || t('common.confirm')}
+        cancelLabel={confirm.pending?.cancelLabel || t('common.cancel')}
+        onConfirm={confirm.handleConfirm}
+        onCancel={confirm.handleCancel}
+      />
     </div>
   )
 }

@@ -152,6 +152,8 @@ def _vmp_at(vmp_stc: float, coeff_pct: float, temp_c: float) -> float:
 SMALL_TARIFF_KEY = 'green_small'
 SMALL_TARIFF_KW = 15.0
 CONNECTION_DIVISOR = 1.44
+# Headroom factor on the connection max (amperage / 1.44 × 0.9).
+CONNECTION_FACTOR = 0.9
 
 
 def recommend_inverter_capacity(
@@ -168,7 +170,7 @@ def recommend_inverter_capacity(
         return SMALL_TARIFF_KW
     if not amperage_a or amperage_a <= 0:
         return None
-    max_cap = amperage_a / CONNECTION_DIVISOR
+    max_cap = amperage_a / CONNECTION_DIVISOR * CONNECTION_FACTOR
     caps = [c for c in available_inverter_kws if c and c > 0]
     if not caps:
         # No catalog capacities to size against — fall back to the raw max.

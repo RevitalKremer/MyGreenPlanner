@@ -452,6 +452,9 @@ class Step7Data(_StrictBase):
     # { "0": { "x": .., "y": .., "side": "auto"|"left"|"right"|"top"|"bottom" } }.
     # Purely presentational (positions in string-plan viewBox units).
     inverterLayout: Optional[dict] = None
+    # 'auto' (engine-generated) or 'manual' (user-drawn/edited). Once manual,
+    # the whole plan is user-defined and regeneration requires explicit confirm.
+    mode: Optional[str] = None
 
 
 class Step8Data(_StrictBase):

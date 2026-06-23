@@ -1143,6 +1143,8 @@ function App() {
             onStringsChange={s.setStep7Strings}
             inverterLayout={s.step7InverterLayout}
             onInverterLayoutChange={s.setStep7InverterLayout}
+            mode={s.step7Mode}
+            onModeChange={s.setStep7Mode}
             panelWatt={s.panelSpec?.kw}
           />
         )}
