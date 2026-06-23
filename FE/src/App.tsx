@@ -1135,6 +1135,7 @@ function App() {
           <Step7StringPlan
             projectId={s.cloudProjectId}
             panels={s.panels}
+            inverters={s.step6Inverters}
             strings={s.step7Strings}
             onStringsChange={s.setStep7Strings}
           />

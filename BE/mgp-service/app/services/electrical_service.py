@@ -314,6 +314,10 @@ def generate_string_plan(
     s_max, s_min = _series_bounds(pspec, ispec, t_min, t_max)
 
     strings: list[dict] = []
+    # Per-label running counter — two areas can resolve to the same label
+    # (shared trapezoid prefix), so numbering must continue across them to keep
+    # string ids globally unique.
+    label_seq: dict[str, int] = {}
     # Total MPPT inputs across the selected fleet (qty handled by caller passing
     # repeated products); round-robin string→input assignment.
     total_inputs = sum(inverter_specs(inv)['mpptCount'] for inv in selected_inverters) or 1
@@ -338,11 +342,12 @@ def generate_string_plan(
             counts = _split_counts(n, s_max)
 
         cursor = 0
-        for i, length in enumerate(counts):
+        for length in counts:
             seg = area_panels[cursor:cursor + length]
             cursor += length
+            label_seq[label] = label_seq.get(label, 0) + 1
             strings.append({
-                'id': f'STR-{label}-{i + 1:02d}',
+                'id': f'STR-{label}-{label_seq[label]:02d}',
                 'areaLabel': label,
                 'panelIds': [p.get('id') for p in seg],
                 'inverterTypeKey': primary_key,
