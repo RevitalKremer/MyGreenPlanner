@@ -448,6 +448,10 @@ class ElectricalString(_StrictBase):
 class Step7Data(_StrictBase):
     """String plan — per-area, equal-length strings."""
     strings: list[ElectricalString] = Field(default_factory=list)
+    # Diagram layout for the inverter rack, keyed by unit index:
+    # { "0": { "x": .., "y": .., "side": "auto"|"left"|"right"|"top"|"bottom" } }.
+    # Purely presentational (positions in string-plan viewBox units).
+    inverterLayout: Optional[dict] = None
 
 
 class Step8Data(_StrictBase):

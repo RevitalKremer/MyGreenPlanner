@@ -32,6 +32,7 @@ export const A = Object.freeze({
   SET_STEP6_BATTERIES:    'SET_STEP6_BATTERIES',
   // Step 7 (string plan)
   SET_STEP7_STRINGS:      'SET_STEP7_STRINGS',
+  SET_STEP7_INVERTER_LAYOUT: 'SET_STEP7_INVERTER_LAYOUT',
   // Step 8 (electrician approval)
   SET_ELEC_PLAN_APPROVAL: 'SET_ELEC_PLAN_APPROVAL',
   // Step 9 (electrical BOM)
@@ -107,6 +108,7 @@ export const initialProjectState = {
     },
     step7: {
       strings: [],           // [{ id, areaLabel, panelIds, inverterTypeKey, mpptIndex }]
+      inverterLayout: {},     // { [unitIdx]: { x, y, side } } — diagram placement
     },
     step8: {
       planApproval: null,    // same shape as step4.planApproval (electrician)
@@ -264,6 +266,10 @@ export function projectReducer(state, action) {
 
     // ── Step 7 (string plan) ──
 
+    case A.SET_STEP7_INVERTER_LAYOUT: {
+      const inverterLayout = typeof action.value === 'function' ? action.value(state.data.step7.inverterLayout) : action.value
+      return { ...state, data: { ...state.data, step7: { ...state.data.step7, inverterLayout } } }
+    }
     case A.SET_STEP7_STRINGS: {
       const strings = typeof action.value === 'function' ? action.value(state.data.step7.strings) : action.value
       return { ...state, data: { ...state.data, step7: { ...state.data.step7, strings } } }

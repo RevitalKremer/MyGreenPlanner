@@ -1138,6 +1138,8 @@ function App() {
             inverters={s.step6Inverters}
             strings={s.step7Strings}
             onStringsChange={s.setStep7Strings}
+            inverterLayout={s.step7InverterLayout}
+            onInverterLayoutChange={s.setStep7InverterLayout}
           />
         )}
 

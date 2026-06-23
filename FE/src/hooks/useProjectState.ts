@@ -140,6 +140,8 @@ export function useProjectState() {
   const setStep6Batteries = (v) => pDispatch({ type: A.SET_STEP6_BATTERIES, value: v })
   const step7Strings = pState.data.step7?.strings ?? []
   const setStep7Strings = (v) => pDispatch({ type: A.SET_STEP7_STRINGS, value: v })
+  const step7InverterLayout = pState.data.step7?.inverterLayout ?? {}
+  const setStep7InverterLayout = (v) => pDispatch({ type: A.SET_STEP7_INVERTER_LAYOUT, value: v })
   const step8PlanApproval = pState.data.step8?.planApproval ?? null
   const setStep8PlanApproval = (v) => pDispatch({ type: A.SET_ELEC_PLAN_APPROVAL, value: v })
   const step9BomDeltas = pState.data.step9?.bomDeltas ?? null
@@ -408,7 +410,10 @@ export function useProjectState() {
         step4: { planApproval: s4.planApproval ?? null },
         step5: { bomDeltas: s5.bomDeltas ?? null },
         step6: { settings: s6.settings ?? null, inverters: Array.isArray(s6.inverters) ? s6.inverters : [], batteries: Array.isArray(s6.batteries) ? s6.batteries : [] },
-        step7: { strings: Array.isArray(s7.strings) ? s7.strings : [] },
+        step7: {
+          strings: Array.isArray(s7.strings) ? s7.strings : [],
+          inverterLayout: s7.inverterLayout && typeof s7.inverterLayout === 'object' ? s7.inverterLayout : {},
+        },
         step8: { planApproval: s8.planApproval ?? null },
         step9: { bomDeltas: s9.bomDeltas ?? null },
       },
@@ -1008,7 +1013,7 @@ export function useProjectState() {
       if (key === 'step4') { setStep4PlanApproval(null) }
       if (key === 'step5') { setStep5BomDeltas(null) }
       if (key === 'step6') { setStep6Settings(null); setStep6Inverters([]); setStep6Batteries([]) }
-      if (key === 'step7') { setStep7Strings([]) }
+      if (key === 'step7') { setStep7Strings([]); setStep7InverterLayout({}) }
       if (key === 'step8') { setStep8PlanApproval(null) }
       if (key === 'step9') { setStep9BomDeltas(null) }
     }
@@ -1208,6 +1213,7 @@ export function useProjectState() {
     step6Inverters, setStep6Inverters,
     step6Batteries, setStep6Batteries,
     step7Strings, setStep7Strings,
+    step7InverterLayout, setStep7InverterLayout,
     step8PlanApproval, setStep8PlanApproval,
     step9BomDeltas, setStep9BomDeltas,
     // Panel spec (resolved from panelTypes + panelType)

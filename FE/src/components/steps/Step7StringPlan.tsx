@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { generateStrings, validateStrings, fetchSadotEquipment } from '../../services/projectsApi'
 import RowActions from '../shared/RowActions'
@@ -16,17 +16,36 @@ import {
 
 const stringColor = (i: number) => STRING_PALETTE[i % STRING_PALETTE.length]
 
+const SIDES = ['auto', 'left', 'right', 'top', 'bottom'] as const
+
+// The MPPT ports sit on the box edge facing the panels.
+function autoSide(bx: number, by: number, px: number, py: number) {
+  const dx = px - bx, dy = py - by
+  if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'left' : 'right'
+  return dy < 0 ? 'top' : 'bottom'
+}
+
+// Coordinate of MPPT port m (of count) on a given side of box b.
+function portPoint(b: any, side: string, m: number, count: number) {
+  const f = (m + 1) / (count + 1)
+  if (side === 'left') return { x: b.x, y: b.y + b.h * f }
+  if (side === 'right') return { x: b.x + b.w, y: b.y + b.h * f }
+  if (side === 'top') return { x: b.x + b.w * f, y: b.y }
+  return { x: b.x + b.w * f, y: b.y + b.h }   // bottom
+}
+
 // Build the physical inverter units (expand by qty) and the flat list of MPPT
 // inputs across the whole fleet. The BE assigns each string a flat `mpptIndex`
 // into this same ordered port list, so a string → port lookup is index-based.
 function buildFleet(inverters: any[], byKey: Record<string, any>) {
-  const units: { typeKey: string; name: string; kw: number | null; mpptCount: number }[] = []
+  const units: { typeKey: string; name: string; kw: number | null; mpptCount: number; maxStringsPerMppt: number }[] = []
   ;(inverters || []).forEach((p: any) => {
     const prod = byKey[p.typeKey]
     const mpptCount = prod?.params?.mpptCount || 2
     const kw = prod?.params?.acPowerKw ?? null
+    const maxStringsPerMppt = prod?.params?.maxStringsPerMppt || 1
     for (let q = 0; q < (p.qty || 1); q++) {
-      units.push({ typeKey: p.typeKey, name: prod?.name || p.typeKey, kw, mpptCount })
+      units.push({ typeKey: p.typeKey, name: prod?.name || p.typeKey, kw, mpptCount, maxStringsPerMppt })
     }
   })
   const ports: { unitIdx: number; portIdx: number }[] = []
@@ -34,12 +53,27 @@ function buildFleet(inverters: any[], byKey: Record<string, any>) {
   return { units, ports }
 }
 
+// Collapsible left-bar section with a clickable header + chevron.
+function Section({ title, open, onToggle, children }: any) {
+  return (
+    <div style={{ marginTop: '1.1rem', borderTop: `1px solid ${BORDER_FAINT}`, paddingTop: '0.7rem' }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: TEXT_MUTED, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</span>
+        <span style={{ fontSize: '0.7rem', color: TEXT_MUTED }}>{open ? '▾' : '▸'}</span>
+      </div>
+      {open && <div style={{ marginTop: '0.65rem' }}>{children}</div>}
+    </div>
+  )
+}
+
 // Read-only SVG: placed panels colored by their string group on the left, an
 // inverter rack on the right, and connector lines from each string to the MPPT
 // input it feeds.
-function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines }) {
+function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick }) {
   const real = (panels || []).filter((p: any) => !p.isEmpty)
   const selIdx = selectedId ? (strings || []).findIndex((s: any) => s?.id === selectedId) : -1
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [dragging, setDragging] = useState<number | null>(null)
 
   // panel id → owning string index, for highlight coloring.
   const panelStr = useMemo(() => {
@@ -57,34 +91,70 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
     }
     const w = maxX - minX, h = maxY - minY
     const pad = w * 0.03 || 10
+    const pcx = (minX + maxX) / 2, pcy = (minY + maxY) / 2
 
-    // Reserve a rack column to the right of the panels for the inverter boxes.
-    const hasRack = units.length > 0
-    const rackGap = hasRack ? w * 0.12 : 0
-    const rackW = hasRack ? Math.max(w * 0.3, 120) : 0
-    const rackX = maxX + rackGap
-
-    // Stack inverter unit boxes vertically across the panel height.
-    const unitGap = h * 0.05
-    const unitH = units.length ? (h - unitGap * (units.length - 1)) / units.length : 0
-    const unitBoxes = units.map((u: any, i: number) => ({
-      ...u, x: rackX, y: minY + i * (unitH + unitGap), w: rackW, h: unitH,
-    }))
-
-    // Port coordinates (left edge of each unit box), flat-indexed like `ports`.
-    const portPts: { x: number; y: number }[] = []
-    unitBoxes.forEach((b: any) => {
-      for (let m = 0; m < b.mpptCount; m++) {
-        portPts.push({ x: b.x, y: b.y + b.h * (m + 1) / (b.mpptCount + 1) })
-      }
+    // Inverter boxes: default stacked to the right of the panels, but each unit
+    // can be repositioned (layout[i].x/y) and its MPPT side overridden
+    // (layout[i].side; 'auto' faces the panels from the box's current spot).
+    const boxW = Math.max(w * 0.26, 120)
+    const boxH = Math.max(boxW * 0.6, h * 0.13)
+    const gap = h * 0.06
+    const defX = maxX + w * 0.12
+    const unitBoxes = units.map((u: any, i: number) => {
+      const lay = (layout && layout[i]) || {}
+      const x = typeof lay.x === 'number' ? lay.x : defX
+      const y = typeof lay.y === 'number' ? lay.y : minY + i * (boxH + gap)
+      const pref = lay.side || 'auto'
+      const side = pref === 'auto' ? autoSide(x + boxW / 2, y + boxH / 2, pcx, pcy) : pref
+      return { ...u, x, y, w: boxW, h: boxH, side, idx: i }
     })
 
-    const vbX = minX - pad
-    const vbW = (rackX + rackW) - minX + 2 * pad
-    const vbY = minY - pad
-    const vbH = h + 2 * pad
+    // Port coordinates, flat-indexed like `ports`, placed on each box's side.
+    const portPts: { x: number; y: number }[] = []
+    unitBoxes.forEach((b: any) => {
+      for (let m = 0; m < b.mpptCount; m++) portPts.push(portPoint(b, b.side, m, b.mpptCount))
+    })
+
+    // viewBox spans the panels plus every inverter box.
+    let vMinX = minX, vMinY = minY, vMaxX = maxX, vMaxY = maxY
+    unitBoxes.forEach((b: any) => {
+      vMinX = Math.min(vMinX, b.x); vMinY = Math.min(vMinY, b.y)
+      vMaxX = Math.max(vMaxX, b.x + b.w); vMaxY = Math.max(vMaxY, b.y + b.h)
+    })
+    const vbX = vMinX - pad, vbY = vMinY - pad
+    const vbW = (vMaxX - vMinX) + 2 * pad, vbH = (vMaxY - vMinY) + 2 * pad
     return { minX, minY, w, h, pad, unitBoxes, portPts, vb: `${vbX} ${vbY} ${vbW} ${vbH}` }
-  }, [real, units, ports])
+  }, [real, units, ports, layout])
+
+  // Convert a client point to SVG user (viewBox) coordinates — accounts for the
+  // pan/zoom CSS transforms via getScreenCTM, so drag tracks the cursor exactly.
+  const clientToUser = (cx: number, cy: number) => {
+    const svg = svgRef.current
+    if (!svg) return null
+    const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy
+    const m = svg.getScreenCTM(); if (!m) return null
+    const u = pt.matrixTransform(m.inverse())
+    return { x: u.x, y: u.y }
+  }
+
+  const startUnitDrag = (e: any, box: any) => {
+    if (!onMoveUnit) return
+    e.stopPropagation(); e.preventDefault()
+    const u0 = clientToUser(e.clientX, e.clientY); if (!u0) return
+    const offX = u0.x - box.x, offY = u0.y - box.y
+    const move = (ev: MouseEvent) => {
+      const u = clientToUser(ev.clientX, ev.clientY)
+      if (u) onMoveUnit(box.idx, { x: u.x - offX, y: u.y - offY })
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      setDragging(null)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    setDragging(box.idx)
+  }
 
   // Per-string series route: the ordered panel centers a string connects in
   // series (panelIds already come back in series order). This is the snaking
@@ -107,17 +177,25 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
   const portR = Math.max(2, titleFs * 0.28)
   const labelFs = Math.max(titleFs * 0.6, geo.w * 0.012)
 
-  // Connector: string series-end → its MPPT port. Emphasized when selected.
+  // Connector: string series-end → its MPPT port, routed with right-angle
+  // (horizontal/vertical) segments — the final leg approaches the port
+  // perpendicular to the box side it sits on.
   const renderConn = (i: number) => {
     const r = routes[i]
     if (!r) return null
-    const port = geo.portPts[strings[i]?.mpptIndex]
+    const gi = strings[i]?.mpptIndex
+    const port = geo.portPts[gi]
     if (!port) return null
+    const side = geo.unitBoxes[ports[gi]?.unitIdx]?.side
+    // Leave the last panel heading toward the inverter, then turn — so the
+    // run reads as last-panel → port (subway style), not cutting through the array.
+    const pts = (side === 'left' || side === 'right')
+      ? (() => { const mx = (r.end.x + port.x) / 2; return `${r.end.x},${r.end.y} ${mx},${r.end.y} ${mx},${port.y} ${port.x},${port.y}` })()   // H V H
+      : (() => { const my = (r.end.y + port.y) / 2; return `${r.end.x},${r.end.y} ${r.end.x},${my} ${port.x},${my} ${port.x},${port.y}` })()   // V H V
     const isSel = i === selIdx
-    const midX = r.end.x + (port.x - r.end.x) * 0.5
     return (
-      <path key={`c${i}`} d={`M ${r.end.x} ${r.end.y} C ${midX} ${r.end.y} ${midX} ${port.y} ${port.x} ${port.y}`}
-        fill="none" stroke={isSel ? stringColor(i) : PANEL_DARK} strokeWidth={isSel ? lineW * 1.6 : lineW * 0.7}
+      <polyline key={`c${i}`} points={pts} fill="none"
+        stroke={isSel ? stringColor(i) : PANEL_DARK} strokeWidth={isSel ? lineW * 1.6 : lineW * 0.7}
         strokeOpacity={isSel ? 0.85 : (selIdx >= 0 ? 0.2 : 0.45)} strokeDasharray={`${lineW * 3} ${lineW * 2}`} />
     )
   }
@@ -151,16 +229,22 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
   const svgH = Math.round(BASE_W / (vbW / vbH))
 
   return (
-    <svg width={svgW} height={svgH} viewBox={geo.vb} style={{ display: 'block' }}>
-      {/* panels — blue by default; the selected string's panels take its color */}
+    <svg ref={svgRef} width={svgW} height={svgH} viewBox={geo.vb} style={{ display: 'block' }}>
+      {/* panels — blue by default. The "strings colors" layer fills every
+          assigned panel with its string color; the selected string always
+          takes its color (and pops above dimmed siblings). */}
       {real.map((p: any) => {
         const cx = p.x + p.width / 2, cy = p.y + p.height / 2
         const si = panelStr[p.id]
+        const assigned = si != null && si >= 0
         const hi = selIdx >= 0 && si === selIdx
+        const colored = hi || (showStringColors && assigned)
+        const op = hi ? 0.65 : (colored ? (selIdx >= 0 ? 0.4 : 0.6) : 0.85)
         return (
-          <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}>
+          <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}
+            onClick={() => assigned && onPanelClick?.(p.id)} style={{ cursor: assigned ? 'pointer' : 'default' }}>
             <rect x={p.x} y={p.y} width={p.width} height={p.height}
-              fill={hi ? stringColor(si) : PANEL_LIGHT_BG} fillOpacity={hi ? 0.6 : 0.85}
+              fill={colored ? stringColor(si) : PANEL_LIGHT_BG} fillOpacity={op}
               stroke={PANEL_DARK} strokeWidth={Math.max(0.5, p.width * 0.012)} />
           </g>
         )
@@ -172,22 +256,31 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
       {showMpptLines && selIdx >= 0 && renderConn(selIdx)}
       {selIdx >= 0 && renderRoute(selIdx)}
 
-      {/* inverter rack */}
+      {/* inverter rack — draggable boxes; ports on the side facing the panels */}
       {geo.unitBoxes.map((b: any, ui: number) => (
-        <g key={`u${ui}`}>
-          <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={titleFs * 0.4} fill={BG_SUBTLE} stroke={BORDER} strokeWidth={lineW} />
-          <text x={b.x + b.w / 2} y={b.y + titleFs * 1.4} textAnchor="middle" fontSize={titleFs} fontWeight={700} fill={TEXT_DARK}>
-            {`INV ${ui + 1}`}{b.kw != null ? ` · ${b.kw} kW` : ''}
+        <g key={`u${ui}`} onMouseDown={(e) => startUnitDrag(e, b)} onClick={() => onInverterClick?.()}
+          style={{ cursor: onMoveUnit ? (dragging === ui ? 'grabbing' : 'grab') : 'default' }}>
+          <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={titleFs * 0.4} fill={BG_SUBTLE}
+            stroke={dragging === ui ? PRIMARY_DARK : BORDER} strokeWidth={dragging === ui ? lineW * 1.6 : lineW} />
+          <text x={b.x + b.w / 2} y={b.y + b.h * 0.34} textAnchor="middle" fontSize={titleFs} fontWeight={700} fill={TEXT_DARK}>
+            {`INV ${ui + 1}`}
           </text>
-          <text x={b.x + b.w / 2} y={b.y + titleFs * 2.6} textAnchor="middle" fontSize={portFs} fill={TEXT_MUTED}>
-            {`${b.mpptCount} MPPT`}
+          <text x={b.x + b.w / 2} y={b.y + b.h * 0.52} textAnchor="middle" fontSize={portFs} fontWeight={600} fill={TEXT}>
+            {b.name}
+          </text>
+          <text x={b.x + b.w / 2} y={b.y + b.h * 0.68} textAnchor="middle" fontSize={portFs} fill={TEXT_MUTED}>
+            {`${b.kw != null ? b.kw + ' kW · ' : ''}${b.mpptCount} MPPT`}
           </text>
           {Array.from({ length: b.mpptCount }).map((_, m) => {
-            const py = b.y + b.h * (m + 1) / (b.mpptCount + 1)
+            const pt = portPoint(b, b.side, m, b.mpptCount)
+            const lbl = b.side === 'left' ? { x: pt.x + portR * 1.6, y: pt.y + portFs * 0.35, a: 'start' }
+              : b.side === 'right' ? { x: pt.x - portR * 1.6, y: pt.y + portFs * 0.35, a: 'end' }
+              : b.side === 'top' ? { x: pt.x, y: pt.y + portFs * 1.3, a: 'middle' }
+              : { x: pt.x, y: pt.y - portFs * 0.7, a: 'middle' }
             return (
               <g key={`p${m}`}>
-                <circle cx={b.x} cy={py} r={portR} fill={PRIMARY_DARK} stroke="white" strokeWidth={lineW * 0.5} />
-                <text x={b.x + portR * 1.6} y={py + portFs * 0.35} fontSize={portFs} fill={TEXT_SECONDARY}>{`M${m + 1}`}</text>
+                <circle cx={pt.x} cy={pt.y} r={portR} fill={PRIMARY_DARK} stroke="white" strokeWidth={lineW * 0.5} />
+                <text x={lbl.x} y={lbl.y} textAnchor={lbl.a as any} fontSize={portFs} fill={TEXT_SECONDARY}>{`M${m + 1}`}</text>
               </g>
             )
           })}
@@ -199,7 +292,7 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
 
 // Step 7 — auto-generate per-area strings, validate against inverter limits,
 // and visualize string groups + their inverter/MPPT connections.
-export default function Step7StringPlan({ projectId, panels, inverters, strings, onStringsChange }) {
+export default function Step7StringPlan({ projectId, panels, inverters, strings, onStringsChange, inverterLayout, onInverterLayoutChange }) {
   const { t } = useLang()
   const [issues, setIssues] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
@@ -208,6 +301,10 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showInverters, setShowInverters] = useState(true)
   const [showMpptLines, setShowMpptLines] = useState(true)
+  const [showStringColors, setShowStringColors] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(true)
+  const [invertersOpen, setInvertersOpen] = useState(false)
+  const [stringsOpen, setStringsOpen] = useState(true)
   const {
     zoom, setZoom, panOffset, panActive, containerRef, contentRef,
     startPan, handleMouseMove, stopPan, resetView, centerView,
@@ -226,6 +323,32 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
   const byKey = useMemo(() => Object.fromEntries(equipment.map(e => [e.type_key, e])), [equipment])
   const { units, ports } = useMemo(() => buildFleet(inverters, byKey), [inverters, byKey])
 
+  // Port capacity / usage for the MPPT reassignment dropdown (free-capacity only).
+  const portUsage = useMemo(() => {
+    const used = ports.map(() => 0)
+    ;(strings || []).forEach((s: any) => {
+      const i = s.mpptIndex
+      if (typeof i === 'number' && i >= 0 && i < used.length) used[i]++
+    })
+    return used
+  }, [ports, strings])
+  const portCap = (gi: number) => units[ports[gi]?.unitIdx]?.maxStringsPerMppt || 1
+  const portFull = (gi: number) => portUsage[gi] >= portCap(gi)
+
+  // Reassign a string to a different MPPT port, then re-validate.
+  const reassignString = (id: string, mpptIndex: number) => {
+    const next = (strings || []).map((s: any) => (s.id === id ? { ...s, mpptIndex } : s))
+    onStringsChange(next)
+    if (projectId) validateStrings(projectId, next).then(r => setIssues(r.issues || [])).catch(() => {})
+  }
+
+  // Inverter layout (position + MPPT side), persisted in step7 data.
+  const moveUnit = (idx: number, pos: { x: number; y: number }) =>
+    onInverterLayoutChange?.((prev: any) => ({ ...(prev || {}), [idx]: { ...((prev || {})[idx] || {}), ...pos } }))
+  const setUnitSide = (idx: number, side: string) =>
+    onInverterLayoutChange?.((prev: any) => ({ ...(prev || {}), [idx]: { ...((prev || {})[idx] || {}), side } }))
+  const resetLayout = () => onInverterLayoutChange?.({})
+
   const handleGenerate = async () => {
     if (!projectId) return
     setBusy(true)
@@ -241,10 +364,18 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
   // Reset clears the whole plan; panels revert to the as-is layout.
   const handleReset = () => {
     onStringsChange([])
+    onInverterLayoutChange?.({})   // also clear inverter positions / sides
     setIssues([])
     setSummary(null)
     setSelectedId(null)
   }
+
+  // Clicking a panel selects its string and opens the Strings area.
+  const handlePanelClick = (pid: any) => {
+    const s = (strings || []).find((st: any) => (st.panelIds || []).includes(pid))
+    if (s) { setSelectedId(s.id); setStringsOpen(true) }
+  }
+  const handleInverterClick = () => setInvertersOpen(true)
 
   // Delete one string; re-validate the remaining set so issues stay accurate.
   const handleDeleteString = (id: string) => {
@@ -286,13 +417,6 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
     }
   }, [panels, strings, units, ports])
 
-  // Map a string's flat mpptIndex back to its inverter/port label.
-  const connLabel = (mpptIndex: number) => {
-    const port = ports[mpptIndex]
-    if (!port) return ''
-    return t('step7.connLabel', { inv: port.unitIdx + 1, mppt: port.portIdx + 1 })
-  }
-
   const detailRow = (label: string, value: any) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.15rem 0' }}>
       <span style={{ color: TEXT_MUTED }}>{label}</span>
@@ -317,8 +441,7 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
         )}
 
         {hasStrings && (
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: TEXT_MUTED, marginBottom: '0.4rem' }}>{t('step7.detailsHeading')}</div>
+          <Section title={t('step7.detailsHeading')} open={summaryOpen} onToggle={() => setSummaryOpen(o => !o)}>
             <div style={{ background: PRIMARY_BG, borderRadius: 6, padding: '0.5rem 0.8rem' }}>
               {detailRow(t('step7.detail.panels'), stats.totalPanels)}
               {detailRow(t('step7.detail.strings'), stats.stringCount)}
@@ -327,16 +450,37 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
               {detailRow(t('step7.detail.inverters'), stats.inverters)}
               {detailRow(t('step7.detail.mppt'), stats.mpptInputs)}
             </div>
-          </div>
+          </Section>
+        )}
+
+        {hasStrings && units.length > 0 && (
+          <Section title={t('step7.invHeading')} open={invertersOpen} onToggle={() => setInvertersOpen(o => !o)}>
+            <div style={{ fontSize: '0.72rem', color: TEXT_MUTED, fontStyle: 'italic', marginBottom: '0.5rem' }}>{t('step7.dragHint')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {units.map((u: any, i: number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: TEXT }}>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`INV ${i + 1} · ${u.name}`}</span>
+                  <select value={(inverterLayout && inverterLayout[i]?.side) || 'auto'} onChange={(e) => setUnitSide(i, e.target.value)} title={t('step7.portSide')}
+                    style={{ fontSize: '0.7rem', padding: '0.12rem 0.2rem', border: `1px solid ${BORDER_FAINT}`, borderRadius: 4 }}>
+                    {SIDES.map(sd => <option key={sd} value={sd}>{t(`step7.side.${sd}`)}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <button onClick={resetLayout}
+              style={{ marginTop: '0.6rem', padding: '0.4rem 0.6rem', background: 'none', color: TEXT_SECONDARY, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
+              {t('step7.resetLayout')}
+            </button>
+          </Section>
         )}
 
         {hasStrings && (
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: TEXT_MUTED, marginBottom: '0.5rem' }}>{t('step7.issuesHeading')}</div>
+          <Section title={t('step7.legend')} open={stringsOpen} onToggle={() => setStringsOpen(o => !o)}>
+            {/* validation */}
             {errors.length === 0 && warnings.length === 0 ? (
-              <div style={{ background: SUCCESS_BG, color: SUCCESS_DARK, borderRadius: 6, padding: '0.6rem 0.8rem', fontSize: '0.82rem' }}>{t('step7.valid')}</div>
+              <div style={{ background: SUCCESS_BG, color: SUCCESS_DARK, borderRadius: 6, padding: '0.5rem 0.8rem', fontSize: '0.8rem', marginBottom: '0.6rem' }}>{t('step7.valid')}</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: '0.6rem' }}>
                 {errors.map((it, i) => (
                   <div key={`e${i}`} style={{ background: ERROR_BG, color: ERROR_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.8rem' }}>{issueText(it)}</div>
                 ))}
@@ -345,29 +489,30 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {hasStrings && (
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: TEXT_MUTED, marginBottom: '0.5rem' }}>{t('step7.legend')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {(strings || []).map((s: any, i: number) => {
                 const sel = selectedId === s.id
                 return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: TEXT, borderRadius: 6, padding: '0.15rem 0.3rem', background: sel ? PANEL_LIGHT_BG : 'transparent' }}>
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: TEXT, borderRadius: 6, padding: '0.15rem 0.3rem', background: sel ? PANEL_LIGHT_BG : 'transparent' }}>
                     <div onClick={() => setSelectedId(sel ? null : s.id)} title={t('step7.selectString')}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}>
                       <span style={{ width: 12, height: 12, borderRadius: 3, background: stringColor(i), flexShrink: 0 }} />
-                      <span style={{ flex: 1 }}>{s.id} · {t('step7.legendPanels', { n: (s.panelIds || []).length })}</span>
-                      <span style={{ color: TEXT_MUTED, fontSize: '0.74rem' }}>{connLabel(s.mpptIndex)}</span>
+                      <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{s.id} · {t('step7.legendPanels', { n: (s.panelIds || []).length })}</span>
                     </div>
+                    <select value={s.mpptIndex ?? ''} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => reassignString(s.id, Number(e.target.value))} title={t('step7.reassignMppt')}
+                      style={{ fontSize: '0.68rem', padding: '0.1rem 0.15rem', border: `1px solid ${BORDER_FAINT}`, borderRadius: 4, maxWidth: 92 }}>
+                      {ports.map((pt: any, gi: number) => {
+                        const dis = portFull(gi) && gi !== s.mpptIndex
+                        return <option key={gi} value={gi} disabled={dis}>{`INV${pt.unitIdx + 1}·M${pt.portIdx + 1}${dis ? ' ✕' : ''}`}</option>
+                      })}
+                    </select>
                     <RowActions onDelete={() => handleDeleteString(s.id)} deleteTitle={t('step7.deleteString')} />
                   </div>
                 )
               })}
             </div>
-          </div>
+          </Section>
         )}
       </div>
 
@@ -383,13 +528,17 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
               <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: 'top left' }}>
                 <div ref={contentRef} style={{ display: 'inline-block', transform: `scale(${zoom})`, transformOrigin: 'top left', padding: '1rem' }}>
                   <StringCanvas panels={panels} strings={strings} selectedId={selectedId}
-                    units={hasStrings && showInverters ? units : []} ports={ports} showMpptLines={showMpptLines} />
+                    units={hasStrings && showInverters ? units : []} ports={ports}
+                    showMpptLines={showMpptLines} showStringColors={showStringColors}
+                    layout={inverterLayout} onMoveUnit={moveUnit}
+                    onPanelClick={handlePanelClick} onInverterClick={handleInverterClick} />
                 </div>
               </div>
               {hasStrings && (
                 <LayersPanel actions={[]} layers={[
                   { label: t('step7.layer.inverters'), checked: showInverters, setter: setShowInverters },
                   { label: t('step7.layer.mpptLines'), checked: showMpptLines, setter: setShowMpptLines },
+                  { label: t('step7.layer.stringColors'), checked: showStringColors, setter: setShowStringColors },
                 ]} />
               )}
               <CanvasNavigator
