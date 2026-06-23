@@ -10,7 +10,8 @@ import {
 // Step 9 — electrical (Sadot goods) BOM table. Reads the separate
 // project_electrical_bom stack via the /electrical-bom endpoints.
 export default function Step9ElectricalBom({ projectId }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const sadotUrlFor = (u: any): string | null => (u && typeof u === 'object' ? (u[lang] || u.en || u.he || null) : (u || null))
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -76,8 +77,8 @@ export default function Step9ElectricalBom({ projectId }) {
                   <tr key={`${it.element}-${i}`}>
                     <td style={td}>
                       {it.name || it.element}
-                      {it.sadotUrl && (
-                        <a href={it.sadotUrl} target="_blank" rel="noreferrer" style={{ marginInlineStart: 8, fontSize: '0.75rem' }}>↗</a>
+                      {sadotUrlFor(it.sadotUrl) && (
+                        <a href={sadotUrlFor(it.sadotUrl)!} target="_blank" rel="noreferrer" style={{ marginInlineStart: 8, fontSize: '0.75rem' }}>↗</a>
                       )}
                     </td>
                     <td style={{ ...td, color: TEXT_SECONDARY }}>{it.section || '—'}</td>

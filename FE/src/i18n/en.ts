@@ -25,6 +25,7 @@ const en = {
   // ── Common ───────────────────────────────────────────────────────────────
   'common.confirm': 'Confirm',
   'common.cancel':  'Cancel',
+  'common.openNewTab': 'Open in new tab',
 
   // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
   'step2.error.noAreas':                 'Add at least one area before continuing.',
@@ -403,8 +404,8 @@ const en = {
   'step2.tool.roofAxisTitle':     'Set roof axis — define the roof horizontal',
   'step2.tool.roofAxisHint':      'Drag the line’s endpoints to align it with the roof edge (0° reference). New rows you draw follow this axis.',
   'step2.tool.resetRoofAxis':     '↺ Reset roof line',
-  'step2.tool.yLocked':           '⊟ Y-Lock ON',
-  'step2.tool.yFree':             '⊟ Y-Lock OFF',
+  'step2.tool.yLocked':           '⊟ Move/Rotate Mode',
+  'step2.tool.yFree':             '⊟ Resize Mode',
   'step2.tool.modeAreas':         '◫ Areas',
   'step2.tool.modePanels':        '⊞ Panels',
   'step2.tool.selectedArea':      'Area {label} selected',
@@ -419,8 +420,8 @@ const en = {
   'step2.tool.recalcRows':        '↻ Recalc rows',
   'step2.tool.recalcRowsTitle':   'Split rows by voids / rotated panels',
   'step2.tool.drawRowHint':       'Draw a new row on the canvas',
-  'step2.tool.drawVerticalOn':   'V-Draw',
-  'step2.tool.drawVerticalOff':  'V-Draw',
+  'step2.tool.drawVerticalOn':   'Vertical-Draw',
+  'step2.tool.drawVerticalOff':  'Horizontal-Draw',
   'step2.tool.drawVerticalOnTitle':  'Drawing vertical areas. Click to switch to horizontal.',
   'step2.tool.drawVerticalOffTitle': 'Drawing horizontal areas. Click to draw vertical.',
   'step2.tool.selectPanelTool':   'Select a panel tool above',

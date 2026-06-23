@@ -35,9 +35,8 @@ class Product(Base):
     extra: Mapped[str | None] = mapped_column(String(50), nullable=True)
     alt_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    length_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    width_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    kw_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Panel physical dimensions / peak watts live in `params` (lengthCm /
+    # widthCm / Wp) — no panel-only columns on the shared products table.
     price_ils: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     depreciation_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -56,8 +55,8 @@ class Product(Base):
     #              "maxInputCurrentA", "maxStringsPerMppt", "maxSystemVoltageV",
     #              "productCategory": "ongrid|hybrid|offgrid", ...}
     params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # Sadot Energy product page URL — promotes Sadot sales (inverters,
-    # batteries, dongles, …). Surfaced as a "View on Sadot Energy" link.
-    sadot_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Sadot Energy product links per locale, e.g. {"he": "...", "en": "..."}.
+    # Surfaced as a "View on Sadot Energy" link, resolved by the UI language.
+    sadot_url: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -14,9 +14,13 @@ class PanelTypeRead(BaseModel):
     id: str
     type_key: str
     name: str
-    length_cm: float
-    width_cm: float
-    kw_peak: int
+    # Dimensions / peak watts now live in params (lengthCm / widthCm / Wp);
+    # still surfaced as these fields so the FE panelSpec shape is unchanged.
+    length_cm: float | None = None
+    width_cm: float | None = None
+    kw_peak: int | None = None
+    params: dict | None = None
+    sadot_url: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -33,17 +37,20 @@ async def list_panel_types(db: AsyncSession = Depends(get_db)):
         .order_by(Product.name)
     )
     products = result.scalars().all()
-    return [
-        PanelTypeRead(
+    out = []
+    for p in products:
+        pr = p.params or {}
+        out.append(PanelTypeRead(
             id=str(p.id),
             type_key=p.type_key,
             name=p.name,
-            length_cm=p.length_cm,
-            width_cm=p.width_cm,
-            kw_peak=p.kw_peak,
-        )
-        for p in products
-    ]
+            length_cm=pr.get('lengthCm'),
+            width_cm=pr.get('widthCm'),
+            kw_peak=pr.get('Wp'),
+            params=p.params,
+            sadot_url=p.sadot_url,
+        ))
+    return out
 
 
 class MaterialRead(BaseModel):
@@ -86,7 +93,7 @@ class SadotEquipmentRead(BaseModel):
     part_number: str | None = None
     price_ils: float | None = None
     params: dict | None = None
-    sadot_url: str | None = None
+    sadot_url: dict | None = None
 
     model_config = {"from_attributes": True}
 

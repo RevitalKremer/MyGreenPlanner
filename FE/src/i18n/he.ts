@@ -25,6 +25,7 @@ const he = {
   // ── Common ───────────────────────────────────────────────────────────────
   'common.confirm': 'אישור',
   'common.cancel':  'ביטול',
+  'common.openNewTab': 'פתח בלשונית חדשה',
 
   // ── Step 2 validation messages (BE-emitted, FE-translated) ───────────────
   'step2.error.noAreas':                       'יש להוסיף לפחות אזור אחד לפני המעבר לשלב הבא.',
@@ -401,8 +402,8 @@ const he = {
   'step2.tool.roofAxisTitle':   'ציר גג — הגדרת אופק הגג',
   'step2.tool.roofAxisHint':    'גרור את קצות הקו כדי ליישר אותו לשולי הגג (ייחוס 0°). שורות חדשות שתסרטט יתיישרו לפי הציר.',
   'step2.tool.resetRoofAxis':   '↺ אפס קו גג',
-  'step2.tool.yLocked':         '⊟  Y-Lock פעיל',
-  'step2.tool.yFree':           '⊟  Y-Lock כבוי',
+  'step2.tool.yLocked':         '⊟  Move/Rotate מצב',
+  'step2.tool.yFree':           '⊟  Resize מצב',
   'step2.tool.modeAreas':       '◫ אזורים',
   'step2.tool.modePanels':      '⊞ פנלים',
   'step2.tool.selectedArea':    ' {label} נבחר אזור',
@@ -417,8 +418,8 @@ const he = {
   'step2.tool.recalcRows':        '↻ חשב מחדש שורות',
   'step2.tool.recalcRowsTitle':   'פצל שורות לפי חורים / פנלים מסובבים',
   'step2.tool.drawRowHint':       'צייר שורה חדשה על הקנבס',
-  'step2.tool.drawVerticalOn':   'V-Draw',
-  'step2.tool.drawVerticalOff':  'V-Draw',
+  'step2.tool.drawVerticalOn':   'Vertical-Draw',
+  'step2.tool.drawVerticalOff':  'Horizontal-Draw',
   'step2.tool.drawVerticalOnTitle':  'מצייר אזורים אנכיים. לחץ למעבר לאופקי.',
   'step2.tool.drawVerticalOffTitle': 'מצייר אזורים אופקיים. לחץ לציור אנכי.',
   'step2.tool.selectPanelTool': 'בחר כלי פנל למעלה',

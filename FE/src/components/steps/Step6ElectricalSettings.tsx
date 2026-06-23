@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { fetchSadotEquipment, getInverterSuggestions, fetchElectricalRegulations } from '../../services/projectsApi'
+import IframeModal from '../shared/IframeModal'
 import {
   PRIMARY, PRIMARY_BG, PRIMARY_DARK,
   TEXT, TEXT_SECONDARY, TEXT_MUTED,
@@ -25,12 +26,13 @@ const connKey = (c: { phases: number; amperageA: number }) => `${c.phases}x${c.a
 
 // Step 6 — electrical design params + Sadot inverter selection. Settings drive
 // the Step-7 string auto-generation; inverter picks drive sizing + the BOM.
-export default function Step6ElectricalSettings({ projectId, settings, onSettingsChange, inverters, onInvertersChange, batteries, onBatteriesChange, onSave, panelCount, totalKw, areaCount, roofType, panelTypeName }) {
+export default function Step6ElectricalSettings({ projectId, settings, onSettingsChange, inverters, onInvertersChange, batteries, onBatteriesChange, onSave, panelCount, totalKw, areaCount, roofType, panelTypeName, panelSadotUrl }) {
   const { t, lang } = useLang()
   const [equipment, setEquipment] = useState<any[]>([])
   const [suggest, setSuggest] = useState<any>(null)
   const [pick, setPick] = useState('')
   const [batPick, setBatPick] = useState('')
+  const [sadotModal, setSadotModal] = useState<{ url: string; title: string } | null>(null)
   const [regulations, setRegulations] = useState<any[]>([])
   const [suggesting, setSuggesting] = useState(false)
 
@@ -179,9 +181,14 @@ export default function Step6ElectricalSettings({ projectId, settings, onSetting
   )
 
   // Shared selected-row (name + Sadot link + mismatch flag + qty + remove).
+  // Resolve a product's Sadot link for the current UI language.
+  const sadotUrlFor = (u: any): string | null =>
+    u ? (u[lang] || u.en || u.he || null) : null
+
   const EquipmentRow = (p: any, onQty: (k: string, q: number) => void, onRemove: (k: string) => void) => {
     const prod = byKey[p.typeKey]
     const mismatch = isMismatch(p.typeKey)
+    const sUrl = sadotUrlFor(prod?.sadot_url)
     return (
       <div key={p.typeKey} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.55rem 0.7rem', borderRadius: 6, border: `1px solid ${mismatch ? WARNING_DARK : BORDER_FAINT}`, background: mismatch ? WARNING_BG : 'white' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -189,10 +196,11 @@ export default function Step6ElectricalSettings({ projectId, settings, onSetting
             {prod?.name ?? p.typeKey}
             {mismatch && <span title={t('step6.mismatch')} style={{ color: WARNING_DARK }}>⚠</span>}
           </div>
-          {prod?.sadot_url && (
-            <a href={prod.sadot_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none' }}>
+          {sUrl && (
+            <button onClick={() => setSadotModal({ url: sUrl, title: prod.name ?? p.typeKey })}
+              style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.76rem', color: BLUE, cursor: 'pointer', textAlign: 'start' }}>
               {t('step6.inverters.viewSadot')}
-            </a>
+            </button>
           )}
         </div>
         <label style={{ fontSize: '0.78rem', color: TEXT_MUTED }}>{t('step6.inverters.qty')}</label>
@@ -339,11 +347,22 @@ export default function Step6ElectricalSettings({ projectId, settings, onSetting
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.5rem 1rem', fontSize: '1rem', color: TEXT }}>
               <span style={{ fontWeight: 700 }}>{(totalKw ?? 0).toFixed(2)} kWp</span>
               <span style={{ color: TEXT_MUTED }}>·</span>
-              <span>{panelCount ?? 0} × {panelTypeName || '—'}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {panelCount ?? 0} × {panelTypeName || '—'}
+                {sadotUrlFor(panelSadotUrl) && (
+                  <button onClick={() => setSadotModal({ url: sadotUrlFor(panelSadotUrl)!, title: panelTypeName || 'Panel' })}
+                    title={t('step6.inverters.viewSadot')}
+                    style={{ background: 'none', border: 'none', padding: 0, color: BLUE, cursor: 'pointer', fontSize: '0.9rem' }}>↗</button>
+                )}
+              </span>
             </div>
           ), true)}
         </div>
       </div>
+
+      {sadotModal && (
+        <IframeModal url={sadotModal.url} title={sadotModal.title} onClose={() => setSadotModal(null)} />
+      )}
     </div>
   )
 }

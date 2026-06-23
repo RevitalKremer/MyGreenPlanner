@@ -5,17 +5,21 @@ import {
   BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, BG_FAINT, ERROR, ERROR_BG, DANGER,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
+import KeyValueEditor from '../shared/KeyValueEditor'
+import RowActions from '../shared/RowActions'
+
+const SADOT_URL_KEYS = [{ key: 'en', label: 'EN' }, { key: 'he', label: 'HE' }]
 
 // Sadot Energy product types this tab manages (mirrors BE SADOT_EQUIPMENT_TYPES).
 const SADOT_TYPES = ['inverter', 'battery', 'battery_base', 'dongle', 'datalogger', 'cable', 'smart_meter', 'network_cabinet', 'portable_power_station', 'bms', 'backup_box', 'energy_management']
 
-const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: '', active: true, params: '' }
+const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: null, active: true, params: '' }
 
 function EquipmentEditor({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState(() => ({
     ...emptyForm, ...product,
     price_ils: product?.price_ils ?? '',
-    sadot_url: product?.sadot_url ?? '',
+    sadot_url: product?.sadot_url ?? null,
     part_number: product?.part_number ?? '',
     params: product?.params ? JSON.stringify(product.params, null, 2) : '',
   }))
@@ -35,7 +39,7 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       name: form.name.trim(),
       part_number: form.part_number.trim() || null,
       price_ils: form.price_ils === '' ? null : Number(form.price_ils),
-      sadot_url: form.sadot_url.trim() || null,
+      sadot_url: form.sadot_url && Object.keys(form.sadot_url).length ? form.sadot_url : null,
       active: form.active,
       params,
     })
@@ -65,7 +69,10 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
         {field(t('admin.sadot.col.pn'), 'part_number', 'P.N.')}
         {field(t('admin.sadot.col.price'), 'price_ils', '0', { textAlign: 'right' })}
-        {field(t('admin.sadot.sadotUrl'), 'sadot_url', 'https://sadot-energy.com/…')}
+      </div>
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.sadotUrl')}</label>
+        <KeyValueEditor value={form.sadot_url} onChange={v => set('sadot_url', v)} allowedKeys={SADOT_URL_KEYS} placeholder="https://sadot-energy.co.il/…" />
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.electricalJson')}</label>
@@ -168,7 +175,9 @@ export default function SadotEquipmentTab() {
                 <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}`, opacity: p.active ? 1 : 0.55 }}>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: 500 }}>
                     {p.name}
-                    {p.sadot_url && <a href={p.sadot_url} target="_blank" rel="noreferrer" style={{ marginInlineStart: 6, fontSize: '0.72rem' }}>↗</a>}
+                    {(p.sadot_url?.en || p.sadot_url?.he) && (
+                      <a href={p.sadot_url.en || p.sadot_url.he} target="_blank" rel="noreferrer" style={{ marginInlineStart: 6, fontSize: '0.72rem' }}>↗</a>
+                    )}
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, fontFamily: 'monospace', fontSize: '0.76rem' }}>{p.product_type}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, textAlign: 'right' }}>{p.price_ils != null ? Number(p.price_ils).toLocaleString() : '—'}</td>
@@ -192,10 +201,10 @@ export default function SadotEquipmentTab() {
                     ) : <span style={{ color: TEXT_VERY_LIGHT }}>—</span>}
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button onClick={() => { setEditingId(p.id); setAddingNew(false) }} title={t('admin.common.edit')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.3rem' }}>✎</button>
-                      <button onClick={() => handleDelete(p.id)} title={t('admin.common.delete')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: DANGER, padding: '0.3rem' }}>🗑</button>
-                    </div>
+                    <RowActions
+                      onEdit={() => { setEditingId(p.id); setAddingNew(false) }}
+                      onDelete={() => handleDelete(p.id)}
+                      editTitle={t('admin.common.edit')} deleteTitle={t('admin.common.delete')} />
                   </td>
                 </tr>
               )

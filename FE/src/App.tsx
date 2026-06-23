@@ -1127,6 +1127,7 @@ function App() {
             areaCount={(s.areas || []).length}
             roofType={s.currentProject?.roofSpec?.type || 'concrete'}
             panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            panelSadotUrl={s.panelSpec?.sadotUrl}
           />
         )}
 
