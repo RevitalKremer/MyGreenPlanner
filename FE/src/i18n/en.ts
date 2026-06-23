@@ -224,6 +224,7 @@ const en = {
   'step7.layer.inverters':       'Inverters',
   'step7.layer.mpptLines':       'MPPT lines',
   'step7.layer.stringColors':    'String colors',
+  'step7.layer.directions':      'Directions',
   'step7.summary':               '{strings} strings · series {sMin}–{sMax} per string',
   'step7.noStrings':             'No strings yet. Click "Generate strings" to build the plan.',
   'step7.valid':                 'All strings are within the inverter limits.',
@@ -248,6 +249,8 @@ const en = {
   'step7.issue.stringVmpBelowMin':    'String {stringId}: hot Vmp {vmp}V is below the {limit}V MPPT minimum.',
   'step7.issue.stringCurrentExceedsInput': 'String current {current}A exceeds the {limit}A input limit.',
   'step7.issue.tooManyStrings':       '{strings} strings exceed the inverter capacity of {capacity}.',
+  'step7.issue.mpptMixedCount':       'MPPT {mppt}: strings on the same input must have the same panel count.',
+  'step7.issue.mpptMixedDirection':   'MPPT {mppt}: strings on the same input must face the same direction.',
 
   // ── Step 8: Electrician Approval (clone of Step 4 self-attestation) ──────
   'step8.title':       'Electrician Approval',

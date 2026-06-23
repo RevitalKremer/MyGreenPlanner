@@ -1139,6 +1139,7 @@ function App() {
             projectId={s.cloudProjectId}
             panels={s.panels}
             inverters={s.step6Inverters}
+            areas={s.areas}
             strings={s.step7Strings}
             onStringsChange={s.setStep7Strings}
             inverterLayout={s.step7InverterLayout}

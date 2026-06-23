@@ -847,11 +847,8 @@ async def generate_electrical_strings(
     inverters = await _load_selected_inverters(db, data)
     panels = (project.layout or {}).get('panels') or []
     settings = (data.get('step6') or {}).get('settings') or {}
-    label_by_area = {
-        i: a.get('label')
-        for i, a in enumerate((data.get('step2') or {}).get('areas') or [])
-        if a.get('label')
-    }
+    areas = (data.get('step2') or {}).get('areas') or []
+    label_by_area = {i: a.get('label') for i, a in enumerate(areas) if a.get('label')}
 
     result = electrical_service.generate_string_plan(
         panels, panel_product, inverters, settings, label_by_area,

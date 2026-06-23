@@ -28,7 +28,7 @@ export function buildFleet(inverters: any[], byKey: Record<string, any>) {
 // Step 7 host — tabs over the string plan (diagram) and the distribution
 // summary. Both tabs stay mounted (visibility toggled) so their state is kept
 // when switching. `units`/`ports` are derived once here and shared with both.
-export default function Step7StringsPlan({ projectId, panels, inverters, strings, onStringsChange, inverterLayout, onInverterLayoutChange, mode, onModeChange, panelWatt }: any) {
+export default function Step7StringsPlan({ projectId, panels, inverters, areas, strings, onStringsChange, inverterLayout, onInverterLayoutChange, mode, onModeChange, panelWatt }: any) {
   const { t } = useLang()
   const [equipment, setEquipment] = useState<any[]>([])
   const [tab, setTab] = useState<'diagram' | 'sld' | 'distribution'>('diagram')
@@ -55,7 +55,7 @@ export default function Step7StringsPlan({ projectId, panels, inverters, strings
       {/* Strings plan tab (kept mounted to preserve its state) */}
       <div style={{ flex: 1, minHeight: 0, display: tab === 'diagram' ? 'block' : 'none', background: BG_FAINT }}>
         <StringsPlanTab
-          projectId={projectId} panels={panels} strings={strings} onStringsChange={onStringsChange}
+          projectId={projectId} panels={panels} areas={areas} strings={strings} onStringsChange={onStringsChange}
           inverterLayout={inverterLayout} onInverterLayoutChange={onInverterLayoutChange}
           mode={mode} onModeChange={onModeChange}
           units={units} ports={ports} />

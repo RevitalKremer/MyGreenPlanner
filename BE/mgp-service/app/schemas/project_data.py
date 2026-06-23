@@ -443,6 +443,9 @@ class ElectricalString(_StrictBase):
     panelIds: list[int] = Field(default_factory=list)
     inverterTypeKey: Optional[str] = None
     mpptIndex: Optional[int] = None
+    # Orientation signature of the string's area. Strings sharing one MPPT must
+    # have the same panel count AND the same direction.
+    direction: Optional[str] = None
 
 
 class Step7Data(_StrictBase):

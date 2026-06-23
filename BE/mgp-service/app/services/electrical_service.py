@@ -285,6 +285,13 @@ def _series_bounds(pspec: dict, ispec: dict, t_min: float, t_max: float) -> tupl
     return s_max, s_min
 
 
+def panel_direction(panel: dict) -> str:
+    """Panel facing signature — the in-plane direction shown by the panel arrow
+    (screen rotation + row direction). Panel tilt (a/h) does NOT affect it.
+    Strings on one MPPT must share this facing."""
+    return f"{panel.get('rotation') or 0}|{panel.get('yDir') or 'ttb'}"
+
+
 def _split_counts(n: int, s_max: int) -> list[int]:
     """Split n panels into the fewest near-equal strings each ≤ s_max."""
     k = max(1, math.ceil(n / s_max))
@@ -340,25 +347,20 @@ def generate_string_plan(
     # string ids globally unique.
     label_seq: dict[str, int] = {}
 
-    # Flat MPPT input list across the selected fleet (qty handled by caller
-    # passing repeated products), ordered unit-by-unit then port 0..mpptCount-1
-    # — must match the FE port ordering so mpptIndex lines up.
+    # Per-MPPT-input capacity (maxStringsPerMppt), ordered unit-by-unit then
+    # port 0..mpptCount-1 — must match the FE port ordering so mpptIndex lines up.
     caps_by_input: list[int] = []
     for inv in selected_inverters:
         sp = inverter_specs(inv)
         caps_by_input.extend([sp['maxStringsPerMppt']] * sp['mpptCount'])
     total_inputs = len(caps_by_input) or 1
-    # One slot per allowed string on each input, breadth-first: every input
-    # takes its 1st string before any input takes a 2nd (respecting
-    # maxStringsPerMppt). With the default cap of 1 this is one string per MPPT.
-    max_cap = max(caps_by_input) if caps_by_input else 1
-    slots: list[int] = [gi for r in range(max_cap) for gi, cap in enumerate(caps_by_input) if r < cap]
-    input_cursor = 0
 
     if s_max is not None and s_min is not None and s_max < s_min:
         issues.append(_issue('mpptWindowInfeasible', SEV_ERROR, 'inverter',
                              sMax=s_max, sMin=s_min))
 
+    # 1. Build the strings per area (no MPPT yet), tagging each with the area's
+    #    direction signature.
     for area_idx in sorted(groups.keys()):
         area_panels = groups[area_idx]
         n = len(area_panels)
@@ -368,27 +370,38 @@ def generate_string_plan(
 
         # Without a usable s_max, fall back to one string for the whole area so
         # the FE still has a grouping to render; validation flags the gap.
-        if s_max is None or s_max < 1:
-            counts = [n]
-        else:
-            counts = _split_counts(n, s_max)
+        counts = [n] if (s_max is None or s_max < 1) else _split_counts(n, s_max)
 
         cursor = 0
         for length in counts:
             seg = area_panels[cursor:cursor + length]
             cursor += length
             label_seq[label] = label_seq.get(label, 0) + 1
-            # One string per MPPT slot in order; strings past total capacity
-            # stay unassigned (None) and the validation flags the over-subscription.
-            mppt_index = slots[input_cursor] if input_cursor < len(slots) else None
             strings.append({
                 'id': f'STR-{label}-{label_seq[label]:02d}',
                 'areaLabel': label,
                 'panelIds': [p.get('id') for p in seg],
                 'inverterTypeKey': primary_key,
-                'mpptIndex': mppt_index,
+                'direction': panel_direction(seg[0]) if seg else None,
+                'mpptIndex': None,
             })
-            input_cursor += 1
+
+    # 2. First-fit assignment: each string goes to the first MPPT input that is
+    #    empty, or already holds strings of the SAME (panel count, direction)
+    #    with free capacity. This fills an input to its max before moving on and
+    #    keeps each input homogeneous. Strings past capacity stay unassigned.
+    port_used = [0] * total_inputs
+    port_spec: list[tuple | None] = [None] * total_inputs
+    for s in strings:
+        spec = (len(s['panelIds']), s['direction'])
+        for gi in range(total_inputs):
+            if port_used[gi] >= caps_by_input[gi]:
+                continue
+            if port_spec[gi] is None or port_spec[gi] == spec:
+                s['mpptIndex'] = gi
+                port_used[gi] += 1
+                port_spec[gi] = spec
+                break
 
     issues.extend(validate_string_plan(strings, panel_product, selected_inverters, settings))
     summary = {
@@ -456,6 +469,18 @@ def validate_string_plan(
     if total_capacity and len(strings) > total_capacity:
         issues.append(_issue('tooManyStrings', SEV_ERROR, 'inverters',
                              strings=len(strings), capacity=total_capacity))
+
+    # Same MPPT input: all strings on it must share panel count + direction.
+    by_port: dict[int, list[dict]] = {}
+    for s in strings:
+        gi = s.get('mpptIndex')
+        if isinstance(gi, int):
+            by_port.setdefault(gi, []).append(s)
+    for gi, group in sorted(by_port.items()):
+        if len({len(s.get('panelIds') or []) for s in group}) > 1:
+            issues.append(_issue('mpptMixedCount', SEV_ERROR, 'mppt', mppt=gi + 1))
+        if len({s.get('direction') for s in group}) > 1:
+            issues.append(_issue('mpptMixedDirection', SEV_ERROR, 'mppt', mppt=gi + 1))
     return issues
 
 

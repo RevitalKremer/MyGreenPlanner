@@ -5,6 +5,7 @@ import RowActions from '../../shared/RowActions'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import LayersPanel from '../step3/LayersPanel'
 import ConfirmDialog from '../../ConfirmDialog'
+import DirectionArrow from '../../shared/DirectionArrow'
 import { useConfirm } from '../../../hooks/useConfirm'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import {
@@ -54,7 +55,7 @@ function Section({ title, open, onToggle, children }: any) {
 // input it feeds.
 // Pure, self-contained SVG of the strings plan. Exported so the Step 9 PDF can
 // embed it directly (printMode → no interactivity, no selection highlight).
-export function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick, printMode = false,
+export function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, showDirections, layout, onMoveUnit, onPanelClick, onInverterClick, printMode = false,
   editActive = false, editPanelIds = [], editAreaIdx = null, takenPanels = new Set(), onRemoveAt, onInsertAt }: any) {
   const real = (panels || []).filter((p: any) => !p.isEmpty)
   const selIdx = (printMode || !selectedId) ? -1 : (strings || []).findIndex((s: any) => s?.id === selectedId)
@@ -284,6 +285,13 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
         )
       })}
 
+      {/* direction arrows — each panel's in-plane facing (rotation + yDir) */}
+      {showDirections && real.map((p: any) => (
+        <DirectionArrow key={`d${p.id}`} x={p.x + p.width / 2} y={p.y + p.height / 2}
+          rotation={p.rotation} yDir={p.yDir} size={Math.min(p.width, p.height) * 0.3}
+          fill={PANEL_DARK} fillOpacity={0.6} />
+      ))}
+
       {/* connectors + routing lines — selected drawn last so it sits on top */}
       {showMpptLines && routes.map((_: any, i: number) => (i === selIdx ? null : renderConn(i)))}
       {routes.map((_: any, i: number) => (i === selIdx ? null : renderRoute(i)))}
@@ -365,7 +373,7 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
 // mode: enter edit → draw/delete/reassign on a local draft → Apply (commit all
 // to the server at once, mode='manual') or Discard. `units`/`ports` are derived
 // in the host and shared with the Summary tab.
-export default function StringsPlanTab({ projectId, panels, strings, onStringsChange, inverterLayout, onInverterLayoutChange, mode, onModeChange, units, ports }: any) {
+export default function StringsPlanTab({ projectId, panels, areas, strings, onStringsChange, inverterLayout, onInverterLayoutChange, mode, onModeChange, units, ports }: any) {
   const { t } = useLang()
   const [issues, setIssues] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
@@ -377,6 +385,7 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
   const [showInverters, setShowInverters] = useState(true)
   const [showMpptLines, setShowMpptLines] = useState(true)
   const [showStringColors, setShowStringColors] = useState(false)
+  const [showDirections, setShowDirections] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(true)
   const [invertersOpen, setInvertersOpen] = useState(false)
   const [stringsOpen, setStringsOpen] = useState(true)
@@ -468,6 +477,12 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
     return m
   }, [panels])
   const areaOf = (pid: any) => panelById[pid]?.area
+  // Direction = the panel's in-plane facing (the arrow): rotation + row dir.
+  // Tilt (a/h) does NOT count. Matches the BE panel_direction().
+  const stringDir = (ids: number[]): string => {
+    const p = panelById[ids[0]] || {}
+    return `${p.rotation || 0}|${p.yDir || 'ttb'}`
+  }
   const takenPanels = useMemo(() => {
     const s = new Set<any>()
     ;(effStrings || []).forEach((st: any) => { if (!chain || st.id !== chain.stringId) (st.panelIds || []).forEach((p: any) => s.add(p)) })
@@ -508,7 +523,7 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
     let next: any[]
     if (chain.stringId) {
       next = ids.length
-        ? draft.map((s: any) => (s.id === chain.stringId ? { ...s, panelIds: ids } : s))
+        ? draft.map((s: any) => (s.id === chain.stringId ? { ...s, panelIds: ids, direction: stringDir(ids) } : s))
         : draft.filter((s: any) => s.id !== chain.stringId)
     } else {
       if (!ids.length) { setChain(null); return }
@@ -517,9 +532,15 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
       const used = new Set(draft.map((s: any) => s.id))
       let n = 1; while (used.has(`STR-${label}-${String(n).padStart(2, '0')}`)) n++
       const id = `STR-${label}-${String(n).padStart(2, '0')}`
-      let firstFree = ports.findIndex((_: any, gi: number) => !portFull(gi))
+      // First MPPT that's empty or already holds same (count, direction) strings.
+      const dir = stringDir(ids)
+      let firstFree = ports.findIndex((_: any, gi: number) => {
+        if (portFull(gi)) return false
+        const on = draft.filter((s: any) => s.mpptIndex === gi)
+        return !on.length || ((on[0].panelIds || []).length === ids.length && on[0].direction === dir)
+      })
       if (firstFree < 0) firstFree = null as any
-      next = [...draft, { id, areaLabel: label, panelIds: ids, inverterTypeKey: units[ports[firstFree]?.unitIdx ?? 0]?.typeKey ?? units[0]?.typeKey ?? null, mpptIndex: firstFree }]
+      next = [...draft, { id, areaLabel: label, panelIds: ids, direction: dir, inverterTypeKey: units[ports[firstFree]?.unitIdx ?? 0]?.typeKey ?? units[0]?.typeKey ?? null, mpptIndex: firstFree }]
       setSelectedId(id)
     }
     setDraft(next); reValidate(next); setChain(null)
@@ -679,7 +700,11 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
                       onChange={(e) => reassignString(s.id, Number(e.target.value))} title={t('step7.reassignMppt')}
                       style={{ fontSize: '0.68rem', padding: '0.1rem 0.15rem', border: `1px solid ${BORDER_FAINT}`, borderRadius: 4, maxWidth: 92, opacity: editMode ? 1 : 0.6 }}>
                       {ports.map((pt: any, gi: number) => {
-                        const dis = portFull(gi) && gi !== s.mpptIndex
+                        // Incompatible if the port already holds strings of a
+                        // different (panel count, direction) than this string.
+                        const on = (effStrings || []).filter((x: any) => x.id !== s.id && x.mpptIndex === gi)
+                        const incompat = on.length > 0 && ((on[0].panelIds || []).length !== (s.panelIds || []).length || on[0].direction !== s.direction)
+                        const dis = (portFull(gi) && gi !== s.mpptIndex) || incompat
                         return <option key={gi} value={gi} disabled={dis}>{`INV${pt.unitIdx + 1}·M${pt.portIdx + 1}${dis ? ' ✕' : ''}`}</option>
                       })}
                     </select>
@@ -707,6 +732,7 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
                   <StringCanvas panels={panels} strings={effStrings} selectedId={selectedId}
                     units={hasStrings && showInverters ? units : []} ports={ports}
                     showMpptLines={showMpptLines} showStringColors={showStringColors}
+                    showDirections={showDirections}
                     layout={inverterLayout} onMoveUnit={chain ? undefined : moveUnit}
                     onPanelClick={handlePanelClick} onInverterClick={handleInverterClick}
                     editActive={!!chain} editPanelIds={chain?.panelIds || []} editAreaIdx={chain?.areaIdx ?? null}
@@ -717,7 +743,10 @@ export default function StringsPlanTab({ projectId, panels, strings, onStringsCh
                 { label: t('step7.layer.inverters'), checked: showInverters, setter: setShowInverters },
                 { label: t('step7.layer.mpptLines'), checked: showMpptLines, setter: setShowMpptLines },
                 { label: t('step7.layer.stringColors'), checked: showStringColors, setter: setShowStringColors },
-              ] : []} />
+                { label: t('step7.layer.directions'), checked: showDirections, setter: setShowDirections },
+              ] : [
+                { label: t('step7.layer.directions'), checked: showDirections, setter: setShowDirections },
+              ]} />
               <CanvasNavigator
                 viewZoom={zoom}
                 onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}

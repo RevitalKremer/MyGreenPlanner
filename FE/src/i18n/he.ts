@@ -224,6 +224,7 @@ const he = {
   'step7.layer.inverters':       'ממירים',
   'step7.layer.mpptLines':       'קווי MPPT',
   'step7.layer.stringColors':    'צבעי סטרינגים',
+  'step7.layer.directions':      'כיוונים',
   'step7.summary':               '{strings} סטרינגים · {sMin}–{sMax} פנלים בטור',
   'step7.noStrings':             'אין סטרינגים עדיין. לחץ "צור סטרינגים" לבניית התכנית.',
   'step7.valid':                 'כל הסטרינגים בתוך מגבלות הממיר.',
@@ -243,10 +244,12 @@ const he = {
   'step7.issue.noInverterSelected':   'בחר ממיר בשלב הקודם.',
   'step7.issue.missingInverterSpecs': 'לממיר {typeKey} חסרים נתוני MPPT ({specs}).',
   'step7.issue.mpptWindowInfeasible': 'אין אורך טור תקין לחלון ה-MPPT (מקס {sMax} < מינ {sMin}).',
-  'step7.issue.stringVocExceedsMax':  'מחרוזת {stringId}: Voc קר {voc}V חורג ממגבלת {limit}V.',
-  'step7.issue.stringVmpBelowMin':    'מחרוזת {stringId}: Vmp חם {vmp}V מתחת למינימום {limit}V.',
-  'step7.issue.stringCurrentExceedsInput': 'זרם מחרוזת {current}A חורג ממגבלת הכניסה {limit}A.',
+  'step7.issue.stringVocExceedsMax':  'סטרינג {stringId}: cold Voc {voc}V חורג ממגבלת {limit}V.',
+  'step7.issue.stringVmpBelowMin':    'סטרינג {stringId}: hot Vmp {vmp}V מתחת למינימום {limit}V.',
+  'step7.issue.stringCurrentExceedsInput': 'זרם סטרינג {current}A חורג ממגבלת הכניסה {limit}A.',
   'step7.issue.tooManyStrings':       '{strings} סטרינגים חורגות מקיבולת הממיר {capacity}.',
+  'step7.issue.mpptMixedCount':       'MPPT {mppt}: סטרינגים על אותה כניסה חייבים אותו מספר פאנלים.',
+  'step7.issue.mpptMixedDirection':   'MPPT {mppt}: סטרינגים על אותה כניסה חייבים אותו כיוון.',
 
   // ── שלב 8: אישור חשמלאי ──────────────────────────────────────────────────
   'step8.title':       'אישור חשמלאי',
