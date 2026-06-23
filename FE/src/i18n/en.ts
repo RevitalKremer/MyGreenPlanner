@@ -256,6 +256,13 @@ const en = {
   'step9.col.price':   'Unit price (₪)',
   'step9.recalc':      'Recalculate',
   'step9.empty':       'No electrical BOM yet — select inverters in Step 6.',
+  'step9.tab.bom':     'BOM',
+  'step9.tab.pdf':     'PDF',
+  'step9.downloadPdf': 'Download PDF',
+  'step9.getQuotation': 'Get equipment quotation',
+  'step9.noDiagrams':  'Generate the string plan in Step 7 to produce the electrical PDF.',
+  'step9.menu.equipmentXlsx': 'Equipment proposal (xlsx)',
+  'step9.menu.diagramsPdf':   'Diagrams PDF',
 
   // ── Final: Summary ───────────────────────────────────────────────────────
   'final.title':              'Project Summary',

@@ -1,7 +1,7 @@
 import copy
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Form, Response
 from typing import Annotated, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -1027,6 +1027,36 @@ async def download_proposal(
     )
 
 
+@router.get("/{project_id}/electrical-proposal.xlsx")
+async def download_electrical_proposal(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Generate the Sadot Energy equipment price-proposal xlsx (חשבשבת template)."""
+    try:
+        xlsx_bytes = await electrical_bom_service.generate_electrical_proposal(db, project)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    from urllib.parse import quote
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'equipment'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_equipment_{today}.xlsx"
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return Response(
+        content=xlsx_bytes,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            ),
+        },
+    )
+
+
 @router.get("/{project_id}/production.xlsx")
 async def download_production(
     project_id: uuid.UUID,
@@ -1200,6 +1230,7 @@ QUOTATION_COOLDOWN_SECONDS = 30
 async def request_quotation(
     project_id: uuid.UUID,
     file: Optional[UploadFile] = File(None),
+    request_type: str = Form('construction'),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
@@ -1246,15 +1277,27 @@ async def request_quotation(
     XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     PDF_MIME  = 'application/pdf'
 
-    # xlsx (with pricing) is the canonical deliverable Sadot needs to quote.
-    xlsx_bytes = await proposal_service.generate_proposal(db, project)
+    # Request-type drives the Monday label and which proposals attach:
+    #   construction → [PQ Construction] : construction xlsx (+ production)
+    #   equipment    → [PQ Equipment]    : equipment xlsx
+    #   full         → [PQ - Full]       : both
+    rt = (request_type or 'construction').lower()
+    intent_label = {'construction': '[PQ Construction]', 'equipment': '[PQ Equipment]',
+                    'full': '[PQ - Full]'}.get(rt, '[PQ Construction]')
 
-    monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
+    monday_attachments: list[tuple[str, bytes, str]] = []
+    if rt in ('construction', 'full'):
+        # xlsx (with pricing) is the canonical deliverable Sadot needs to quote.
+        constr_xlsx = await proposal_service.generate_proposal(db, project)
+        monday_attachments.append((xlsx_filename, constr_xlsx, XLSX_MIME))
+        prod_attachment = _build_production_attachment(project, safe_name, today_str, XLSX_MIME, logger)
+        if prod_attachment is not None:
+            monday_attachments.append(prod_attachment)
+    if rt in ('equipment', 'full'):
+        equip_xlsx = await electrical_bom_service.generate_electrical_proposal(db, project)
+        monday_attachments.append((f"{safe_name}_equipment_{today_str}.xlsx", equip_xlsx, XLSX_MIME))
     if pdf_bytes is not None:
         monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
-    prod_attachment = _build_production_attachment(project, safe_name, today_str, XLSX_MIME, logger)
-    if prod_attachment is not None:
-        monday_attachments.append(prod_attachment)
 
     # Quotation routing — fall back to the main board when the dedicated one
     # isn't configured. Empty strings count as "not configured".
@@ -1277,7 +1320,7 @@ async def request_quotation(
             attachments=monday_attachments,
             board_id=quotation_board,
             group_id=quotation_group,
-            intent_label="[QUOTATION REQUEST]",
+            intent_label=intent_label,
         )
     except Exception as e:
         monday_error = str(e)

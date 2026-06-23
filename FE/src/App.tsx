@@ -145,6 +145,9 @@ function App() {
   // Step 5 publishes its PDF / quotation handlers here so the Summary hub can
   // trigger them while Step 5 is mounted off-screen.
   const step5ExportRef = useRef<any>(null)
+  // Step 9 publishes its electrical PDF / equipment-quotation handlers here so
+  // the Final hub can trigger them while Step 9 is mounted off-screen.
+  const step9ExportRef = useRef<any>(null)
   // Mirrors `settings.isAnyDirty` from useStep3Settings. Used by Start Over
   // to skip the confirm prompt when there's nothing to lose. Default `true`
   // so before step 3 has mounted (or on a fresh project), Start Over still
@@ -1154,8 +1157,27 @@ function App() {
           />
         )}
 
-        {s.currentStep === 9 && (
-          <Step9ElectricalBom projectId={s.cloudProjectId} />
+        {(s.currentStep === 9 || isLastStep(s.currentStep)) && (
+          <div style={isLastStep(s.currentStep)
+            ? { position: 'absolute', width: '100vw', height: '100vh', left: '-99999px', top: 0, overflow: 'hidden', pointerEvents: 'none' }
+            : { height: '100%' }}>
+          <Step9ElectricalBom
+            projectId={s.cloudProjectId}
+            project={s.currentProject}
+            user={auth.user}
+            exportApiRef={step9ExportRef}
+            hideActions={isLastStep(s.currentStep)}
+            panels={s.panels}
+            strings={s.step7Strings}
+            inverterLayout={s.step7InverterLayout}
+            panelWatt={s.panelSpec?.kw}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            inverters={s.step6Inverters}
+            onQuotationRequested={(timestamp) => {
+              s.setCurrentProject({ ...s.currentProject, quotation_requested_at: timestamp })
+            }}
+          />
+          </div>
         )}
 
         {isLastStep(s.currentStep) && (
@@ -1169,8 +1191,11 @@ function App() {
             roofType={s.currentProject?.roofSpec?.type || 'concrete'}
             panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
             hasRequestedQuotation={!!s.currentProject?.quotation_requested_at}
-            onGetQuotation={() => step5ExportRef.current?.requestQuotation?.()}
+            onGetQuotation={() => step5ExportRef.current?.requestQuotation?.('full')}
             onDownloadPdf={() => step5ExportRef.current?.generatePdf?.()}
+            onGetEquipmentQuotation={() => step9ExportRef.current?.requestQuotation?.()}
+            onDownloadElectricalPdf={() => step9ExportRef.current?.generatePdf?.()}
+            onDownloadEquipmentXlsx={() => step9ExportRef.current?.downloadEquipmentXlsx?.()}
             inverters={s.step6Inverters}
             stringsCount={(s.step7Strings || []).length}
             electricalApproval={s.step8PlanApproval}

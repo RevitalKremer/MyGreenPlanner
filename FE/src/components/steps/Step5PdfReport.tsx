@@ -1,6 +1,5 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
+import { pagesToPdf } from '../../utils/pdfCapture'
 import { BLACK, WHITE, TEXT, TEXT_MUTED, ERROR_DARK, ERROR_BG, BORDER_FAINT, BORDER, BG_LIGHT, TEXT_PLACEHOLDER, PRIMARY, SUCCESS, SUCCESS_BG, SUCCESS_DARK, MODAL_SHADOW, PDF_CANVAS_BG, PDF_CANVAS_BG_ALT } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import BOMView from './step3/BOMView'
@@ -454,95 +453,6 @@ export default function Step5PdfReport({
   const panelWp = (panelType ? panelTypes.find((p: any) => p.id === panelType)?.kw : null) ?? null
   const totalKw = panelWp ? (count * panelWp) / 1000 : null
 
-  // Pre-rasterize all <svg> elements in a page element to <img> tags so html2canvas
-  // doesn't need to parse SVG (which it handles poorly for complex/transformed content).
-  const rasterizeSvgs = async (pageEl: HTMLElement) => {
-    const svgs = Array.from(pageEl.querySelectorAll('svg')) as SVGSVGElement[]
-    const swaps = []
-    for (const svg of svgs) {
-      // Use the SVG's natural (pre-transform) dimensions from its attributes.
-      // getBoundingClientRect() returns the visually-scaled size which is wrong
-      // when the SVG is inside a CSS scale() transform — it would be double-scaled.
-      const attrW = parseFloat(svg.getAttribute('width'))
-      const attrH = parseFloat(svg.getAttribute('height'))
-      const hasNaturalDims = attrW > 0 && attrH > 0 && !String(svg.getAttribute('width')).includes('%')
-      let w, h
-      if (hasNaturalDims) {
-        w = Math.round(attrW)
-        h = Math.round(attrH)
-      } else {
-        const rect = svg.getBoundingClientRect()
-        w = Math.round(rect.width)
-        h = Math.round(rect.height)
-      }
-      if (!w || !h) continue
-      const clone = svg.cloneNode(true) as SVGSVGElement
-      clone.setAttribute('width', w)
-      clone.setAttribute('height', h)
-
-      // Inject a <style> element so serialized SVG text uses the same font-family
-      // as the page. Without this the standalone SVG document has no CSS context and
-      // browsers fall back to a default serif font, which renders blurry/illegible
-      // at the small sizes used in CAD annotations.
-      const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-      styleEl.textContent = `
-        text, tspan {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
-            'Helvetica Neue', Arial, sans-serif;
-          text-rendering: geometricPrecision;
-          shape-rendering: geometricPrecision;
-        }
-      `
-      clone.insertBefore(styleEl, clone.firstChild)
-
-      // Convert <image> elements in SVG to embedded data URLs so they're captured properly
-      const svgImages = clone.querySelectorAll('image')
-      for (const svgImg of svgImages) {
-        const href = svgImg.getAttribute('href') || svgImg.getAttribute('xlink:href')
-        if (href && !href.startsWith('data:')) {
-          try {
-            // If it's already a data URL from imageSrc, keep it; otherwise skip
-            // (This handles the BackgroundImageLayer roof image)
-            if (href.startsWith('blob:') || href.startsWith('http')) {
-              // Load the image and convert to data URL
-              const img = new Image()
-              img.crossOrigin = 'anonymous'
-              await new Promise((resolve, reject) => {
-                img.onload = resolve
-                img.onerror = reject
-                img.src = href
-              })
-              const canvas = document.createElement('canvas')
-              canvas.width = img.naturalWidth
-              canvas.height = img.naturalHeight
-              const ctx = canvas.getContext('2d')
-              ctx.drawImage(img, 0, 0)
-              const dataUrl = canvas.toDataURL('image/png')
-              svgImg.setAttribute('href', dataUrl)
-            }
-          } catch (e) {
-            console.warn('Failed to embed image in SVG:', e)
-          }
-        }
-      }
-      
-      const xml = new XMLSerializer().serializeToString(clone)
-      const blob = new Blob([xml], { type: 'image/svg+xml' })
-      const url = URL.createObjectURL(blob)
-      const img = new Image(w, h)
-      img.style.cssText = `display:block;width:${w}px;height:${h}px`
-      await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; img.src = url })
-      svg.parentNode.replaceChild(img, svg)
-      swaps.push({ img, svg, url })
-    }
-    return swaps
-  }
-  const restoreSvgs = (swaps) => {
-    for (const { img, svg, url } of swaps) {
-      img.parentNode?.replaceChild(svg, img)
-      URL.revokeObjectURL(url)
-    }
-  }
 
   // Render mounted plan pages to PDF bytes. Returns null if no pages are mounted
   // (e.g. PDF tab not yet active). Caller is responsible for switching tabs first.
@@ -557,43 +467,9 @@ export default function Step5PdfReport({
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
     }
     try {
-    const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
-    // compress: true → zlib on PDF object streams (lossless, no visual change).
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
-    let firstPage = true
-
-    for (const ref of refs) {
-      // For useRef objects: use .current (null when unmounted → skip).
-      // For direct DOM elements (trapPageRefs): use as-is.
-      const el = (ref && 'current' in ref) ? ref.current : ref
-      if (!el) continue
-
-      const parent = el.parentElement
-      const savedTransform = parent?.style.transform ?? ''
-      if (parent) parent.style.transform = 'none'
-
-      const swaps = await rasterizeSvgs(el)
-      // scale 1.5 gives ~225 DPI on A4 landscape — well above print quality
-      // (150 DPI is standard) and reduces the embedded JPEG by ~2.25× vs
-      // scale 2. Visible only when zooming far in on screen.
-      const canvas = await html2canvas(el, {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        width: PAGE_W_PX,
-        height: PAGE_H_PX,
-      })
-      restoreSvgs(swaps)
-      if (parent) parent.style.transform = savedTransform
-      const imgData = canvas.toDataURL('image/jpeg', 0.85)
-      if (!firstPage) pdf.addPage()
-      pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_W_MM, PAGE_H_MM)
-      firstPage = false
-    }
-
-    return firstPage ? null : (pdf.output('arraybuffer') as ArrayBuffer)
+      const refs = [page1Ref, page2Ref, page3Ref, page4Ref, page5Ref, ...pdfTrapGroups.map(g => trapPageRefs.current[g.trapIds[0]]).filter(Boolean)]
+      const els = refs.map((ref: any) => (ref && 'current' in ref) ? ref.current : ref)
+      return await pagesToPdf(els)
     } finally {
       if (forcePunches) setExportPunches(false)
     }
@@ -690,7 +566,9 @@ export default function Step5PdfReport({
     }
   }
 
-  const handleRequestQuotation = async () => {
+  // requestType: 'construction' (this step's button) or 'full' (Final summary —
+  // construction + equipment proposals on one Monday item).
+  const handleRequestQuotation = async (requestType: 'construction' | 'full' = 'construction') => {
     if (!projectId) return
     setQuotationBanner(null)
     setRequestingQuotation(true)
@@ -718,7 +596,7 @@ export default function Step5PdfReport({
         console.error('Quotation PDF build failed, sending without it:', pdfErr)
       }
 
-      const res = await requestQuotation(projectId, planBytes, pdfFilename)
+      const res = await requestQuotation(projectId, planBytes, pdfFilename, requestType)
       if (res?.quotationRequestedAt) {
         setQuotationRequestedAt(res.quotationRequestedAt)
         // Tell the parent so currentProject.quotation_requested_at sticks —
@@ -828,7 +706,7 @@ export default function Step5PdfReport({
             tooltip explains the policy. Label flips after the first
             request so a re-click reads "Request quotation again". */}
         <button
-          onClick={handleRequestQuotation}
+          onClick={() => handleRequestQuotation('construction')}
           disabled={!projectId || requestingQuotation}
           title={t('step5.quotation.refundNotice')}
           style={{

@@ -11,7 +11,7 @@ import {
   BORDER, BORDER_FAINT, BG_FAINT, BG_LIGHT, BG_SUBTLE,
   SUCCESS_BG, SUCCESS_DARK,
   ERROR_DARK, ERROR_BG, WARNING_DARK, WARNING_BG,
-  STRING_PALETTE, PANEL_LIGHT_BG, PANEL_DARK,
+  STRING_PALETTE, PANEL_LIGHT_BG, PANEL_DARK, BLACK,
 } from '../../../styles/colors'
 
 export const stringColor = (i: number) => STRING_PALETTE[i % STRING_PALETTE.length]
@@ -178,7 +178,7 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
     const isSel = i === selIdx
     return (
       <polyline key={`c${i}`} points={pts} fill="none"
-        stroke={isSel ? stringColor(i) : PANEL_DARK} strokeWidth={isSel ? lineW * 1.6 : lineW * 0.7}
+        stroke={isSel ? stringColor(i) : BLACK} strokeWidth={isSel ? lineW * 1.6 : lineW * 0.7}
         strokeOpacity={isSel ? 0.85 : (selIdx >= 0 ? 0.2 : 0.45)} strokeDasharray={`${lineW * 3} ${lineW * 2}`} />
     )
   }
@@ -189,14 +189,24 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
     const r = routes[i]
     if (!r) return null
     const isSel = i === selIdx
-    const col = isSel ? stringColor(i) : PANEL_DARK
+    const col = isSel ? stringColor(i) : BLACK
     const op = isSel ? 1 : (selIdx >= 0 ? 0.3 : 0.7)
     return (
       <g key={`r${i}`}>
         <polyline points={r.pts.map((p: any) => `${p.x},${p.y}`).join(' ')}
-          fill="none" stroke={col} strokeWidth={isSel ? lineW * 2.8 : lineW * 0.9} strokeOpacity={op}
+          fill="none" stroke={col} strokeWidth={isSel ? lineW * 1.8 : lineW * 0.5} strokeOpacity={op}
           strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={r.start.x} cy={r.start.y} r={isSel ? lineW * 3 : lineW * 2} fill={col} fillOpacity={op} stroke="white" strokeWidth={lineW * 0.6} />
+        {/* string start marker: a "+" inside a circle */}
+        {(() => {
+          const R = isSel ? lineW * 3.6 : lineW * 2.8, a = R * 0.5, sw = lineW * 0.7
+          return (
+            <g fillOpacity={op} strokeOpacity={op}>
+              <circle cx={r.start.x} cy={r.start.y} r={R} fill="white" stroke={col} strokeWidth={sw} />
+              <line x1={r.start.x - a} y1={r.start.y} x2={r.start.x + a} y2={r.start.y} stroke={col} strokeWidth={sw} strokeLinecap="round" />
+              <line x1={r.start.x} y1={r.start.y - a} x2={r.start.x} y2={r.start.y + a} stroke={col} strokeWidth={sw} strokeLinecap="round" />
+            </g>
+          )
+        })()}
         {(isSel || selIdx < 0) && (
           <text x={r.start.x} y={r.start.y - lineW * 3.5} textAnchor="middle" fontSize={labelFs}
             fontWeight={700} fill={isSel ? stringColor(i) : TEXT_DARK}>{strings[i]?.id}</text>
@@ -212,7 +222,9 @@ export function StringCanvas({ panels, strings, selectedId, units, ports, showMp
   const svgH = Math.round(BASE_W / (vbW / vbH))
 
   return (
-    <svg ref={svgRef} width={svgW} height={svgH} viewBox={geo.vb} style={{ display: 'block' }}>
+    <svg ref={svgRef} viewBox={geo.vb} preserveAspectRatio="xMidYMid meet"
+      width={printMode ? undefined : svgW} height={printMode ? undefined : svgH}
+      style={{ display: 'block', ...(printMode ? { width: '100%', height: '100%' } : {}) }}>
       {/* panels — blue by default. The "strings colors" layer fills every
           assigned panel with its string color; the selected string always
           takes its color (and pops above dimmed siblings). */}

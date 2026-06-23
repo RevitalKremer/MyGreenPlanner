@@ -251,6 +251,13 @@ export async function downloadProposal(id, projectName = 'proposal') {
   await _downloadFromServer(`/projects/${id}/proposal.xlsx`, `${safeName}_proposal_${date}.xlsx`)
 }
 
+export async function downloadElectricalProposal(id, projectName = 'equipment') {
+  // Equipment price-proposal xlsx (Sadot חשבשבת template).
+  const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
+  const date = new Date().toISOString().split('T')[0]
+  await _downloadFromServer(`/projects/${id}/electrical-proposal.xlsx`, `${safeName}_equipment_${date}.xlsx`)
+}
+
 export async function downloadProduction(id, projectName = 'production') {
   // Admin-only: saw-cut + punch production instructions (Hebrew, regardless of lang).
   const safeName = String(projectName).replace(/[\/\\:*?"<>|]/g, '_')
@@ -304,11 +311,13 @@ export async function requestQuotation(
   id: string,
   pdfBytes: ArrayBuffer | null = null,
   filename: string | null = null,
+  requestType: 'construction' | 'equipment' | 'full' = 'construction',
 ): Promise<{ status: string; quotationRequestedAt: string | null; monday?: any; monday_error?: string | null }> {
   const formData = new FormData()
   if (pdfBytes != null && filename) {
     formData.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), filename)
   }
+  formData.append('request_type', requestType)
   const res = await mgpRequest(`/projects/${id}/request-quotation`, { method: 'POST', body: formData })
   if (!res.ok) throw new Error('Failed to request quotation')
   return res.json()

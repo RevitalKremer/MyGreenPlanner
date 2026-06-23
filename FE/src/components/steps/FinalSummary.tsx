@@ -17,6 +17,7 @@ export default function FinalSummary({
   projectId, projectName, isAdmin,
   panelCount, totalKw, areaCount, roofType, panelTypeName,
   hasRequestedQuotation, onGetQuotation, onDownloadPdf,
+  onGetEquipmentQuotation, onDownloadElectricalPdf, onDownloadEquipmentXlsx,
   inverters, stringsCount, electricalApproval, onFinish,
 }) {
   const { t } = useLang()
@@ -91,11 +92,17 @@ export default function FinalSummary({
                 <span style={{ fontWeight: 600 }}>{picks.map(p => `${p.qty}× ${byKey[p.typeKey]?.name ?? p.typeKey}`).join(', ') || '—'}</span>
               </div>
               {factRow(t('final.strings'), stringsCount || 0)}
-              <div style={{ ...row, borderBottom: 'none' }}>
+              <div style={row}>
                 <span style={{ color: TEXT_MUTED }}>{t('final.electricalApproval')}</span>
                 <span style={{ color: electricalApproval?.strictConsent ? SUCCESS_DARK : TEXT_MUTED, fontWeight: 600 }}>
                   {electricalApproval?.strictConsent ? '✓' : '—'}
                 </span>
+              </div>
+              {/* Electrical deliverables — same actions as Step 9 */}
+              <div style={{ padding: '0.9rem 1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                {ctaBtn(hasRequestedQuotation ? t('step5.quotation.requestAgain') : t('step9.getQuotation'), () => onGetEquipmentQuotation?.(), true, !projectId)}
+                {ctaBtn(t('step9.menu.diagramsPdf'), () => onDownloadElectricalPdf?.(), false, !projectId)}
+                {isAdmin && ctaBtn(t('step9.menu.equipmentXlsx'), () => onDownloadEquipmentXlsx?.(), false, !projectId)}
               </div>
             </>
           )}

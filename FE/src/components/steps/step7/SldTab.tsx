@@ -67,7 +67,9 @@ export default function SldTab({ units, strings, panelWatt, printMode = false }:
   const slotX = (c: any, d: number) => c.colX + c.colW * (d + 0.5) / c.n
 
   const svg = (
-    <svg width={totalW} height={totalH} viewBox={`0 0 ${totalW} ${totalH}`} style={{ display: 'block', fontFamily: 'sans-serif' }}>
+    <svg viewBox={`0 0 ${totalW} ${totalH}`} preserveAspectRatio="xMidYMid meet"
+      width={printMode ? undefined : totalW} height={printMode ? undefined : totalH}
+      style={{ display: 'block', fontFamily: 'sans-serif', ...(printMode ? { width: '100%', height: '100%' } : {}) }}>
         {/* EMS / Cat-7 link across inverter tops */}
         {cols.length > 1 && (() => {
           const x1 = cols[0].boxX + cols[0].boxW / 2
@@ -140,7 +142,7 @@ export default function SldTab({ units, strings, panelWatt, printMode = false }:
       </svg>
   )
 
-  if (printMode) return <div style={{ display: 'inline-block', background: 'white' }}>{svg}</div>
+  if (printMode) return <div style={{ width: '100%', height: '100%', background: 'white' }}>{svg}</div>
 
   return (
     <div ref={containerRef}

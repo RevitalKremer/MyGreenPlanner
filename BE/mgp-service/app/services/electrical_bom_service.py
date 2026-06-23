@@ -254,3 +254,85 @@ async def reenrich_items(db: AsyncSession, items: list[dict]) -> list[dict]:
         return []
     products_by_type = await _load_sadot_products_by_type(db)
     return [_enrich(it, products_by_type) for it in items]
+
+
+async def effective_items(db: AsyncSession, project) -> list[dict]:
+    """Electrical BOM rows with step9 deltas applied — read-only (no writes)."""
+    data = project.data or {}
+    products_by_type = await _load_sadot_products_by_type(db)
+    base = build_electrical_bom(data, products_by_type)
+    deltas = (data.get('step9') or {}).get('bomDeltas') or {}
+    return apply_deltas(base, deltas)
+
+
+async def generate_electrical_proposal(db: AsyncSession, project) -> bytes:
+    """Equipment price-proposal xlsx, filling the Sadot Energy חשבשבת template
+    (`sadot_proposal_template.xlsx`). Reuses proposal_service's row-builder +
+    column map; the equipment template shares the same column contract but uses
+    SADOT_-prefixed anchor tokens."""
+    from io import BytesIO
+    from pathlib import Path
+    from types import SimpleNamespace
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
+    from app.models.user import User
+    from app.models.company import Company
+    from app.services import proposal_service
+    from app.services.excel_template_utils import (
+        fill_section, find_anchor_row, replace_placeholders, restore_header_footer_images,
+    )
+
+    template = Path(__file__).resolve().parents[1] / 'templates' / 'sadot_proposal_template.xlsx'
+    if not template.exists():
+        raise FileNotFoundError(f"Equipment proposal template not found at {template}")
+
+    items = await effective_items(db, project)
+    # One proposal row per electrical BOM item. _build_data_row reads
+    # price_ils / weight_kg / depreciation_pct / name_he off a product object;
+    # wrap the BOM row's own fields so equipment items (no ORM product) fit.
+    rows = [
+        proposal_service._build_data_row(
+            i, it,
+            SimpleNamespace(price_ils=it.get('priceIls'), weight_kg=0,
+                            depreciation_pct=0, name_he=it.get('nameHe'), name=it.get('name')),
+        )
+        for i, it in enumerate(items, start=1)
+    ]
+
+    wb = load_workbook(template)
+    today = datetime.now(timezone.utc).strftime('%-d/%-m/%Y')
+    owner = await db.get(User, project.owner_id) if project.owner_id else None
+    company = await db.get(Company, owner.company_id) if owner and owner.company_id else None
+    discount = float(company.discount_percent) if company and company.discount_percent is not None else None
+    ctx = {
+        'CUSTOMER_NAME': getattr(project, 'client_name', '') or '',
+        'PROJECT_NAME': project.name or '',
+        'PROPOSAL_DATE': today,
+    }
+
+    for sheet, anchor in (('pricing', 'SADOT_PRICE_TABLE_DATA_ROW'), ('quantities', 'SADOT_QTY_TABLE_DATA_ROW')):
+        if sheet not in wb.sheetnames:
+            continue
+        ws = wb[sheet]
+        replace_placeholders(ws, {'CUSTOMER_NAME', 'PROJECT_NAME', 'PROPOSAL_DATE'}, ctx)
+        anchor_row = find_anchor_row(ws, anchor)
+        if anchor_row is not None and rows:
+            fill_section(ws, anchor_row, rows, proposal_service._COLUMN_MAP)
+        # Resolve SADOT_PRICE_AFTER_DISCOUNT against the cell above it.
+        for excel_row in ws.iter_rows():
+            for cell in excel_row:
+                if isinstance(cell.value, str) and cell.value.strip() == 'SADOT_PRICE_AFTER_DISCOUNT':
+                    col = get_column_letter(cell.column)
+                    above = cell.row - 1
+                    cell.value = f'={col}{above}' if not discount else f'={col}{above}*(100-{discount:g})/100'
+
+    for name in list(wb.defined_names):
+        if '#REF!' in (wb.defined_names[name].value or ''):
+            del wb.defined_names[name]
+    if getattr(wb, '_external_links', None):
+        wb._external_links = []
+
+    out = BytesIO()
+    wb.save(out)
+    return restore_header_footer_images(template.read_bytes(), out.getvalue())

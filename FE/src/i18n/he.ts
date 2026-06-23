@@ -255,6 +255,13 @@ const he = {
   'step9.col.price':   'מחיר ליחידה (₪)',
   'step9.recalc':      'חשב מחדש',
   'step9.empty':       'אין כתב כמויות חשמל — בחר ממירים בשלב 6.',
+  'step9.tab.bom':     'כתב כמויות',
+  'step9.tab.pdf':     'PDF',
+  'step9.downloadPdf': 'הורד PDF',
+  'step9.getQuotation': 'בקש הצעת מחיר לציוד',
+  'step9.noDiagrams':  'צור את תכנית הסטרינגים בשלב 7 כדי להפיק את ה‑PDF החשמלי.',
+  'step9.menu.equipmentXlsx': 'הצעת מחיר לציוד (xlsx)',
+  'step9.menu.diagramsPdf':   'PDF תרשימים',
 
   // ── סיכום ─────────────────────────────────────────────────────────────────
   'final.title':              'סיכום פרויקט',
