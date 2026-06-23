@@ -6,15 +6,17 @@ import {
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import KeyValueEditor from '../shared/KeyValueEditor'
+import ParamsTable from '../shared/ParamsTable'
 import RowActions from '../shared/RowActions'
+import { cleanParams } from '../../config/productParams'
 
 const SADOT_URL_KEYS = [{ key: 'en', label: 'EN' }, { key: 'he', label: 'HE' }]
 // Dimension keys live inside params; shown as dedicated inputs but stored there.
 const DIM_KEYS = ['lengthCm', 'widthCm', 'Wp']
 
-const emptyForm = { type_key: '', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true, sadot_url: null, params: '' }
+const emptyForm = { type_key: '', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true, sadot_url: null, params: {} }
 
-// Card editor — same shape as the Sadot Energy tab (sadot_url key/value + params JSON).
+// Card editor — same shape as the Sadot Energy tab (sadot_url key/value + params table).
 function PanelEditor({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState(() => {
     const p = product?.params || {}
@@ -26,21 +28,16 @@ function PanelEditor({ product, onSave, onCancel, t }) {
       width_cm: p.widthCm ?? '',
       kw_peak: p.Wp ?? '',
       sadot_url: product?.sadot_url ?? null,
-      params: Object.keys(extra).length ? JSON.stringify(extra, null, 2) : '',
+      params: extra,   // electrical specs only; dims handled by dedicated fields
     }
   })
-  const [jsonError, setJsonError] = useState<string | null>(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
     if (!form.length_cm || !form.width_cm || !form.kw_peak) return
-    let extra: any = {}
-    if (String(form.params).trim()) {
-      try { extra = JSON.parse(form.params) } catch { setJsonError(t('admin.sadot.invalidJson')); return }
-    }
-    // Dimensions are merged into params (no panel-only columns on the table).
-    const params = { ...extra, lengthCm: Number(form.length_cm), widthCm: Number(form.width_cm), Wp: Number(form.kw_peak) }
+    // Electrical specs from the table, plus dimensions merged back in.
+    const params = { ...cleanParams(form.params), lengthCm: Number(form.length_cm), widthCm: Number(form.width_cm), Wp: Number(form.kw_peak) }
     onSave({
       type_key: form.type_key.trim(),
       product_type: 'panel',
@@ -74,11 +71,7 @@ function PanelEditor({ product, onSave, onCancel, t }) {
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.electricalJson')}</label>
-        <textarea value={form.params} onChange={e => { set('params', e.target.value); setJsonError(null) }}
-          placeholder={'{ "Voc": 54.8, "Vmp": 45.5, "Isc": 15.36, "Imp": 14.73 }'}
-          rows={4}
-          style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.78rem', padding: '0.5rem', borderRadius: 6, border: `1px solid ${jsonError ? ERROR : BORDER_LIGHT}`, resize: 'vertical' }} />
-        {jsonError && <div style={{ color: ERROR, fontSize: '0.76rem', marginTop: 3 }}>{jsonError}</div>}
+        <ParamsTable value={form.params} onChange={v => set('params', v)} productType="panel" />
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.sadotUrl')}</label>

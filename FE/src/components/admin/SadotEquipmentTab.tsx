@@ -6,14 +6,16 @@ import {
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import KeyValueEditor from '../shared/KeyValueEditor'
+import ParamsTable from '../shared/ParamsTable'
 import RowActions from '../shared/RowActions'
+import { cleanParams } from '../../config/productParams'
 
 const SADOT_URL_KEYS = [{ key: 'en', label: 'EN' }, { key: 'he', label: 'HE' }]
 
 // Sadot Energy product types this tab manages (mirrors BE SADOT_EQUIPMENT_TYPES).
 const SADOT_TYPES = ['inverter', 'battery', 'battery_base', 'dongle', 'datalogger', 'cable', 'smart_meter', 'network_cabinet', 'portable_power_station', 'bms', 'backup_box', 'energy_management']
 
-const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: null, active: true, params: '' }
+const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: null, active: true, params: {} }
 
 function EquipmentEditor({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState(() => ({
@@ -21,18 +23,13 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
     price_ils: product?.price_ils ?? '',
     sadot_url: product?.sadot_url ?? null,
     part_number: product?.part_number ?? '',
-    params: product?.params ? JSON.stringify(product.params, null, 2) : '',
+    params: product?.params ?? {},
   }))
-  const [jsonError, setJsonError] = useState<string | null>(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
-    let params: any = null
-    if (form.params.trim()) {
-      try { params = JSON.parse(form.params) }
-      catch { setJsonError(t('admin.sadot.invalidJson')); return }
-    }
+    const params = cleanParams(form.params)
     onSave({
       type_key: form.type_key.trim(),
       product_type: form.product_type,
@@ -41,7 +38,7 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       price_ils: form.price_ils === '' ? null : Number(form.price_ils),
       sadot_url: form.sadot_url && Object.keys(form.sadot_url).length ? form.sadot_url : null,
       active: form.active,
-      params,
+      params: Object.keys(params).length ? params : null,
     })
   }
 
@@ -76,11 +73,7 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.electricalJson')}</label>
-        <textarea value={form.params} onChange={e => { set('params', e.target.value); setJsonError(null) }}
-          placeholder={'{ "acPowerKw": 50, "mpptCount": 4, "mpptVmin": 200, "mpptVmax": 1000, "maxInputCurrentA": 26, "maxStringsPerMppt": 2, "maxSystemVoltageV": 1100 }'}
-          rows={5}
-          style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.78rem', padding: '0.5rem', borderRadius: 6, border: `1px solid ${jsonError ? ERROR : BORDER_LIGHT}`, resize: 'vertical' }} />
-        {jsonError && <div style={{ color: ERROR, fontSize: '0.76rem', marginTop: 3 }}>{jsonError}</div>}
+        <ParamsTable value={form.params} onChange={v => set('params', v)} productType={form.product_type} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <label style={{ fontSize: '0.8rem', color: TEXT_SECONDARY, display: 'flex', alignItems: 'center', gap: 5 }}>
