@@ -3,12 +3,13 @@ import { useLang } from '../../i18n/LangContext'
 import { fetchSadotEquipment } from '../../services/projectsApi'
 import StringsPlanTab from './step7/StringsPlanTab'
 import SummaryTab from './step7/SummaryTab'
+import SldTab from './step7/SldTab'
 import { TEXT, TEXT_PLACEHOLDER, BORDER_FAINT, BG_LIGHT, BG_FAINT, PRIMARY } from '../../styles/colors'
 
 // Build the physical inverter units (expand by qty) and the flat list of MPPT
 // inputs across the whole fleet. The BE assigns each string a flat `mpptIndex`
 // into this same ordered port list, so a string → port lookup is index-based.
-function buildFleet(inverters: any[], byKey: Record<string, any>) {
+export function buildFleet(inverters: any[], byKey: Record<string, any>) {
   const units: { typeKey: string; name: string; kw: number | null; mpptCount: number; maxStringsPerMppt: number }[] = []
   ;(inverters || []).forEach((p: any) => {
     const prod = byKey[p.typeKey]
@@ -30,7 +31,7 @@ function buildFleet(inverters: any[], byKey: Record<string, any>) {
 export default function Step7StringsPlan({ projectId, panels, inverters, strings, onStringsChange, inverterLayout, onInverterLayoutChange, panelWatt }: any) {
   const { t } = useLang()
   const [equipment, setEquipment] = useState<any[]>([])
-  const [tab, setTab] = useState<'diagram' | 'distribution'>('diagram')
+  const [tab, setTab] = useState<'diagram' | 'sld' | 'distribution'>('diagram')
 
   useEffect(() => { fetchSadotEquipment().then(setEquipment).catch(() => setEquipment([])) }, [])
 
@@ -41,7 +42,7 @@ export default function Step7StringsPlan({ projectId, panels, inverters, strings
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: `2px solid ${BORDER_FAINT}`, background: BG_LIGHT, padding: '0 1rem', gap: '0.25rem', flexShrink: 0 }}>
-        {[['diagram', t('step7.tab.diagram')], ['distribution', t('step7.tab.distribution')]].map(([key, label]) => (
+        {[['diagram', t('step7.tab.diagram')], ['sld', t('step7.tab.sld')], ['distribution', t('step7.tab.distribution')]].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key as any)}
             style={{ padding: '0.55rem 1rem', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
               background: tab === key ? 'white' : 'transparent', color: tab === key ? TEXT : TEXT_PLACEHOLDER,
@@ -57,6 +58,11 @@ export default function Step7StringsPlan({ projectId, panels, inverters, strings
           projectId={projectId} panels={panels} strings={strings} onStringsChange={onStringsChange}
           inverterLayout={inverterLayout} onInverterLayoutChange={onInverterLayoutChange}
           units={units} ports={ports} />
+      </div>
+
+      {/* Single-line wiring diagram tab */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: tab === 'sld' ? 'block' : 'none', background: 'white' }}>
+        <SldTab units={units} strings={strings} panelWatt={panelWatt} />
       </div>
 
       {/* Summary tab */}

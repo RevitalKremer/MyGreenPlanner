@@ -50,9 +50,11 @@ function Section({ title, open, onToggle, children }: any) {
 // Read-only SVG: placed panels colored by their string group on the left, an
 // inverter rack on the right, and connector lines from each string to the MPPT
 // input it feeds.
-function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick }) {
+// Pure, self-contained SVG of the strings plan. Exported so the Step 9 PDF can
+// embed it directly (printMode → no interactivity, no selection highlight).
+export function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines, showStringColors, layout, onMoveUnit, onPanelClick, onInverterClick, printMode = false }: any) {
   const real = (panels || []).filter((p: any) => !p.isEmpty)
-  const selIdx = selectedId ? (strings || []).findIndex((s: any) => s?.id === selectedId) : -1
+  const selIdx = (printMode || !selectedId) ? -1 : (strings || []).findIndex((s: any) => s?.id === selectedId)
   const svgRef = useRef<SVGSVGElement>(null)
   const [dragging, setDragging] = useState<number | null>(null)
 
@@ -223,7 +225,7 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
         const op = hi ? 0.65 : (colored ? (selIdx >= 0 ? 0.4 : 0.6) : 0.85)
         return (
           <g key={p.id} transform={`rotate(${p.rotation || 0} ${cx} ${cy})`}
-            onClick={() => assigned && onPanelClick?.(p.id)} style={{ cursor: assigned ? 'pointer' : 'default' }}>
+            onClick={() => !printMode && assigned && onPanelClick?.(p.id)} style={{ cursor: !printMode && assigned ? 'pointer' : 'default' }}>
             <rect x={p.x} y={p.y} width={p.width} height={p.height}
               fill={colored ? stringColor(si) : PANEL_LIGHT_BG} fillOpacity={op}
               stroke={PANEL_DARK} strokeWidth={Math.max(0.5, p.width * 0.012)} />
@@ -239,8 +241,8 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
 
       {/* inverter rack — draggable boxes; ports on the side facing the panels */}
       {geo.unitBoxes.map((b: any, ui: number) => (
-        <g key={`u${ui}`} onMouseDown={(e) => startUnitDrag(e, b)} onClick={() => onInverterClick?.()}
-          style={{ cursor: onMoveUnit ? (dragging === ui ? 'grabbing' : 'grab') : 'default' }}>
+        <g key={`u${ui}`} onMouseDown={printMode ? undefined : (e) => startUnitDrag(e, b)} onClick={printMode ? undefined : () => onInverterClick?.()}
+          style={{ cursor: !printMode && onMoveUnit ? (dragging === ui ? 'grabbing' : 'grab') : 'default' }}>
           <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={titleFs * 0.4} fill={BG_SUBTLE}
             stroke={dragging === ui ? PRIMARY_DARK : BORDER} strokeWidth={dragging === ui ? lineW * 1.6 : lineW} />
           <text x={b.x + b.w / 2} y={b.y + b.h * 0.34} textAnchor="middle" fontSize={titleFs} fontWeight={700} fill={TEXT_DARK}>
