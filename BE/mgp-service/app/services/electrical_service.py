@@ -211,8 +211,12 @@ def suggest_inverters(total_dc_w: float, inverter_products: list[Any]) -> list[d
 # ── Panel grouping ───────────────────────────────────────────────────────────
 
 def panels_by_area(panels: list[dict]) -> dict[int, list[dict]]:
-    """Group real (non-empty) panels by their `area` index, each list sorted
-    in a natural series order (row, then column)."""
+    """Group real (non-empty) panels by their `area` index, each list sorted in
+    series-wiring order: a serpentine (boustrophedon) column-major sweep — down
+    one column, up the next — so a string fills a compact vertical block and
+    consecutive panels in series are physically adjacent (see the row-line
+    snake in the layout). Multi-row areas keep their `panelRowIdx` bands in
+    order; the snake runs within each band."""
     groups: dict[int, list[dict]] = {}
     for p in panels:
         if p.get('isEmpty'):
@@ -222,9 +226,24 @@ def panels_by_area(panels: list[dict]) -> dict[int, list[dict]]:
             continue
         groups.setdefault(area, []).append(p)
     for area, plist in groups.items():
-        plist.sort(key=lambda p: (
-            p.get('panelRowIdx', 0), p.get('row', 0), p.get('col', 0), p.get('id', 0),
-        ))
+        # Rank columns left→right so the up/down alternation is by adjacency,
+        # not raw column number (which can skip values).
+        cols_sorted = sorted({p.get('col', 0) for p in plist})
+        col_rank = {c: i for i, c in enumerate(cols_sorted)}
+        # Max row per band, used to flip odd columns bottom→top.
+        max_row: dict = {}
+        for p in plist:
+            band = p.get('panelRowIdx', 0)
+            max_row[band] = max(max_row.get(band, 0), p.get('row', 0))
+
+        def key(p):
+            band = p.get('panelRowIdx', 0)
+            rank = col_rank[p.get('col', 0)]
+            row = p.get('row', 0)
+            serp = row if rank % 2 == 0 else (max_row[band] - row)
+            return (band, rank, serp, p.get('id', 0))
+
+        plist.sort(key=key)
     return groups
 
 
