@@ -61,11 +61,12 @@ def is_electrical_bom_stale(project_data: dict, bom: ProjectElectricalBOM) -> bo
 # ── Product loading ──────────────────────────────────────────────────────────
 
 async def _load_sadot_products_by_type(db: AsyncSession) -> dict[str, dict]:
-    """Load active Sadot equipment products keyed by type_key."""
+    """Load active Sadot equipment products (+ panels, the array's main item)
+    keyed by type_key, for BOM-row enrichment."""
     result = await db.execute(
         select(Product).where(
             Product.active == True,
-            Product.product_type.in_(SADOT_EQUIPMENT_TYPES),
+            Product.product_type.in_((*SADOT_EQUIPMENT_TYPES, 'panel')),
         )
     )
     return {
@@ -111,10 +112,15 @@ def _string_derived_rows(data: dict, products_by_type: dict[str, dict]) -> list[
     return []
 
 
-def build_electrical_bom(data: dict, products_by_type: dict[str, dict]) -> list[dict]:
-    """Build the electrical BOM rows from the Step-6 equipment selection (and,
-    later, the Step-7 string plan)."""
+def build_electrical_bom(data: dict, products_by_type: dict[str, dict], panel_count: int = 0) -> list[dict]:
+    """Build the electrical BOM rows from the panel array (Step 2) + the Step-6
+    equipment selection (and, later, the Step-7 string plan)."""
     items: list[dict] = []
+
+    # Panel row — the array's main item: panel type (Step 2) × placed count.
+    panel_key = (data.get('step2') or {}).get('panelType')
+    if panel_key and panel_count > 0:
+        items.append(_enrich({'areaLabel': 'System', 'element': panel_key, 'qty': panel_count, 'section': 'panel'}, products_by_type))
 
     # Equipment rows — one per selected Sadot product (inverters + batteries),
     # summing qty.
@@ -175,12 +181,18 @@ def apply_deltas(items: list[dict], deltas: dict) -> list[dict]:
 
 # ── DB-aware orchestrators ───────────────────────────────────────────────────
 
+def _placed_panel_count(project) -> int:
+    """Number of real (non-empty) placed panels from the computed layout."""
+    panels = (getattr(project, 'layout', None) or {}).get('panels') or []
+    return sum(1 for p in panels if not p.get('isEmpty'))
+
+
 async def compute_and_save_electrical_bom(db: AsyncSession, project) -> ProjectElectricalBOM:
     """Compute the electrical BOM from step6/step7 and upsert. Entering the
     electrical BOM step wipes any pending step9 deltas (canonical regen)."""
     data = project.data or {}
     products_by_type = await _load_sadot_products_by_type(db)
-    items = build_electrical_bom(data, products_by_type)
+    items = build_electrical_bom(data, products_by_type, _placed_panel_count(project))
     input_hash = compute_input_hash(data)
 
     step9 = data.get('step9') or {}
@@ -260,7 +272,7 @@ async def effective_items(db: AsyncSession, project) -> list[dict]:
     """Electrical BOM rows with step9 deltas applied — read-only (no writes)."""
     data = project.data or {}
     products_by_type = await _load_sadot_products_by_type(db)
-    base = build_electrical_bom(data, products_by_type)
+    base = build_electrical_bom(data, products_by_type, _placed_panel_count(project))
     deltas = (data.get('step9') or {}).get('bomDeltas') or {}
     return apply_deltas(base, deltas)
 
