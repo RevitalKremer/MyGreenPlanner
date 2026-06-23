@@ -2544,7 +2544,8 @@ async def update_project_step(
     # free. Charged projects are committed; to start fresh the user has to
     # create a new project (which charges again). Iteration in steps 2+
     # stays free as designed.
-    if new_step == 1 and project.credits_charged_at is not None:
+    # Either charge (construction 2→3 or electrical 6→7) commits the project.
+    if new_step == 1 and (project.credits_charged_at is not None or project.electrical_charged_at is not None):
         raise StepTransitionInvalidError(old_step, new_step, [{
             'code': 'chargedProjectCannotResetToStep1',
             'field': 'currentStep',

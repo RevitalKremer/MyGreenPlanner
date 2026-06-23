@@ -1,15 +1,31 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useLang } from '../../../i18n/LangContext'
+import { validateStrings } from '../../../services/projectsApi'
 import {
   TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED,
   BORDER_FAINT, PANEL_LIGHT_BG, BLUE_BG,
+  SUCCESS_BG, SUCCESS_DARK, ERROR_BG, ERROR_DARK, WARNING_BG, WARNING_DARK,
 } from '../../../styles/colors'
 
 // Distribution-to-inverters/strings table — per inverter, per MPPT input:
 // string count, panels-per-string, DC/AC power and the DC:AC ratio.
-export default function SummaryTab({ units, strings, panelWatt }: any) {
+export default function SummaryTab({ projectId, units, strings, panelWatt }: any) {
   const { t } = useLang()
   const W = panelWatt || 0
+
+  // Validation problems — the same set shown in the Strings-plan tab.
+  const [issues, setIssues] = useState<any[]>([])
+  useEffect(() => {
+    if (projectId && (strings || []).length) validateStrings(projectId, strings).then(r => setIssues(r.issues || [])).catch(() => setIssues([]))
+    else setIssues([])
+  }, [projectId, strings])
+  const issueText = (it: any) => {
+    const params = { ...(it.params || {}) }
+    if (Array.isArray(params.specs)) params.specs = params.specs.join(', ')
+    return t(`step7.issue.${it.code}`, params)
+  }
+  const errors = issues.filter(i => i.severity === 'error')
+  const warnings = issues.filter(i => i.severity === 'warning')
   const data = useMemo(() => {
     let giBase = 0
     const unitsData = (units || []).map((u: any, ui: number) => {
@@ -104,6 +120,19 @@ export default function SummaryTab({ units, strings, panelWatt }: any) {
           </tr>
         </tbody>
       </table>
+
+      {/* validation problems — same set as the Strings-plan tab */}
+      <div style={{ maxWidth: 900, marginTop: '1.25rem' }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: TEXT_MUTED, marginBottom: '0.5rem' }}>{t('step7.issuesHeading')}</div>
+        {errors.length === 0 && warnings.length === 0 ? (
+          <div style={{ background: SUCCESS_BG, color: SUCCESS_DARK, borderRadius: 6, padding: '0.5rem 0.8rem', fontSize: '0.82rem' }}>{t('step7.valid')}</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {errors.map((it, i) => (<div key={`e${i}`} style={{ background: ERROR_BG, color: ERROR_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.82rem' }}>{issueText(it)}</div>))}
+            {warnings.map((it, i) => (<div key={`w${i}`} style={{ background: WARNING_BG, color: WARNING_DARK, borderRadius: 6, padding: '0.5rem 0.7rem', fontSize: '0.82rem' }}>{issueText(it)}</div>))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -399,10 +399,24 @@ async def compute_account_snapshot(db: AsyncSession, user: User) -> dict:
     threshold = int(settings_cache.get_setting('volumeDiscountThresholdPlans', default=25))
     discount_eligible = plans_this_year > threshold
 
+    # Non-refundable electrical charges held in projects this year (kind=
+    # electrical_charge). Surfaced separately so the FE can show held =
+    # refundable (construction) + non-refundable (electrical).
+    elec_q = await db.execute(
+        select(func.coalesce(func.sum(-CreditTransaction.amount), 0)).where(
+            CreditTransaction.user_id == user.id,
+            CreditTransaction.kind == CreditTxnKind.electrical_charge,
+            CreditTransaction.refunded.is_(False),
+            CreditTransaction.created_at >= year_start,
+        )
+    )
+    electrical_used = int(elec_q.scalar_one())
+
     available = int(user.credits_balance)
     return {
         'credits_available': available,
         'credits_used': used,
+        'credits_electrical_used': electrical_used,
         'credits_total': available + used,
         'plans_this_year': plans_this_year,
         'discount_eligible': discount_eligible,

@@ -589,6 +589,7 @@ function App() {
           // Get-Quotation button shows the right label on a previously-
           // quoted project.
           credits_charged_at: cloudProject.credits_charged_at ?? null,
+          electrical_charged_at: cloudProject.electrical_charged_at ?? null,
           quotation_requested_at: cloudProject.quotation_requested_at ?? null,
         },
         currentStep,
@@ -741,6 +742,8 @@ function App() {
             onUpdateProfile={auth.updateProfile}
             onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+            constructionCost={Number(s.appDefaults?.projectCostCredits ?? 0)}
+            electricalCost={Number(s.appDefaults?.electricalCostCredits ?? 0)}
           />
         )}
         {confirmDialogElement}
@@ -1080,7 +1083,7 @@ function App() {
           <Step5PdfReport
             user={auth.user}
             exportApiRef={step5ExportRef}
-            hideActions={true}
+            hideActions={isLastStep(s.currentStep)}
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -1237,6 +1240,8 @@ function App() {
             onUpdateProfile={auth.updateProfile}
             onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+            constructionCost={Number(s.appDefaults?.projectCostCredits ?? 0)}
+            electricalCost={Number(s.appDefaults?.electricalCostCredits ?? 0)}
           />
         )}
 
@@ -1320,7 +1325,7 @@ function App() {
             //    Offer Start Over (= new project) as the explicit way out.
             const isChargedProjectResetToStep1 = (
               nextStep === 1 &&
-              !!s.currentProject?.credits_charged_at
+              (!!s.currentProject?.credits_charged_at || !!s.currentProject?.electrical_charged_at)
             )
             if (isChargedProjectResetToStep1) {
               const proceed = await confirmDialog.ask({

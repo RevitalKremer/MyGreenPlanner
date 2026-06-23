@@ -68,7 +68,7 @@ export default function Step7StringsPlan({ projectId, panels, inverters, areas, 
 
       {/* Summary tab */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: tab === 'distribution' ? 'block' : 'none', background: 'white' }}>
-        <SummaryTab units={units} strings={strings} panelWatt={panelWatt} />
+        <SummaryTab projectId={projectId} units={units} strings={strings} panelWatt={panelWatt} />
       </div>
     </div>
   )
