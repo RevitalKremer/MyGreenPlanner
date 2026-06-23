@@ -188,13 +188,13 @@ const HELP = {
         a: 'Pick from the Sadot Energy catalog. The "Suggested sizing" box ranks options by the DC:AC ratio (target 1.1–1.3) against the system\'s total panel power. Each selected inverter shows a "View on Sadot Energy" link.'
       },
       {
-        q: 'What happens when I continue to the String Plan?',
-        a: 'Continuing from this step to the String Plan deducts a one-time, NON-REFUNDABLE charge (separate from the construction charge). You confirm it explicitly first. If you only need the construction plan, use "Skip to summary" instead.'
+        q: 'What happens when I continue to the Strings Plan?',
+        a: 'Continuing from this step to the Strings Plan deducts a one-time, NON-REFUNDABLE charge (separate from the construction charge). You confirm it explicitly first. If you only need the construction plan, use "Skip to summary" instead.'
       },
     ]
   },
   7: {
-    title: 'String Plan',
+    title: 'Strings Plan',
     purpose: 'Auto-generate the PV strings per roof area and validate them against the selected inverter\'s MPPT limits. Strings are visualized as colored panel groups.',
     qa: [
       {

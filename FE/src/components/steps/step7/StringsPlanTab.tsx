@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useLang } from '../../i18n/LangContext'
-import { generateStrings, validateStrings, fetchSadotEquipment } from '../../services/projectsApi'
-import RowActions from '../shared/RowActions'
-import CanvasNavigator from '../shared/CanvasNavigator'
-import LayersPanel from './step3/LayersPanel'
-import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom'
+import { useLang } from '../../../i18n/LangContext'
+import { generateStrings, validateStrings } from '../../../services/projectsApi'
+import RowActions from '../../shared/RowActions'
+import CanvasNavigator from '../../shared/CanvasNavigator'
+import LayersPanel from '../step3/LayersPanel'
+import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
 import {
   PRIMARY_BG, PRIMARY_DARK,
   TEXT, TEXT_DARK, TEXT_SECONDARY, TEXT_MUTED,
@@ -12,9 +12,9 @@ import {
   SUCCESS_BG, SUCCESS_DARK,
   ERROR_DARK, ERROR_BG, WARNING_DARK, WARNING_BG,
   STRING_PALETTE, PANEL_LIGHT_BG, PANEL_DARK,
-} from '../../styles/colors'
+} from '../../../styles/colors'
 
-const stringColor = (i: number) => STRING_PALETTE[i % STRING_PALETTE.length]
+export const stringColor = (i: number) => STRING_PALETTE[i % STRING_PALETTE.length]
 
 const SIDES = ['auto', 'left', 'right', 'top', 'bottom'] as const
 
@@ -32,25 +32,6 @@ function portPoint(b: any, side: string, m: number, count: number) {
   if (side === 'right') return { x: b.x + b.w, y: b.y + b.h * f }
   if (side === 'top') return { x: b.x + b.w * f, y: b.y }
   return { x: b.x + b.w * f, y: b.y + b.h }   // bottom
-}
-
-// Build the physical inverter units (expand by qty) and the flat list of MPPT
-// inputs across the whole fleet. The BE assigns each string a flat `mpptIndex`
-// into this same ordered port list, so a string → port lookup is index-based.
-function buildFleet(inverters: any[], byKey: Record<string, any>) {
-  const units: { typeKey: string; name: string; kw: number | null; mpptCount: number; maxStringsPerMppt: number }[] = []
-  ;(inverters || []).forEach((p: any) => {
-    const prod = byKey[p.typeKey]
-    const mpptCount = prod?.params?.mpptCount || 2
-    const kw = prod?.params?.acPowerKw ?? null
-    const maxStringsPerMppt = prod?.params?.maxStringsPerMppt || 1
-    for (let q = 0; q < (p.qty || 1); q++) {
-      units.push({ typeKey: p.typeKey, name: prod?.name || p.typeKey, kw, mpptCount, maxStringsPerMppt })
-    }
-  })
-  const ports: { unitIdx: number; portIdx: number }[] = []
-  units.forEach((u, ui) => { for (let m = 0; m < u.mpptCount; m++) ports.push({ unitIdx: ui, portIdx: m }) })
-  return { units, ports }
 }
 
 // Collapsible left-bar section with a clickable header + chevron.
@@ -290,14 +271,13 @@ function StringCanvas({ panels, strings, selectedId, units, ports, showMpptLines
   )
 }
 
-// Step 7 — auto-generate per-area strings, validate against inverter limits,
-// and visualize string groups + their inverter/MPPT connections.
-export default function Step7StringPlan({ projectId, panels, inverters, strings, onStringsChange, inverterLayout, onInverterLayoutChange }) {
+// Strings-plan tab — the diagram: control bar (left) + canvas (right).
+// `units`/`ports` are derived once in the host and shared with the Summary tab.
+export default function StringsPlanTab({ projectId, panels, strings, onStringsChange, inverterLayout, onInverterLayoutChange, units, ports }: any) {
   const { t } = useLang()
   const [issues, setIssues] = useState<any[]>([])
   const [summary, setSummary] = useState<any>(null)
   const [busy, setBusy] = useState(false)
-  const [equipment, setEquipment] = useState<any[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showInverters, setShowInverters] = useState(true)
   const [showMpptLines, setShowMpptLines] = useState(true)
@@ -311,17 +291,12 @@ export default function Step7StringPlan({ projectId, panels, inverters, strings,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
-  useEffect(() => { fetchSadotEquipment().then(setEquipment).catch(() => setEquipment([])) }, [])
-
   // Validate any pre-existing strings on mount so the panel reflects state.
   useEffect(() => {
     if (projectId && (strings || []).length) {
       validateStrings(projectId, strings).then(r => setIssues(r.issues || [])).catch(() => {})
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const byKey = useMemo(() => Object.fromEntries(equipment.map(e => [e.type_key, e])), [equipment])
-  const { units, ports } = useMemo(() => buildFleet(inverters, byKey), [inverters, byKey])
 
   // Port capacity / usage for the MPPT reassignment dropdown (free-capacity only).
   const portUsage = useMemo(() => {

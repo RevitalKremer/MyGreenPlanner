@@ -34,7 +34,7 @@ The wizard is grouped into **named phases**, not a fixed step count. The number 
 | 4 | Plan Approval (constructor) | **Construction Planning** | existing |
 | 5 | PDF Report | **Construction Planning** | existing — **kept as-is**, acts as exit point |
 | 6 | Electrical Settings + Inverter Selection | **Electrical Planning** | params + catalog pick / auto-sizing |
-| 7 | String Plan | **Electrical Planning** | auto-generate from settings → manual tweak → validate vs MPPT limits |
+| 7 | Strings Plan | **Electrical Planning** | auto-generate from settings → manual tweak → validate vs MPPT limits |
 | 8 | Plan Approval (electrician) | **Electrical Planning** | external/async approval |
 | 9 | Electrical BOM | **Electrical Planning** | cables, protection, grounding — needs string layout |
 | Final | Summary | (closing) | all docs + project content, finish |
@@ -69,7 +69,7 @@ The wizard is grouped into **named phases**, not a fixed step count. The number 
 | Event | When | Credits | Refundable |
 |---|---|---|---|
 | Finish construction | 5 → Final skip | 100 | Yes |
-| Unlock String Plan | Next 6 → 7 (explicit confirm) | 200 | No |
+| Unlock Strings Plan | Next 6 → 7 (explicit confirm) | 200 | No |
 
 Refundable vs non-refundable lines up with reversible work (a report) vs committed work (engineering compute + electrician handoff).
 
@@ -86,7 +86,7 @@ Refundable vs non-refundable lines up with reversible work (a report) vs committ
 - Inverter selection: pick from product catalog; auto-suggest sizing from total panel kWp (DC/AC ratio ~1.1–1.3); surface MPPT count + per-MPPT voltage/current limits.
 - Mirrors how Step 3 works today: settings → auto-layout → manual override.
 
-## Step 7 — String Plan (detail TBD)
+## Step 7 — Strings Plan (detail TBD)
 
 - **Auto-generate strings from user-input params** (Step 6 settings), then allow manual tweak.
 - Validate against inverter limits: string voltage (Voc × panels × temp factor) within MPPT window; string current within input limit.

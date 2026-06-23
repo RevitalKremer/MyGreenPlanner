@@ -9,7 +9,7 @@ import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlann
 import Step4PlanApproval from './components/steps/Step4PlanApproval'
 import Step5PdfReport from './components/steps/Step5PdfReport'
 import Step6ElectricalSettings from './components/steps/Step6ElectricalSettings'
-import Step7StringPlan from './components/steps/Step7StringPlan'
+import Step7StringsPlan from './components/steps/Step7StringsPlan'
 import Step8ElectricalApproval from './components/steps/Step8ElectricalApproval'
 import Step9ElectricalBom from './components/steps/Step9ElectricalBom'
 import FinalSummary from './components/steps/FinalSummary'
@@ -1132,7 +1132,7 @@ function App() {
         )}
 
         {s.currentStep === 7 && (
-          <Step7StringPlan
+          <Step7StringsPlan
             projectId={s.cloudProjectId}
             panels={s.panels}
             inverters={s.step6Inverters}
@@ -1140,6 +1140,7 @@ function App() {
             onStringsChange={s.setStep7Strings}
             inverterLayout={s.step7InverterLayout}
             onInverterLayoutChange={s.setStep7InverterLayout}
+            panelWatt={s.panelSpec?.kw}
           />
         )}
 

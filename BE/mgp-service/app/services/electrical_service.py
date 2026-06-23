@@ -337,9 +337,20 @@ def generate_string_plan(
     # (shared trapezoid prefix), so numbering must continue across them to keep
     # string ids globally unique.
     label_seq: dict[str, int] = {}
-    # Total MPPT inputs across the selected fleet (qty handled by caller passing
-    # repeated products); round-robin string→input assignment.
-    total_inputs = sum(inverter_specs(inv)['mpptCount'] for inv in selected_inverters) or 1
+
+    # Flat MPPT input list across the selected fleet (qty handled by caller
+    # passing repeated products), ordered unit-by-unit then port 0..mpptCount-1
+    # — must match the FE port ordering so mpptIndex lines up.
+    caps_by_input: list[int] = []
+    for inv in selected_inverters:
+        sp = inverter_specs(inv)
+        caps_by_input.extend([sp['maxStringsPerMppt']] * sp['mpptCount'])
+    total_inputs = len(caps_by_input) or 1
+    # One slot per allowed string on each input, breadth-first: every input
+    # takes its 1st string before any input takes a 2nd (respecting
+    # maxStringsPerMppt). With the default cap of 1 this is one string per MPPT.
+    max_cap = max(caps_by_input) if caps_by_input else 1
+    slots: list[int] = [gi for r in range(max_cap) for gi, cap in enumerate(caps_by_input) if r < cap]
     input_cursor = 0
 
     if s_max is not None and s_min is not None and s_max < s_min:
@@ -365,12 +376,15 @@ def generate_string_plan(
             seg = area_panels[cursor:cursor + length]
             cursor += length
             label_seq[label] = label_seq.get(label, 0) + 1
+            # One string per MPPT slot in order; strings past total capacity
+            # stay unassigned (None) and the validation flags the over-subscription.
+            mppt_index = slots[input_cursor] if input_cursor < len(slots) else None
             strings.append({
                 'id': f'STR-{label}-{label_seq[label]:02d}',
                 'areaLabel': label,
                 'panelIds': [p.get('id') for p in seg],
                 'inverterTypeKey': primary_key,
-                'mpptIndex': input_cursor % total_inputs,
+                'mpptIndex': mppt_index,
             })
             input_cursor += 1
 
