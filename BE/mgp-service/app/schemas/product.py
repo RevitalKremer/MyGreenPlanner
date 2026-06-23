@@ -31,7 +31,7 @@ class ProductBase(BaseModel):
     bundle: dict | None = None
     # Electrical spec blob (panels: Voc/Vmp/Isc/Imp/temp coeffs; inverters:
     # MPPT window, currents, etc.). Free-form JSON.
-    electrical: dict | None = None
+    params: dict | None = None
     # Sadot Energy product page URL (Sadot equipment: inverters/batteries/…).
     sadot_url: str | None = None
 
@@ -59,7 +59,7 @@ class ProductUpdate(BaseModel):
     width_cm: float | None = None
     kw_peak: int | None = None
     bundle: dict | None = None
-    electrical: dict | None = None
+    params: dict | None = None
     sadot_url: str | None = None
 
 

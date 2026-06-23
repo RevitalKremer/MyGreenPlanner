@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../services/adminApi'
 import {
   PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
-  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, BG_FAINT, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG, DANGER,
+  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, BG_FAINT, ERROR, ERROR_BG, DANGER,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 
 // Sadot Energy product types this tab manages (mirrors BE SADOT_EQUIPMENT_TYPES).
 const SADOT_TYPES = ['inverter', 'battery', 'battery_base', 'dongle', 'datalogger', 'cable', 'smart_meter', 'network_cabinet', 'portable_power_station', 'bms', 'backup_box', 'energy_management']
 
-const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: '', active: true, electrical: '' }
+const emptyForm = { type_key: '', product_type: 'inverter', name: '', part_number: '', price_ils: '', sadot_url: '', active: true, params: '' }
 
 function EquipmentEditor({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState(() => ({
@@ -17,16 +17,16 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
     price_ils: product?.price_ils ?? '',
     sadot_url: product?.sadot_url ?? '',
     part_number: product?.part_number ?? '',
-    electrical: product?.electrical ? JSON.stringify(product.electrical, null, 2) : '',
+    params: product?.params ? JSON.stringify(product.params, null, 2) : '',
   }))
   const [jsonError, setJsonError] = useState<string | null>(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
-    let electrical: any = null
-    if (form.electrical.trim()) {
-      try { electrical = JSON.parse(form.electrical) }
+    let params: any = null
+    if (form.params.trim()) {
+      try { params = JSON.parse(form.params) }
       catch { setJsonError(t('admin.sadot.invalidJson')); return }
     }
     onSave({
@@ -37,7 +37,7 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       price_ils: form.price_ils === '' ? null : Number(form.price_ils),
       sadot_url: form.sadot_url.trim() || null,
       active: form.active,
-      electrical,
+      params,
     })
   }
 
@@ -69,7 +69,7 @@ function EquipmentEditor({ product, onSave, onCancel, t }) {
       </div>
       <div style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.electricalJson')}</label>
-        <textarea value={form.electrical} onChange={e => { set('electrical', e.target.value); setJsonError(null) }}
+        <textarea value={form.params} onChange={e => { set('params', e.target.value); setJsonError(null) }}
           placeholder={'{ "acPowerKw": 50, "mpptCount": 4, "mpptVmin": 200, "mpptVmax": 1000, "maxInputCurrentA": 26, "maxStringsPerMppt": 2, "maxSystemVoltageV": 1100 }'}
           rows={5}
           style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.78rem', padding: '0.5rem', borderRadius: 6, border: `1px solid ${jsonError ? ERROR : BORDER_LIGHT}`, resize: 'vertical' }} />
@@ -95,6 +95,7 @@ export default function SadotEquipmentTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingNew, setAddingNew] = useState(false)
   const [filter, setFilter] = useState('')
+  const [openParams, setOpenParams] = useState<string | null>(null)
 
   useEffect(() => {
     getProducts('sadot')
@@ -171,7 +172,25 @@ export default function SadotEquipmentTab() {
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_SECONDARY, fontFamily: 'monospace', fontSize: '0.76rem' }}>{p.product_type}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, textAlign: 'right' }}>{p.price_ils != null ? Number(p.price_ils).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: p.electrical ? SUCCESS : TEXT_VERY_LIGHT }}>{p.electrical ? '✓' : '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', position: 'relative' }}>
+                    {p.params && Object.keys(p.params).length ? (
+                      <>
+                        <button onClick={() => setOpenParams(openParams === p.id ? null : p.id)}
+                          title={t('admin.sadot.viewParams')}
+                          style={{ background: 'none', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 5, cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.1rem 0.5rem', fontWeight: 700, lineHeight: 1 }}>…</button>
+                        {openParams === p.id && (
+                          <div style={{ position: 'absolute', zIndex: 20, top: '100%', insetInlineStart: '0.75rem', marginTop: 4, background: 'white', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.14)', padding: '0.5rem 0.7rem', minWidth: 180, maxWidth: 320 }}>
+                            {Object.entries(p.params).map(([k, v]) => (
+                              <div key={k} style={{ fontSize: '0.76rem', color: TEXT_DARKEST, padding: '0.1rem 0', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{k}</span>
+                                <span style={{ color: TEXT_SECONDARY }}>: {typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: TEXT_VERY_LIGHT }}>—</span>}
+                  </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                       <button onClick={() => { setEditingId(p.id); setAddingNew(false) }} title={t('admin.common.edit')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.3rem' }}>✎</button>

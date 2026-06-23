@@ -419,20 +419,21 @@ class Step5Data(_StrictBase):
 # lightweight user data (settings, inverter picks, string assignments, BOM
 # deltas) is stored here.
 
-class SelectedInverter(_StrictBase):
-    """One inverter (or other Sadot equipment) chosen in Step 6."""
-    typeKey: str            # Product.type_key of a Sadot 'inverter' product
+class SelectedEquipment(_StrictBase):
+    """One Sadot equipment item (inverter / battery / …) chosen in Step 6."""
+    typeKey: str            # Product.type_key
     qty: int = 1
 
 
 class Step6Data(_StrictBase):
-    """Electrical settings + inverter selection.
+    """Electrical settings + equipment selection.
 
-    `settings` is a free-form param blob driving string auto-generation
-    (design temps with Israel defaults, DC:AC target, …); its schema is
-    refined as the engine matures, so it is kept open here."""
+    `settings` is a free-form param blob (grid connection, regulation, product
+    category, plant type, …). `inverters` and `batteries` are the user's
+    equipment picks."""
     settings: Optional[dict] = None
-    inverters: list[SelectedInverter] = Field(default_factory=list)
+    inverters: list[SelectedEquipment] = Field(default_factory=list)
+    batteries: list[SelectedEquipment] = Field(default_factory=list)
 
 
 class ElectricalString(_StrictBase):

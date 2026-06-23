@@ -1119,6 +1119,14 @@ function App() {
             onSettingsChange={s.setStep6Settings}
             inverters={s.step6Inverters}
             onInvertersChange={s.setStep6Inverters}
+            batteries={s.step6Batteries}
+            onBatteriesChange={s.setStep6Batteries}
+            onSave={() => handleCloudSave(s.currentStep)}
+            panelCount={(s.panels || []).filter((p: any) => !p.isEmpty).length}
+            totalKw={(s.panels || []).filter((p: any) => !p.isEmpty).length * (s.panelSpec?.kw || 0) / 1000}
+            areaCount={(s.areas || []).length}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
           />
         )}
 

@@ -29,6 +29,7 @@ export const A = Object.freeze({
   // Step 6 (electrical settings + inverter selection)
   SET_STEP6_SETTINGS:     'SET_STEP6_SETTINGS',
   SET_STEP6_INVERTERS:    'SET_STEP6_INVERTERS',
+  SET_STEP6_BATTERIES:    'SET_STEP6_BATTERIES',
   // Step 7 (string plan)
   SET_STEP7_STRINGS:      'SET_STEP7_STRINGS',
   // Step 8 (electrician approval)
@@ -100,8 +101,9 @@ export const initialProjectState = {
     },
     // ── Electrical (Tier 2) ──
     step6: {
-      settings: null,        // free-form electrical params (design temps, …)
+      settings: null,        // free-form electrical params (connection, regulation, …)
       inverters: [],         // [{ typeKey, qty }]
+      batteries: [],         // [{ typeKey, qty }]
     },
     step7: {
       strings: [],           // [{ id, areaLabel, panelIds, inverterTypeKey, mpptIndex }]
@@ -253,6 +255,11 @@ export function projectReducer(state, action) {
     case A.SET_STEP6_INVERTERS: {
       const inverters = typeof action.value === 'function' ? action.value(state.data.step6.inverters) : action.value
       return { ...state, data: { ...state.data, step6: { ...state.data.step6, inverters } } }
+    }
+
+    case A.SET_STEP6_BATTERIES: {
+      const batteries = typeof action.value === 'function' ? action.value(state.data.step6.batteries) : action.value
+      return { ...state, data: { ...state.data, step6: { ...state.data.step6, batteries } } }
     }
 
     // ── Step 7 (string plan) ──

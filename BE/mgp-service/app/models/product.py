@@ -49,13 +49,13 @@ class Product(Base):
     # whenever the parent appears in the effective BOM, with
     # qty = parent.qty * multiplier. Shape: {"parentType": str, "multiplier": int}.
     bundle: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # Free-form electrical spec blob (single JSON column, not per-field columns).
-    #   - panels: {"Voc", "Vmp", "Isc", "Imp", "tempCoeffVocPctPerC",
-    #              "tempCoeffVmpPctPerC", ...}
-    #   - inverters: {"acPowerW", "maxDcPowerW", "mpptCount", "mpptVmin",
-    #              "mpptVmax", "maxInputCurrentA", "maxStringsPerMppt",
-    #              "maxSystemVoltageV", ...}
-    electrical: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Free-form per-product param blob (single JSON column — room for any
+    # unique param). Examples:
+    #   - panels: {"Voc", "Vmp", "Isc", "Imp", "tempCoeffVocPctPerC", ...}
+    #   - inverters: {"acPowerKw", "mpptCount", "mpptVmin", "mpptVmax",
+    #              "maxInputCurrentA", "maxStringsPerMppt", "maxSystemVoltageV",
+    #              "productCategory": "ongrid|hybrid|offgrid", ...}
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Sadot Energy product page URL — promotes Sadot sales (inverters,
     # batteries, dongles, …). Surfaced as a "View on Sadot Energy" link.
     sadot_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

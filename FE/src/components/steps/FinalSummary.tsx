@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLang } from '../../i18n/LangContext'
 import { fetchSadotEquipment, downloadProposal, downloadProduction } from '../../services/projectsApi'
+import BasicInfoCard from '../shared/BasicInfoCard'
 import {
   PRIMARY, PRIMARY_BG, PRIMARY_DARK, BLACK,
   TEXT, TEXT_SECONDARY, TEXT_MUTED,
@@ -62,13 +63,8 @@ export default function FinalSummary({
         <div style={{ fontSize: '1.4rem', fontWeight: 700, color: TEXT, marginBottom: '1.5rem' }}>{t('final.title')}</div>
 
         {/* ① Basic */}
-        <div style={card}>
-          <div style={head}>{t('phase.basic')}</div>
-          {factRow(t('final.basic.panels'), panelCount ?? 0)}
-          {factRow(t('final.basic.totalKw'), `${(totalKw ?? 0).toFixed(2)} kWp`)}
-          {factRow(t('final.basic.areas'), areaCount ?? 0)}
-          {factRow(t('final.basic.panelType'), panelTypeName || '—')}
-          <div style={{ ...row, borderBottom: 'none' }}><span style={{ color: TEXT_MUTED }}>{t('final.basic.roofType')}</span><span style={{ fontWeight: 600 }}>{roofType || '—'}</span></div>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <BasicInfoCard panelCount={panelCount} totalKw={totalKw} areaCount={areaCount} roofType={roofType} panelTypeName={panelTypeName} />
         </div>
 
         {/* ② Construction — status + deliverables CTAs */}

@@ -7,7 +7,7 @@ import {
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 
-const emptyForm = { type_key: '', product_type: 'panel', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true, electrical: '' }
+const emptyForm = { type_key: '', product_type: 'panel', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true, params: '' }
 
 function EditRow({ product, onSave, onCancel, t }) {
   const [form, setForm] = useState({
@@ -15,23 +15,23 @@ function EditRow({ product, onSave, onCancel, t }) {
     length_cm: product?.length_cm ?? '',
     width_cm:  product?.width_cm  ?? '',
     kw_peak:   product?.kw_peak   ?? '',
-    electrical: product?.electrical ? JSON.stringify(product.electrical) : '',
+    params: product?.params ? JSON.stringify(product.params) : '',
   })
   const [jsonError, setJsonError] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
     if (!form.length_cm || !form.width_cm || !form.kw_peak) return
-    let electrical: any = null
-    if (String(form.electrical).trim()) {
-      try { electrical = JSON.parse(form.electrical) } catch { setJsonError(true); return }
+    let params: any = null
+    if (String(form.params).trim()) {
+      try { params = JSON.parse(form.params) } catch { setJsonError(true); return }
     }
     onSave({
       ...form,
       length_cm: Number(form.length_cm),
       width_cm:  Number(form.width_cm),
       kw_peak:   Number(form.kw_peak),
-      electrical,
+      params,
     })
   }
   const inp = (key, placeholder, style = {}) => (
@@ -47,7 +47,7 @@ function EditRow({ product, onSave, onCancel, t }) {
       <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('width_cm',  '113.4', { width: '5rem', textAlign: 'right' })}</td>
       <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('kw_peak',   '670',   { width: '4.5rem', textAlign: 'right' })}</td>
       <td style={{ padding: '0.4rem 0.5rem' }}>
-        <input value={form.electrical ?? ''} onChange={e => { set('electrical', e.target.value); setJsonError(false) }}
+        <input value={form.params ?? ''} onChange={e => { set('params', e.target.value); setJsonError(false) }}
           placeholder='{"Voc":46,"Vmp":39,"Isc":18.5,"Imp":17.2}'
           style={{ padding: '0.3rem 0.5rem', borderRadius: 5, border: `1px solid ${jsonError ? ERROR : BORDER_LIGHT}`, fontSize: '0.72rem', fontFamily: 'monospace', width: '15rem' }} />
       </td>
@@ -183,7 +183,7 @@ export default function PanelTypesTab() {
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.length_cm ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.width_cm ?? '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.kw_peak != null ? `${p.kw_peak} W` : '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: p.electrical ? SUCCESS : TEXT_VERY_LIGHT, fontWeight: '700' }}>{p.electrical ? '✓' : '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: p.params ? SUCCESS : TEXT_VERY_LIGHT, fontWeight: '700' }}>{p.params ? '✓' : '—'}</td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
                     <button onClick={() => handleToggleActive(p)} style={{
                       padding: '0.2rem 0.55rem', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700', border: 'none', cursor: 'pointer',

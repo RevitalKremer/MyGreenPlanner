@@ -39,6 +39,7 @@ def compute_input_hash(data: dict) -> str:
     relevant = {
         '_v': _ELECTRICAL_BOM_LOGIC_VERSION,
         'inverters': step6.get('inverters', []),
+        'batteries': step6.get('batteries', []),
         'settings': step6.get('settings', {}),
         'strings': step7.get('strings', []),
     }
@@ -115,8 +116,10 @@ def build_electrical_bom(data: dict, products_by_type: dict[str, dict]) -> list[
     later, the Step-7 string plan)."""
     items: list[dict] = []
 
-    # Equipment rows — one per selected Sadot product, summing qty.
-    picks = (data.get('step6', {}) or {}).get('inverters', []) or []
+    # Equipment rows — one per selected Sadot product (inverters + batteries),
+    # summing qty.
+    step6 = data.get('step6', {}) or {}
+    picks = (step6.get('inverters') or []) + (step6.get('batteries') or [])
     qty_by_key: dict[str, int] = {}
     for pick in picks:
         key = pick.get('typeKey')

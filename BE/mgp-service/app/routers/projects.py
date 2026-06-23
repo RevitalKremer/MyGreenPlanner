@@ -827,6 +827,12 @@ class StringPlanValidateRequest(BaseModel):
     strings: list[dict] = Field(default_factory=list)
 
 
+class RecommendInverterRequest(BaseModel):
+    regulationKey: str | None = None
+    amperageA: float | None = None
+    productCategory: str | None = None
+
+
 @router.post("/{project_id}/electrical/strings/generate")
 async def generate_electrical_strings(
     project_id: uuid.UUID,
@@ -879,32 +885,28 @@ async def validate_electrical_strings(
     return {'issues': issues}
 
 
-@router.get("/{project_id}/electrical/inverter-suggestions")
+@router.post("/{project_id}/electrical/inverter-suggestions")
 async def get_inverter_suggestions(
     project_id: uuid.UUID,
+    payload: RecommendInverterRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
-    """Suggest inverter options sized to the system's total DC power."""
-    data = project.data or {}
-    panel_product = await _load_panel_product(db, data)
-    pspec = electrical_service.panel_specs(panel_product)
-    panels = (project.layout or {}).get('panels') or []
-    n_panels = sum(1 for p in panels if not p.get('isEmpty'))
-    total_dc_w = (pspec['wp'] or 0) * n_panels
-
+    """Recommended total inverter capacity (kW) for the current Step-6
+    selections. Candidates are narrowed to the selected product category so the
+    sizing granularity is that category's smallest inverter (e.g. hybrid ≈ 6 kW,
+    on-grid ≈ 10 kW); recommend_inverter_capacity floors the connection max to a
+    multiple of it."""
     res = await db.execute(
         select(Product).where(Product.active == True, Product.product_type == 'inverter')
     )
-    inverters = res.scalars().all()
-    suggestions = electrical_service.suggest_inverters(total_dc_w, inverters)
-    return {
-        'totalDcW': total_dc_w,
-        'panelCount': n_panels,
-        'panelWp': pspec['wp'],
-        'suggestions': suggestions,
-    }
+    inverters = list(res.scalars().all())
+    if payload.productCategory:
+        inverters = [p for p in inverters if (p.params or {}).get('productCategory') == payload.productCategory]
+    kws = [s['acPowerW'] / 1000.0 for s in (electrical_service.inverter_specs(p) for p in inverters) if s['acPowerW']]
+    cap = electrical_service.recommend_inverter_capacity(payload.regulationKey, payload.amperageA, kws)
+    return {'recommendedKw': cap}
 
 
 # ── Electrical BOM (Tier 2) — fully separate stack from the construction BOM ──

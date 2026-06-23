@@ -39,7 +39,7 @@ SADOT_PRODUCTS = [
     {'type_key': 'sadot_mid_40ktl3_x', 'product_type': 'inverter', 'name': 'MID 40KTL3-X', 'part_number': None, 'additional_info': 'Inverter On Grid', 'price_ils': 7920.0, 'active': True, 'electrical': {'acPowerKw': 40.0}},
     {'type_key': 'sadot_mid_50ktl3_x2', 'product_type': 'inverter', 'name': 'MID 50KTL3-X2', 'part_number': None, 'additional_info': 'Inverter On Grid', 'price_ils': 8950.0, 'active': True, 'electrical': {'acPowerKw': 50.0}},
     {'type_key': 'sadot_mod_15ktl3_x', 'product_type': 'inverter', 'name': 'MOD 15KTL3-X', 'part_number': None, 'additional_info': 'Inverter On Grid', 'price_ils': 3980.0, 'active': True, 'electrical': {'acPowerKw': 15.0}},
-    {'type_key': 'sadot_shine4g_x', 'product_type': 'dongle', 'name': 'Shine4G-X', 'part_number': 'WWH0DXH06H', 'additional_info': 'dongle On Grid', 'price_ils': 185.0, 'active': True, 'electrical': None},
+    {'type_key': 'sadot_shine4g_x', 'product_type': 'dongle', 'name': 'Shine4G-X', 'part_number': None, 'additional_info': 'dongle On Grid', 'price_ils': 185.0, 'active': True, 'electrical': None},
     {'type_key': 'sadot_shinegprs_x', 'product_type': 'dongle', 'name': 'ShineGPRS-X', 'part_number': None, 'additional_info': 'Dongle On Grid', 'price_ils': 185.0, 'active': False, 'electrical': None},
     {'type_key': 'sadot_shinegprs_x2', 'product_type': 'dongle', 'name': 'ShineGPRS-X2', 'part_number': None, 'additional_info': 'Dongle On Grid', 'price_ils': 185.0, 'active': False, 'electrical': None},
     {'type_key': 'sadot_shinelan_x', 'product_type': 'dongle', 'name': 'ShineLan-X', 'part_number': None, 'additional_info': 'Dongle On Grid', 'price_ils': 185.0, 'active': False, 'electrical': None},

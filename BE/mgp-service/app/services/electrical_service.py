@@ -66,9 +66,9 @@ def panel_specs(panel_product: Any) -> dict:
     Returns a dict with Voc/Vmp/Isc/Imp/tempCoeffVoc/tempCoeffVmp/wp and a
     `missing` list naming any spec that had to fall back / is absent.
     """
-    elec = getattr(panel_product, 'electrical', None) if panel_product is not None else None
+    elec = getattr(panel_product, 'params', None) if panel_product is not None else None
     if elec is None and isinstance(panel_product, dict):
-        elec = panel_product.get('electrical')
+        elec = panel_product.get('params')
     elec = elec or {}
 
     kw_peak = getattr(panel_product, 'kw_peak', None)
@@ -102,9 +102,9 @@ def panel_specs(panel_product: Any) -> dict:
 
 def inverter_specs(inverter_product: Any) -> dict:
     """Extract inverter MPPT specs from a Product (ORM obj or dict)."""
-    elec = getattr(inverter_product, 'electrical', None) if inverter_product is not None else None
+    elec = getattr(inverter_product, 'params', None) if inverter_product is not None else None
     if elec is None and isinstance(inverter_product, dict):
-        elec = inverter_product.get('electrical')
+        elec = inverter_product.get('params')
     elec = elec or {}
 
     ac_kw = _num(elec, 'acPowerKw')
@@ -140,6 +140,43 @@ def _voc_at(voc_stc: float, coeff_pct: float, temp_c: float) -> float:
 
 def _vmp_at(vmp_stc: float, coeff_pct: float, temp_c: float) -> float:
     return vmp_stc * (1 + coeff_pct / 100.0 * (temp_c - STC_TEMP_C))
+
+
+# ── Recommended inverter capacity ────────────────────────────────────────────
+# Small-tariff (green track) is capped at 15 kW. Otherwise the connection's
+# power capacity (amperage / 1.44 ≈ √3·400V·I) is the MAX, and the recommended
+# total AC capacity is the largest multiple of the smallest available inverter
+# (the system can stack several units) that stays within that max. The min
+# inverter size is category-specific (caller filters by product category, e.g.
+# hybrid ≈ 6 kW, on-grid ≈ 10 kW). Server-only — the client gets just the kW.
+SMALL_TARIFF_KEY = 'green_small'
+SMALL_TARIFF_KW = 15.0
+CONNECTION_DIVISOR = 1.44
+
+
+def recommend_inverter_capacity(
+    regulation_key: str | None,
+    amperage_a: float | None,
+    available_inverter_kws: list[float],
+) -> float | None:
+    """Recommended total inverter capacity (kW). Green track → 15; else the
+    connection max (amperage/1.44) floored to a multiple of the smallest
+    available inverter capacity (≥ one unit). Multiple inverters can be stacked
+    to reach the total, so the granularity is the min unit, not a single
+    inverter's size."""
+    if regulation_key == SMALL_TARIFF_KEY:
+        return SMALL_TARIFF_KW
+    if not amperage_a or amperage_a <= 0:
+        return None
+    max_cap = amperage_a / CONNECTION_DIVISOR
+    caps = [c for c in available_inverter_kws if c and c > 0]
+    if not caps:
+        # No catalog capacities to size against — fall back to the raw max.
+        return round(max_cap, 1)
+    min_cap = min(caps)
+    units = math.floor(max_cap / min_cap)
+    total = units * min_cap if units >= 1 else min_cap  # at least one unit
+    return round(total, 1)
 
 
 # ── Inverter auto-sizing ─────────────────────────────────────────────────────

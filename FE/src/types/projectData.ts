@@ -319,6 +319,7 @@ export interface ElectricalString {
 export interface Step6Data {
   settings?: Record<string, unknown> | null
   inverters: SelectedInverter[]
+  batteries: SelectedInverter[]
 }
 
 export interface Step7Data {

@@ -85,7 +85,7 @@ class SadotEquipmentRead(BaseModel):
     name_he: str | None = None
     part_number: str | None = None
     price_ils: float | None = None
-    electrical: dict | None = None
+    params: dict | None = None
     sadot_url: str | None = None
 
     model_config = {"from_attributes": True}
@@ -114,7 +114,7 @@ async def list_sadot_equipment(db: AsyncSession = Depends(get_db)):
             name_he=p.name_he,
             part_number=p.part_number,
             price_ils=p.price_ils,
-            electrical=p.electrical,
+            params=p.params,
             sadot_url=p.sadot_url,
         )
         for p in products

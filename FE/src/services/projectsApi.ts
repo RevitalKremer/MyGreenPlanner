@@ -174,8 +174,17 @@ export async function fetchSadotEquipment() {
   return res.json()
 }
 
-export async function getInverterSuggestions(id: string) {
-  const res = await mgpRequest(`/projects/${id}/electrical/inverter-suggestions`)
+export async function fetchElectricalRegulations() {
+  const res = await mgpRequest('/electrical-regulations')
+  if (!res.ok) throw new Error('Failed to load electrical regulations')
+  return res.json()
+}
+
+export async function getInverterSuggestions(id: string, params: { regulationKey?: string | null; amperageA?: number | null; productCategory?: string | null } = {}) {
+  const res = await mgpRequest(`/projects/${id}/electrical/inverter-suggestions`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
   if (!res.ok) throw new Error('Failed to load inverter suggestions')
   return res.json()
 }
