@@ -1,7 +1,7 @@
 import copy
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Form, Response
 from typing import Annotated, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -15,14 +15,20 @@ from app.database import get_db
 from app.models.setting import AppSetting
 from app.models.user import User
 from app.models.project import Project
+from app.models.product import Product
 from app.models.project_image import ProjectImage
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead, ProjectSummary, ProjectListResponse
 from app.schemas.bom import BOMRead, BOMItemRead, BOMDeltasUpdate, BOMEffectiveRead
+from app.schemas.electrical_bom import (
+    ElectricalBOMRead, ElectricalBOMItemRead, ElectricalBOMDeltasUpdate, ElectricalBOMEffectiveRead,
+)
 from app.services import projects as project_service
 from app.services import rail_service
 from app.services import base_service
 from app.services import trapezoid_detail_service
 from app.services import bom_service
+from app.services import electrical_service
+from app.services import electrical_bom_service
 from app.services import proposal_service
 from app.services import production_service
 from app.services import settings_cache
@@ -320,20 +326,21 @@ async def delete_project(
 @router.put("/{project_id}/step")
 async def update_step(
     project_id: uuid.UUID,
-    new_step: int = Query(..., description="Target step number (1-5)"),
+    new_step: int = Query(..., description="Target step number (1-10; 10 = Final)"),
+    skip: bool = Query(False, description="Explicit skip-to-summary jump — bypasses the electrical charge"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
     """Transition project to a new step with server-side data cleanup."""
-    if new_step < 1 or new_step > 5:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Step must be 1-5")
+    if new_step < 1 or new_step > project_service.FINAL_STEP:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Step must be 1-{project_service.FINAL_STEP}")
 
     try:
         result = await project_service.update_project_step(
             db, project, new_step,
             rs=rail_service, bs=base_service, tds=trapezoid_detail_service,
-            current_user=current_user,
+            current_user=current_user, skip=skip,
         )
     except project_service.StepTransitionInvalidError as e:
         # Structured detail so the FE can translate per-error and highlight
@@ -610,14 +617,17 @@ async def get_rail_materials(
 async def approve_plan(
     project_id: uuid.UUID,
     strictConsent: bool = Query(...),
+    step: int = Query(4, description="Approval slot: 4 = constructor, 8 = electrician"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
 ):
-    if (project.navigation or {}).get('step', 1) < 4:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project must be on step 4+ to approve plan")
-    updated = await project_service.approve_plan(db, project, current_user, strictConsent)
-    return updated.data.get("step4", {}).get("planApproval")
+    if step not in (4, 8):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid approval step")
+    if (project.navigation or {}).get('step', 1) < step:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Project must be on step {step}+ to approve")
+    updated = await project_service.approve_plan(db, project, current_user, strictConsent, step=step)
+    return updated.data.get(f"step{step}", {}).get("planApproval")
 
 
 # ── BOM endpoints ──────────────────────────────────────────────────────────
@@ -785,6 +795,202 @@ async def get_effective_bom(
     )
 
 
+# ── Electrical (Tier 2) string-plan engine ──────────────────────────────────
+
+async def _load_panel_product(db: AsyncSession, data: dict) -> Product | None:
+    type_key = (data.get('step2') or {}).get('panelType')
+    if not type_key:
+        return None
+    res = await db.execute(select(Product).where(Product.type_key == type_key))
+    return res.scalar_one_or_none()
+
+
+async def _load_selected_inverters(db: AsyncSession, data: dict) -> list[Product]:
+    """Load the Step-6 selected inverter Products, expanded by qty so that
+    summed MPPT inputs/capacity reflect the chosen quantities."""
+    picks = (data.get('step6') or {}).get('inverters') or []
+    keys = [p.get('typeKey') for p in picks if p.get('typeKey')]
+    if not keys:
+        return []
+    res = await db.execute(select(Product).where(Product.type_key.in_(keys)))
+    by_key = {p.type_key: p for p in res.scalars().all()}
+    expanded: list[Product] = []
+    for pick in picks:
+        prod = by_key.get(pick.get('typeKey'))
+        if prod is None:
+            continue
+        expanded.extend([prod] * max(1, int(pick.get('qty') or 1)))
+    return expanded
+
+
+class StringPlanValidateRequest(BaseModel):
+    strings: list[dict] = Field(default_factory=list)
+
+
+class RecommendInverterRequest(BaseModel):
+    regulationKey: str | None = None
+    amperageA: float | None = None
+    productCategory: str | None = None
+
+
+@router.post("/{project_id}/electrical/strings/generate")
+async def generate_electrical_strings(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Auto-generate the per-area string plan from the layout + Step-6 inverter
+    selection, persist it to data.step7.strings, and return strings + issues."""
+    data = project.data or {}
+    panel_product = await _load_panel_product(db, data)
+    inverters = await _load_selected_inverters(db, data)
+    panels = (project.layout or {}).get('panels') or []
+    settings = (data.get('step6') or {}).get('settings') or {}
+    areas = (data.get('step2') or {}).get('areas') or []
+    label_by_area = {i: a.get('label') for i, a in enumerate(areas) if a.get('label')}
+
+    result = electrical_service.generate_string_plan(
+        panels, panel_product, inverters, settings, label_by_area,
+    )
+
+    new_data = copy.deepcopy(data)
+    new_data.setdefault('step7', {})['strings'] = result['strings']
+    project.data = new_data
+    flag_modified(project, 'data')
+    await db.commit()
+    return result
+
+
+@router.post("/{project_id}/electrical/strings/validate")
+async def validate_electrical_strings(
+    project_id: uuid.UUID,
+    payload: StringPlanValidateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Validate a (manually-edited) string plan against MPPT limits. Read-only
+    — the FE persists strings through the normal project save."""
+    data = project.data or {}
+    panel_product = await _load_panel_product(db, data)
+    inverters = await _load_selected_inverters(db, data)
+    settings = (data.get('step6') or {}).get('settings') or {}
+    issues = electrical_service.validate_string_plan(
+        payload.strings, panel_product, inverters, settings,
+    )
+    return {'issues': issues}
+
+
+@router.post("/{project_id}/electrical/inverter-suggestions")
+async def get_inverter_suggestions(
+    project_id: uuid.UUID,
+    payload: RecommendInverterRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Recommended total inverter capacity (kW) for the current Step-6
+    selections. Candidates are narrowed to the selected product category so the
+    sizing granularity is that category's smallest inverter (e.g. hybrid ≈ 6 kW,
+    on-grid ≈ 10 kW); recommend_inverter_capacity floors the connection max to a
+    multiple of it."""
+    res = await db.execute(
+        select(Product).where(Product.active == True, Product.product_type == 'inverter')
+    )
+    inverters = list(res.scalars().all())
+    if payload.productCategory:
+        inverters = [p for p in inverters if (p.params or {}).get('productCategory') == payload.productCategory]
+    kws = [s['acPowerW'] / 1000.0 for s in (electrical_service.inverter_specs(p) for p in inverters) if s['acPowerW']]
+    cap = electrical_service.recommend_inverter_capacity(payload.regulationKey, payload.amperageA, kws)
+    return {'recommendedKw': cap}
+
+
+# ── Electrical BOM (Tier 2) — fully separate stack from the construction BOM ──
+
+@router.put("/{project_id}/electrical-bom/compute", response_model=ElectricalBOMRead)
+async def compute_electrical_bom(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Compute (or recompute) the electrical BOM from the Step-6 equipment
+    selection + Step-7 string plan, and save it."""
+    bom = await electrical_bom_service.compute_and_save_electrical_bom(db, project)
+    return ElectricalBOMRead(
+        id=bom.id, projectId=bom.project_id,
+        items=[ElectricalBOMItemRead(**it) for it in bom.items],
+        isStale=False, createdAt=bom.created_at, updatedAt=bom.updated_at,
+    )
+
+
+@router.put("/{project_id}/electrical-bom/recalc", response_model=ElectricalBOMRead)
+async def recalc_electrical_bom(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Materialise pending step9 deltas into the saved electrical BOM."""
+    bom = await electrical_bom_service.materialize_electrical_bom(db, project)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Electrical BOM not yet computed")
+    return ElectricalBOMRead(
+        id=bom.id, projectId=bom.project_id,
+        items=[ElectricalBOMItemRead(**it) for it in bom.items],
+        isStale=False, createdAt=bom.created_at, updatedAt=bom.updated_at,
+    )
+
+
+@router.get("/{project_id}/electrical-bom/deltas")
+async def get_electrical_bom_deltas(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    step9 = (project.data or {}).get('step9', {})
+    return step9.get('bomDeltas') or {'overrides': {}, 'additions': [], 'alternatives': {}}
+
+
+@router.put("/{project_id}/electrical-bom/deltas")
+async def save_electrical_bom_deltas(
+    project_id: uuid.UUID,
+    payload: ElectricalBOMDeltasUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Save electrical bomDeltas to project.data.step9.bomDeltas."""
+    data = copy.deepcopy(project.data or {})
+    data.setdefault('step9', {})['bomDeltas'] = payload.model_dump()
+    project.data = data
+    flag_modified(project, 'data')
+    await db.commit()
+    return data['step9']['bomDeltas']
+
+
+@router.get("/{project_id}/electrical-bom/effective", response_model=ElectricalBOMEffectiveRead)
+async def get_effective_electrical_bom(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Return electrical BOM items with step9 deltas applied (merged view)."""
+    bom = await electrical_bom_service.get_electrical_bom(db, project.id)
+    if not bom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Electrical BOM not yet computed")
+    fresh = await electrical_bom_service.reenrich_items(db, bom.items or [])
+    step9 = (project.data or {}).get('step9', {})
+    deltas = step9.get('bomDeltas') or {}
+    effective = electrical_bom_service.apply_deltas(fresh, deltas)
+    return ElectricalBOMEffectiveRead(
+        items=effective, createdAt=bom.created_at, updatedAt=bom.updated_at,
+    )
+
+
 @router.get("/{project_id}/proposal.xlsx")
 async def download_proposal(
     project_id: uuid.UUID,
@@ -805,6 +1011,36 @@ async def download_proposal(
     filename = f"{safe_name}_proposal_{today}.xlsx"
     # HTTP headers are latin-1 — encode the unicode filename per RFC 5987,
     # and provide a plain ASCII fallback for legacy clients.
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    return Response(
+        content=xlsx_bytes,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            ),
+        },
+    )
+
+
+@router.get("/{project_id}/electrical-proposal.xlsx")
+async def download_electrical_proposal(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    project: Project = Depends(get_accessible_project),
+):
+    """Generate the Sadot Energy equipment price-proposal xlsx (חשבשבת template)."""
+    try:
+        xlsx_bytes = await electrical_bom_service.generate_electrical_proposal(db, project)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    from urllib.parse import quote
+    safe_name = ''.join(c if c not in '\\/:*?"<>|' else '_' for c in (project.name or 'equipment'))
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    filename = f"{safe_name}_equipment_{today}.xlsx"
     ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
     return Response(
         content=xlsx_bytes,
@@ -991,6 +1227,7 @@ QUOTATION_COOLDOWN_SECONDS = 30
 async def request_quotation(
     project_id: uuid.UUID,
     file: Optional[UploadFile] = File(None),
+    request_type: str = Form('construction'),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     project: Project = Depends(get_accessible_project),
@@ -1037,15 +1274,27 @@ async def request_quotation(
     XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     PDF_MIME  = 'application/pdf'
 
-    # xlsx (with pricing) is the canonical deliverable Sadot needs to quote.
-    xlsx_bytes = await proposal_service.generate_proposal(db, project)
+    # Request-type drives the Monday label and which proposals attach:
+    #   construction → [PQ Construction] : construction xlsx (+ production)
+    #   equipment    → [PQ Equipment]    : equipment xlsx
+    #   full         → [PQ - Full]       : both
+    rt = (request_type or 'construction').lower()
+    intent_label = {'construction': '[PQ Construction]', 'equipment': '[PQ Equipment]',
+                    'full': '[PQ - Full]'}.get(rt, '[PQ Construction]')
 
-    monday_attachments: list[tuple[str, bytes, str]] = [(xlsx_filename, xlsx_bytes, XLSX_MIME)]
+    monday_attachments: list[tuple[str, bytes, str]] = []
+    if rt in ('construction', 'full'):
+        # xlsx (with pricing) is the canonical deliverable Sadot needs to quote.
+        constr_xlsx = await proposal_service.generate_proposal(db, project)
+        monday_attachments.append((xlsx_filename, constr_xlsx, XLSX_MIME))
+        prod_attachment = _build_production_attachment(project, safe_name, today_str, XLSX_MIME, logger)
+        if prod_attachment is not None:
+            monday_attachments.append(prod_attachment)
+    if rt in ('equipment', 'full'):
+        equip_xlsx = await electrical_bom_service.generate_electrical_proposal(db, project)
+        monday_attachments.append((f"{safe_name}_equipment_{today_str}.xlsx", equip_xlsx, XLSX_MIME))
     if pdf_bytes is not None:
         monday_attachments.append((pdf_filename, pdf_bytes, PDF_MIME))
-    prod_attachment = _build_production_attachment(project, safe_name, today_str, XLSX_MIME, logger)
-    if prod_attachment is not None:
-        monday_attachments.append(prod_attachment)
 
     # Quotation routing — fall back to the main board when the dedicated one
     # isn't configured. Empty strings count as "not configured".
@@ -1068,7 +1317,7 @@ async def request_quotation(
             attachments=monday_attachments,
             board_id=quotation_board,
             group_id=quotation_group,
-            intent_label="[QUOTATION REQUEST]",
+            intent_label=intent_label,
         )
     except Exception as e:
         monday_error = str(e)
