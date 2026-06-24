@@ -452,3 +452,115 @@ def restore_header_footer_images(template_bytes: bytes, output_bytes: bytes) -> 
         for name, data in output_files.items():
             out_zip.writestr(name, data)
     return buf.getvalue()
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Printer-settings / page-setup restoration (post-openpyxl-save)
+# ───────────────────────────────────────────────────────────────────────
+
+# The orientation Excel actually honours lives in the DEVMODE blob inside
+# xl/printerSettings/printerSettingsN.bin, which each sheet's <pageSetup>
+# references via r:id. openpyxl keeps the bare `orientation` attribute but drops
+# the .bin part and the relationship, so a landscape template prints portrait.
+# This restores the printerSettings parts and re-links each <pageSetup> to them
+# — matching sheets by name (openpyxl may renumber sheetN.xml on save). It is a
+# no-op for sheets/templates that carry no printerSettings.
+
+_PRINTER_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/printerSettings'
+
+
+def _norm_xl_path(p: str) -> str:
+    return p[1:] if p.startswith('/') else ('xl/' + p if not p.startswith('xl/') else p)
+
+
+def restore_print_setup(template_bytes: bytes, output_bytes: bytes) -> bytes:
+    template_files: dict[str, bytes] = {}
+    with ZipFile(io.BytesIO(template_bytes), 'r') as tz:
+        for name in tz.namelist():
+            template_files[name] = tz.read(name)
+    output_files: dict[str, bytes] = {}
+    with ZipFile(io.BytesIO(output_bytes), 'r') as oz:
+        for name in oz.namelist():
+            output_files[name] = oz.read(name)
+
+    # 1. Copy every printerSettings .bin the output is missing.
+    for name in template_files:
+        if name.startswith('xl/printerSettings/') and name not in output_files:
+            output_files[name] = template_files[name]
+
+    # 2. Map sheet name → sheet-part path in both workbooks (so we re-link the
+    #    same logical sheet even if openpyxl renumbered sheetN.xml).
+    template_sheets = _parse_workbook_sheets(template_files['xl/workbook.xml'])
+    output_sheets = _parse_workbook_sheets(output_files['xl/workbook.xml'])
+    template_wb_rels = {r['Id']: r['Target'] for r in _parse_rels(template_files['xl/_rels/workbook.xml.rels'])}
+    output_wb_rels = {r['Id']: r['Target'] for r in _parse_rels(output_files['xl/_rels/workbook.xml.rels'])}
+    template_sheet_path = {name: template_wb_rels[rid] for name, rid in template_sheets if rid in template_wb_rels}
+    output_sheet_path = {name: output_wb_rels[rid] for name, rid in output_sheets if rid in output_wb_rels}
+
+    for sheet_name, t_path in template_sheet_path.items():
+        if sheet_name not in output_sheet_path:
+            continue
+        t_sheet = _norm_xl_path(t_path)
+        o_sheet = _norm_xl_path(output_sheet_path[sheet_name])
+        t_rels_path = t_sheet.replace('worksheets/', 'worksheets/_rels/') + '.rels'
+        o_rels_path = o_sheet.replace('worksheets/', 'worksheets/_rels/') + '.rels'
+        if t_rels_path not in template_files or o_sheet not in output_files:
+            continue
+
+        # The printerSettings part this sheet pointed at in the template.
+        printer_target = next(
+            (r['Target'] for r in _parse_rels(template_files[t_rels_path])
+             if r.get('Type') == _PRINTER_REL_TYPE),
+            None,
+        )
+        if printer_target is None:
+            continue
+
+        # Skip if openpyxl somehow preserved the link already.
+        existing = _parse_rels(output_files.get(
+            o_rels_path,
+            b'<?xml version="1.0"?><Relationships xmlns="' + _REL_NS.encode() + b'"/>',
+        ))
+        if any(r.get('Type') == _PRINTER_REL_TYPE for r in existing):
+            continue
+
+        used_ids = {r['Id'] for r in existing}
+        new_rid = next(f'rId{i}' for i in range(100, 999) if f'rId{i}' not in used_ids)
+
+        # Inject the relationship into the output sheet's .rels.
+        rels_xml = output_files[o_rels_path].decode('utf-8') if o_rels_path in output_files else (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            f'<Relationships xmlns="{_REL_NS}"></Relationships>'
+        )
+        new_rel = f'<Relationship Id="{new_rid}" Type="{_PRINTER_REL_TYPE}" Target="{printer_target}"/>'
+        rels_xml = rels_xml.replace('</Relationships>', new_rel + '</Relationships>')
+        output_files[o_rels_path] = rels_xml.encode('utf-8')
+
+        # Re-link <pageSetup> to it. openpyxl emits the tag with no r:id and no
+        # xmlns:r on the root, so declare the prefix on the element itself.
+        sheet_xml = output_files[o_sheet].decode('utf-8')
+        m = re.search(r'<pageSetup\b[^>]*?>', sheet_xml)
+        if m and 'r:id=' not in m.group(0):
+            tag = m.group(0)
+            close = '/>' if tag.endswith('/>') else '>'
+            new_tag = f'{tag[:-len(close)]} r:id="{new_rid}" xmlns:r="{_R_NS}"{close}'
+            output_files[o_sheet] = sheet_xml.replace(tag, new_tag, 1).encode('utf-8')
+
+    # 3. Make sure [Content_Types].xml registers the .bin part type.
+    ct_path = '[Content_Types].xml'
+    if ct_path in output_files:
+        ct = output_files[ct_path].decode('utf-8')
+        if 'Extension="bin"' not in ct:
+            ct = ct.replace(
+                '</Types>',
+                '<Default Extension="bin" '
+                'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/>'
+                '</Types>',
+            )
+            output_files[ct_path] = ct.encode('utf-8')
+
+    buf = io.BytesIO()
+    with ZipFile(buf, 'w', ZIP_DEFLATED) as out_zip:
+        for name, data in output_files.items():
+            out_zip.writestr(name, data)
+    return buf.getvalue()
