@@ -215,8 +215,8 @@ export function useProjectState() {
 
   const applyWhiteboardDefaults = (data) => {
     setReferenceLine(canvasReferenceLine(data))
-    // Default canvas width: 6000 cm (60 m) → 2 cm/px on a 3000 px canvas.
-    setReferenceLineLengthCm('6000')
+    // Default canvas width: 600 cm (6 m) → 0.2 cm/px on a 3000 px canvas.
+    setReferenceLineLengthCm('600')
   }
 
   const handleCreateProject = (projectInfo) => {
@@ -432,7 +432,7 @@ export function useProjectState() {
     // canvas projects. Overriding them on load corrupts old projects whose
     // panels were placed at a different cm/px ratio. Only fresh canvas
     // creation (handleCreateProject / handleWhiteboardStart / source-toggle)
-    // applies the new bottom-line + 6000 cm default.
+    // applies the new bottom-line + 600 cm default.
     if (isCanvas && layout.uploadedImageData && !layout.referenceLine) {
       // No saved line at all — apply defaults so the user has something to work with.
       applyWhiteboardDefaults(layout.uploadedImageData)

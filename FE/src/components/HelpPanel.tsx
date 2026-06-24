@@ -21,7 +21,7 @@ const HELP = {
       },
       {
         q: 'How do I set the real-world scale?',
-        a: 'On image and map sources, click "Draw a reference line" and click two points along a known feature (a wall edge, a known length on the ground). Enter the actual length in cm — the pixel-to-cm ratio appears below the input and is reused by every later step. On Plain canvas the bottom edge is the reference line, defaulting to 6000 cm (60 m); change it to whatever real width you want the canvas to represent.'
+        a: 'On image and map sources, click "Draw a reference line" and click two points along a known feature (a wall edge, a known length on the ground). Enter the actual length in cm — the pixel-to-cm ratio appears below the input and is reused by every later step. On Plain canvas the bottom edge is the reference line, defaulting to 600 cm (6 m); change it to whatever real width you want the canvas to represent.'
       },
       {
         q: 'Can I paste a screenshot directly?',
@@ -29,7 +29,7 @@ const HELP = {
       },
       {
         q: EXAMPLE_TAG,
-        a: 'Pick Plain canvas for a clean walkthrough. The reference line is auto-set along the bottom edge at 6000 cm. Leave it as-is for the example, or change the cm value to match a real roof width if you have one in mind, then continue to step 2.'
+        a: 'Pick Plain canvas for a clean walkthrough. The reference line is auto-set along the bottom edge at 600 cm. Leave it as-is for the example, or change the cm value to match a real roof width if you have one in mind, then continue to step 2.'
       },
     ]
   },
