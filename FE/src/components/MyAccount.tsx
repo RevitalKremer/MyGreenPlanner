@@ -23,8 +23,9 @@ import { useLang } from '../i18n/LangContext'
  *   contactEmail     — shown in the "request top-up" hint (currently company
  *                      support email until payments land)
  */
-export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = null, onResendVerification = null, onSignOut = null, contactEmail = 'office@sadot-energy.co.il' }) {
+export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = null, onResendVerification = null, onSignOut = null, contactEmail = 'office@sadot-energy.co.il', constructionCost = 0, electricalCost = 0 }) {
   const { t } = useLang()
+  const [showPricing, setShowPricing] = useState(false)
   // Email verification state (unverified users can re-send the link).
   const [verifySending, setVerifySending] = useState(false)
   const [verifySent, setVerifySent] = useState(false)
@@ -95,8 +96,10 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
   // Credits view is windowed to the current calendar year (used / total /
   // plans). `available` is the lifetime wallet balance.
   const available       = user?.credits_available ?? 0
-  const used            = user?.credits_used ?? 0
-  const total           = user?.credits_total ?? 0
+  const used            = user?.credits_used ?? 0           // refundable (construction)
+  const electricalUsed  = user?.credits_electrical_used ?? 0 // non-refundable (electrical)
+  const held            = used + electricalUsed
+  const total           = available + held   // available + everything currently used
   const plansThisYear     = user?.plans_this_year ?? 0
   const discountEligible  = !!user?.discount_eligible
   const discountThreshold = Number(user?.discount_threshold ?? 0)
@@ -111,7 +114,7 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
     discountEligible          ? 'eligible' :
     discountProgress >= 0.75  ? 'near'     : 'far'
 
-  const StatBox = ({ label, value, accent = false }) => (
+  const StatBox = ({ label, value, accent = false, sub = null }) => (
     <div style={{
       flex: 1,
       background: accent ? PRIMARY_BG : 'white',
@@ -126,6 +129,7 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
       <span style={{ fontSize: '1.6rem', fontWeight: 800, color: TEXT_DARKEST, lineHeight: 1 }}>
         {value}
       </span>
+      {sub && <span style={{ fontSize: '0.72rem', color: TEXT_FAINT, fontWeight: 600 }}>{sub}</span>}
     </div>
   )
 
@@ -394,7 +398,7 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
         </div>
         <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.9rem' }}>
           <StatBox label={t('account.available')}       value={available} accent />
-          <StatBox label={t('account.used')}            value={used} />
+          <StatBox label={t('account.used')}            value={held} sub={held > 0 ? `${used} ${t('account.refundable')}` : null} />
           <StatBox label={t('account.total')}           value={total} />
           <StatBox label={t('account.plansThisYear')}   value={plansThisYear} />
         </div>
@@ -406,6 +410,40 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
           marginBottom: '1rem',
         }}>
           {t('account.refundNotice')}
+        </div>
+
+        {/* Pricing — expandable, like the edit-profile toggle */}
+        <div style={{ marginBottom: '1rem' }}>
+          <button onClick={() => setShowPricing(p => !p)} aria-expanded={showPricing}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.9rem', background: 'white', border: `1.5px solid ${BORDER_LIGHT}`, borderRadius: 10, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: TEXT_DARKEST }}>
+            <span>{t('account.pricing.title')}</span>
+            <span style={{ color: TEXT_FAINT }}>{showPricing ? '▾' : '▸'}</span>
+          </button>
+          {showPricing && (
+            <div style={{ border: `1.5px solid ${BORDER_LIGHT}`, borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '0.6rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: TEXT_DARKEST, fontWeight: 600 }}>
+                  <span>{t('account.pricing.construction')}</span>
+                  <span>{t('account.pricing.credits', { n: constructionCost })}</span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: TEXT_FAINT }}>{t('account.pricing.constructionNote')}</div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.88rem', color: TEXT_FAINT, fontWeight: 600 }}>
+                  <span>{t('account.pricing.strings')}</span>
+                  <span style={{
+                    fontSize: '0.66rem', color: AMBER_DARK, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.2rem 0.5rem', background: AMBER_BG,
+                    border: `1px solid ${AMBER_BORDER}`, borderRadius: 6,
+                  }}>
+                    {t('account.comingSoon')}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: TEXT_FAINT }}>{t('account.pricing.stringsNote')}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Buy more — disabled placeholder + contact hint */}

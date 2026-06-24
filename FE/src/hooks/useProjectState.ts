@@ -131,6 +131,24 @@ export function useProjectState() {
   const step5BomDeltas = pState.data.step5.bomDeltas
   const setStep5BomDeltas = (v) => pDispatch({ type: A.SET_BOM_DELTAS, value: v })
 
+  // ── Electrical (Tier 2): steps 6-9 ──
+  const step6Settings = pState.data.step6?.settings ?? null
+  const setStep6Settings = (v) => pDispatch({ type: A.SET_STEP6_SETTINGS, value: v })
+  const step6Inverters = pState.data.step6?.inverters ?? []
+  const setStep6Inverters = (v) => pDispatch({ type: A.SET_STEP6_INVERTERS, value: v })
+  const step6Batteries = pState.data.step6?.batteries ?? []
+  const setStep6Batteries = (v) => pDispatch({ type: A.SET_STEP6_BATTERIES, value: v })
+  const step7Strings = pState.data.step7?.strings ?? []
+  const setStep7Strings = (v) => pDispatch({ type: A.SET_STEP7_STRINGS, value: v })
+  const step7InverterLayout = pState.data.step7?.inverterLayout ?? {}
+  const setStep7InverterLayout = (v) => pDispatch({ type: A.SET_STEP7_INVERTER_LAYOUT, value: v })
+  const step7Mode = pState.data.step7?.mode ?? 'auto'
+  const setStep7Mode = (v) => pDispatch({ type: A.SET_STEP7_MODE, value: v })
+  const step8PlanApproval = pState.data.step8?.planApproval ?? null
+  const setStep8PlanApproval = (v) => pDispatch({ type: A.SET_ELEC_PLAN_APPROVAL, value: v })
+  const step9BomDeltas = pState.data.step9?.bomDeltas ?? null
+  const setStep9BomDeltas = (v) => pDispatch({ type: A.SET_ELEC_BOM_DELTAS, value: v })
+
   const cloudProjectId = pState.project.cloudProjectId
   const setCloudProjectId = (v) => pDispatch({ type: A.SET_PROJECT, payload: { cloudProjectId: v } })
 
@@ -236,6 +254,10 @@ export function useProjectState() {
     const s3     = data.step3  || {}
     const s4     = data.step4  || {}
     const s5     = data.step5  || {}
+    const s6     = data.step6  || {}
+    const s7     = data.step7  || {}
+    const s8     = data.step8  || {}
+    const s9     = data.step9  || {}
 
     // ── Convert server trapezoids array → FE trapezoidConfigs object ──
     const trapezoidConfigs = {}
@@ -389,6 +411,14 @@ export function useProjectState() {
                  customDiagonals: s3.customDiagonals || {}, customBasesOffsets: s3.customBasesOffsets || {} },
         step4: { planApproval: s4.planApproval ?? null },
         step5: { bomDeltas: s5.bomDeltas ?? null },
+        step6: { settings: s6.settings ?? null, inverters: Array.isArray(s6.inverters) ? s6.inverters : [], batteries: Array.isArray(s6.batteries) ? s6.batteries : [] },
+        step7: {
+          strings: Array.isArray(s7.strings) ? s7.strings : [],
+          inverterLayout: s7.inverterLayout && typeof s7.inverterLayout === 'object' ? s7.inverterLayout : {},
+          mode: s7.mode === 'manual' ? 'manual' : 'auto',
+        },
+        step8: { planApproval: s8.planApproval ?? null },
+        step9: { bomDeltas: s9.bomDeltas ?? null },
       },
       navigation: { step: data.currentStep || 1, tab: null },
       project: { cloudProjectId: existingCloudId ?? null, appScreen: 'wizard', currentProject: data.project },
@@ -985,6 +1015,10 @@ export function useProjectState() {
       if (key === 'step3') { setStep3GlobalSettings({}); setStep3AreaSettings({}) }
       if (key === 'step4') { setStep4PlanApproval(null) }
       if (key === 'step5') { setStep5BomDeltas(null) }
+      if (key === 'step6') { setStep6Settings(null); setStep6Inverters([]); setStep6Batteries([]) }
+      if (key === 'step7') { setStep7Strings([]); setStep7InverterLayout({}); setStep7Mode('auto') }
+      if (key === 'step8') { setStep8PlanApproval(null) }
+      if (key === 'step9') { setStep9BomDeltas(null) }
     }
   }
 
@@ -1062,7 +1096,15 @@ export function useProjectState() {
         if (!step4PlanApproval?.strictConsent) blockers.push('nav.blocker.step4.consent')
         break
       }
-      // step 3 and 5: no client-side blockers
+      case 6: {
+        if ((step6Inverters || []).length === 0) blockers.push('nav.blocker.step6.noInverter')
+        break
+      }
+      case 8: {
+        if (!step8PlanApproval?.strictConsent) blockers.push('step8.blockMsg')
+        break
+      }
+      // steps 3, 5, 7, 9, Final: no client-side blockers
     }
     return blockers
   }
@@ -1169,6 +1211,15 @@ export function useProjectState() {
     step4PlanApproval, setStep4PlanApproval,
     // Step 6 (BOM / PDF)
     step5BomDeltas, setStep5BomDeltas,
+    // Electrical (Tier 2): steps 6-9
+    step6Settings, setStep6Settings,
+    step6Inverters, setStep6Inverters,
+    step6Batteries, setStep6Batteries,
+    step7Strings, setStep7Strings,
+    step7InverterLayout, setStep7InverterLayout,
+    step7Mode, setStep7Mode,
+    step8PlanApproval, setStep8PlanApproval,
+    step9BomDeltas, setStep9BomDeltas,
     // Panel spec (resolved from panelTypes + panelType)
     panelSpec,
     // App defaults (from app_settings DB table)

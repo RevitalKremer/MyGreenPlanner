@@ -1,73 +1,103 @@
 import { useState, useEffect } from 'react'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../services/adminApi'
 import {
-  PRIMARY, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
-  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
-  DANGER, ADD_GREEN_BG,
+  PRIMARY, PRIMARY_DARK, TEXT, TEXT_DARKEST, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT,
+  BORDER_LIGHT, BORDER_FAINT, BG_SUBTLE, BG_FAINT, SUCCESS, SUCCESS_BG, ERROR, ERROR_BG,
 } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
+import KeyValueEditor from '../shared/KeyValueEditor'
+import ParamsTable from '../shared/ParamsTable'
+import RowActions from '../shared/RowActions'
+import { cleanParams } from '../../config/productParams'
 
-const emptyForm = { type_key: '', product_type: 'panel', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true }
+const SADOT_URL_KEYS = [{ key: 'en', label: 'EN' }, { key: 'he', label: 'HE' }]
+// Dimension keys live inside params; shown as dedicated inputs but stored there.
+const DIM_KEYS = ['lengthCm', 'widthCm', 'Wp']
 
-function EditRow({ product, onSave, onCancel, t }) {
-  const [form, setForm] = useState({
-    ...emptyForm, ...product,
-    length_cm: product?.length_cm ?? '',
-    width_cm:  product?.width_cm  ?? '',
-    kw_peak:   product?.kw_peak   ?? '',
+const emptyForm = { type_key: '', name: '', part_number: '', length_cm: '', width_cm: '', kw_peak: '', active: true, sadot_url: null, params: {} }
+
+// Card editor — same shape as the Sadot Energy tab (sadot_url key/value + params table).
+function PanelEditor({ product, onSave, onCancel, t }) {
+  const [form, setForm] = useState(() => {
+    const p = product?.params || {}
+    const extra = { ...p }; DIM_KEYS.forEach(k => delete extra[k])  // dims have dedicated inputs
+    return {
+      ...emptyForm, ...product,
+      part_number: product?.part_number ?? '',
+      length_cm: p.lengthCm ?? '',
+      width_cm: p.widthCm ?? '',
+      kw_peak: p.Wp ?? '',
+      sadot_url: product?.sadot_url ?? null,
+      params: extra,   // electrical specs only; dims handled by dedicated fields
+    }
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
   const handleSave = () => {
     if (!form.name.trim() || !form.type_key.trim()) return
     if (!form.length_cm || !form.width_cm || !form.kw_peak) return
+    // Electrical specs from the table, plus dimensions merged back in.
+    const params = { ...cleanParams(form.params), lengthCm: Number(form.length_cm), widthCm: Number(form.width_cm), Wp: Number(form.kw_peak) }
     onSave({
-      ...form,
-      length_cm: Number(form.length_cm),
-      width_cm:  Number(form.width_cm),
-      kw_peak:   Number(form.kw_peak),
+      type_key: form.type_key.trim(),
+      product_type: 'panel',
+      name: form.name.trim(),
+      part_number: form.part_number.trim() || null,
+      active: form.active,
+      sadot_url: form.sadot_url && Object.keys(form.sadot_url).length ? form.sadot_url : null,
+      params,
     })
   }
-  const inp = (key, placeholder, style = {}) => (
-    <input value={form[key] ?? ''} onChange={e => set(key, e.target.value)} placeholder={placeholder}
-      style={{ padding: '0.3rem 0.5rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem', width: '100%', ...style }} />
+
+  const field = (label, key, placeholder = '', extra = {}) => (
+    <div style={{ flex: 1, minWidth: 130 }}>
+      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{label}</label>
+      <input value={form[key] ?? ''} onChange={e => set(key, e.target.value)} placeholder={placeholder}
+        style={{ padding: '0.35rem 0.5rem', borderRadius: 5, border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.82rem', width: '100%', ...extra }} />
+    </div>
   )
+
   return (
-    <tr style={{ background: ADD_GREEN_BG }}>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('type_key', 'e.g. aiko-g670', { fontFamily: 'monospace' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('name', 'e.g. AIKO G670')}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>{inp('part_number', 'P.N.')}</td>
-      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('length_cm', '238.2', { width: '5rem', textAlign: 'right' })}</td>
-      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('width_cm',  '113.4', { width: '5rem', textAlign: 'right' })}</td>
-      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right' }}>{inp('kw_peak',   '670',   { width: '4.5rem', textAlign: 'right' })}</td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>
-        <select value={String(form.active)} onChange={e => set('active', e.target.value === 'true')}
-          style={{ padding: '0.3rem', borderRadius: '5px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.8rem' }}>
-          <option value="true">{t('admin.common.active')}</option>
-          <option value="false">{t('admin.common.inactive')}</option>
-        </select>
-      </td>
-      <td style={{ padding: '0.4rem 0.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.25rem' }}>
-          <button onClick={handleSave} title={t('admin.common.save')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: SUCCESS, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          </button>
-          <button onClick={onCancel} title={t('admin.common.cancel')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_VERY_LIGHT, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-      </td>
-    </tr>
+    <div style={{ background: BG_FAINT, border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        {field(t('admin.panels.col.key'), 'type_key', 'e.g. aiko-g670', { fontFamily: 'monospace' })}
+        {field(t('admin.panels.col.name'), 'name', 'AIKO G670')}
+        {field(t('admin.panels.col.pn'), 'part_number', 'P.N.')}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        {field(t('admin.panels.col.lengthCm'), 'length_cm', '238.2', { textAlign: 'right' })}
+        {field(t('admin.panels.col.widthCm'), 'width_cm', '113.4', { textAlign: 'right' })}
+        {field(t('admin.panels.col.wp'), 'kw_peak', '670', { textAlign: 'right' })}
+      </div>
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.electricalJson')}</label>
+        <ParamsTable value={form.params} onChange={v => set('params', v)} productType="panel" />
+      </div>
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, marginBottom: 3 }}>{t('admin.sadot.sadotUrl')}</label>
+        <KeyValueEditor value={form.sadot_url} onChange={v => set('sadot_url', v)} allowedKeys={SADOT_URL_KEYS} placeholder="https://sadot-energy.co.il/…" />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <label style={{ fontSize: '0.8rem', color: TEXT_SECONDARY, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} /> {t('admin.common.active')}
+        </label>
+        <div style={{ flex: 1 }} />
+        <button onClick={onCancel} style={{ padding: '0.4rem 0.9rem', background: 'white', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 6, fontSize: '0.82rem', cursor: 'pointer' }}>{t('admin.common.cancel')}</button>
+        <button onClick={handleSave} style={{ padding: '0.4rem 1rem', background: PRIMARY_DARK, color: 'white', border: 'none', borderRadius: 6, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>{t('admin.common.save')}</button>
+      </div>
+    </div>
   )
 }
 
 export default function PanelTypesTab() {
-  const { t } = useLang()
-  const [panels, setPanels] = useState([])
+  const { t, lang } = useLang()
+  const [panels, setPanels] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [editingId, setEditingId] = useState(null)
+  const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [addingNew, setAddingNew] = useState(false)
   const [filter, setFilter] = useState('')
+  const [openParams, setOpenParams] = useState<string | null>(null)
 
   useEffect(() => {
     getProducts('panel')
@@ -78,12 +108,11 @@ export default function PanelTypesTab() {
 
   const handleCreate = async (form) => {
     try {
-      const created = await createProduct({ ...form, product_type: 'panel' })
+      const created = await createProduct(form)
       setPanels(prev => [...prev, created])
       setAddingNew(false)
     } catch { setError(t('admin.panels.failedCreate')) }
   }
-
   const handleUpdate = async (id, form) => {
     try {
       const updated = await updateProduct(id, form)
@@ -91,105 +120,94 @@ export default function PanelTypesTab() {
       setEditingId(null)
     } catch { setError(t('admin.panels.failedUpdate')) }
   }
-
   const handleDelete = async (id) => {
     if (!window.confirm(t('admin.panels.deleteConfirm'))) return
-    try {
-      await deleteProduct(id)
-      setPanels(prev => prev.filter(p => p.id !== id))
-    } catch { setError(t('admin.panels.failedDelete')) }
-  }
-
-  const handleToggleActive = async (p) => {
-    try {
-      const updated = await updateProduct(p.id, { active: !p.active })
-      setPanels(prev => prev.map(x => x.id === p.id ? updated : x))
-    } catch { setError(t('admin.common.failedUpdate')) }
+    try { await deleteProduct(id); setPanels(prev => prev.filter(p => p.id !== id)) }
+    catch { setError(t('admin.panels.failedDelete')) }
   }
 
   const filtered = panels.filter(p =>
     !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type_key.toLowerCase().includes(filter.toLowerCase())
   )
-
-  const thStyle: React.CSSProperties = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: '700', color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}` }
+  const thStyle: React.CSSProperties = { padding: '0.55rem 0.75rem', fontSize: '0.72rem', fontWeight: 700, color: TEXT_VERY_LIGHT, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', background: BG_SUBTLE, borderBottom: `1px solid ${BORDER_LIGHT}` }
+  const sadotHref = (u: any) => (u ? (u[lang] || u.en || u.he || null) : null)
 
   if (loading) return <div style={{ padding: '2rem', color: TEXT_LIGHT }}>{t('admin.common.loading')}</div>
 
   return (
     <div>
-      {error && <div style={{ padding: '0.6rem 0.8rem', background: ERROR_BG, color: ERROR, borderRadius: '8px', marginBottom: '1rem', fontSize: '0.83rem' }}>{error}</div>}
+      {error && <div style={{ padding: '0.6rem 0.8rem', background: ERROR_BG, color: ERROR, borderRadius: 8, marginBottom: '1rem', fontSize: '0.83rem' }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <input
-          value={filter} onChange={e => setFilter(e.target.value)}
-          placeholder={t('admin.panels.filterPlaceholder')}
-          style={{ padding: '0.4rem 0.7rem', borderRadius: '7px', border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.85rem', width: '240px', outline: 'none' }}
-        />
-        <button
-          onClick={() => { setAddingNew(true); setEditingId(null) }}
-          disabled={addingNew}
-          style={{ padding: '0.4rem 0.9rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: '7px', fontWeight: '700', fontSize: '0.83rem', cursor: 'pointer' }}
-        >
+        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder={t('admin.panels.filterPlaceholder')}
+          style={{ padding: '0.4rem 0.7rem', borderRadius: 7, border: `1px solid ${BORDER_LIGHT}`, fontSize: '0.85rem', width: 240, outline: 'none' }} />
+        <button onClick={() => { setAddingNew(true); setEditingId(null) }} disabled={addingNew}
+          style={{ padding: '0.4rem 0.9rem', background: PRIMARY, color: TEXT, border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer' }}>
           {t('admin.panels.addPanel')}
         </button>
       </div>
 
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '480px', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '10px' }}>
+      {addingNew && <PanelEditor product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} t={t} />}
+
+      <div style={{ overflowX: 'auto', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 10 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
-              <th style={thStyle}>{t('admin.panels.col.key')}</th>
               <th style={thStyle}>{t('admin.panels.col.name')}</th>
-              <th style={thStyle}>{t('admin.panels.col.pn')}</th>
               <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.lengthCm')}</th>
               <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.widthCm')}</th>
               <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.panels.col.wp')}</th>
+              <th style={thStyle}>{t('admin.panels.col.electrical')}</th>
               <th style={thStyle}>{t('admin.panels.col.status')}</th>
               <th style={thStyle}>{t('admin.common.actions')}</th>
             </tr>
           </thead>
           <tbody>
-            {addingNew && (
-              <EditRow product={null} onSave={handleCreate} onCancel={() => setAddingNew(false)} t={t} />
-            )}
             {filtered.length === 0 && !addingNew && (
-              <tr>
-                <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT, fontSize: '0.83rem' }}>
-                  {t('admin.panels.empty')}
-                </td>
-              </tr>
+              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: TEXT_LIGHT }}>{t('admin.panels.empty')}</td></tr>
             )}
             {filtered.map((p, i) => (
               editingId === p.id ? (
-                <EditRow key={p.id} product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} t={t} />
+                <tr key={p.id}><td colSpan={7} style={{ padding: '0.5rem' }}>
+                  <PanelEditor product={p} onSave={(form) => handleUpdate(p.id, form)} onCancel={() => setEditingId(null)} t={t} />
+                </td></tr>
               ) : (
-                <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}` }}>
-                  <td style={{ padding: '0.45rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: TEXT_SECONDARY }}>{p.type_key}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '500' }}>{p.name}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_LIGHT }}>{p.part_number || '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.length_cm ?? '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.width_cm ?? '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: '600', textAlign: 'right' }}>{p.kw_peak != null ? `${p.kw_peak} W` : '—'}</td>
-                  <td style={{ padding: '0.45rem 0.75rem' }}>
-                    <button onClick={() => handleToggleActive(p)} style={{
-                      padding: '0.2rem 0.55rem', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700', border: 'none', cursor: 'pointer',
-                      background: p.active ? SUCCESS_BG : BORDER_FAINT,
-                      color: p.active ? SUCCESS : TEXT_VERY_LIGHT,
-                    }}>
-                      {p.active ? t('admin.common.active') : t('admin.common.inactive')}
-                    </button>
+                <tr key={p.id} style={{ background: i % 2 === 0 ? 'white' : BG_SUBTLE, borderTop: `1px solid ${BORDER_FAINT}`, opacity: p.active ? 1 : 0.55 }}>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: 500 }}>
+                    {p.name}
+                    {sadotHref(p.sadot_url) && <a href={sadotHref(p.sadot_url)} target="_blank" rel="noreferrer" style={{ marginInlineStart: 6, fontSize: '0.72rem' }}>↗</a>}
+                  </td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: 600, textAlign: 'right' }}>{p.params?.lengthCm ?? '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: 600, textAlign: 'right' }}>{p.params?.widthCm ?? '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', color: TEXT_DARKEST, fontWeight: 600, textAlign: 'right' }}>{p.params?.Wp != null ? `${p.params.Wp} W` : '—'}</td>
+                  <td style={{ padding: '0.45rem 0.75rem', position: 'relative' }}>
+                    {p.params && Object.keys(p.params).length ? (
+                      <>
+                        <button onClick={() => setOpenParams(openParams === p.id ? null : p.id)} title={t('admin.sadot.viewParams')}
+                          style={{ background: 'none', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 5, cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.1rem 0.5rem', fontWeight: 700, lineHeight: 1 }}>…</button>
+                        {openParams === p.id && (
+                          <div style={{ position: 'absolute', zIndex: 20, top: '100%', insetInlineStart: '0.75rem', marginTop: 4, background: 'white', border: `1px solid ${BORDER_LIGHT}`, borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.14)', padding: '0.5rem 0.7rem', minWidth: 160 }}>
+                            {Object.entries(p.params).map(([k, v]) => (
+                              <div key={k} style={{ fontSize: '0.76rem', color: TEXT_DARKEST, padding: '0.1rem 0', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{k}</span>
+                                <span style={{ color: TEXT_SECONDARY }}>: {typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : <span style={{ color: TEXT_VERY_LIGHT }}>—</span>}
                   </td>
                   <td style={{ padding: '0.45rem 0.75rem' }}>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button onClick={() => { setEditingId(p.id); setAddingNew(false) }} title={t('admin.common.edit')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_SECONDARY, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      </button>
-                      <button onClick={() => handleDelete(p.id)} title={t('admin.common.delete')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: DANGER, padding: '0.3rem', display: 'inline-flex', alignItems: 'center' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                      </button>
-                    </div>
+                    <span style={{ padding: '0.2rem 0.55rem', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, background: p.active ? SUCCESS_BG : BORDER_FAINT, color: p.active ? SUCCESS : TEXT_VERY_LIGHT }}>
+                      {p.active ? t('admin.common.active') : t('admin.common.inactive')}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                    <RowActions
+                      onEdit={() => { setEditingId(p.id); setAddingNew(false) }}
+                      onDelete={() => handleDelete(p.id)}
+                      editTitle={t('admin.common.edit')} deleteTitle={t('admin.common.delete')} />
                   </td>
                 </tr>
               )

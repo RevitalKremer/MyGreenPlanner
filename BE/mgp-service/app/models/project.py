@@ -23,6 +23,10 @@ class Project(Base):
     # Never cleared — historical marker. Refund state lives on the matching
     # credit_transactions row (kind='project_charge').refunded flag.
     credits_charged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set the first time the project transitions 6→7 (unlocking the electrical
+    # string plan). NON-REFUNDABLE — the matching ledger row uses
+    # kind='electrical_charge', which the refund inbox/admin refund ignore.
+    electrical_charged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set when the project owner clicks "Get Quotation" in step 5. Informational
     # signal for the admin pending-refunds inbox; not a refund precondition.
     quotation_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

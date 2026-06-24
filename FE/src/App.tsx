@@ -8,6 +8,12 @@ import Step2PanelPlacement from './components/steps/Step2PanelPlacement'
 import Step3ConstructionPlanning from './components/steps/Step3ConstructionPlanning'
 import Step4PlanApproval from './components/steps/Step4PlanApproval'
 import Step5PdfReport from './components/steps/Step5PdfReport'
+import Step6ElectricalSettings from './components/steps/Step6ElectricalSettings'
+import Step7StringsPlan from './components/steps/Step7StringsPlan'
+import Step8ElectricalApproval from './components/steps/Step8ElectricalApproval'
+import Step9ElectricalBom from './components/steps/Step9ElectricalBom'
+import FinalSummary from './components/steps/FinalSummary'
+import ElectricalComingSoon from './components/steps/ElectricalComingSoon'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import FinishCelebration from './components/FinishCelebration'
@@ -24,9 +30,8 @@ import PromoBanner from './components/PromoBanner'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
+import { STEP_GROUPS, LAST_STEP_ID, isLastStep, isElectricalGated } from './config/steps'
 import './App.css'
-
-const TOTAL_STEPS = 5
 
 // Trap-scope schema params persisted server-side under step3.trapezoidConfigs
 // (mirrors BE TRAP_SCHEMA_PARAM_KEYS). On every BE result these are re-synced
@@ -39,13 +44,6 @@ function App() {
   const auth = useAuth()
   const { t } = useLang()
 
-  const STEP_NAME = {
-    1: t('step.1.name'),
-    2: t('step.2.name'),
-    3: t('step.3.name'),
-    4: t('step.4.name'),
-    5: t('step.5.name'),
-  }
   const [step4PdfData, setStep4PdfData] = useState({ trapSettingsMap: {}, trapLineRailsMap: {}, trapRCMap: {}, customBasesMap: {}, trapPanelLinesMap: {} })
   const [step3ResetKey, setStep3ResetKey] = useState(0)
   const [showAuthGate, setShowAuthGate] = useState(false)
@@ -145,6 +143,12 @@ function App() {
   const step3ActiveTabRef = useRef(savedActiveTab || 'areas')
   // Filled by Step3ConstructionPlanning so Next can flush all dirty tabs to BE.
   const step3FlushDirtyRef = useRef<null | (() => Promise<void>)>(null)
+  // Step 5 publishes its PDF / quotation handlers here so the Summary hub can
+  // trigger them while Step 5 is mounted off-screen.
+  const step5ExportRef = useRef<any>(null)
+  // Step 9 publishes its electrical PDF / equipment-quotation handlers here so
+  // the Final hub can trigger them while Step 9 is mounted off-screen.
+  const step9ExportRef = useRef<any>(null)
   // Mirrors `settings.isAnyDirty` from useStep3Settings. Used by Start Over
   // to skip the confirm prompt when there's nothing to lose. Default `true`
   // so before step 3 has mounted (or on a fresh project), Start Over still
@@ -153,8 +157,11 @@ function App() {
 
   // Fetch construction data when a (different) project is loaded while on step 3+.
   // Step 2→3 transition is handled explicitly in the Next button after save completes.
+  // Must cover every step ≥3 (not just 3/5): the Summary hub (step 10) mounts
+  // Step 5 off-screen to generate the PDF/quotation, which needs rails/bases
+  // data — so a cold reload landing on the Summary still has to fetch it.
   useEffect(() => {
-    if ((s.currentStep === 3 || s.currentStep === 5) && s.cloudProjectId) {
+    if (s.currentStep >= 3 && s.cloudProjectId) {
       getConstructionData(s.cloudProjectId)
         .then(applyBeResult)
         .catch(console.error)
@@ -583,6 +590,7 @@ function App() {
           // Get-Quotation button shows the right label on a previously-
           // quoted project.
           credits_charged_at: cloudProject.credits_charged_at ?? null,
+          electrical_charged_at: cloudProject.electrical_charged_at ?? null,
           quotation_requested_at: cloudProject.quotation_requested_at ?? null,
         },
         currentStep,
@@ -735,6 +743,8 @@ function App() {
             onUpdateProfile={auth.updateProfile}
             onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+            constructionCost={Number(s.appDefaults?.projectCostCredits ?? 0)}
+            electricalCost={Number(s.appDefaults?.electricalCostCredits ?? 0)}
           />
         )}
         {confirmDialogElement}
@@ -1067,9 +1077,14 @@ function App() {
           />
         )}
 
-        {s.currentStep === 5 && (
+        {(s.currentStep === 5 || isLastStep(s.currentStep)) && (
+          <div style={isLastStep(s.currentStep)
+            ? { position: 'absolute', width: '100vw', height: '100vh', left: '-99999px', top: 0, overflow: 'hidden', pointerEvents: 'none' }
+            : { height: '100%' }}>
           <Step5PdfReport
             user={auth.user}
+            exportApiRef={step5ExportRef}
+            hideActions={isLastStep(s.currentStep)}
             panels={s.panels}
             refinedArea={s.refinedArea}
             areas={s.areas}
@@ -1100,6 +1115,98 @@ function App() {
             products={s.products}
             productByType={s.productByType}
             altsByType={s.altsByType}
+          />
+          </div>
+        )}
+
+        {s.currentStep === 6 && (
+          <Step6ElectricalSettings
+            projectId={s.cloudProjectId}
+            settings={s.step6Settings}
+            onSettingsChange={s.setStep6Settings}
+            inverters={s.step6Inverters}
+            onInvertersChange={s.setStep6Inverters}
+            batteries={s.step6Batteries}
+            onBatteriesChange={s.setStep6Batteries}
+            onSave={() => handleCloudSave(s.currentStep)}
+            panelCount={(s.panels || []).filter((p: any) => !p.isEmpty).length}
+            totalKw={(s.panels || []).filter((p: any) => !p.isEmpty).length * (s.panelSpec?.kw || 0) / 1000}
+            areaCount={(s.areas || []).length}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            panelSadotUrl={s.panelSpec?.sadotUrl}
+          />
+        )}
+
+        {s.currentStep === 7 && (
+          <Step7StringsPlan
+            projectId={s.cloudProjectId}
+            panels={s.panels}
+            inverters={s.step6Inverters}
+            areas={s.areas}
+            strings={s.step7Strings}
+            onStringsChange={s.setStep7Strings}
+            inverterLayout={s.step7InverterLayout}
+            onInverterLayoutChange={s.setStep7InverterLayout}
+            mode={s.step7Mode}
+            onModeChange={s.setStep7Mode}
+            panelWatt={s.panelSpec?.kw}
+          />
+        )}
+
+        {s.currentStep === 8 && (
+          <Step8ElectricalApproval
+            user={auth.user}
+            projectId={s.cloudProjectId}
+            onEnsureSaved={s.handleSaveProject}
+            planApproval={s.step8PlanApproval}
+            onApprovalChange={s.setStep8PlanApproval}
+          />
+        )}
+
+        {(s.currentStep === 9 || isLastStep(s.currentStep)) && (
+          <div style={isLastStep(s.currentStep)
+            ? { position: 'absolute', width: '100vw', height: '100vh', left: '-99999px', top: 0, overflow: 'hidden', pointerEvents: 'none' }
+            : { height: '100%' }}>
+          <Step9ElectricalBom
+            projectId={s.cloudProjectId}
+            project={s.currentProject}
+            user={auth.user}
+            exportApiRef={step9ExportRef}
+            hideActions={isLastStep(s.currentStep)}
+            panels={s.panels}
+            strings={s.step7Strings}
+            inverterLayout={s.step7InverterLayout}
+            panelWatt={s.panelSpec?.kw}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            inverters={s.step6Inverters}
+            onQuotationRequested={(timestamp) => {
+              s.setCurrentProject({ ...s.currentProject, quotation_requested_at: timestamp })
+            }}
+          />
+          </div>
+        )}
+
+        {isLastStep(s.currentStep) && (
+          <FinalSummary
+            projectId={s.cloudProjectId}
+            projectName={s.currentProject?.name}
+            isAdmin={auth.user?.role === 'admin'}
+            panelCount={(s.panels || []).filter((p: any) => !p.isEmpty).length}
+            totalKw={(s.panels || []).filter((p: any) => !p.isEmpty).length * (s.panelSpec?.kw || 0) / 1000}
+            areaCount={(s.areas || []).length}
+            roofType={s.currentProject?.roofSpec?.type || 'concrete'}
+            panelTypeName={s.panelSpec?.name || s.currentProject?.panelType}
+            hasRequestedQuotation={!!s.currentProject?.quotation_requested_at}
+            onGetQuotation={() => step5ExportRef.current?.requestQuotation?.('full')}
+            onDownloadPdf={() => step5ExportRef.current?.generatePdf?.()}
+            onGetEquipmentQuotation={() => step9ExportRef.current?.requestQuotation?.()}
+            onDownloadElectricalPdf={() => step9ExportRef.current?.generatePdf?.()}
+            onDownloadEquipmentXlsx={() => step9ExportRef.current?.downloadEquipmentXlsx?.()}
+            inverters={s.step6Inverters}
+            stringsCount={(s.step7Strings || []).length}
+            electricalApproval={s.step8PlanApproval}
+            onFinish={() => setShowFinishModal(true)}
           />
         )}
 
@@ -1134,6 +1241,8 @@ function App() {
             onUpdateProfile={auth.updateProfile}
             onResendVerification={auth.resendVerification}
             onSignOut={() => { setShowMyAccount(false); handleLogout() }}
+            constructionCost={Number(s.appDefaults?.projectCostCredits ?? 0)}
+            electricalCost={Number(s.appDefaults?.electricalCostCredits ?? 0)}
           />
         )}
 
@@ -1193,13 +1302,29 @@ function App() {
             </div>
           )
         })()}
+
+        {/* Electrical phase withheld — the real step (6–9) renders above; this
+            overlay blurs it and previews what's coming. The only forward action
+            is "Skip to summary", so the 6→7 charge can never fire while gated. */}
+        {isElectricalGated(s.currentStep) && !isLastStep(s.currentStep) && (
+          <ElectricalComingSoon />
+        )}
       </main>
 
       {/* Wizard Toolbar */}
       <footer className="wizard-toolbar">
         <button className="btn-nav btn-back" onClick={async () => {
           if (s.currentStep > 1 && s.cloudProjectId) {
-            const nextStep = s.currentStep - 1
+            // Back from the Final summary returns to where the user actually
+            // came from, not a blind step-1: Path C (did the string plan /
+            // approval) → 9; Path B (picked inverters then skipped) → 6;
+            // Path A (skipped from construction) → 5. Derived from the data
+            // so it survives a reload. Normal steps just go back one.
+            const nextStep = isLastStep(s.currentStep)
+              ? (((s.step7Strings || []).length || s.step8PlanApproval?.strictConsent)
+                  ? 9
+                  : ((s.step6Inverters || []).length ? 6 : 5))
+              : s.currentStep - 1
             // ── Credits guard: a charged project cannot reset to step 1.
             //    Going back to step 1 would let the user redo the whole
             //    plan for free. The guard is a property of the PROJECT,
@@ -1208,7 +1333,7 @@ function App() {
             //    Offer Start Over (= new project) as the explicit way out.
             const isChargedProjectResetToStep1 = (
               nextStep === 1 &&
-              !!s.currentProject?.credits_charged_at
+              (!!s.currentProject?.credits_charged_at || !!s.currentProject?.electrical_charged_at)
             )
             if (isChargedProjectResetToStep1) {
               const proceed = await confirmDialog.ask({
@@ -1231,23 +1356,71 @@ function App() {
               s.resetStepData(result.clearedSteps)
               if (result.clearedSteps.includes('step3')) setStep3ResetKey(k => k + 1)
             }
+            // Jump to the computed target (may be a multi-step skip back from
+            // Final), rather than a single-step decrement.
+            s.setCurrentStep(nextStep)
+            return
           }
           s.handleBack()
         }} disabled={s.currentStep === 1}>
           {t('nav.back')}
         </button>
 
-        <div className="wizard-steps">
-          {[1, 2, 3, 4, 5].map((step) => (
-            <div key={step} className={`wizard-step ${s.currentStep === step ? 'active' : ''} ${s.currentStep > step ? 'completed' : ''}`}>
-              <div className="step-number">{s.currentStep > step ? '✓' : step}</div>
-              <div className="step-name">
-                {STEP_NAME[step]}
+        {/* Compact 3-group step bar: the group containing the current step
+            expands to its numbered sub-steps; other groups collapse to a
+            labeled row of dots (done = brand color, upcoming = grey). */}
+        <div className="wizard-phases">
+          {STEP_GROUPS.map((g) => {
+            const isActiveGroup = g.steps.some(st => st.id === s.currentStep)
+            const allDone = g.steps.every(st => s.currentStep > st.id)
+            return (
+              <div key={g.key} className={`wizard-phase ${isActiveGroup ? 'active' : ''} ${allDone ? 'completed' : ''}`}>
+                <div className="wizard-phase-label">{t(g.nameKey)}</div>
+                <div className="wizard-phase-steps">
+                  {g.steps.map((st) => {
+                    const done = s.currentStep > st.id
+                    const current = s.currentStep === st.id
+                    if (!isActiveGroup) {
+                      return <span key={st.id} className={`wizard-dot ${done ? 'completed' : ''}`} title={t(st.nameKey)} />
+                    }
+                    return (
+                      <div key={st.id} className={`wizard-step ${current ? 'active' : ''} ${done ? 'completed' : ''}`}>
+                        <div className="step-number">{done ? '✓' : st.id}</div>
+                        <div className="step-name">{t(st.nameKey)}</div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
+        {/* Skip to the Final summary — only on the construction exit (5) and
+            the electrical entry (6). Path A/B: leaves with partial data and
+            never triggers the electrical charge (skip=true). */}
+        {(s.currentStep === 5 || s.currentStep === 6 || isElectricalGated(s.currentStep)) && (
+          <button
+            className="btn-nav btn-back"
+            style={{ marginInlineEnd: '0.5rem' }}
+            onClick={async () => {
+              const stepBefore = s.currentStep
+              const savedId = await handleCloudSave(stepBefore)
+              if (!savedId) return
+              try {
+                const stepResult = await updateStep(savedId, LAST_STEP_ID, true)
+                applyBeResult(stepResult)
+                s.setCurrentStep(LAST_STEP_ID)
+              } catch (e) { console.error(e) }
+            }}
+          >
+            {t('nav.skipToLast')}
+          </button>
+        )}
+
+        {/* Next/Finish — hidden while the electrical phase is withheld so the
+            only forward action on step 6 is "Skip to summary". */}
+        {!(isElectricalGated(s.currentStep) && !isLastStep(s.currentStep)) && (
         <span
           style={{ position: 'relative', display: 'inline-block' }}
           onMouseEnter={() => setShowNextTooltip(true)}
@@ -1274,7 +1447,7 @@ function App() {
           onClick={async () => {
             // On the final step the button reads "Finish" — show the
             // celebration popup instead of trying to advance.
-            if (s.currentStep === TOTAL_STEPS) {
+            if (isLastStep(s.currentStep)) {
               setShowFinishModal(true)
               return
             }
@@ -1295,10 +1468,26 @@ function App() {
                 if (!proceed) return
               }
             }
+            // ── Credits: NON-REFUNDABLE confirm on first 6→7 transition ──────
+            // Unlocking the string plan is committed work. Never fires on
+            // accidental nav — only on this explicit Next, with a danger dialog.
+            const alreadyElecCharged = !!s.currentProject?.electrical_charged_at
+            if (stepBeforeNext === 6 && isCreditsUser && !alreadyElecCharged) {
+              const cost = Number(s.appDefaults?.electricalCostCredits ?? 0)
+              const available = auth.user?.credits_available ?? 0
+              if (cost > 0) {
+                const proceed = await confirmDialog.ask({
+                  title: t('step6.confirmElectricalCredits.title'),
+                  message: t('step6.confirmElectricalCredits.message', { cost, available }),
+                  variant: 'danger',
+                })
+                if (!proceed) return
+              }
+            }
             // Run pre-transition prep (e.g. refresh trapezoids for 2→3) WITHOUT
             // advancing currentStep yet — the visual advance must wait for the
             // server's 200 OK so a BE rejection keeps the user on this step.
-            s.handleNext(TOTAL_STEPS, { advance: false })
+            s.handleNext(LAST_STEP_ID, { advance: false })
             // Let React flush the prep's state updates before save reads them.
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
             setStepTransitionErrors(null)
@@ -1333,6 +1522,18 @@ function App() {
                 // waiting for a tab-focus refresh.
                 auth.refreshMe?.().catch(() => {})
               }
+              // Mirror the NON-REFUNDABLE electrical charge marker on first 6→7.
+              if (
+                stepBeforeNext === 6 &&
+                auth.user?.role !== 'admin' &&
+                !s.currentProject?.electrical_charged_at
+              ) {
+                s.setCurrentProject({
+                  ...s.currentProject,
+                  electrical_charged_at: new Date().toISOString(),
+                })
+                auth.refreshMe?.().catch(() => {})
+              }
               s.advanceToNextStep()
             } catch (e) {
               if (e instanceof StepTransitionError) {
@@ -1346,9 +1547,10 @@ function App() {
           }}
           disabled={!s.canProceedToNextStep()}
         >
-          {s.currentStep === TOTAL_STEPS ? t('nav.finish') : t('nav.next')}
+          {isLastStep(s.currentStep) ? t('nav.finish') : t('nav.next')}
         </button>
         </span>
+        )}
       </footer>
 
       {confirmDialogElement}

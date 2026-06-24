@@ -301,6 +301,39 @@ export interface Step5Data {
   bomDeltas?: Record<string, unknown> | null
 }
 
+// ── Electrical (Tier 2): steps 6-9 ──────────────────────────────────────────
+
+export interface SelectedInverter {
+  typeKey: string
+  qty: number
+}
+
+export interface ElectricalString {
+  id: string
+  areaLabel: string
+  panelIds: number[]
+  inverterTypeKey?: string | null
+  mpptIndex?: number | null
+}
+
+export interface Step6Data {
+  settings?: Record<string, unknown> | null
+  inverters: SelectedInverter[]
+  batteries: SelectedInverter[]
+}
+
+export interface Step7Data {
+  strings: ElectricalString[]
+}
+
+export interface Step8Data {
+  planApproval?: PlanApproval | null
+}
+
+export interface Step9Data {
+  bomDeltas?: Record<string, unknown> | null
+}
+
 // ── FE-reshaped server data (from App.tsx applyBeResult) ────────────────────
 
 /** Rail with panelRowIdx tag — flattened from ComputedArea.rails dict */
@@ -488,6 +521,10 @@ export interface ProjectData {
   step3: Step3Data
   step4: Step4Data
   step5: Step5Data
+  step6?: Step6Data
+  step7?: Step7Data
+  step8?: Step8Data
+  step9?: Step9Data
 }
 
 // ── Layout (pixel-space UI state) ──────────────────────────────────────────

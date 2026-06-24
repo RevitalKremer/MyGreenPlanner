@@ -56,6 +56,7 @@ class UserRead(BaseModel):
     # (admin listings, etc.) still serialize cleanly.
     credits_available: int = 0
     credits_used: int = 0
+    credits_electrical_used: int = 0   # non-refundable (electrical) held this year
     credits_total: int = 0
     plans_this_year: int = 0
     discount_eligible: bool = False

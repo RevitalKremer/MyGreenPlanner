@@ -121,7 +121,7 @@ export default function useAppConfig({ panelType, currentProject, areas }) {
   // (which is logged, not swallowed).
   const refreshPanelTypes = useCallback(() => {
     return fetchPanelTypes()
-      .then(types => setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak }))))
+      .then(types => setPanelTypes(types.map(t => ({ id: t.type_key, name: t.name, lengthCm: t.length_cm, widthCm: t.width_cm, kw: t.kw_peak, sadotUrl: t.sadot_url, params: t.params }))))
       .catch(err => { console.error('Failed to load panel types', err) })
   }, [])
 
