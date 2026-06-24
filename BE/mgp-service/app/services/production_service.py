@@ -23,7 +23,6 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
-from openpyxl.utils import get_column_letter
 
 from app.services.bom_service import (
     _flatten_row_dict,
@@ -37,6 +36,7 @@ from app.services.excel_template_utils import (
     find_anchor_row,
     replace_placeholders,
     restore_header_footer_images,
+    restore_print_setup,
     set_table_range,
 )
 
@@ -54,27 +54,40 @@ _SAW_TRAP_ANCHOR = 'SAW_TABLE_TRAP_DATA_ROW'
 _SAW_EXT_DIAG_ANCHOR = 'SAW_TABLE_EXT_DIAG_DATA_ROW'
 _SAW_RAILS_ANCHOR = 'SAW_TABLE_RAILS_DATA_ROW'
 _SAW_COLUMN_MAP = {
-    'area':     'B',
-    'trap':     'C',
-    'desc':     'D',
-    'length':   'E',
-    'qty':      'F',
-    'approval': 'G',  # never set in rows → cleared, leaving אישור blank for the operator
+    'approval': 'B',  # leftmost table column — filled with an unchecked ☐ per row
+    'area':     'C',
+    'trap':     'D',
+    'desc':     'E',
+    'length':   'F',
+    'qty':      'G',
 }
 
 # Puncher sheet: header row 10, single section.
 _PUNCH_SHEET = 'מנקבת'
 _PUNCH_ANCHOR = 'PUNCH_TABLE_TRAP_DATA_ROW'
+# Punch positions occupy ten dedicated columns (H..Q). Slots 1-9 each hold a
+# single position; slot 10 holds the 10th position and every one beyond it,
+# comma-joined (see _punch_slots).
+_PUNCH_SLOT_COUNT = 10
 _PUNCH_COLUMN_MAP = {
-    'area':      'B',
-    'trap':      'C',
-    'desc':      'D',
-    'length':    'E',
-    'qty':       'F',
-    'punch_loc': 'G',
-    'side':      'H',
-    'diameter':  'I',
-    'approval':  'J',  # never set in rows → cleared, leaving אישור blank for the operator
+    'approval': 'B',  # leftmost table column — filled with an unchecked ☐ per row
+    'area':     'C',
+    'trap':     'D',
+    'desc':     'E',
+    'length':   'F',
+    'qty':      'G',
+    'punch1':   'H',
+    'punch2':   'I',
+    'punch3':   'J',
+    'punch4':   'K',
+    'punch5':   'L',
+    'punch6':   'M',
+    'punch7':   'N',
+    'punch8':   'O',
+    'punch9':   'P',
+    'punch10':  'Q',
+    'side':     'R',
+    'diameter': 'S',
 }
 
 # Hebrew part labels (matched between the two sheets — the punch sheet's first
@@ -120,13 +133,26 @@ def _round_cm(v) -> float:
     return int(r) if r == int(r) else r
 
 
-def _fmt_positions(positions: list[float]) -> str:
-    """Sorted, de-duplicated, comma-joined punch positions (cm)."""
+def _punch_slots(positions: list[float]) -> dict[str, object]:
+    """Sorted, de-duplicated punch positions (cm) spread across the ten punch
+    columns. Slots `punch1`..`punch9` each carry a single position; `punch10`
+    carries the 10th position and every one beyond it, comma-joined. Returns a
+    dict keyed by the slot names in `_PUNCH_COLUMN_MAP`; absent slots are left
+    blank by the section filler."""
     seen: list[float] = []
     for p in sorted(_round_cm(p) for p in positions):
         if not seen or seen[-1] != p:
             seen.append(p)
-    return ', '.join(str(p) for p in seen)
+    slots: dict[str, object] = {}
+    for i in range(_PUNCH_SLOT_COUNT - 1):
+        if i < len(seen):
+            slots[f'punch{i + 1}'] = seen[i]
+    overflow = seen[_PUNCH_SLOT_COUNT - 1:]
+    if len(overflow) == 1:
+        slots[f'punch{_PUNCH_SLOT_COUNT}'] = overflow[0]
+    elif overflow:
+        slots[f'punch{_PUNCH_SLOT_COUNT}'] = ', '.join(str(p) for p in overflow)
+    return slots
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -322,14 +348,13 @@ def build_punch_rows(data: dict) -> list[dict]:
                     })
                     rows.append({
                         **base5,
-                        'punch_loc': _fmt_positions([p.get(pos_key, p.get('positionCm', 0)) for p in side_punches]),
+                        **_punch_slots([p.get(pos_key, p.get('positionCm', 0)) for p in side_punches]),
                         'side': side,
                         'diameter': ', '.join(diameters),
                     })
-            else:  # leg / diagonal — single oval punch row, position left blank
+            else:  # leg / diagonal — single oval punch row, positions left blank
                 rows.append({
                     **base5,
-                    'punch_loc': '',
                     'side': '',
                     'diameter': _OVAL,
                 })
@@ -368,6 +393,14 @@ def _fill_saw_sheet(ws, trap_rows, ext_rows, rail_rows, ctx) -> None:
     if any(anchor is None for anchor, _ in sections):
         raise ValueError(f"{ws.title}: a saw-sheet anchor placeholder was not found")
 
+    # The approval column ships with a checkbox-prototype value (boolean False)
+    # on every anchor row. A filled section overwrites it with ☐ on its first
+    # data row, but an empty section would leave the stray False visible — clear
+    # it up front so unused sections stay blank.
+    approval_col = col_to_idx(_SAW_COLUMN_MAP['approval'])
+    for anchor, _rows in sections:
+        ws.cell(anchor, approval_col).value = None
+
     trap_anchor = sections[0][0]
     total_added = 0
     # Fill lowest anchor first so higher anchors keep their row numbers.
@@ -391,16 +424,18 @@ def _fill_punch_sheet(ws, rows, ctx) -> None:
     anchor = find_anchor_row(ws, _PUNCH_ANCHOR)
     if anchor is None:
         raise ValueError(f"{ws.title}: anchor placeholder {_PUNCH_ANCHOR!r} not found")
+    # Clear the checkbox-prototype value (boolean False) so it never shows when
+    # there are no rows; filled rows overwrite it with ☐.
+    ws.cell(anchor, col_to_idx(_PUNCH_COLUMN_MAP['approval'])).value = None
     if not rows:
         return
     last_data_row = fill_section(ws, anchor, rows, _PUNCH_COLUMN_MAP)
 
-    # The punch-position list (מיקום ניקוב) can be long — the operator prints
-    # this sheet and punches each position, so every value must be visible.
-    # Wrap the cell and drop any forced row height so Excel auto-fits the
-    # wrapped content; widen the column a little for a sensible default.
-    loc_col = col_to_idx(_PUNCH_COLUMN_MAP['punch_loc'])
-    ws.column_dimensions[get_column_letter(loc_col)].width = 32
+    # Slots 1-9 each hold a single position, but the 10th column can carry an
+    # overflow list (10th punch onward) when a beam side has more than ten
+    # punches. The operator prints this sheet and punches each position, so wrap
+    # that last column and drop any forced row height so Excel auto-fits it.
+    loc_col = col_to_idx(_PUNCH_COLUMN_MAP[f'punch{_PUNCH_SLOT_COUNT}'])
     for r in range(anchor, last_data_row + 1):
         cell = ws.cell(r, loc_col)
         a = cell.alignment
@@ -455,4 +490,8 @@ def generate_production(project) -> bytes:
 
     out = io.BytesIO()
     wb.save(out)
-    return restore_header_footer_images(TEMPLATE_PATH.read_bytes(), out.getvalue())
+    template_bytes = TEMPLATE_PATH.read_bytes()
+    result = restore_header_footer_images(template_bytes, out.getvalue())
+    # openpyxl also drops the printerSettings part + <pageSetup r:id>, which
+    # reverts the landscape template to portrait — restore them.
+    return restore_print_setup(template_bytes, result)

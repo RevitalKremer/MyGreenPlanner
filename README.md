@@ -87,6 +87,46 @@ The production stack runs on a single AWS EC2 and deploys automatically on every
 
 Production URL: https://mygreenplanner.sadot-energy.co.il
 
+### Live logs
+
+Production runs on EC2 reachable only via **SSM Session Manager** (no SSH). The app lives in `/opt/mgp` and runs under Docker Compose (services: `db`, `mgp-service`, `mgp-webapp`, `caddy`).
+
+**Prerequisites:** AWS CLI v2, the `session-manager-plugin`, and a configured `mgp` profile (see [docs/OPS_ACCESS.md](docs/OPS_ACCESS.md)).
+
+**1. Open an interactive session on the instance:**
+
+```bash
+cd /path/to/MyGreenPlanner
+aws ssm start-session \
+  --target $(cat "DevOps/aws/.instance-id") \
+  --profile mgp --region eu-central-1
+```
+
+**2. Follow the logs live** (`-f` streams new lines until you `Ctrl-C`):
+
+```bash
+cd /opt/mgp
+sudo -u ubuntu docker compose --env-file .env logs -f --tail=100 mgp-service   # backend / app errors
+sudo -u ubuntu docker compose --env-file .env logs -f --tail=100 caddy         # routing / TLS
+sudo -u ubuntu docker compose --env-file .env logs -f --tail=100               # all services
+```
+
+**3.** `Ctrl-C` stops following; `exit` closes the session.
+
+The session stays open while logs stream (following counts as activity, so it won't idle out). If it drops, just re-run step 1 — nothing is harmed. To survive brief disconnects without re-typing, wrap the tail in a restart loop:
+
+```bash
+while true; do sudo -u ubuntu docker compose --env-file .env logs -f --tail=50 mgp-service; sleep 2; done
+```
+
+**Resolving the instance ID** — `DevOps/aws/.instance-id` is a snapshot from provisioning time. If the instance was ever recreated, look it up live by tag instead:
+
+```bash
+aws ec2 describe-instances --profile mgp --region eu-central-1 \
+  --filters "Name=tag:Name,Values=mygreenplanner" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[].Instances[].InstanceId' --output text
+```
+
 ---
 
 ## API Reference
