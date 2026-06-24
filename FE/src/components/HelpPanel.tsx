@@ -21,7 +21,7 @@ const HELP = {
       },
       {
         q: 'How do I set the real-world scale?',
-        a: 'On image and map sources, click "Draw a reference line" and click two points along a known feature (a wall edge, a known length on the ground). Enter the actual length in cm — the pixel-to-cm ratio appears below the input and is reused by every later step. On Plain canvas the bottom edge is the reference line, defaulting to 6000 cm (60 m); change it to whatever real width you want the canvas to represent.'
+        a: 'On image and map sources, click "Draw a reference line" and click two points along a known feature (a wall edge, a known length on the ground). Enter the actual length in cm — the pixel-to-cm ratio appears below the input and is reused by every later step. On Plain canvas the bottom edge is the reference line, defaulting to 600 cm (6 m); change it to whatever real width you want the canvas to represent.'
       },
       {
         q: 'Can I paste a screenshot directly?',
@@ -29,7 +29,7 @@ const HELP = {
       },
       {
         q: EXAMPLE_TAG,
-        a: 'Pick Plain canvas for a clean walkthrough. The reference line is auto-set along the bottom edge at 6000 cm. Leave it as-is for the example, or change the cm value to match a real roof width if you have one in mind, then continue to step 2.'
+        a: 'Pick Plain canvas for a clean walkthrough. The reference line is auto-set along the bottom edge at 600 cm. Leave it as-is for the example, or change the cm value to match a real roof width if you have one in mind, then continue to step 2.'
       },
     ]
   },
@@ -172,6 +172,80 @@ const HELP = {
       {
         q: EXAMPLE_TAG,
         a: 'The BOM lists: 1 panel type × N panels, 2 rails per panel line (front + back) split into stock lengths, blocks under each base, and the auxiliary set defined for concrete roofs. The PDF is 5 system pages + 1 detail page for A1.'
+      },
+    ]
+  },
+  6: {
+    title: 'Electrical Settings',
+    purpose: 'Set the electrical design parameters and pick the inverter(s). These settings drive the string auto-generation in the next step. Selecting inverters here is what unlocks the electrical part of the project.',
+    qa: [
+      {
+        q: 'What do the design temperatures do?',
+        a: 'The minimum design temperature sets the coldest condition (which produces the highest string voltage, Voc) and the maximum cell temperature sets the hottest condition (which produces the lowest operating voltage, Vmp). The string planner uses both to keep every string inside the inverter\'s MPPT voltage window. Defaults are tuned for Israel (-5°C / 70°C cell).'
+      },
+      {
+        q: 'How do I choose an inverter?',
+        a: 'Pick from the Sadot Energy catalog. The "Suggested sizing" box ranks options by the DC:AC ratio (target 1.1–1.3) against the system\'s total panel power. Each selected inverter shows a "View on Sadot Energy" link.'
+      },
+      {
+        q: 'What happens when I continue to the Strings Plan?',
+        a: 'Continuing from this step to the Strings Plan deducts a one-time, NON-REFUNDABLE charge (separate from the construction charge). You confirm it explicitly first. If you only need the construction plan, use "Skip to summary" instead.'
+      },
+    ]
+  },
+  7: {
+    title: 'Strings Plan',
+    purpose: 'Auto-generate the PV strings per roof area and validate them against the selected inverter\'s MPPT limits. Strings are visualized as colored panel groups.',
+    qa: [
+      {
+        q: 'How are strings generated?',
+        a: 'Click "Generate strings". Within each area the planner chooses a series length that keeps the cold-temperature Voc under the MPPT/system maximum and the hot-temperature Vmp above the MPPT minimum, then splits the area\'s panels into near-equal strings and assigns them across the inverter\'s MPPT inputs. A string never crosses areas.'
+      },
+      {
+        q: 'What does the validation panel show?',
+        a: 'Errors (e.g. string voltage over the limit, current over the input rating, too many strings) and warnings (e.g. operating voltage below the MPPT minimum). If a panel or inverter is missing its electrical specs, that is flagged here — an admin completes those in the Sadot Energy / Panels catalog.'
+      },
+      {
+        q: 'Can I edit strings manually?',
+        a: 'Not in this version — strings are auto-generated and re-generated. Adjust the inverter or the design temperatures in step 6 and regenerate.'
+      },
+    ]
+  },
+  8: {
+    title: 'Electrician Approval',
+    purpose: 'Confirm that a certified electrician has reviewed and approved the electrical plan before the electrical BOM is produced. Captured against the logged-in user and the project date.',
+    qa: [
+      {
+        q: 'Who approves?',
+        a: 'You self-attest, on behalf of a certified electrician, exactly like the constructor approval in step 4. Tick the consent box and click Approve.'
+      },
+      {
+        q: 'Can I undo it?',
+        a: 'Yes — "Reset Approval" clears it and requires re-approval before continuing.'
+      },
+    ]
+  },
+  9: {
+    title: 'Electrical BOM',
+    purpose: 'The bill of materials for the Sadot Energy equipment in this system (inverters and any other selected equipment). Kept completely separate from the construction BOM.',
+    qa: [
+      {
+        q: 'What\'s included?',
+        a: 'The selected Sadot Energy equipment with quantities and unit prices. Cable / protection / grounding line items are added once their code-based sizing tables are configured.'
+      },
+      {
+        q: 'What does Recalculate do?',
+        a: 'Rebuilds the electrical BOM from the current inverter selection and string plan, materializing any pending edits.'
+      },
+    ]
+  },
+  10: {
+    title: 'Summary',
+    purpose: 'The end-of-project summary. Shows the construction part always, and the electrical part to whatever extent it was completed (inverters/settings only, or the full string plan + BOM). Click Finish to complete the project.',
+    qa: [
+      {
+        q: 'Why is the electrical section "Not included"?',
+        a: 'You reached the summary via "Skip to summary" without unlocking the string plan (Path A). The construction deliverables are complete; the electrical part was not started.'
       },
     ]
   }
