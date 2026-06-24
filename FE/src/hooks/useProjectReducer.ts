@@ -26,18 +26,6 @@ export const A = Object.freeze({
   SET_PLAN_APPROVAL:      'SET_PLAN_APPROVAL',
   // Step 5
   SET_BOM_DELTAS:         'SET_BOM_DELTAS',
-  // Step 6 (electrical settings + inverter selection)
-  SET_STEP6_SETTINGS:     'SET_STEP6_SETTINGS',
-  SET_STEP6_INVERTERS:    'SET_STEP6_INVERTERS',
-  SET_STEP6_BATTERIES:    'SET_STEP6_BATTERIES',
-  // Step 7 (string plan)
-  SET_STEP7_STRINGS:      'SET_STEP7_STRINGS',
-  SET_STEP7_INVERTER_LAYOUT: 'SET_STEP7_INVERTER_LAYOUT',
-  SET_STEP7_MODE:         'SET_STEP7_MODE',
-  // Step 8 (electrician approval)
-  SET_ELEC_PLAN_APPROVAL: 'SET_ELEC_PLAN_APPROVAL',
-  // Step 9 (electrical BOM)
-  SET_ELEC_BOM_DELTAS:    'SET_ELEC_BOM_DELTAS',
   // Layout
   SET_LAYOUT:             'SET_LAYOUT',
   SET_PANELS:             'SET_PANELS',
@@ -99,23 +87,6 @@ export const initialProjectState = {
       planApproval: null,
     },
     step5: {
-      bomDeltas: null,
-    },
-    // ── Electrical (Tier 2) ──
-    step6: {
-      settings: null,        // free-form electrical params (connection, regulation, …)
-      inverters: [],         // [{ typeKey, qty }]
-      batteries: [],         // [{ typeKey, qty }]
-    },
-    step7: {
-      strings: [],           // [{ id, areaLabel, panelIds, inverterTypeKey, mpptIndex }]
-      inverterLayout: {},     // { [unitIdx]: { x, y, side } } — diagram placement
-      mode: 'auto',           // 'auto' (engine) | 'manual' (user-drawn/edited)
-    },
-    step8: {
-      planApproval: null,    // same shape as step4.planApproval (electrician)
-    },
-    step9: {
       bomDeltas: null,
     },
   },
@@ -246,54 +217,6 @@ export function projectReducer(state, action) {
       return {
         ...state,
         data: { ...state.data, step5: { ...state.data.step5, bomDeltas: action.value } },
-      }
-
-    // ── Step 6 (electrical settings + inverter selection) ──
-
-    case A.SET_STEP6_SETTINGS:
-      return {
-        ...state,
-        data: { ...state.data, step6: { ...state.data.step6, settings: action.value } },
-      }
-
-    case A.SET_STEP6_INVERTERS: {
-      const inverters = typeof action.value === 'function' ? action.value(state.data.step6.inverters) : action.value
-      return { ...state, data: { ...state.data, step6: { ...state.data.step6, inverters } } }
-    }
-
-    case A.SET_STEP6_BATTERIES: {
-      const batteries = typeof action.value === 'function' ? action.value(state.data.step6.batteries) : action.value
-      return { ...state, data: { ...state.data, step6: { ...state.data.step6, batteries } } }
-    }
-
-    // ── Step 7 (string plan) ──
-
-    case A.SET_STEP7_INVERTER_LAYOUT: {
-      const inverterLayout = typeof action.value === 'function' ? action.value(state.data.step7.inverterLayout) : action.value
-      return { ...state, data: { ...state.data, step7: { ...state.data.step7, inverterLayout } } }
-    }
-    case A.SET_STEP7_MODE: {
-      return { ...state, data: { ...state.data, step7: { ...state.data.step7, mode: action.value } } }
-    }
-    case A.SET_STEP7_STRINGS: {
-      const strings = typeof action.value === 'function' ? action.value(state.data.step7.strings) : action.value
-      return { ...state, data: { ...state.data, step7: { ...state.data.step7, strings } } }
-    }
-
-    // ── Step 8 (electrician approval) ──
-
-    case A.SET_ELEC_PLAN_APPROVAL:
-      return {
-        ...state,
-        data: { ...state.data, step8: { ...state.data.step8, planApproval: action.value } },
-      }
-
-    // ── Step 9 (electrical BOM) ──
-
-    case A.SET_ELEC_BOM_DELTAS:
-      return {
-        ...state,
-        data: { ...state.data, step9: { ...state.data.step9, bomDeltas: action.value } },
       }
 
     // ── Layout ──

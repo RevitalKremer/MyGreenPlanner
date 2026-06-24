@@ -6,16 +6,6 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
-# Sadot Energy equipment product types. Kept fully separate from construction
-# materials (and from the construction BOM): excluded from /products/materials
-# and served by their own endpoint + electrical BOM stack. Extensible — mirrors
-# the Product Type column of the Sadot Energy product catalog.
-SADOT_EQUIPMENT_TYPES = (
-    'inverter', 'battery', 'battery_base', 'dongle', 'datalogger',
-    'cable', 'smart_meter', 'network_cabinet', 'portable_power_station',
-    'bms', 'backup_box', 'energy_management',
-)
-
 
 class Product(Base):
     __tablename__ = "products"
@@ -25,7 +15,6 @@ class Product(Base):
     # 'panel' for solar panels; for materials a category like 'screws',
     # 'clamps', 'accessories', 'anchoring', 'aluminium', 'electrical_cabinets',
     # 'electrical_wiring', 'panel_cable_extensions', or the legacy 'material'.
-    # Sadot Energy equipment uses 'inverter', 'battery', 'dongle' (extensible).
     product_type: Mapped[str] = mapped_column(String(50), nullable=False, default='material')
     part_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -35,8 +24,9 @@ class Product(Base):
     extra: Mapped[str | None] = mapped_column(String(50), nullable=True)
     alt_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Panel physical dimensions / peak watts live in `params` (lengthCm /
-    # widthCm / Wp) — no panel-only columns on the shared products table.
+    length_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    width_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    kw_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price_ils: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     depreciation_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -48,15 +38,5 @@ class Product(Base):
     # whenever the parent appears in the effective BOM, with
     # qty = parent.qty * multiplier. Shape: {"parentType": str, "multiplier": int}.
     bundle: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # Free-form per-product param blob (single JSON column — room for any
-    # unique param). Examples:
-    #   - panels: {"Voc", "Vmp", "Isc", "Imp", "tempCoeffVocPctPerC", ...}
-    #   - inverters: {"acPowerKw", "mpptCount", "mpptVmin", "mpptVmax",
-    #              "maxInputCurrentA", "maxStringsPerMppt", "maxSystemVoltageV",
-    #              "productCategory": "ongrid|hybrid|offgrid", ...}
-    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # Sadot Energy product links per locale, e.g. {"he": "...", "en": "..."}.
-    # Surfaced as a "View on Sadot Energy" link, resolved by the UI language.
-    sadot_url: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

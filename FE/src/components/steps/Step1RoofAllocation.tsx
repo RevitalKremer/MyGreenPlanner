@@ -94,10 +94,10 @@ export default function Step1RoofAllocation({
       const data = buildWhiteCanvas()
       setUploadedImageData(data)
       setRoofPolygon({ coordinates: [[0, 0], [data.width, 0], [data.width, data.height], [0, data.height]], area: data.width * data.height, confidence: 1 })
-      // Auto reference line: full width along the bottom edge. Default 600 cm = 6 m.
+      // Auto reference line: full width along the bottom edge. Default 6000 cm = 60 m.
       const yLine = data.height - Math.max(4, Math.round(data.width * 0.005))
       setReferenceLine({ start: { x: 0, y: yLine }, end: { x: data.width, y: yLine } })
-      setReferenceLineLengthCm('600')
+      setReferenceLineLengthCm('6000')
     } else {
       // 'image' or 'map' — clear current data; ImageUploader / RoofMapper takes over.
       // User must draw their own reference line for these modes.

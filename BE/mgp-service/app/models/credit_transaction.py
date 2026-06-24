@@ -14,8 +14,6 @@ class CreditTxnKind(str, enum.Enum):
     admin_refund = "admin_refund"
     purchase = "purchase"
     project_charge = "project_charge"
-    # Non-refundable charge for unlocking the electrical string plan (6→7).
-    electrical_charge = "electrical_charge"
 
 
 class CreditTransaction(Base):

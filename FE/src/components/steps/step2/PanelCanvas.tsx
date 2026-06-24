@@ -5,7 +5,7 @@ import {
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
   PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE, PANEL_FILL_HOVER_ROTATE,
   BLUE,
-  PANEL_BADGE_DEFAULT, PANEL_BADGE_SEL_FILL,
+  PANEL_BADGE_DEFAULT, PANEL_BADGE_SELECTED, PANEL_BADGE_SEL_FILL, PANEL_BADGE_SEL_CHV,
   PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
   TEXT_VERY_LIGHT,
   CANVAS_MASK, CANVAS_MINI_BG, CANVAS_AREA_HOVER,
@@ -15,20 +15,6 @@ import {
 import { useImagePanZoom } from '../../../hooks/useImagePanZoom'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { computeRectPanels, computePolygonPanels, fitPolygonToRectPanels } from '../../../utils/rectPanelService'
-
-// Panel direction indicator. A large triangle spanning the panel in its LOCAL
-// frame: apex on the facing edge, base on the opposite edge. The caller wraps
-// this in the panel's rotate() transform, so it inherits the exact same
-// direction semantics as the slope chevron it replaced (apexUp === `down`).
-function dirTrianglePoints(x: number, y: number, w: number, h: number, apexUp: boolean) {
-  const iw = w * 0.13, ih = h * 0.13
-  const cxv = x + w / 2
-  const top = y + ih, bot = y + h - ih
-  const left = x + iw, right = x + w - iw
-  return apexUp
-    ? `${cxv},${top} ${left},${bot} ${right},${bot}`   // apex at top, base at bottom
-    : `${cxv},${bot} ${left},${top} ${right},${top}`   // apex at bottom, base at top
-}
 
 export default function PanelCanvas({
   uploadedImageData, imageSrc, viewZoom, setViewZoom,
@@ -1119,13 +1105,20 @@ export default function PanelCanvas({
                     // orientation matches the rotated rect (identity when no
                     // axis is set).
                     const down = drawVertical ? localDx < 0 : localDy >= 0
+                    const r = (p.rotation || 0) * Math.PI / 180
                     const rDeg = p.rotation || 0
                     const bh = Math.min(p.width, p.height) * 0.22
                     const bw = bh * 1.9
                     const scale = bw > p.width * 0.82 ? (p.width * 0.82) / bw : 1
                     const bwS = bw * scale, bhS = bh * scale
-                    const triPts = dirTrianglePoints(p.x, p.y, p.width, p.height, down)
-                    const triW = Math.min(p.width, p.height) * 0.03
+                    const cupW = bwS * 1.2, cupH = bhS * 0.9, cupDist = bhS * 1.1
+                    const ldx = -Math.sin(r), ldy = Math.cos(r)
+                    const cupSign = down ? -1 : 1
+                    const cupX = pcx + ldx * cupSign * cupDist
+                    const cupY = pcy + ldy * cupSign * cupDist
+                    const pts = down
+                      ? `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                      : `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
                     return (
                       <g key={i} style={{ pointerEvents: 'none' }}>
                         <g transform={`rotate(${rDeg} ${pcx} ${pcy})`}>
@@ -1134,11 +1127,12 @@ export default function PanelCanvas({
                           <rect x={p.x + pibw/2} y={p.y + pibw/2}
                             width={p.width - pibw} height={p.height - pibw}
                             fill="none" stroke={PANEL_MID} strokeWidth={pibw} />
-                          {/* Direction triangle (matches the committed panels) */}
-                          <polygon points={triPts} fill="none" stroke={PANEL_MID} strokeWidth={triW} strokeLinejoin="round" />
                         </g>
                         <rect x={pcx - bwS/2} y={pcy - bhS/2} width={bwS} height={bhS} rx={bhS/2}
                           fill={PANEL_BADGE_DEFAULT} />
+                        <g transform={`translate(${cupX},${cupY}) rotate(${rDeg})`}>
+                          <polygon points={pts} fill="white" stroke={PANEL_BADGE_SELECTED} strokeWidth={cupH * 0.18} strokeLinejoin="round" />
+                        </g>
                       </g>
                     )
                   })}
@@ -1192,23 +1186,23 @@ export default function PanelCanvas({
                     />
                   </g>
                   {!isActionHover && (() => {
+                    const r = (panel.rotation || 0) * Math.PI / 180
                     const rDeg = panel.rotation || 0
                     const down = (panel.yDir ?? 'ttb') === 'ttb'
                     // Badge: centered at (cx, cy), capped to fit within panel width
                     const scale = bw > panel.width * 0.82 ? (panel.width * 0.82) / bw : 1
                     const bwS = bw * scale, fsS = fs * scale, bhS = bh * scale
-                    // Direction triangle: spans the panel in its local frame,
-                    // apex on the facing edge. Same direction as the old chevron
-                    // (apexUp === `down`); rotation maps it to up/down/left/right.
-                    const dirColor = isSelected ? PANEL_DARK : PANEL_MID
-                    const triPts = dirTrianglePoints(panel.x, panel.y, panel.width, panel.height, down)
-                    const triW = Math.min(panel.width, panel.height) * 0.03
+                    // Chevron: positioned along local panel Y axis, above or below badge
+                    const cupW = bwS * 1.2
+                    const cupH = bhS * 0.9
+                    const cupDist = bhS * 1.1
+                    // Local-down direction in SVG space
+                    const ldx = -Math.sin(r), ldy = Math.cos(r)
+                    const cupSign = down ? -1 : 1
+                    const cupX = cx + ldx * cupSign * cupDist
+                    const cupY = cy + ldy * cupSign * cupDist
                     return (
                       <>
-                        {/* Direction triangle (rendered under the badge) */}
-                        <g transform={`rotate(${rDeg} ${cx} ${cy})`} style={{ pointerEvents: 'none' }}>
-                          <polygon points={triPts} fill="none" stroke={dirColor} strokeWidth={triW} strokeLinejoin="round" />
-                        </g>
                         {/* Badge */}
                         <rect x={cx - bwS / 2} y={cy - bhS / 2} width={bwS} height={bhS} rx={bhS / 2}
                           fill={isSelected ? PANEL_BADGE_SEL_FILL : PANEL_BADGE_DEFAULT}
@@ -1218,6 +1212,18 @@ export default function PanelCanvas({
                           style={{ pointerEvents: 'none', letterSpacing: '0.03em' }}>
                           {trapId}
                         </text>
+                        {/* Slope chevron: ^ above badge (down) or V below badge (up) */}
+                        {(() => {
+                          const badgeFill = isSelected ? PANEL_BADGE_SEL_CHV : PANEL_BADGE_SELECTED
+                          const pts = down
+                            ? `0,${-cupH/2} ${-cupW/2},${cupH/2} ${cupW/2},${cupH/2}`
+                            : `${-cupW/2},${-cupH/2} ${cupW/2},${-cupH/2} 0,${cupH/2}`
+                          return (
+                            <g transform={`translate(${cupX},${cupY}) rotate(${rDeg})`} style={{ pointerEvents: 'none' }}>
+                              <polygon points={pts} fill="white" stroke={badgeFill} strokeWidth={cupH * 0.18} strokeLinejoin="round" />
+                            </g>
+                          )
+                        })()}
                       </>
                     )
                   })()}

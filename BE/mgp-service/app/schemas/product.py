@@ -22,14 +22,13 @@ class ProductBase(BaseModel):
     weight_kg: float | None = None
     depreciation_pct: float | None = None
     process_pct: float | None = None
+    # Panel-only fields — only relevant when product_type == 'panel'
+    length_cm: float | None = None
+    width_cm: float | None = None
+    kw_peak: int | None = None
     # Bundle: when this product appears in the effective BOM, the named
     # parent emits this product as a child with qty = parent.qty * multiplier.
     bundle: dict | None = None
-    # Electrical spec blob (panels: Voc/Vmp/Isc/Imp/temp coeffs; inverters:
-    # MPPT window, currents, etc.). Free-form JSON.
-    params: dict | None = None
-    # Sadot Energy product links per locale, e.g. {"he": "...", "en": "..."}.
-    sadot_url: dict | None = None
 
 
 class ProductCreate(ProductBase):
@@ -50,9 +49,11 @@ class ProductUpdate(BaseModel):
     weight_kg: float | None = None
     depreciation_pct: float | None = None
     process_pct: float | None = None
+    # Panel-only fields
+    length_cm: float | None = None
+    width_cm: float | None = None
+    kw_peak: int | None = None
     bundle: dict | None = None
-    params: dict | None = None
-    sadot_url: dict | None = None
 
 
 class ProductRead(ProductBase):

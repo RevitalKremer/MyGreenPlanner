@@ -32,7 +32,6 @@ class ProjectRead(BaseModel):
     layout: dict
     data: dict
     credits_charged_at: datetime | None = None
-    electrical_charged_at: datetime | None = None
     quotation_requested_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

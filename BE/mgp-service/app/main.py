@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.models.setting import AppSetting
 from app.models.user import User, UserRole
-from app.routers import auth, projects, admin, products, electrical_regulations
+from app.routers import auth, projects, admin, products
 from app.services.auth import get_user_by_email, hash_password
 from app.services import settings_cache
 
@@ -99,7 +99,6 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(admin.router)
 app.include_router(products.router)
-app.include_router(electrical_regulations.router)
 
 
 @app.get("/health")
