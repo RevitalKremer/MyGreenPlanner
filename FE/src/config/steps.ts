@@ -43,6 +43,19 @@ export function getStep(id: number): StepDef | undefined {
   return STEPS.find(s => s.id === id)
 }
 
+// ── Electrical phase rollout gate ───────────────────────────────────────────
+// The electrical steps (6–9) are built but withheld behind a "coming soon"
+// teaser until tariffs are finalized and the Sadot catalog data is complete.
+// While false: step 6 shows the teaser and the ONLY forward action is
+// "Skip to summary" (Path A) — the 6→7 non-refundable charge can never fire.
+// Flip to true to launch the full electrical workflow (no other change needed).
+export const ELECTRICAL_ENABLED = false
+
+/** True when a step belongs to the electrical phase that is currently withheld. */
+export function isElectricalGated(id: number): boolean {
+  return !ELECTRICAL_ENABLED && getStep(id)?.phase === 'electrical'
+}
+
 /** The last step in the flow triggers the "Finish" action (today step 5; the
  *  Final summary step once it is appended). */
 export function isLastStep(id: number): boolean {

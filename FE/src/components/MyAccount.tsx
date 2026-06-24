@@ -429,9 +429,16 @@ export default function MyAccount({ user, onClose, onRefresh, onUpdateProfile = 
                 <div style={{ fontSize: '0.74rem', color: TEXT_FAINT }}>{t('account.pricing.constructionNote')}</div>
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: TEXT_DARKEST, fontWeight: 600 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.88rem', color: TEXT_FAINT, fontWeight: 600 }}>
                   <span>{t('account.pricing.strings')}</span>
-                  <span>{t('account.pricing.credits', { n: electricalCost })}</span>
+                  <span style={{
+                    fontSize: '0.66rem', color: AMBER_DARK, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.2rem 0.5rem', background: AMBER_BG,
+                    border: `1px solid ${AMBER_BORDER}`, borderRadius: 6,
+                  }}>
+                    {t('account.comingSoon')}
+                  </span>
                 </div>
                 <div style={{ fontSize: '0.74rem', color: TEXT_FAINT }}>{t('account.pricing.stringsNote')}</div>
               </div>

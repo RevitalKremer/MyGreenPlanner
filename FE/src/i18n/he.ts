@@ -121,13 +121,23 @@ const he = {
 
   // ── קבוצות שלבים בסרגל ────────────────────────────────────────────────────
   'phase.basic':        'בסיס',
-  'phase.construction': 'בנייה',
+  'phase.construction': 'קונסטרוקציה',
   'phase.electricity':  'חשמל',
   'phase.summary':      'סיכום',
 
   // ── ניווט: מסלולי חשמל ───────────────────────────────────────────────────
   'nav.skipToLast': 'דלג לסיכום →',
   'nav.blocker.step6.noInverter': 'בחר לפחות ממיר אחד',
+
+  // ── טיזר "בקרוב" לשלב החשמל (שלבים 6–9 מושהים) ───────────────────────────
+  'electrical.comingSoon.badge':          'בקרוב',
+  'electrical.comingSoon.title':          'תכנון החשמל בדרך',
+  'electrical.comingSoon.body':           'תהליך תכנון החשמל המלא — התאמת ממיר, תכנית סטרינגים אוטומטית, כתב כמויות חשמלי ואישור חשמלאי — נמצא בשלבי השלמה וייפתח כאן בקרוב.',
+  'electrical.comingSoon.feat.inverter':  'בחירת ממיר עם התאמת גודל אוטומטית',
+  'electrical.comingSoon.feat.strings':   'תכנית סטרינגים אוטומטית ומאומתת',
+  'electrical.comingSoon.feat.bom':       'תיק פרויקט מלא',
+  'electrical.comingSoon.feat.approval':  'אישור וחתימת חשמלאי',
+  'electrical.comingSoon.cta':            'בינתיים, השתמש ב„דלג לסיכום” כדי לסיים עם תכנית הקונסטרוקציה.',
 
   // ── שלב 6: הגדרות חשמל ובחירת ממיר ────────────────────────────────────────
   'step6.title':                 'הגדרות חשמל ובחירת ממיר',
@@ -290,7 +300,7 @@ const he = {
 
   // ── סיכום ─────────────────────────────────────────────────────────────────
   'final.title':              'סיכום פרויקט',
-  'final.construction':       'בנייה',
+  'final.construction':       'קונסטרוקציה',
   'final.electrical':         'חשמל',
   'final.inverters':          'ממירים',
   'final.strings':            'סטרינגים',

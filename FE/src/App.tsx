@@ -13,6 +13,7 @@ import Step7StringsPlan from './components/steps/Step7StringsPlan'
 import Step8ElectricalApproval from './components/steps/Step8ElectricalApproval'
 import Step9ElectricalBom from './components/steps/Step9ElectricalBom'
 import FinalSummary from './components/steps/FinalSummary'
+import ElectricalComingSoon from './components/steps/ElectricalComingSoon'
 import WelcomeScreen from './components/WelcomeScreen'
 import HelpButton from './components/HelpButton'
 import FinishCelebration from './components/FinishCelebration'
@@ -29,7 +30,7 @@ import PromoBanner from './components/PromoBanner'
 import { listProjects, getProject, updateProject, deleteProject, getConstructionData, updateStep, saveTab, resetTab, StepTransitionError } from './services/projectsApi'
 import { buildBaseOpsFromState } from './utils/baseOpsBuilder'
 import { buildBlockOpsFromState } from './utils/blockOpsBuilder'
-import { STEP_GROUPS, LAST_STEP_ID, isLastStep } from './config/steps'
+import { STEP_GROUPS, LAST_STEP_ID, isLastStep, isElectricalGated } from './config/steps'
 import './App.css'
 
 // Trap-scope schema params persisted server-side under step3.trapezoidConfigs
@@ -1301,6 +1302,13 @@ function App() {
             </div>
           )
         })()}
+
+        {/* Electrical phase withheld — the real step (6–9) renders above; this
+            overlay blurs it and previews what's coming. The only forward action
+            is "Skip to summary", so the 6→7 charge can never fire while gated. */}
+        {isElectricalGated(s.currentStep) && !isLastStep(s.currentStep) && (
+          <ElectricalComingSoon />
+        )}
       </main>
 
       {/* Wizard Toolbar */}
@@ -1391,7 +1399,7 @@ function App() {
         {/* Skip to the Final summary — only on the construction exit (5) and
             the electrical entry (6). Path A/B: leaves with partial data and
             never triggers the electrical charge (skip=true). */}
-        {(s.currentStep === 5 || s.currentStep === 6) && (
+        {(s.currentStep === 5 || s.currentStep === 6 || isElectricalGated(s.currentStep)) && (
           <button
             className="btn-nav btn-back"
             style={{ marginInlineEnd: '0.5rem' }}
@@ -1410,6 +1418,9 @@ function App() {
           </button>
         )}
 
+        {/* Next/Finish — hidden while the electrical phase is withheld so the
+            only forward action on step 6 is "Skip to summary". */}
+        {!(isElectricalGated(s.currentStep) && !isLastStep(s.currentStep)) && (
         <span
           style={{ position: 'relative', display: 'inline-block' }}
           onMouseEnter={() => setShowNextTooltip(true)}
@@ -1539,6 +1550,7 @@ function App() {
           {isLastStep(s.currentStep) ? t('nav.finish') : t('nav.next')}
         </button>
         </span>
+        )}
       </footer>
 
       {confirmDialogElement}

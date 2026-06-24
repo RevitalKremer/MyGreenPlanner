@@ -129,6 +129,16 @@ const en = {
   'nav.skipToLast': 'Skip to summary →',
   'nav.blocker.step6.noInverter': 'Select at least one inverter',
 
+  // ── Electrical phase "coming soon" teaser (steps 6–9 withheld) ───────────
+  'electrical.comingSoon.badge':          'Coming soon',
+  'electrical.comingSoon.title':          'Electrical design is on the way',
+  'electrical.comingSoon.body':           'The full PV electrical workflow — inverter sizing, an auto-generated string plan, an electrical bill of materials, and electrician approval — is being finalized and will unlock here soon.',
+  'electrical.comingSoon.feat.inverter':  'Inverter selection with automatic sizing',
+  'electrical.comingSoon.feat.strings':   'Auto-generated, validated string plan',
+  'electrical.comingSoon.feat.bom':       'Full project folder',
+  'electrical.comingSoon.feat.approval':  'Electrician approval & sign-off',
+  'electrical.comingSoon.cta':            'In the meantime, use “Skip to summary” to finish with your construction plan.',
+
   // ── Step 6: Electrical Settings + Inverter Selection ─────────────────────
   'step6.title':                 'Electrical Settings & Inverter Selection',
   'step6.subtitle':              'Set the parameters that drive the string plan, then pick the inverter(s).',
