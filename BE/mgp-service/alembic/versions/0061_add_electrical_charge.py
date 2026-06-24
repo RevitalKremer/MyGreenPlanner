@@ -13,7 +13,6 @@ Create Date: 2026-06-22
 
 """
 from typing import Sequence, Union
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0061"
@@ -25,8 +24,11 @@ ELECTRICAL_COST_DEFAULT = 200
 
 
 def upgrade() -> None:
-    # Project marker
-    op.add_column("projects", sa.Column("electrical_charged_at", sa.DateTime(timezone=True), nullable=True))
+    # Project marker. Idempotent: the autocommit_block below commits this column
+    # before the enum change, so a failed re-run can find it already present.
+    op.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS electrical_charged_at TIMESTAMP WITH TIME ZONE"
+    )
 
     # New enum value — must commit before it can be referenced below.
     with op.get_context().autocommit_block():
@@ -38,7 +40,9 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_credit_txn_project_scope",
         "credit_transactions",
-        "(kind IN ('project_charge','admin_refund','electrical_charge') AND project_id IS NOT NULL)"
+        # Keep 0050's relaxation: project-tied kinds MAY have project_id NULL
+        # (after ON DELETE SET NULL detaches a deleted project's ledger row).
+        "kind IN ('project_charge','admin_refund','electrical_charge')"
         " OR (kind IN ('trial','admin_grant') AND project_id IS NULL)"
         " OR (kind = 'purchase')",
     )
@@ -77,7 +81,8 @@ def downgrade() -> None:
     op.create_check_constraint(
         "ck_credit_txn_project_scope",
         "credit_transactions",
-        "(kind IN ('project_charge','admin_refund') AND project_id IS NOT NULL)"
+        # Restore 0050's relaxed form (NOT the pre-0050 strict one).
+        "kind IN ('project_charge','admin_refund')"
         " OR (kind IN ('trial','admin_grant') AND project_id IS NULL)"
         " OR (kind = 'purchase')",
     )
