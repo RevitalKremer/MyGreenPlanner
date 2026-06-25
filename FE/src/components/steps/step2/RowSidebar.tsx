@@ -714,6 +714,7 @@ export default function RowSidebar({
                             <span
                               key={idx}
                               onClick={() => onLineOrientationToggle?.(sortedLines[idx][0])}
+                              title={isH ? t('step2.sidebar.toVertical') : t('step2.sidebar.toHorizontal')}
                               style={{
                                 fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
                                 cursor: 'pointer', userSelect: 'none',

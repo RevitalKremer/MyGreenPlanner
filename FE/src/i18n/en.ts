@@ -387,6 +387,8 @@ const en = {
   'roofSpec.type.insulatedPanel':     'Insulated Panel',
   'roofSpec.type.mixed':              'Mixed (per-area)',
   'step2.sidebar.areaRoofType':       'Roof type',
+  'step2.sidebar.toVertical':         'Click to change to vertical (|)',
+  'step2.sidebar.toHorizontal':       'Click to change to horizontal (▬)',
   'roofSpec.distanceBetweenPurlins':  'Distance Between Purlins (cm)',
   'roofSpec.distancePlaceholder':     'e.g. 120',
   'roofSpec.installationOrientation': 'Installation Orientation',

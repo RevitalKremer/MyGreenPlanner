@@ -385,6 +385,8 @@ const he = {
   'roofSpec.type.insulatedPanel':     'פנל מבודד',
   'roofSpec.type.mixed':              'מעורב (לפי אזור)',
   'step2.sidebar.areaRoofType':       'סוג גג',
+  'step2.sidebar.toVertical':         'לחצו לשינוי לאנכי (|)',
+  'step2.sidebar.toHorizontal':       'לחצו לשינוי לאופקי (▬)',
   'roofSpec.distanceBetweenPurlins':  'מרחק בין פטות (ס״מ)',
   'roofSpec.distancePlaceholder':     'לדוגמה: 120',
   'roofSpec.installationOrientation': 'כיוון התקנה',
