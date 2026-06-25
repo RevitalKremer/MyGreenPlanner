@@ -68,6 +68,9 @@ export default function Step1RoofAllocation({
 
   const handleContainerMouseDown = (e) => {
     if (e.button !== 0 || isDrawingLine) return
+    // Stop the browser's native image-drag / text-selection so the drag pans
+    // the canvas instead of starting a ghost-image drag (the "globe" cursor).
+    e.preventDefault()
     panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: panOffset.x, startPanY: panOffset.y }
   }
   const handleContainerMouseMove = (e) => {
@@ -231,20 +234,25 @@ export default function Step1RoofAllocation({
       {/* ── Content ── */}
       <div className="step-content-area" style={{ position: 'relative' }}>
         {showImageView ? (
-            <div className="uploaded-image-view" ref={viewportRef} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative' }}>
+            <div
+              className="uploaded-image-view"
+              ref={viewportRef}
+              style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative', cursor: isDrawingLine ? 'crosshair' : panActive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              onMouseDown={handleContainerMouseDown}
+              onMouseMove={handleContainerMouseMove}
+              onMouseUp={handleContainerMouseUp}
+              onMouseLeave={handleContainerMouseLeave}
+            >
               <div
                 className="uploaded-image-container"
                 ref={imgContainerRef}
-                style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: isDrawingLine ? 'crosshair' : panActive ? 'grabbing' : 'grab' }}
-                onMouseDown={handleContainerMouseDown}
-                onMouseMove={handleContainerMouseMove}
-                onMouseUp={handleContainerMouseUp}
-                onMouseLeave={handleContainerMouseLeave}
+                style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)` }}
               >
                 <img
                   ref={(el) => { localImgRef.current = el; setImageRef(el) }}
                   src={imageSrc}
                   alt="Uploaded roof"
+                  draggable={false}
                   style={{
                     display: 'block',
                     transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,

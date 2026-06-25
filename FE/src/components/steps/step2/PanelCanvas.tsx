@@ -846,6 +846,7 @@ export default function PanelCanvas({
           ref={imgRefCallback}
           src={imageSrc}
           alt="Roof with panels"
+          draggable={false}
           style={{
             display: 'block',
             transform: `rotate(${uploadedImageData.rotation ?? 0}deg) scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
