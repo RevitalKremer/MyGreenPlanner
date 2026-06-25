@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -80,9 +82,31 @@ def _classify(item: dict) -> str:
     return 'other'
 
 
+def _parse_extra_pct(raw) -> int:
+    """Leading integer of the extra-percent value (mirrors the frontend
+    parseExtraPct: handles None, numbers, and strings like '5' or '5%')."""
+    if raw is None:
+        return 0
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    m = re.match(r'\s*(-?\d+)', str(raw))
+    return int(m.group(1)) if m else 0
+
+
+def _effective_qty(item: dict) -> float:
+    """Quantity to quote = base qty + extras (spares). Extras come from an
+    explicit override when present, otherwise derived from extraPct — matching
+    the frontend BOMView: extras = ceil(qty * pct / 100)."""
+    qty = item.get('qty', 0) or 0
+    extras = item.get('extras')
+    if extras is None:
+        extras = math.ceil(qty * _parse_extra_pct(item.get('extraPct')) / 100)
+    return qty + extras
+
+
 def _build_data_row(line_num: int, item: dict, product: Product | None) -> dict:
     """Produce one filled-in row dict matching the template's column layout."""
-    qty = item.get('qty', 0) or 0
+    qty = _effective_qty(item)
     piece_length = item.get('pieceLengthM')
     is_length_row = piece_length is not None
 
@@ -272,7 +296,7 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
         product = products_by_type.get(item.get('element'))
         if not product or not product.weight_kg:
             continue
-        qty = item.get('qty') or 0
+        qty = _effective_qty(item)
         piece_len = item.get('pieceLengthM')
         total_weight = (piece_len * qty * product.weight_kg) if piece_len is not None else (qty * product.weight_kg)
         ptype = product.product_type or ''
