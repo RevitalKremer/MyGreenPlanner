@@ -8,7 +8,6 @@ export default function ToolPanel({
   activeTool, handleToolChange,
   selectedPanels,
   nudgeRow, addManualPanel,
-  distanceMeasurement, setDistanceMeasurement,
   pendingAddNextTo, setPendingAddNextTo, addError, setAddError,
   showHGridlines, setShowHGridlines,
   showVGridlines, setShowVGridlines,
@@ -367,11 +366,6 @@ export default function ToolPanel({
           <div style={{ fontSize: '0.72rem', color: TEXT_PLACEHOLDER, textAlign: 'center' }}>
             {t('step2.tool.roofAxisHint')}
           </div>
-        )}
-        {distanceMeasurement?.p2 && (
-          <button onClick={() => setDistanceMeasurement(null)} style={{ width: '100%', padding: '0.4rem', background: BLUE_BG, color: BLUE, border: `1px solid ${BLUE_BORDER}`, borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem' }}>
-            {t('step2.tool.clearRuler')}
-          </button>
         )}
         {roofAxisEnabled && roofAxisTilted && (
           // Only offered once the line is tilted off 0°. Reset clears the

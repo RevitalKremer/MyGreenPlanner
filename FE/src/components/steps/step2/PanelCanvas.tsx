@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import {
-  PRIMARY, ERROR, BLACK, WARNING, SUCCESS,
+  PRIMARY, ERROR, BLACK, WARNING, SUCCESS, WHITE,
   DRAW_COLOR,
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
   PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE, PANEL_FILL_HOVER_ROTATE,
@@ -78,6 +78,9 @@ export default function PanelCanvas({
   // While the user is drawing/editing the roof axis, the WIP line lives here.
   // null = inactive. {start, end, dragging: 'new'|'p1'|'p2'} = active.
   const [roofAxisDraft, setRoofAxisDraft] = useState(null)
+  // True when the cursor is over a roof-axis endpoint handle — switches the
+  // cursor to "move" so it reads as "drag this end" vs "draw a new area".
+  const [axisHandleHover, setAxisHandleHover] = useState(false)
 
   // Roof-axis local frame for area-draw alignment. Only active when the
   // user has enabled roof-axis mode via the compass toggle — when disabled,
@@ -230,7 +233,7 @@ export default function PanelCanvas({
       case 'delete': return 'pointer'
       case 'add': return 'crosshair'
       case 'measure': return 'crosshair'
-      case 'roofAxis': return 'crosshair'
+      case 'roofAxis': return (roofAxisDraft || axisHandleHover) ? 'move' : 'crosshair'
       case 'area': return 'crosshair'
       default: return 'grab'
     }
@@ -304,13 +307,11 @@ export default function PanelCanvas({
       }
     }
 
-    // Measure tool
+    // Measure tool — drag-to-draw: press sets the start, release sets the end
+    // (finalized in handleSVGMouseUp). Consistent with the roof-axis / ruler /
+    // Step1 reference-line gestures.
     if (activeTool === 'measure') {
-      if (!distanceMeasurement || (distanceMeasurement.p1 && distanceMeasurement.p2)) {
-        setDistanceMeasurement({ p1: [x, y], p2: null })
-      } else if (distanceMeasurement.p2 === null) {
-        setDistanceMeasurement({ ...distanceMeasurement, p2: [x, y] })
-      }
+      setDistanceMeasurement({ p1: [x, y], p2: null })
       return
     }
 
@@ -399,6 +400,17 @@ export default function PanelCanvas({
     // Only update mousePos when not in a drag — avoids re-render cascade during drags
     if (!yLockDragState && !moveDragState && !freeDragState && !dragState && !rotationState) {
       setMousePos({ x, y })
+    }
+
+    // Roof-axis endpoint hover → "move" cursor (mirrors the mousedown hit-test).
+    if (activeTool === 'roofAxis' && roofAxis?.start && roofAxis?.end && !roofAxisDraft && !drawRectStart) {
+      const HANDLE_HIT_PX = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
+      const d1 = Math.hypot(x - roofAxis.start.x, y - roofAxis.start.y)
+      const d2 = Math.hypot(x - roofAxis.end.x,   y - roofAxis.end.y)
+      const overHandle = d1 < HANDLE_HIT_PX || d2 < HANDLE_HIT_PX
+      if (overHandle !== axisHandleHover) setAxisHandleHover(overHandle)
+    } else if (axisHandleHover) {
+      setAxisHandleHover(false)
     }
 
     if ((activeTool === 'area' || activeTool === 'roofAxis') && drawRectStart) {
@@ -626,6 +638,17 @@ export default function PanelCanvas({
   }
 
   const handleSVGMouseUp = () => {
+    // Measure tool: finalize the end point at the current cursor position.
+    if (activeTool === 'measure' && distanceMeasurement?.p1 && !distanceMeasurement?.p2) {
+      const p1 = distanceMeasurement.p1
+      const minDist = Math.max(5, (imageRef?.naturalWidth ?? 1000) * 0.01)
+      if (mousePos && Math.hypot(mousePos.x - p1[0], mousePos.y - p1[1]) >= minDist) {
+        setDistanceMeasurement({ p1, p2: [mousePos.x, mousePos.y] })
+      } else {
+        setDistanceMeasurement(null)
+      }
+      return
+    }
     if (roofAxisDraft) {
       const len = Math.hypot(
         roofAxisDraft.end.x - roofAxisDraft.start.x,
@@ -785,13 +808,21 @@ export default function PanelCanvas({
   // (or the browser swallows the mouseup, as Cmd+drag sometimes does on
   // macOS), still finalise the marquee. Without this the gesture state
   // stays open and the rect "follows" the cursor on subsequent moves.
+  // Leaving the measure tool clears the measurement (drawing/redrawing is just
+  // press-drag-release; a new drag replaces the old one — so no clear button).
   useEffect(() => {
-    if (!groupRowsRect) return
+    if (activeTool !== 'measure' && distanceMeasurement) setDistanceMeasurement(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool])
+
+  const measureInProgress = activeTool === 'measure' && !!distanceMeasurement?.p1 && !distanceMeasurement?.p2
+  useEffect(() => {
+    if (!groupRowsRect && !measureInProgress) return
     const onWindowUp = () => handleSVGMouseUp()
     window.addEventListener('mouseup', onWindowUp)
     return () => window.removeEventListener('mouseup', onWindowUp)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupRowsRect])
+  }, [groupRowsRect, measureInProgress])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -819,9 +850,14 @@ export default function PanelCanvas({
         />
 
         {imageRef && (() => {
-          const dotR     = Math.max(2, imageRef.naturalWidth * 0.002)
           const lineW    = Math.max(1, imageRef.naturalWidth * 0.001)
           const dashArray = `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
+          // Unified style for user-drawn overlay lines + endpoint handles
+          // (baseline, distance measure, roof axis). Dot/ring proportions match
+          // RulerTool exactly: dot radius = 2× line width, ring = 0.6× line width.
+          const drawnLineW = lineW * 3.5
+          const dotR = drawnLineW * 2
+          const handleRingW = drawnLineW * 0.6
           return (<svg
             viewBox={`0 0 ${imageRef.naturalWidth} ${imageRef.naturalHeight}`}
             preserveAspectRatio="xMidYMid meet"
@@ -843,16 +879,6 @@ export default function PanelCanvas({
                   <polygon points={roofPolygon.coordinates.map(c => `${c[0]},${c[1]}`).join(' ')} fill={BLACK} />
                 </mask>
               )}
-              {showDistances && distanceMeasurement?.p2 && (
-                <>
-                  <marker id="dist-arrow-start" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 1,3" fill={PRIMARY} />
-                  </marker>
-                  <marker id="dist-arrow-end" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                    <polygon points="3,1 3,5 5,3" fill={PRIMARY} />
-                  </marker>
-                </>
-              )}
             </defs>
 
             {/* Roof polygon overlay */}
@@ -866,16 +892,16 @@ export default function PanelCanvas({
             {/* Baseline */}
             {showBaseline && baseline?.p1 && baseline?.p2 && (
               <>
-                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray} />
-                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} />
-                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r={dotR} fill={DRAW_COLOR} />
+                <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={baseline.p2[0]} y2={baseline.p2[1]} stroke={DRAW_COLOR} strokeWidth={drawnLineW} strokeDasharray={dashArray} />
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={handleRingW} />
+                <circle cx={baseline.p2[0]} cy={baseline.p2[1]} r={dotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={handleRingW} />
               </>
             )}
             {baseline?.p1 && !baseline?.p2 && (
               <>
-                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} />
+                <circle cx={baseline.p1[0]} cy={baseline.p1[1]} r={dotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={handleRingW} />
                 {mousePos && (
-                  <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={mousePos.x} y2={mousePos.y} stroke={DRAW_COLOR} strokeWidth={lineW} strokeDasharray={dashArray} />
+                  <line x1={baseline.p1[0]} y1={baseline.p1[1]} x2={mousePos.x} y2={mousePos.y} stroke={DRAW_COLOR} strokeWidth={drawnLineW} strokeDasharray={dashArray} />
                 )}
               </>
             )}
@@ -1244,10 +1270,10 @@ export default function PanelCanvas({
               const { p1, p2 } = distanceMeasurement
               if (!p2) return (
                 <>
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} stroke={WHITE} strokeWidth={handleRingW} />
                   {mousePos && (
                     <line x1={p1[0]} y1={p1[1]} x2={mousePos.x} y2={mousePos.y}
-                      stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray} />
+                      stroke={PRIMARY} strokeWidth={drawnLineW} strokeDasharray={dashArray} />
                   )}
                 </>
               )
@@ -1260,10 +1286,9 @@ export default function PanelCanvas({
               return (
                 <>
                   <line x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]}
-                    stroke={PRIMARY} strokeWidth={lineW} strokeDasharray={dashArray}
-                    markerStart="url(#dist-arrow-start)" markerEnd="url(#dist-arrow-end)" />
-                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} />
-                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill={PRIMARY} />
+                    stroke={PRIMARY} strokeWidth={drawnLineW} strokeDasharray={dashArray} />
+                  <circle cx={p1[0]} cy={p1[1]} r={dotR} fill={PRIMARY} stroke={WHITE} strokeWidth={handleRingW} />
+                  <circle cx={p2[0]} cy={p2[1]} r={dotR} fill={PRIMARY} stroke={WHITE} strokeWidth={handleRingW} />
                   <rect x={midX - lw/2} y={midY - lh/2} width={lw} height={lh} fill={CANVAS_LABEL_BG} rx={lh/2} />
                   <text x={midX} y={midY - fs*0.15} textAnchor="middle" fill="white" fontSize={fs} fontWeight="700" style={{ pointerEvents: 'none' }}>{distM} m</text>
                   <text x={midX} y={midY + fs*0.9} textAnchor="middle" fill={CANVAS_LABEL_TEXT} fontSize={fs * 0.75} fontWeight="400" style={{ pointerEvents: 'none' }}>{distCm.toFixed(0)} cm</text>
@@ -1294,9 +1319,8 @@ export default function PanelCanvas({
               const dy = axis.end.y - axis.start.y
               const len = Math.hypot(dx, dy) || 1
               const ax = dx / len, ay = dy / len
-              const guideW = lineW * 1.5
+              const guideW = drawnLineW
               const gd = `${lineW * 8} ${lineW * 4}`
-              const handleR = Math.max(6, (imageRef?.naturalWidth ?? 1000) * 0.008)
               const labelSize = Math.max(8, (imageRef?.naturalWidth ?? 1000) * 0.012)
               // Roof axis angle in screen coords, normalised to (−90°, 90°].
               let axisDeg = Math.atan2(dy, dx) * 180 / Math.PI
@@ -1305,6 +1329,10 @@ export default function PanelCanvas({
               const axisLabel = `${axisDeg.toFixed(1)}°`
               return (
                 <g style={{ pointerEvents: 'none' }}>
+                  {/* Blinks a few times when roof-axis mode is toggled on
+                      (this <g> mounts fresh on toggle, so the finite-iteration
+                      animation plays once), drawing the eye to the line. */}
+                  <style>{`@keyframes roofAxisBlink { 0%,100%{opacity:1} 50%{opacity:0.1} }`}</style>
                   {/* The user-drawn roof axis. The per-area 0° preview lines
                       were dropped — the single axis line plus the rotation
                       snap guide (shown while dragging near the axis) are
@@ -1315,11 +1343,12 @@ export default function PanelCanvas({
                     stroke={WARNING} strokeWidth={guideW}
                     strokeDasharray={gd}
                     opacity={0.85}
+                    style={{ animation: 'roofAxisBlink 0.4s ease-in-out 3' }}
                   />
-                  <circle cx={axis.start.x} cy={axis.start.y} r={handleR}
-                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
-                  <circle cx={axis.end.x} cy={axis.end.y} r={handleR}
-                    fill="white" stroke={WARNING} strokeWidth={lineW * 0.8} />
+                  <circle cx={axis.start.x} cy={axis.start.y} r={dotR}
+                    fill={WARNING} stroke={WHITE} strokeWidth={handleRingW} />
+                  <circle cx={axis.end.x} cy={axis.end.y} r={dotR}
+                    fill={WARNING} stroke={WHITE} strokeWidth={handleRingW} />
                   <text
                     x={axis.end.x + ax * lineW * 4}
                     y={axis.end.y + ay * lineW * 4}

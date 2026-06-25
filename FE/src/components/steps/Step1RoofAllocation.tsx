@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR } from '../../styles/colors'
+import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR, WHITE } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
 import { blobToDataURL } from '../../utils/imagePayload'
@@ -83,7 +83,10 @@ export default function Step1RoofAllocation({
   const handleContainerMouseLeave = () => { panRef.current = null; setPanActive(false) }
 
   const refDotR     = imageRef ? Math.max(2, imageRef.naturalWidth * 0.002) : 2
-  const refLineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) : 1
+  // Unified drawn-line style (matches Step2 PanelCanvas / RulerTool): thick
+  // stroke + a solid colored dot wrapped in a white ring for photo contrast.
+  const refLineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) * 3.5 : 3.5
+  const refRingW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) * 1.2 : 1.2
   const refDashArray = imageRef
     ? `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
     : '6,3'
@@ -166,18 +169,35 @@ export default function Step1RoofAllocation({
     }
   }
 
-  const handleSVGClick = (e) => {
-    if (!isDrawingLine) return
+  // Drag-to-draw (consistent with Step2 PanelCanvas + RulerTool): press to set
+  // the start point, drag to preview, release to set the end point.
+  const handleSVGMouseDown = (e) => {
+    if (!isDrawingLine || e.button !== 0) return
     const coords = getImageCoords(e)
     if (!coords) return
-    if (!lineStart) { setLineStart(coords) }
-    else { setReferenceLine({ start: lineStart, end: coords }); setLineStart(null); setIsDrawingLine(false) }
+    setLineStart(coords)
+    setReferenceLine(null)
+    setMousePos(coords)
   }
 
   const handleSVGMouseMove = (e) => {
     if (!isDrawingLine) return
     const coords = getImageCoords(e)
     if (coords) setMousePos(coords)
+  }
+
+  const handleSVGMouseUp = (e) => {
+    if (!isDrawingLine || !lineStart) return
+    const coords = getImageCoords(e)
+    // Ignore a stray click / micro-drag so we never commit a zero-length line.
+    const minDist = imageRef ? Math.max(5, imageRef.naturalWidth * 0.01) : 5
+    if (!coords || Math.hypot(coords.x - lineStart.x, coords.y - lineStart.y) < minDist) {
+      setLineStart(null)
+      return
+    }
+    setReferenceLine({ start: lineStart, end: coords })
+    setLineStart(null)
+    setIsDrawingLine(false)
   }
 
   const hint = roofSource === 'map'
@@ -240,20 +260,21 @@ export default function Step1RoofAllocation({
                       cursor: isDrawingLine ? 'crosshair' : 'default',
                       transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`
                     }}
-                    onClick={handleSVGClick}
+                    onMouseDown={handleSVGMouseDown}
                     onMouseMove={handleSVGMouseMove}
+                    onMouseUp={handleSVGMouseUp}
                   >
                     {/* Reference line (confirmed) */}
                     {referenceLine && (
                       <>
                         <line x1={referenceLine.start.x} y1={referenceLine.start.y} x2={referenceLine.end.x} y2={referenceLine.end.y} stroke={DRAW_COLOR} strokeWidth={refLineW} strokeDasharray={refDashArray}/>
-                        <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={refDotR} fill={DRAW_COLOR}/>
-                        <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={refDotR} fill={DRAW_COLOR}/>
+                        <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
+                        <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
                       </>
                     )}
                     {/* Reference line: first click dot */}
                     {isDrawingLine && lineStart && (
-                      <circle cx={lineStart.x} cy={lineStart.y} r={refDotR} fill={DRAW_COLOR}/>
+                      <circle cx={lineStart.x} cy={lineStart.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
                     )}
                     {/* Reference line: live preview */}
                     {isDrawingLine && lineStart && mousePos && (

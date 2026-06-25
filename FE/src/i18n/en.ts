@@ -436,8 +436,8 @@ const en = {
   'step1.lineLength':             'Line Length (cm)',
   'step1.lineLengthPlaceholder':  'Enter length in cm',
   'step1.ratio':                  'Ratio: ',
-  'step1.clickFirstPoint':        'Click first point of reference line',
-  'step1.clickSecondPoint':       'Click second point to finish reference line',
+  'step1.clickFirstPoint':        'Press and drag to draw the reference line',
+  'step1.clickSecondPoint':       'Release to finish the reference line',
   'step1.geolocationDenied':      'Unable to get your location. Please enable location services.',
   'step1.geolocationUnsupported': 'Geolocation is not supported by your browser.',
 

@@ -434,8 +434,8 @@ const he = {
   'step1.lineLength':             'אורך הקו (ס"מ)',
   'step1.lineLengthPlaceholder':  'הכנס אורך בס"מ',
   'step1.ratio':                  'יחס: ',
-  'step1.clickFirstPoint':        'לחץ על הנקודה הראשונה של קו הייחוס',
-  'step1.clickSecondPoint':       'לחץ על הנקודה השנייה לסיום קו הייחוס',
+  'step1.clickFirstPoint':        'לחצו וגררו כדי לצייר את קו הייחוס',
+  'step1.clickSecondPoint':       'שחררו כדי לסיים את קו הייחוס',
   'step1.geolocationDenied':      'לא ניתן לאחזר את מיקומך. אנא אפשר שירותי מיקום.',
   'step1.geolocationUnsupported': 'הדפדפן שלך אינו תומך במיקום גיאוגרפי.',
 
