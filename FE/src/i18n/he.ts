@@ -390,8 +390,9 @@ const he = {
   'roofSpec.distanceBetweenPurlins':  'מרחק בין פטות (ס״מ)',
   'roofSpec.distancePlaceholder':     'לדוגמה: 120',
   'roofSpec.installationOrientation': 'כיוון התקנה',
-  'roofSpec.orientation.perpendicular': 'התקנה בניצב לפטות',
-  'roofSpec.orientation.parallel':      'התקנה לאורך הפטות',
+  'roofSpec.purlinsDirection':        'כיוון הפטות',
+  'roofSpec.orientation.perpendicular': ' בניצב',
+  'roofSpec.orientation.parallel':      ' לאורך',
 
   // ── Image uploader ───────────────────────────────────────────────────────
   'uploader.uploadOption':     'העלה מהמכשיר',

@@ -392,8 +392,9 @@ const en = {
   'roofSpec.distanceBetweenPurlins':  'Distance Between Purlins (cm)',
   'roofSpec.distancePlaceholder':     'e.g. 120',
   'roofSpec.installationOrientation': 'Installation Orientation',
-  'roofSpec.orientation.perpendicular': 'Perpendicular to Purlins',
-  'roofSpec.orientation.parallel':      'Parallel to Purlins',
+  'roofSpec.purlinsDirection':        'Purlins Direction',
+  'roofSpec.orientation.perpendicular': 'Perpendicular',
+  'roofSpec.orientation.parallel':      'Parallel',
 
   // ── Image uploader ───────────────────────────────────────────────────────
   'uploader.uploadOption':     'Upload from your device',
