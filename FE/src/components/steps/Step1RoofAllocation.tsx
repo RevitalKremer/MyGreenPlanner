@@ -64,7 +64,7 @@ export default function Step1RoofAllocation({
   // committing. Setting this also clears uploadedImageData to surface the uploader.
   const [pendingPasteImage, setPendingPasteImage] = useState<{ dataURL: string; file: File } | null>(null)
 
-  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
+  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect, zoomAtPoint, zoomAtCenter } = useImagePanZoom(imageRef)
 
   const handleContainerMouseDown = (e) => {
     if (e.button !== 0 || isDrawingLine) return
@@ -115,14 +115,21 @@ export default function Step1RoofAllocation({
   const localImgRef = useRef(null)
   const imgContainerRef = useRef(null)
 
-  // Attach non-passive wheel listener to allow preventDefault (Chrome marks React onWheel as passive)
+  // Attach non-passive wheel listener to allow preventDefault (Chrome marks React onWheel as passive).
+  // Cursor-anchored zoom: keep the point under the cursor fixed while zooming.
   useEffect(() => {
     const el = imgContainerRef.current
     if (!el) return
-    const handler = (e) => { e.preventDefault(); setViewZoom(z => Math.max(0.5, Math.min(3, z + (e.deltaY > 0 ? -0.1 : 0.1)))) }
+    const handler = (e) => {
+      e.preventDefault()
+      const newZoom = Math.max(0.5, Math.min(3, viewZoom + (e.deltaY > 0 ? -0.1 : 0.1)))
+      if (newZoom === viewZoom) return
+      zoomAtPoint(e.clientX, e.clientY, viewZoom, newZoom)
+      setViewZoom(newZoom)
+    }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [setViewZoom])
+  }, [viewZoom, zoomAtPoint, setViewZoom])
 
   // Paste from clipboard while in image mode — Cmd/Ctrl+V routes the pasted
   // image through ImageUploader's rotate UI before it's committed. The user
@@ -295,9 +302,9 @@ export default function Step1RoofAllocation({
               {imageRef && (
                 <CanvasNavigator
                   viewZoom={viewZoom}
-                  onZoomOut={() => setViewZoom(z => Math.max(0.5, z - 0.1))}
+                  onZoomOut={() => { const nz = Math.max(0.5, viewZoom - 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
                   onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
-                  onZoomIn={() => setViewZoom(z => Math.min(3, z + 0.1))}
+                  onZoomIn={() => { const nz = Math.min(3, viewZoom + 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
                   imageData={imageSrc}
                   mmWidth={MM_W}
                   mmHeight={MM_H}

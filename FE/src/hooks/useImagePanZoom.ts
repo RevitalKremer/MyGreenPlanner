@@ -15,6 +15,33 @@ export function useImagePanZoom(imageRef) {
     ? Math.min(120, Math.round(MM_W * imageRef.naturalHeight / Math.max(imageRef.naturalWidth, 1)))
     : 100
 
+  // Cursor-anchored zoom: keep the point under (clientX, clientY) fixed on
+  // screen while zooming from oldZoom → newZoom. The image + SVG scale around
+  // their center (default transform-origin) inside a viewport-centered
+  // container, so content-center = viewportCenter + panOffset; we solve for
+  // the panOffset that holds the cursor point in place. Pass the viewport
+  // center as the point to zoom around the middle (used by the +/- buttons).
+  const zoomAtPoint = (clientX, clientY, oldZoom, newZoom) => {
+    const vp = viewportRef.current
+    if (!vp || oldZoom === newZoom) return
+    const rect = vp.getBoundingClientRect()
+    const qx = (clientX - rect.left) - rect.width / 2
+    const qy = (clientY - rect.top) - rect.height / 2
+    const ratio = newZoom / oldZoom
+    setPanOffset(prev => ({
+      x: qx - (qx - prev.x) * ratio,
+      y: qy - (qy - prev.y) * ratio,
+    }))
+  }
+
+  // Zoom around the viewport center (for the +/- buttons — no cursor).
+  const zoomAtCenter = (oldZoom, newZoom) => {
+    const vp = viewportRef.current
+    if (!vp) return
+    const rect = vp.getBoundingClientRect()
+    zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, oldZoom, newZoom)
+  }
+
   const panToMinimapPoint = (mmX, mmY) => {
     if (!imageRef || !viewportRef.current) return
     const imgRect = imageRef.getBoundingClientRect()
@@ -52,5 +79,7 @@ export function useImagePanZoom(imageRef) {
     MM_W, MM_H,
     panToMinimapPoint,
     getMinimapViewportRect,
+    zoomAtPoint,
+    zoomAtCenter,
   }
 }

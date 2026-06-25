@@ -16,9 +16,23 @@ export function useCanvasPanZoom() {
   const contentRef = useRef(null)
   const hasAutoFit = useRef(false)
 
+  // Cursor-anchored zoom: keep the point under the cursor fixed while zooming.
+  // Structure is translate(panOffset) → scale(zoom) with transform-origin
+  // top-left, so content screen pos = panOffset + contentPos*zoom; solve for
+  // the panOffset that holds the cursor point. The effect below re-attaches
+  // every render, so this closes over the current zoom.
   const handleWheel = (e) => {
     e.preventDefault()
-    setZoom(z => Math.max(0.3, Math.min(8, z + (e.deltaY > 0 ? -0.15 : 0.15))))
+    const el = containerRef.current
+    if (!el) return
+    const newZoom = Math.max(0.3, Math.min(8, zoom + (e.deltaY > 0 ? -0.15 : 0.15)))
+    if (newZoom === zoom) return
+    const rect = el.getBoundingClientRect()
+    const cx = e.clientX - rect.left
+    const cy = e.clientY - rect.top
+    const ratio = newZoom / zoom
+    setPanOffset(prev => ({ x: cx - (cx - prev.x) * ratio, y: cy - (cy - prev.y) * ratio }))
+    setZoom(newZoom)
   }
 
   // Attach wheel listener with { passive: false } so preventDefault() works.
@@ -29,6 +43,17 @@ export function useCanvasPanZoom() {
     el.addEventListener('wheel', handleWheel, { passive: false })
     return () => el.removeEventListener('wheel', handleWheel)
   })
+
+  // Zoom around the viewport center (for the +/- buttons — no cursor), holding
+  // the center point fixed. Same math as handleWheel with cursor = center.
+  const zoomAtCenter = (oldZoom, newZoom) => {
+    const el = containerRef.current
+    if (!el || oldZoom === newZoom) return
+    const rect = el.getBoundingClientRect()
+    const cx = rect.width / 2, cy = rect.height / 2
+    const ratio = newZoom / oldZoom
+    setPanOffset(prev => ({ x: cx - (cx - prev.x) * ratio, y: cy - (cy - prev.y) * ratio }))
+  }
 
   const startPan = (e) => {
     panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: panOffset.x, startPanY: panOffset.y }
@@ -102,7 +127,7 @@ export function useCanvasPanZoom() {
     panOffset, setPanOffset,
     panActive,
     containerRef, contentRef,
-    handleWheel, startPan, handleMouseMove, stopPan, resetView, centerView,
+    handleWheel, startPan, handleMouseMove, stopPan, resetView, centerView, zoomAtCenter,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   }
 }

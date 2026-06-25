@@ -60,7 +60,7 @@ export default function PanelCanvas({
   roofAxisEnabled = false,
   togglePanelOrientation,
 }) {
-  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
+  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect, zoomAtPoint, zoomAtCenter } = useImagePanZoom(imageRef)
   const imgRefCallback = useCallback((el) => { if (el) setImageRef(el) }, [])
   const [isSpaceDown, setIsSpaceDown] = useState(false)
   const [hoveredPanelId, setHoveredPanelId] = useState(null)
@@ -151,18 +151,23 @@ export default function PanelCanvas({
   const willDeselectRef = useRef(false)
   const wheelContainerRef = useRef(null)
 
-  // Attach wheel listener as non-passive so preventDefault works
+  // Attach wheel listener as non-passive so preventDefault works.
+  // Cursor-anchored zoom: keep the point under the cursor fixed while zooming.
+  // Re-runs on viewZoom change so the handler reads the current zoom.
   useEffect(() => {
     const el = wheelContainerRef.current
     if (!el) return
     const handler = (e) => {
       e.preventDefault()
       const delta = e.deltaY > 0 ? -0.1 : 0.1
-      setViewZoom(z => Math.max(0.5, Math.min(3, z + delta)))
+      const newZoom = Math.max(0.5, Math.min(3, viewZoom + delta))
+      if (newZoom === viewZoom) return
+      zoomAtPoint(e.clientX, e.clientY, viewZoom, newZoom)
+      setViewZoom(newZoom)
     }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [])
+  }, [viewZoom, zoomAtPoint, setViewZoom])
 
   const ptInPoly = (px, py, verts) => {
     let inside = false
@@ -1380,9 +1385,9 @@ export default function PanelCanvas({
       {imageRef && (
         <CanvasNavigator
           viewZoom={viewZoom}
-          onZoomOut={() => setViewZoom(Math.max(0.5, viewZoom - 0.1))}
+          onZoomOut={() => { const nz = Math.max(0.5, viewZoom - 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
           onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
-          onZoomIn={() => setViewZoom(Math.min(3, viewZoom + 0.1))}
+          onZoomIn={() => { const nz = Math.min(3, viewZoom + 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
           imageData={imageSrc}
           mmWidth={MM_W}
           mmHeight={MM_H}
