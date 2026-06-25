@@ -4,6 +4,7 @@ import {
   DRAW_COLOR,
   PANEL_MID, PANEL_DARK, PANEL_STROKE_MID, GRIDLINE_AREA,
   PANEL_FILL, PANEL_FILL_SELECTED, PANEL_FILL_HOVER_DELETE, PANEL_FILL_HOVER_ROTATE,
+  PANEL_DIR_FILL, PANEL_DIR_HALO,
   BLUE,
   PANEL_BADGE_DEFAULT, PANEL_BADGE_SEL_FILL,
   PANEL_MINI_DEFAULT, PANEL_MINI_SELECTED,
@@ -1125,7 +1126,7 @@ export default function PanelCanvas({
                     const scale = bw > p.width * 0.82 ? (p.width * 0.82) / bw : 1
                     const bwS = bw * scale, bhS = bh * scale
                     const triPts = dirTrianglePoints(p.x, p.y, p.width, p.height, down)
-                    const triW = Math.min(p.width, p.height) * 0.03
+                    const triW = Math.min(p.width, p.height) * 0.045
                     return (
                       <g key={i} style={{ pointerEvents: 'none' }}>
                         <g transform={`rotate(${rDeg} ${pcx} ${pcy})`}>
@@ -1135,6 +1136,7 @@ export default function PanelCanvas({
                             width={p.width - pibw} height={p.height - pibw}
                             fill="none" stroke={PANEL_MID} strokeWidth={pibw} />
                           {/* Direction triangle (matches the committed panels) */}
+                          <polygon points={triPts} fill={PANEL_DIR_FILL} stroke={PANEL_DIR_HALO} strokeWidth={triW * 1.9} strokeLinejoin="round" />
                           <polygon points={triPts} fill="none" stroke={PANEL_MID} strokeWidth={triW} strokeLinejoin="round" />
                         </g>
                         <rect x={pcx - bwS/2} y={pcy - bhS/2} width={bwS} height={bhS} rx={bhS/2}
@@ -1202,11 +1204,13 @@ export default function PanelCanvas({
                     // (apexUp === `down`); rotation maps it to up/down/left/right.
                     const dirColor = isSelected ? PANEL_DARK : PANEL_MID
                     const triPts = dirTrianglePoints(panel.x, panel.y, panel.width, panel.height, down)
-                    const triW = Math.min(panel.width, panel.height) * 0.03
+                    const triW = Math.min(panel.width, panel.height) * 0.045
                     return (
                       <>
-                        {/* Direction triangle (rendered under the badge) */}
+                        {/* Direction triangle (rendered under the badge): white
+                            fill + halo give contrast over dark roof photos */}
                         <g transform={`rotate(${rDeg} ${cx} ${cy})`} style={{ pointerEvents: 'none' }}>
+                          <polygon points={triPts} fill={PANEL_DIR_FILL} stroke={PANEL_DIR_HALO} strokeWidth={triW * 1.9} strokeLinejoin="round" />
                           <polygon points={triPts} fill="none" stroke={dirColor} strokeWidth={triW} strokeLinejoin="round" />
                         </g>
                         {/* Badge */}
