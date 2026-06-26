@@ -987,6 +987,10 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
     # choice.  `altElement` takes precedence when apply_bom_deltas has just set
     # a pending swap; fall back to `element` for already-materialised items.
     committed_alts: dict[tuple[str, int], str] = {}
+    # Preserve user edits (extras / note / edited marker) on bundle children:
+    # they get dropped + re-derived below, which would otherwise wipe an extras
+    # override or note the user set on a child row (e.g. bitumen_sheets).
+    child_edits: dict[tuple[str, str], dict] = {}
     for it in items:
         parent = it.get('bundleParent')
         if not parent:
@@ -994,6 +998,9 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
         elem = it.get('altElement') or it.get('element')
         if not elem:
             continue
+        edits = {k: it[k] for k in ('extras', 'note', 'edited') if k in it}
+        if edits:
+            child_edits[(it.get('areaLabel', ''), it.get('element'))] = edits
         prod = products_by_type.get(elem)
         if prod:
             ag = prod.get('alt_group')
@@ -1041,7 +1048,7 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
             qty = (item.get('qty') or 0) * mult
             if qty <= 0:
                 continue
-            expanded.append({
+            child = {
                 'areaLabel': item.get('areaLabel', ''),
                 'element': child_prod['type_key'],
                 'section': item.get('section'),
@@ -1055,7 +1062,13 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
                 'altGroup': child_prod.get('alt_group'),
                 'bundleParent': effective_type,
                 'bundleMultiplier': mult,
-            })
+            }
+            # Re-apply any user edit (extras / note / edited) that was on this
+            # child before it was dropped for re-derivation.
+            edits = child_edits.get((child['areaLabel'], child['element']))
+            if edits:
+                child.update(edits)
+            expanded.append(child)
     return expanded
 
 
@@ -1226,18 +1239,39 @@ def apply_bom_deltas(
         if ov and ov.get('removed'):
             continue
         entry = {**item}
+        if ov and ov.get('reset'):
+            # Per-row "reset to default": restore the qty captured when the row
+            # was first edited and drop all edit state (extras fall back to the
+            # extraPct default; note/edited cleared). Lets the row-level reset
+            # button work even after the edit was materialized into the BOM.
+            if 'defaultQty' in entry:
+                entry['qty'] = entry.pop('defaultQty')
+            entry.pop('extras', None)
+            entry.pop('note', None)
+            entry.pop('edited', None)
+            effective.append(entry)
+            continue
         if ov:
             if 'qty' in ov:
+                # Stash the pre-edit qty once so the row can be reset later.
+                entry.setdefault('defaultQty', entry.get('qty'))
                 entry['qty'] = ov['qty']
             if 'extras' in ov:
                 entry['extras'] = ov['extras']
+            if 'note' in ov:
+                entry['note'] = ov['note']
+            # Sticky "edited" marker (see BOMItemRead.edited): a qty/extras
+            # change or a non-empty note counts as a manual edit.
+            if 'qty' in ov or 'extras' in ov or (ov.get('note') or '').strip():
+                entry['edited'] = True
         # Apply alternative product substitution
         alt_element = alternatives.get(entry['element'])
         if alt_element:
             entry['altElement'] = alt_element
+            entry['edited'] = True
         effective.append(entry)
 
-    # Append user-added items
+    # Append user-added items (always flagged edited so they stay marked)
     for add in additions:
         effective.append({
             'areaLabel': add.get('areaLabel', ''),
@@ -1250,6 +1284,8 @@ def apply_bom_deltas(
             'name': add.get('name'),
             'extraPct': None,
             'altGroup': None,
+            'note': add.get('note', ''),
+            'edited': True,
         })
 
     return effective

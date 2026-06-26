@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLang } from '../../../i18n/LangContext'
+import ConfirmDialog from '../../ConfirmDialog'
 import {
   TEXT, TEXT_SECONDARY, TEXT_DARKEST, TEXT_MUTED,
   TEXT_LIGHT, TEXT_FAINT, TEXT_PLACEHOLDER,
@@ -28,7 +29,9 @@ function EditNum({ value, disabled, onCommit, dim = false }) {
   function start() { if (!disabled) { setDraft(String(value)); setEditing(true) } }
   function commit() {
     const v = parseInt(draft, 10)
-    if (!isNaN(v) && v >= 0) onCommit(v)
+    // Only fire onCommit on an actual change — focusing in/out without editing
+    // (blur with the same value) must not trigger a server save.
+    if (!isNaN(v) && v >= 0 && v !== value) onCommit(v)
     setEditing(false)
   }
   function cancel() { setEditing(false) }
@@ -54,6 +57,27 @@ function EditNum({ value, disabled, onCommit, dim = false }) {
       }}>
       {value}
     </span>
+  )
+}
+
+// ── Per-line note (commit on blur to avoid auto-save on every keystroke) ─────
+// Opened from the sticky-note action button; commits + closes on blur/Enter.
+function NoteInput({ value, onCommit, onClose, placeholder }) {
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { setDraft(value ?? '') }, [value])
+  return (
+    <input
+      type="text"
+      autoFocus
+      value={draft}
+      placeholder={placeholder}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== (value ?? '')) onCommit(draft); onClose?.() }}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur() }}
+      style={{ marginTop: '0.3rem', width: '100%', boxSizing: 'border-box', fontSize: '0.7rem',
+        padding: '2px 6px', borderRadius: '4px', outline: 'none', color: TEXT,
+        border: `1px solid ${draft ? AMBER_BORDER : BORDER}`, background: draft ? AMBER_BG : WHITE }}
+    />
   )
 }
 
@@ -139,6 +163,9 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   // category server-side). Clicking a column header switches to that sort.
   const [sortKey,      setSortKey]      = useState('natural')
   const [sortDir,      setSortDir]      = useState('asc')
+  // Which row's note editor is open (row.key), and the start-over confirm modal.
+  const [openNoteKey,  setOpenNoteKey]  = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   function handleSort(col) {
     if (sortKey === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -165,8 +192,16 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
     const base = overrides[key] ?? {}
     patch({ overrides: { ...overrides, [key]: { ...base, removed: !base.removed } } })
   }
-  function restoreRow(key) {
-    const next = { ...overrides }; delete next[key]; patch({ overrides: next })
+  // Reset a single line to its default. Pending-only edits just drop the
+  // override; a materialized ("edited") row sends a {reset:true} delta so the
+  // server restores the captured default qty and clears the edit state.
+  function resetRow(row) {
+    const nextOv = { ...overrides }
+    const nextAlt = { ...alternatives }
+    delete nextAlt[row.element]
+    if (row.edited) nextOv[row.key] = { reset: true }
+    else delete nextOv[row.key]
+    patch({ overrides: nextOv, alternatives: nextAlt })
   }
   function handleAddRow() {
     const qty = parseInt(addQty, 10)
@@ -178,7 +213,13 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   function setAdditionField(id, field, value) {
     patch({ additions: additions.map(a => a.id === id ? { ...a, [field]: value } : a) })
   }
-  function resetToDefaults() { onResetDefaults ? onResetDefaults() : onBomDeltasChange?.({}) }
+  // Start over: clear every manual change (overrides, additions, alt-swaps,
+  // notes) and regenerate the BOM from defaults. Destructive → confirm via the
+  // app modal (ConfirmDialog) first.
+  function doReset() { setConfirmReset(false); onResetDefaults ? onResetDefaults() : onBomDeltasChange?.({}) }
+  // Persisted edits (edited flag) survive auto-save, so the button must show
+  // even when there are no pending deltas left.
+  const hasEditedRows = baseRows.some(r => r.edited)
 
   // ── Build display rows ──────────────────────────────────────────────────
   const displayRows = useMemo(() => {
@@ -186,19 +227,30 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
       const key    = deltaKey(row.areaLabel, row.element, row.pieceLengthM)
       const ov     = overrides[key]
       const qty    = ov?.qty    != null ? ov.qty    : row.qty
-      const extras = ov?.extras != null ? ov.extras : extrasFromPct(qty, parseExtraPct(row.extraPct))
+      // Prefer a pending override, then a baked/materialized extras value from
+      // the server, and only then fall back to the extraPct-derived default.
+      const extras = ov?.extras  != null ? ov.extras
+                   : row.extras  != null ? row.extras
+                   : extrasFromPct(qty, parseExtraPct(row.extraPct))
       const totalLengthM = row.pieceLengthM != null ? +(row.pieceLengthM * (qty + extras)).toFixed(2) : row.totalLengthM
+      // "modified" = any deviation from the computed default: a pending
+      // qty/extras override, an alt-product swap, OR the sticky server-side
+      // `edited` flag (survives materialize). Drives the row highlight so a
+      // reviewer can spot every changed line before requesting a quotation.
+      const isAltSwap = alternatives[row.element] != null && alternatives[row.element] !== row.element
+      const note = ov?.note ?? row.note ?? ''
       return { ...row, key, isAdded: false, removed: ov?.removed ?? false,
-        modified: ov != null, qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty, _idx: i }
+        modified: ov != null || isAltSwap || !!row.edited, note,
+        qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty, _idx: i }
     })
     additions.forEach((add, j) => {
       const extras = add.extras ?? 0
       result.push({ areaLabel: add.areaLabel, element: add.element, qty: add.qty, extras,
         total: add.qty + extras, pieceLengthM: null, totalLengthM: null, key: add.id, isAdded: true,
-        removed: false, modified: false, baseQty: null, addId: add.id, _idx: baseRows.length + j })
+        removed: false, modified: false, note: add.note ?? '', baseQty: null, addId: add.id, _idx: baseRows.length + j })
     })
     return result
-  }, [baseRows, overrides, additions])
+  }, [baseRows, overrides, additions, alternatives])
 
   // ── Filter + sort ────────────────────────────────────────────────────────
   const visibleRows = useMemo(() => {
@@ -329,8 +381,8 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
             <div style={{ fontSize: '1rem', fontWeight: '800', color: PRIMARY }}>{totalAlumWeightKg > 0 ? `${totalAlumWeightKg.toFixed(1)} kg` : '—'}</div>
           </div>
           <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', borderLeft: `1px solid ${WHITE_10}` }}>
-            {hasAnyDelta && (
-              <button onClick={resetToDefaults} style={{
+            {(hasAnyDelta || hasEditedRows) && (
+              <button onClick={() => setConfirmReset(true)} style={{
                 fontSize: '0.72rem', padding: '0.35rem 0.75rem', cursor: 'pointer',
                 background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: '6px',
                 color: AMBER_DARK, fontWeight: '700', whiteSpace: 'nowrap',
@@ -538,6 +590,23 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                                 </select>
                               </div>
                             )}
+                            {!row.removed && openNoteKey === row.key && (
+                              <NoteInput
+                                value={row.note}
+                                placeholder={t('bom.notePlaceholder')}
+                                onClose={() => setOpenNoteKey(null)}
+                                onCommit={v => row.isAdded ? setAdditionField(row.addId, 'note', v) : setOverrideField(row.key, 'note', v)}
+                              />
+                            )}
+                            {!row.removed && openNoteKey !== row.key && row.note && (
+                              <div onClick={() => setOpenNoteKey(row.key)} title={t('bom.editNote')}
+                                style={{ marginTop: '0.3rem', fontSize: '0.7rem', color: TEXT, cursor: 'pointer',
+                                background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: '4px',
+                                padding: '2px 6px', display: 'inline-flex', gap: '4px', alignItems: 'center', maxWidth: '100%' }}>
+                                <span>🗒️</span>
+                                <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{row.note}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -549,10 +618,10 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
                     {row.pieceLengthM != null ? row.pieceLengthM.toFixed(2) : '—'}
                   </td>
 
-                  {/* Qty */}
-                  <td style={{ padding: '0.5rem 0.8rem', textAlign: 'right' }}>
-                    <EditNum value={row.qty} disabled={row.removed}
-                      onCommit={v => row.isAdded ? setAdditionField(row.addId, 'qty', v) : setOverrideField(row.key, 'qty', v)} />
+                  {/* Qty — read-only (users adjust Extras or add a note instead),
+                      styled to match the Length column. */}
+                  <td style={{ padding: '0.5rem 0.8rem', textAlign: 'right', color: TEXT_PLACEHOLDER, fontSize: '0.8rem' }}>
+                    {row.qty}
                   </td>
 
                   {/* Extras */}
@@ -570,20 +639,27 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
 
                   {/* Actions */}
                   <td style={{ padding: '0.3rem 0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    {row.isAdded ? (
-                      <ActionBtn onClick={() => removeAddition(row.addId)} title="Delete row" color={DANGER}>✕</ActionBtn>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '2px', justifyContent: 'center' }}>
-                        <ActionBtn onClick={() => toggleRemoved(row.key)}
-                          title={row.removed ? t('bom.restore') : t('bom.markRemoved')}
-                          color={row.removed ? ADD_GREEN : TEXT_LIGHT}>
-                          {row.removed ? '↩' : '✕'}
-                        </ActionBtn>
-                        {overrides[row.key] && (
-                          <ActionBtn onClick={() => restoreRow(row.key)} title={t('bom.resetDefault')} color={AMBER_DARK}>↺</ActionBtn>
-                        )}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: '2px', justifyContent: 'center' }}>
+                      {!row.removed && (
+                        <ActionBtn onClick={() => setOpenNoteKey(k => k === row.key ? null : row.key)}
+                          title={t(row.note ? 'bom.editNote' : 'bom.addNote')}
+                          color={row.note ? AMBER_DARK : TEXT_LIGHT}>🗒️</ActionBtn>
+                      )}
+                      {row.isAdded ? (
+                        <ActionBtn onClick={() => removeAddition(row.addId)} title="Delete row" color={DANGER}>✕</ActionBtn>
+                      ) : (
+                        <>
+                          <ActionBtn onClick={() => toggleRemoved(row.key)}
+                            title={row.removed ? t('bom.restore') : t('bom.markRemoved')}
+                            color={row.removed ? ADD_GREEN : TEXT_LIGHT}>
+                            {row.removed ? '↩' : '✕'}
+                          </ActionBtn>
+                          {(overrides[row.key] || row.edited) && (
+                            <ActionBtn onClick={() => resetRow(row)} title={t('bom.resetDefault')} color={AMBER_DARK}>↺</ActionBtn>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
@@ -660,6 +736,16 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
         </div>
       </div>
 
+      <ConfirmDialog
+        open={confirmReset}
+        variant="danger"
+        title={t('bom.reset')}
+        message={t('bom.resetConfirm')}
+        confirmLabel={t('bom.reset')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={doReset}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   )
 }
