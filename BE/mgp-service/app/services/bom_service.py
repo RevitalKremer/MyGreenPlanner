@@ -665,14 +665,31 @@ def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
     return other_rows + aggregated
 
 
-def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
+# Order priority for the non-length "Other" BOM section, grouped by material
+# category (products.product_type) so related/bundled materials sit together
+# (clamps → accessories → screws → anchoring → aluminium). Items whose category
+# is unknown fall to the end; within a category, element keys keep a stable
+# alphabetical order. Tweak the numbers here to reorder the section.
+_OTHER_CATEGORY_ORDER = {
+    'clamps':      0,
+    'accessories': 1,
+    'screws':      2,
+    'anchoring':   3,
+    'aluminium':   4,
+}
+_OTHER_CATEGORY_FALLBACK = 99
+
+
+def _aggregate_other_globally(rows: list[dict], products_by_type: dict | None = None) -> list[dict]:
     """Merge non-length-bearing rows across areas by element.
 
     Items in the "Other" section (clamps, bolts, blocks, end caps, screws,
     hooks, etc.) are stocked by the box without regard to area, so the BOM
     lists each element once with the contributing areas comma-joined in the
-    area column.
+    area column. Ordered by material category (see _OTHER_CATEGORY_ORDER) so
+    bundled materials group together, then alphabetically within a category.
     """
+    products_by_type = products_by_type or {}
     length_rows = [r for r in rows if r.get('pieceLengthM') is not None]
     other_rows = [r for r in rows if r.get('pieceLengthM') is None]
     if not other_rows:
@@ -693,8 +710,12 @@ def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
         if label:
             bucket['areas'].add(label)
 
+    def _order_key(element: str) -> tuple:
+        cat = (products_by_type.get(element) or {}).get('product_type') or ''
+        return (_OTHER_CATEGORY_ORDER.get(cat, _OTHER_CATEGORY_FALLBACK), element)
+
     aggregated: list[dict] = []
-    for element in sorted(grouped.keys()):
+    for element in sorted(grouped.keys(), key=_order_key):
         g = grouped[element]
         if g['qty'] <= 0:
             continue
@@ -828,7 +849,7 @@ def build_bom(
             rows += _compute_panel_clamp_bom(rc, area_label, p)
             rows += _compute_bolt_bom(rc, area_label, p)
 
-    aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows))
+    aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows), products_by_type)
     with_dep = _append_depreciation_waste(aggregated, products_by_type)
     return _append_processing(with_dep, products_by_type)
 
@@ -918,6 +939,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
         p.type_key: {
             'id': p.id,
             'type_key': p.type_key,
+            'product_type': p.product_type,
             'part_number': p.part_number,
             'name': p.name,
             'name_he': p.name_he,

@@ -135,7 +135,9 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
   // ── Filter / sort state ─────────────────────────────────────────────────
   const [filterArea,   setFilterArea]   = useState('')
   const [filterText,   setFilterText]   = useState('')
-  const [sortKey,      setSortKey]      = useState('area')
+  // 'natural' = preserve the BE/DB order (Other section grouped by material
+  // category server-side). Clicking a column header switches to that sort.
+  const [sortKey,      setSortKey]      = useState('natural')
   const [sortDir,      setSortDir]      = useState('asc')
 
   function handleSort(col) {
@@ -180,20 +182,20 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
 
   // ── Build display rows ──────────────────────────────────────────────────
   const displayRows = useMemo(() => {
-    const result = baseRows.map(row => {
+    const result = baseRows.map((row, i) => {
       const key    = deltaKey(row.areaLabel, row.element, row.pieceLengthM)
       const ov     = overrides[key]
       const qty    = ov?.qty    != null ? ov.qty    : row.qty
       const extras = ov?.extras != null ? ov.extras : extrasFromPct(qty, parseExtraPct(row.extraPct))
       const totalLengthM = row.pieceLengthM != null ? +(row.pieceLengthM * (qty + extras)).toFixed(2) : row.totalLengthM
       return { ...row, key, isAdded: false, removed: ov?.removed ?? false,
-        modified: ov != null, qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty }
+        modified: ov != null, qty, extras, total: qty + extras, totalLengthM, baseQty: row.qty, _idx: i }
     })
-    additions.forEach(add => {
+    additions.forEach((add, j) => {
       const extras = add.extras ?? 0
       result.push({ areaLabel: add.areaLabel, element: add.element, qty: add.qty, extras,
         total: add.qty + extras, pieceLengthM: null, totalLengthM: null, key: add.id, isAdded: true,
-        removed: false, modified: false, baseQty: null, addId: add.id })
+        removed: false, modified: false, baseQty: null, addId: add.id, _idx: baseRows.length + j })
     })
     return result
   }, [baseRows, overrides, additions])
@@ -242,13 +244,14 @@ export default function BOMView({ bomItems = [], bomDeltas = {} as Record<string
         if (elementDiff !== 0) return elementDiff
       }
       switch (sortKey) {
+        case 'natural': return (a._idx ?? 0) - (b._idx ?? 0)
         case 'area':    return dir * a.areaLabel.localeCompare(b.areaLabel)
         case 'element': return dir * elementName(a).localeCompare(elementName(b))
         case 'length':  return dir * ((a.pieceLengthM ?? a.totalLengthM ?? -1) - (b.pieceLengthM ?? b.totalLengthM ?? -1))
         case 'qty':     return dir * (a.qty    - b.qty)
         case 'extras':  return dir * (a.extras - b.extras)
         case 'total':   return dir * (a.total  - b.total)
-        default:        return a.areaLabel.localeCompare(b.areaLabel)
+        default:        return (a._idx ?? 0) - (b._idx ?? 0)
       }
     })
 
