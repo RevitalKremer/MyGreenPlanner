@@ -665,14 +665,31 @@ def _aggregate_rails_globally(rows: list[dict]) -> list[dict]:
     return other_rows + aggregated
 
 
-def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
+# Order priority for the non-length "Other" BOM section, grouped by material
+# category (products.product_type) so related/bundled materials sit together
+# (clamps → accessories → screws → anchoring → aluminium). Items whose category
+# is unknown fall to the end; within a category, element keys keep a stable
+# alphabetical order. Tweak the numbers here to reorder the section.
+_OTHER_CATEGORY_ORDER = {
+    'clamps':      0,
+    'accessories': 1,
+    'screws':      2,
+    'anchoring':   3,
+    'aluminium':   4,
+}
+_OTHER_CATEGORY_FALLBACK = 99
+
+
+def _aggregate_other_globally(rows: list[dict], products_by_type: dict | None = None) -> list[dict]:
     """Merge non-length-bearing rows across areas by element.
 
     Items in the "Other" section (clamps, bolts, blocks, end caps, screws,
     hooks, etc.) are stocked by the box without regard to area, so the BOM
     lists each element once with the contributing areas comma-joined in the
-    area column.
+    area column. Ordered by material category (see _OTHER_CATEGORY_ORDER) so
+    bundled materials group together, then alphabetically within a category.
     """
+    products_by_type = products_by_type or {}
     length_rows = [r for r in rows if r.get('pieceLengthM') is not None]
     other_rows = [r for r in rows if r.get('pieceLengthM') is None]
     if not other_rows:
@@ -693,8 +710,12 @@ def _aggregate_other_globally(rows: list[dict]) -> list[dict]:
         if label:
             bucket['areas'].add(label)
 
+    def _order_key(element: str) -> tuple:
+        cat = (products_by_type.get(element) or {}).get('product_type') or ''
+        return (_OTHER_CATEGORY_ORDER.get(cat, _OTHER_CATEGORY_FALLBACK), element)
+
     aggregated: list[dict] = []
-    for element in sorted(grouped.keys()):
+    for element in sorted(grouped.keys(), key=_order_key):
         g = grouped[element]
         if g['qty'] <= 0:
             continue
@@ -828,7 +849,7 @@ def build_bom(
             rows += _compute_panel_clamp_bom(rc, area_label, p)
             rows += _compute_bolt_bom(rc, area_label, p)
 
-    aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows))
+    aggregated = _aggregate_other_globally(_aggregate_rails_globally(rows), products_by_type)
     with_dep = _append_depreciation_waste(aggregated, products_by_type)
     return _append_processing(with_dep, products_by_type)
 
@@ -918,6 +939,7 @@ async def _load_products_by_type(db: AsyncSession) -> dict[str, dict]:
         p.type_key: {
             'id': p.id,
             'type_key': p.type_key,
+            'product_type': p.product_type,
             'part_number': p.part_number,
             'name': p.name,
             'name_he': p.name_he,
@@ -965,6 +987,10 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
     # choice.  `altElement` takes precedence when apply_bom_deltas has just set
     # a pending swap; fall back to `element` for already-materialised items.
     committed_alts: dict[tuple[str, int], str] = {}
+    # Preserve user edits (extras / note / edited marker) on bundle children:
+    # they get dropped + re-derived below, which would otherwise wipe an extras
+    # override or note the user set on a child row (e.g. bitumen_sheets).
+    child_edits: dict[tuple[str, str], dict] = {}
     for it in items:
         parent = it.get('bundleParent')
         if not parent:
@@ -972,6 +998,9 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
         elem = it.get('altElement') or it.get('element')
         if not elem:
             continue
+        edits = {k: it[k] for k in ('extras', 'note', 'edited') if k in it}
+        if edits:
+            child_edits[(it.get('areaLabel', ''), it.get('element'))] = edits
         prod = products_by_type.get(elem)
         if prod:
             ag = prod.get('alt_group')
@@ -1019,7 +1048,7 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
             qty = (item.get('qty') or 0) * mult
             if qty <= 0:
                 continue
-            expanded.append({
+            child = {
                 'areaLabel': item.get('areaLabel', ''),
                 'element': child_prod['type_key'],
                 'section': item.get('section'),
@@ -1033,7 +1062,13 @@ def expand_bundles(items: list[dict], products_by_type: dict[str, dict]) -> list
                 'altGroup': child_prod.get('alt_group'),
                 'bundleParent': effective_type,
                 'bundleMultiplier': mult,
-            })
+            }
+            # Re-apply any user edit (extras / note / edited) that was on this
+            # child before it was dropped for re-derivation.
+            edits = child_edits.get((child['areaLabel'], child['element']))
+            if edits:
+                child.update(edits)
+            expanded.append(child)
     return expanded
 
 
@@ -1204,18 +1239,39 @@ def apply_bom_deltas(
         if ov and ov.get('removed'):
             continue
         entry = {**item}
+        if ov and ov.get('reset'):
+            # Per-row "reset to default": restore the qty captured when the row
+            # was first edited and drop all edit state (extras fall back to the
+            # extraPct default; note/edited cleared). Lets the row-level reset
+            # button work even after the edit was materialized into the BOM.
+            if 'defaultQty' in entry:
+                entry['qty'] = entry.pop('defaultQty')
+            entry.pop('extras', None)
+            entry.pop('note', None)
+            entry.pop('edited', None)
+            effective.append(entry)
+            continue
         if ov:
             if 'qty' in ov:
+                # Stash the pre-edit qty once so the row can be reset later.
+                entry.setdefault('defaultQty', entry.get('qty'))
                 entry['qty'] = ov['qty']
             if 'extras' in ov:
                 entry['extras'] = ov['extras']
+            if 'note' in ov:
+                entry['note'] = ov['note']
+            # Sticky "edited" marker (see BOMItemRead.edited): a qty/extras
+            # change or a non-empty note counts as a manual edit.
+            if 'qty' in ov or 'extras' in ov or (ov.get('note') or '').strip():
+                entry['edited'] = True
         # Apply alternative product substitution
         alt_element = alternatives.get(entry['element'])
         if alt_element:
             entry['altElement'] = alt_element
+            entry['edited'] = True
         effective.append(entry)
 
-    # Append user-added items
+    # Append user-added items (always flagged edited so they stay marked)
     for add in additions:
         effective.append({
             'areaLabel': add.get('areaLabel', ''),
@@ -1228,6 +1284,8 @@ def apply_bom_deltas(
             'name': add.get('name'),
             'extraPct': None,
             'altGroup': None,
+            'note': add.get('note', ''),
+            'edited': True,
         })
 
     return effective

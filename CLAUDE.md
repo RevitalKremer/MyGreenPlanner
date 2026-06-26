@@ -117,9 +117,9 @@ Each step entry has:
 
 ## 6. Versioning
 
-**Rule:** Every commit or merge into `dev` bumps the version. Merges from `dev` to `master` carry the same version — do **not** bump again when merging to master.
+**Rule:** Bump the version **only on merge into `dev`** — not on every commit. Feature/fix branches (e.g. `bugs-and-tuning`) accumulate commits without a bump; the bump happens once, as part of the merge into `dev`. Merges from `dev` to `master` carry the same version — do **not** bump again when merging to master.
 
-`dev` is the rolling deployment branch; each commit lands a new version. `master` is the release pointer that mirrors whatever `dev` has shipped most recently.
+`dev` is the rolling deployment branch; each merge lands a new version. `master` is the release pointer that mirrors whatever `dev` has shipped most recently.
 
 **Two version files (single sources of truth — keep them in sync):**
 
@@ -134,10 +134,10 @@ Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 - `MINOR` — new features, non-breaking changes
 - `MAJOR` — breaking changes or major milestones
 
-**On every commit / merge into `dev`:**
+**On merge into `dev`:**
 
 1. Update `"version"` in `FE/package.json` AND `__version__` in `BE/mgp-service/app/__version__.py` to the new value.
-2. Include the bump in the same commit (or as a separate `chore: bump version to X.Y.Z` commit immediately before the merge).
+2. Land the bump as part of the merge (e.g. a `chore: bump version to X.Y.Z` commit immediately before merging, or in the merge itself).
 
 **On merge from `dev` to `master`:** no bump — master inherits dev's version.
 

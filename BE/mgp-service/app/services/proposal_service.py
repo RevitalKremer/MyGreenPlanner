@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -80,9 +82,47 @@ def _classify(item: dict) -> str:
     return 'other'
 
 
+def _parse_extra_pct(raw) -> int:
+    """Leading integer of the extra-percent value (mirrors the frontend
+    parseExtraPct: handles None, numbers, and strings like '5' or '5%')."""
+    if raw is None:
+        return 0
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    m = re.match(r'\s*(-?\d+)', str(raw))
+    return int(m.group(1)) if m else 0
+
+
+def _effective_qty(item: dict) -> float:
+    """Quantity to quote = base qty + extras (spares). Extras come from an
+    explicit override when present, otherwise derived from extraPct — matching
+    the frontend BOMView: extras = ceil(qty * pct / 100)."""
+    qty = item.get('qty', 0) or 0
+    extras = item.get('extras')
+    if extras is None:
+        extras = math.ceil(qty * _parse_extra_pct(item.get('extraPct')) / 100)
+    return qty + extras
+
+
+# Label shown in the notes column when a line was manually edited.
+_EDITED_LABEL_HE = 'עודכן ידנית'
+
+
+def _format_notes(item: dict) -> str:
+    """Build the 'הערות' (notes) cell: the manual-edit marker and the free-text
+    note, concatenated. Empty for untouched lines."""
+    parts = []
+    if item.get('edited'):
+        parts.append(_EDITED_LABEL_HE)
+    note = (item.get('note') or '').strip()
+    if note:
+        parts.append(note)
+    return ' — '.join(parts)
+
+
 def _build_data_row(line_num: int, item: dict, product: Product | None) -> dict:
     """Produce one filled-in row dict matching the template's column layout."""
-    qty = item.get('qty', 0) or 0
+    qty = _effective_qty(item)
     piece_length = item.get('pieceLengthM')
     is_length_row = piece_length is not None
 
@@ -128,6 +168,7 @@ def _build_data_row(line_num: int, item: dict, product: Product | None) -> dict:
         'depreciation_qty':        dep_qty,
         'total_with_depreciation': total_with_dep,
         'weight_kg':               round(total_weight, 3),
+        'notes':                   _format_notes(item),
     }
 
 
@@ -145,6 +186,7 @@ def _build_section_header_row(section_key: str) -> dict:
         'depreciation_qty':  '',
         'total_with_depreciation': '',
         'weight_kg':         '',
+        'notes':             '',
     }
 
 
@@ -176,7 +218,10 @@ def build_proposal_rows(bom_items: list[dict], products_by_type: dict[str, Produ
 # Maps row dict keys to template column letters (RTL: B is leftmost in the
 # physical XML, but renders rightmost in Excel — that's the template author's
 # concern, not ours; we just write into the columns the template already has).
-_COLUMN_MAP = {
+# The two sheets differ: the 'הערות' (notes) column was inserted at J on the
+# pricing sheet (shifting depreciation/total/weight to K/L/M) but appended at M
+# on the quantities sheet — so each sheet needs its own map.
+_QTY_COLUMN_MAP = {
     'line_num':                'B',
     'location':                'C',
     'product_name_he':         'D',
@@ -188,6 +233,22 @@ _COLUMN_MAP = {
     'depreciation_qty':        'J',
     'total_with_depreciation': 'K',
     'weight_kg':               'L',
+    'notes':                   'M',
+}
+
+_PRICE_COLUMN_MAP = {
+    'line_num':                'B',
+    'location':                'C',
+    'product_name_he':         'D',
+    'length_m':                'E',
+    'qty':                     'F',
+    'qty_kg_or_units':         'G',
+    'unit_price_ils':          'H',
+    'total_price_ils':         'I',
+    'notes':                   'J',
+    'depreciation_qty':        'K',
+    'total_with_depreciation': 'L',
+    'weight_kg':               'M',
 }
 
 _PLACEHOLDER_FIELDS = {'CUSTOMER_NAME', 'PROJECT_NAME', 'PROPOSAL_DATE', 'ALUMINIUM_WEIGHT', 'BLOCKS_WEIGHT'}
@@ -217,7 +278,33 @@ def _apply_after_discount(ws, ctx: dict) -> None:
                     cell.value = f'={col}{above}*(100-{discount:g})/100'
 
 
-def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> None:
+def _autosize_note_rows(ws, anchor_row: int, rows: list[dict], column_map: dict) -> None:
+    """Let rows with a note grow to fit it. The template pins data rows to a
+    fixed (customHeight) 17pt, which clips the wrapped הערות text. For each row
+    that actually has a note we enable wrap on the notes cell and release the
+    fixed height so Excel / LibreOffice auto-fit the row to its content. Rows
+    without a note keep the compact fixed height."""
+    from openpyxl.styles import Alignment
+    note_col = column_map.get('notes')
+    if not note_col:
+        return
+    cidx = col_to_idx(note_col)
+    for offset, row in enumerate(rows):
+        if not (row.get('notes') or '').strip():
+            continue
+        excel_row = anchor_row + offset
+        cell = ws.cell(excel_row, cidx)
+        a = cell.alignment
+        cell.alignment = Alignment(
+            horizontal=a.horizontal, vertical=a.vertical, indent=a.indent,
+            text_rotation=a.text_rotation, shrink_to_fit=a.shrink_to_fit,
+            readingOrder=a.readingOrder, wrap_text=True,
+        )
+        # height=None drops the fixed customHeight so the row auto-fits content.
+        ws.row_dimensions[excel_row].height = None
+
+
+def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict, column_map: dict) -> None:
     # 1. Replace the static placeholders, then locate + clear the data anchor.
     replace_placeholders(ws, _PLACEHOLDER_FIELDS, ctx)
     anchor_row = find_anchor_row(ws, anchor_placeholder)
@@ -227,7 +314,8 @@ def _fill_sheet(ws, anchor_placeholder: str, rows: list[dict], ctx: dict) -> Non
     # 2. Insert + fill the BOM rows (no-op insertion when there are none, in
     #    which case the token stays at its template position).
     if rows:
-        fill_section(ws, anchor_row, rows, _COLUMN_MAP)
+        fill_section(ws, anchor_row, rows, column_map)
+        _autosize_note_rows(ws, anchor_row, rows, column_map)
 
     # 3. Resolve the PRICE_AFTER_DISCOUNT token against the cell above it, now
     #    that every cell is at its final post-insertion position.
@@ -272,7 +360,7 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
         product = products_by_type.get(item.get('element'))
         if not product or not product.weight_kg:
             continue
-        qty = item.get('qty') or 0
+        qty = _effective_qty(item)
         piece_len = item.get('pieceLengthM')
         total_weight = (piece_len * qty * product.weight_kg) if piece_len is not None else (qty * product.weight_kg)
         ptype = product.product_type or ''
@@ -302,9 +390,9 @@ async def generate_proposal(db: AsyncSession, project) -> bytes:
     }
 
     if 'quantities' in wb.sheetnames:
-        _fill_sheet(wb['quantities'], 'QTY_TABLE_DATA_ROW', proposal_rows, ctx)
+        _fill_sheet(wb['quantities'], 'QTY_TABLE_DATA_ROW', proposal_rows, ctx, _QTY_COLUMN_MAP)
     if 'pricing' in wb.sheetnames:
-        _fill_sheet(wb['pricing'], 'PRICE_TABLE_DATA_ROW', proposal_rows, ctx)
+        _fill_sheet(wb['pricing'], 'PRICE_TABLE_DATA_ROW', proposal_rows, ctx, _PRICE_COLUMN_MAP)
 
     # The template was authored from another workbook and ships with five
     # defined names that point at an external `[1]ראשי!#REF!` cell, plus the

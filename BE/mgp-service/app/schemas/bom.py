@@ -10,6 +10,7 @@ class BOMItemRead(BaseModel):
     pieceLengthM: float | None = None    # length of one piece (length-bearing rows only)
     totalLengthM: float | None = None    # qty × pieceLengthM (length-bearing rows only)
     qty: float   # int for most rows; float for depreciation_waste (meters)
+    extras: float | None = None   # spare units override; None → derive from extraPct
     productId: str | None = None
     partNumber: str | None = None
     name: str | None = None
@@ -21,6 +22,11 @@ class BOMItemRead(BaseModel):
     bundleParent: str | None = None
     bundleMultiplier: int | None = None
     weightKgPerUnit: float | None = None   # kg/m for length items, kg/piece for piece items
+    # Sticky flag: the row was manually edited (qty/extras override, alt-product
+    # swap, user-added, or a note). Survives materialize so reviewers can spot
+    # changed lines; cleared only by a full BOM recompute. See apply_bom_deltas.
+    edited: bool | None = None
+    note: str | None = None   # free-text per-line note (persisted through materialize)
 
 
 class BOMRead(BaseModel):

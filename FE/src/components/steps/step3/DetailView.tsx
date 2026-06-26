@@ -46,7 +46,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   const {
     zoom, setZoom, panOffset, panActive,
     containerRef, contentRef,
-    startPan, handleMouseMove, stopPan, resetView,
+    startPan, handleMouseMove, stopPan, resetView, zoomAtCenter,
     MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect,
   } = useCanvasPanZoom()
 
@@ -1075,9 +1075,9 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
       {/* ── Floating navigator ── */}
       {!printMode && <CanvasNavigator
         viewZoom={zoom}
-        onZoomOut={() => setZoom(z => Math.max(0.25, z * 0.833))}
+        onZoomOut={() => { const nz = Math.max(0.25, zoom * 0.833); zoomAtCenter(zoom, nz); setZoom(nz) }}
         onZoomReset={resetView}
-        onZoomIn={() => setZoom(z => Math.min(6, z * 1.2))}
+        onZoomIn={() => { const nz = Math.min(6, zoom * 1.2); zoomAtCenter(zoom, nz); setZoom(nz) }}
         mmWidth={MM_W}
         mmHeight={MM_H}
         onPanToPoint={panToMinimapPoint}

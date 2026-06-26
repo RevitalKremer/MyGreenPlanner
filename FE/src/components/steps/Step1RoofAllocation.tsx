@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR } from '../../styles/colors'
+import { PRIMARY, TEXT, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_SECONDARY, TEXT_MUTED, BORDER_LIGHT, ERROR, DRAW_COLOR, WHITE } from '../../styles/colors'
 import { useLang } from '../../i18n/LangContext'
 import { useImagePanZoom } from '../../hooks/useImagePanZoom'
 import { blobToDataURL } from '../../utils/imagePayload'
@@ -64,10 +64,13 @@ export default function Step1RoofAllocation({
   // committing. Setting this also clears uploadedImageData to surface the uploader.
   const [pendingPasteImage, setPendingPasteImage] = useState<{ dataURL: string; file: File } | null>(null)
 
-  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useImagePanZoom(imageRef)
+  const { panOffset, setPanOffset, panActive, setPanActive, panRef, viewportRef, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect, zoomAtPoint, zoomAtCenter } = useImagePanZoom(imageRef)
 
   const handleContainerMouseDown = (e) => {
     if (e.button !== 0 || isDrawingLine) return
+    // Stop the browser's native image-drag / text-selection so the drag pans
+    // the canvas instead of starting a ghost-image drag (the "globe" cursor).
+    e.preventDefault()
     panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: panOffset.x, startPanY: panOffset.y }
   }
   const handleContainerMouseMove = (e) => {
@@ -83,7 +86,10 @@ export default function Step1RoofAllocation({
   const handleContainerMouseLeave = () => { panRef.current = null; setPanActive(false) }
 
   const refDotR     = imageRef ? Math.max(2, imageRef.naturalWidth * 0.002) : 2
-  const refLineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) : 1
+  // Unified drawn-line style (matches Step2 PanelCanvas / RulerTool): thick
+  // stroke + a solid colored dot wrapped in a white ring for photo contrast.
+  const refLineW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) * 3.5 : 3.5
+  const refRingW    = imageRef ? Math.max(1, imageRef.naturalWidth * 0.001) * 1.2 : 1.2
   const refDashArray = imageRef
     ? `${Math.max(6, imageRef.naturalWidth * 0.006)},${Math.max(3, imageRef.naturalWidth * 0.003)}`
     : '6,3'
@@ -112,14 +118,21 @@ export default function Step1RoofAllocation({
   const localImgRef = useRef(null)
   const imgContainerRef = useRef(null)
 
-  // Attach non-passive wheel listener to allow preventDefault (Chrome marks React onWheel as passive)
+  // Attach non-passive wheel listener to allow preventDefault (Chrome marks React onWheel as passive).
+  // Cursor-anchored zoom: keep the point under the cursor fixed while zooming.
   useEffect(() => {
     const el = imgContainerRef.current
     if (!el) return
-    const handler = (e) => { e.preventDefault(); setViewZoom(z => Math.max(0.5, Math.min(3, z + (e.deltaY > 0 ? -0.1 : 0.1)))) }
+    const handler = (e) => {
+      e.preventDefault()
+      const newZoom = Math.max(0.5, Math.min(3, viewZoom + (e.deltaY > 0 ? -0.1 : 0.1)))
+      if (newZoom === viewZoom) return
+      zoomAtPoint(e.clientX, e.clientY, viewZoom, newZoom)
+      setViewZoom(newZoom)
+    }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [setViewZoom])
+  }, [viewZoom, zoomAtPoint, setViewZoom])
 
   // Paste from clipboard while in image mode — Cmd/Ctrl+V routes the pasted
   // image through ImageUploader's rotate UI before it's committed. The user
@@ -166,18 +179,35 @@ export default function Step1RoofAllocation({
     }
   }
 
-  const handleSVGClick = (e) => {
-    if (!isDrawingLine) return
+  // Drag-to-draw (consistent with Step2 PanelCanvas + RulerTool): press to set
+  // the start point, drag to preview, release to set the end point.
+  const handleSVGMouseDown = (e) => {
+    if (!isDrawingLine || e.button !== 0) return
     const coords = getImageCoords(e)
     if (!coords) return
-    if (!lineStart) { setLineStart(coords) }
-    else { setReferenceLine({ start: lineStart, end: coords }); setLineStart(null); setIsDrawingLine(false) }
+    setLineStart(coords)
+    setReferenceLine(null)
+    setMousePos(coords)
   }
 
   const handleSVGMouseMove = (e) => {
     if (!isDrawingLine) return
     const coords = getImageCoords(e)
     if (coords) setMousePos(coords)
+  }
+
+  const handleSVGMouseUp = (e) => {
+    if (!isDrawingLine || !lineStart) return
+    const coords = getImageCoords(e)
+    // Ignore a stray click / micro-drag so we never commit a zero-length line.
+    const minDist = imageRef ? Math.max(5, imageRef.naturalWidth * 0.01) : 5
+    if (!coords || Math.hypot(coords.x - lineStart.x, coords.y - lineStart.y) < minDist) {
+      setLineStart(null)
+      return
+    }
+    setReferenceLine({ start: lineStart, end: coords })
+    setLineStart(null)
+    setIsDrawingLine(false)
   }
 
   const hint = roofSource === 'map'
@@ -204,20 +234,25 @@ export default function Step1RoofAllocation({
       {/* ── Content ── */}
       <div className="step-content-area" style={{ position: 'relative' }}>
         {showImageView ? (
-            <div className="uploaded-image-view" ref={viewportRef} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative' }}>
+            <div
+              className="uploaded-image-view"
+              ref={viewportRef}
+              style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', overflow: 'auto', position: 'relative', cursor: isDrawingLine ? 'crosshair' : panActive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              onMouseDown={handleContainerMouseDown}
+              onMouseMove={handleContainerMouseMove}
+              onMouseUp={handleContainerMouseUp}
+              onMouseLeave={handleContainerMouseLeave}
+            >
               <div
                 className="uploaded-image-container"
                 ref={imgContainerRef}
-                style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: isDrawingLine ? 'crosshair' : panActive ? 'grabbing' : 'grab' }}
-                onMouseDown={handleContainerMouseDown}
-                onMouseMove={handleContainerMouseMove}
-                onMouseUp={handleContainerMouseUp}
-                onMouseLeave={handleContainerMouseLeave}
+                style={{ position: 'relative', display: 'inline-block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', transform: `translate(${panOffset.x}px, ${panOffset.y}px)` }}
               >
                 <img
                   ref={(el) => { localImgRef.current = el; setImageRef(el) }}
                   src={imageSrc}
                   alt="Uploaded roof"
+                  draggable={false}
                   style={{
                     display: 'block',
                     transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`,
@@ -240,20 +275,21 @@ export default function Step1RoofAllocation({
                       cursor: isDrawingLine ? 'crosshair' : 'default',
                       transform: `scale(${(uploadedImageData.scale ?? 1) * viewZoom})`
                     }}
-                    onClick={handleSVGClick}
+                    onMouseDown={handleSVGMouseDown}
                     onMouseMove={handleSVGMouseMove}
+                    onMouseUp={handleSVGMouseUp}
                   >
                     {/* Reference line (confirmed) */}
                     {referenceLine && (
                       <>
                         <line x1={referenceLine.start.x} y1={referenceLine.start.y} x2={referenceLine.end.x} y2={referenceLine.end.y} stroke={DRAW_COLOR} strokeWidth={refLineW} strokeDasharray={refDashArray}/>
-                        <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={refDotR} fill={DRAW_COLOR}/>
-                        <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={refDotR} fill={DRAW_COLOR}/>
+                        <circle cx={referenceLine.start.x} cy={referenceLine.start.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
+                        <circle cx={referenceLine.end.x} cy={referenceLine.end.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
                       </>
                     )}
                     {/* Reference line: first click dot */}
                     {isDrawingLine && lineStart && (
-                      <circle cx={lineStart.x} cy={lineStart.y} r={refDotR} fill={DRAW_COLOR}/>
+                      <circle cx={lineStart.x} cy={lineStart.y} r={refDotR} fill={DRAW_COLOR} stroke={WHITE} strokeWidth={refRingW}/>
                     )}
                     {/* Reference line: live preview */}
                     {isDrawingLine && lineStart && mousePos && (
@@ -274,9 +310,9 @@ export default function Step1RoofAllocation({
               {imageRef && (
                 <CanvasNavigator
                   viewZoom={viewZoom}
-                  onZoomOut={() => setViewZoom(z => Math.max(0.5, z - 0.1))}
+                  onZoomOut={() => { const nz = Math.max(0.5, viewZoom - 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
                   onZoomReset={() => { setViewZoom(1); setPanOffset({ x: 0, y: 0 }) }}
-                  onZoomIn={() => setViewZoom(z => Math.min(3, z + 0.1))}
+                  onZoomIn={() => { const nz = Math.min(3, viewZoom + 0.1); zoomAtCenter(viewZoom, nz); setViewZoom(nz) }}
                   imageData={imageSrc}
                   mmWidth={MM_W}
                   mmHeight={MM_H}

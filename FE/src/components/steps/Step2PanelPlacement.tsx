@@ -1454,7 +1454,6 @@ export default function Step2PanelPlacement({
             addManualPanel={() => { if (!addManualPanel()) setAddError('No valid position found inside roof') }}
             pendingAddNextTo={pendingAddNextTo} setPendingAddNextTo={setPendingAddNextTo}
             addError={addError} setAddError={setAddError}
-            distanceMeasurement={distanceMeasurement} setDistanceMeasurement={setDistanceMeasurement}
             showHGridlines={showHGridlines} setShowHGridlines={setShowHGridlines}
             showVGridlines={showVGridlines} setShowVGridlines={setShowVGridlines}
             snapToGridlines={snapToGridlines} setSnapToGridlines={setSnapToGridlines}

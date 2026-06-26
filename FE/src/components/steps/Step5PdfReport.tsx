@@ -272,8 +272,9 @@ export default function Step5PdfReport({
   hideActions = false,
 }) {
   // Admins see the full step 5 surface (BOM tab + Excel + pricing-bearing
-  // PDF sections). Non-admins see only the plans-only PDF + the Get Quotation
-  // button — they don't have access to BOM, pricing, or the auto Monday push.
+  // PDF sections). Non-admins get the BOM tab (to review/adjust the bill of
+  // materials before requesting a quotation) and the plans-only PDF + Get
+  // Quotation button, but not pricing or the auto Monday push.
   const isAdmin = user?.role === 'admin'
   const page1Ref = useRef(null)
   const page2Ref = useRef(null)
@@ -283,7 +284,7 @@ export default function Step5PdfReport({
   const trapPageRefs = useRef({})
   const pdfScrollRef = useRef(null)
   const { lang, t } = useLang()
-  const [activeTab, setActiveTab] = useState(isAdmin ? 'bom' : 'pdf')
+  const [activeTab, setActiveTab] = useState('bom')
   const [pageScale, setPageScale] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
   // Punch marks are factory data — hidden on screen for non-admins, but the plan
@@ -372,11 +373,26 @@ export default function Step5PdfReport({
     autoSaveTimer.current = setTimeout(() => runAutoSave(deltas), 600)
   }, [projectId, onBomDeltasChange, runAutoSave])
 
+  // Start over: drop all deltas and regenerate the BOM from defaults (full
+  // recompute, not a materialize) so manual edits, added rows, notes, and the
+  // edited markers are wiped and original quantities restored.
   const handleResetDefaults = useCallback(async () => {
+    if (!projectId) return
     clearTimeout(autoSaveTimer.current)
+    autoSaveAbort.current?.abort()
     onBomDeltasChange?.({})
-    await runAutoSave({})
-  }, [onBomDeltasChange, runAutoSave])
+    setSaveStatus('saving')
+    try {
+      await saveBomDeltas(projectId, {})
+      const bom = await computeBOM(projectId, lang)
+      setBomItems(bom.items ?? [])
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 2000)
+    } catch (err) {
+      console.error('Reset BOM failed:', err)
+      setSaveStatus('error')
+    }
+  }, [projectId, lang, onBomDeltasChange])
 
   // Block Ctrl+scroll and fit pages to container width
   useEffect(() => {
@@ -633,14 +649,13 @@ export default function Step5PdfReport({
 
   const dateStr = new Date().toLocaleDateString('he-IL')
 
-  const tabs = isAdmin
-    ? [
-        { key: 'bom', label: t('step5.tab.bom') },
-        { key: 'pdf', label: t('step5.tab.pdf') },
-      ]
-    : [
-        { key: 'pdf', label: t('step5.tab.pdf') },
-      ]
+  // Both admins and clients get the BOM tab so clients can review the bill of
+  // materials (swap alternative products, add rows) before requesting a
+  // quotation. Pricing and the Monday push remain admin-only elsewhere.
+  const tabs = [
+    { key: 'bom', label: t('step5.tab.bom') },
+    { key: 'pdf', label: t('step5.tab.pdf') },
+  ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: PDF_CANVAS_BG, position: 'relative' }}>
