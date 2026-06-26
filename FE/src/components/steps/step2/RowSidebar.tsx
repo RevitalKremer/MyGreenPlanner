@@ -276,6 +276,7 @@ export default function RowSidebar({
                 type="number" min={angleMin} max={angleMax} step="1"
                 value={panelAngle ?? ''}
                 onChange={e => setPanelAngle?.(e.target.value)}
+                onDoubleClick={e => e.currentTarget.select()}
                 onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setPanelAngle?.(String(Math.min(angleMax, Math.max(angleMin, v)))) }}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
                 placeholder={`${angleMin}–${angleMax}`}
@@ -287,6 +288,7 @@ export default function RowSidebar({
                 type="number" min={frontHeightMin} max={frontHeightMax} step="1"
                 value={panelFrontHeight ?? ''}
                 onChange={e => setPanelFrontHeight?.(e.target.value)}
+                onDoubleClick={e => e.currentTarget.select()}
                 onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setPanelFrontHeight?.(String(Math.min(frontHeightMax, Math.max(frontHeightMin, v)))) }}
                 style={{ width: '100%', padding: '0.28rem 0.35rem', boxSizing: 'border-box', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', fontSize: '0.78rem' }}
                 placeholder={`${frontHeightMin}–${frontHeightMax}`}
@@ -462,26 +464,33 @@ export default function RowSidebar({
                               : a
                           ))
                         }
+                        const purlinLabelStyle = { fontSize: '0.58rem', color: TEXT_VERY_LIGHT, marginBottom: '2px' }
                         return (
                           <div style={{ marginTop: '0.35rem', paddingLeft: '13px', display: 'flex', gap: '0.3rem' }}>
-                            <input
-                              type="number"
-                              placeholder={t('roofSpec.distanceBetweenPurlins')}
-                              value={areaSpec?.distanceBetweenPurlinsCm ?? ''}
-                              onChange={e => {
-                                const v = e.target.value
-                                setSpec({ distanceBetweenPurlinsCm: v === '' ? null : (parseFloat(v) || 0) })
-                              }}
-                              style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px' }}
-                            />
-                            <select
-                              value={areaSpec?.installationOrientation || 'perpendicular'}
-                              onChange={e => setSpec({ installationOrientation: e.target.value })}
-                              style={{ flex: 1, minWidth: 0, padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', background: 'white', cursor: 'pointer' }}
-                            >
-                              <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
-                              <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
-                            </select>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={purlinLabelStyle}>{t('roofSpec.distanceBetweenPurlins')}</div>
+                              <input
+                                type="number"
+                                placeholder={t('roofSpec.distancePlaceholder')}
+                                value={areaSpec?.distanceBetweenPurlinsCm ?? ''}
+                                onChange={e => {
+                                  const v = e.target.value
+                                  setSpec({ distanceBetweenPurlinsCm: v === '' ? null : (parseFloat(v) || 0) })
+                                }}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px' }}
+                              />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={purlinLabelStyle}>{t('roofSpec.purlinsDirection')}</div>
+                              <select
+                                value={areaSpec?.installationOrientation || 'perpendicular'}
+                                onChange={e => setSpec({ installationOrientation: e.target.value })}
+                                style={{ width: '100%', boxSizing: 'border-box', padding: '0.2rem 0.3rem', fontSize: '0.65rem', border: `1px solid ${BORDER_LIGHT}`, borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+                              >
+                                <option value="perpendicular">{t('roofSpec.orientation.perpendicular')}</option>
+                                <option value="parallel">{t('roofSpec.orientation.parallel')}</option>
+                              </select>
+                            </div>
                           </div>
                         )
                       })()}
@@ -669,6 +678,7 @@ export default function RowSidebar({
                       disabled={isFhDerived}
                       placeholder={`${angleMin}–${angleMax}`}
                       title={isFhDerived ? 'Mirrors the anchor row — edit the anchor to change it' : undefined}
+                      onDoubleClick={e => e.currentTarget.select()}
                       onChange={e => updateRowMounting(groupLabel, rowIdx, { angleDeg: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) })}
                       onBlur={e => { if (e.target.value === '') return; const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { angleDeg: Math.min(angleMax, Math.max(angleMin, v)) }) }}
                       style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: isFhDerived ? BG_FAINT : undefined, color: isFhDerived ? TEXT_VERY_LIGHT : undefined, cursor: isFhDerived ? 'not-allowed' : undefined }}
@@ -685,6 +695,7 @@ export default function RowSidebar({
                       disabled={isFhDerived}
                       placeholder={`${frontHeightMin}–${frontHeightMax}`}
                       title={isFhDerived ? 'Derived from slope geometry — set by server' : undefined}
+                      onDoubleClick={e => e.currentTarget.select()}
                       onChange={e => updateRowMounting(groupLabel, rowIdx, { frontHeightCm: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) })}
                       onBlur={e => { if (e.target.value === '') return; const v = parseFloat(e.target.value); if (!isNaN(v)) updateRowMounting(groupLabel, rowIdx, { frontHeightCm: Math.min(frontHeightMax, Math.max(frontHeightMin, v)) }) }}
                       style={{ width: '100%', padding: '0.28rem 0.4rem', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: '5px', fontSize: '0.82rem', fontWeight: '600', background: isFhDerived ? BG_FAINT : undefined, color: isFhDerived ? TEXT_VERY_LIGHT : undefined, cursor: isFhDerived ? 'not-allowed' : undefined }}
@@ -714,6 +725,7 @@ export default function RowSidebar({
                             <span
                               key={idx}
                               onClick={() => onLineOrientationToggle?.(sortedLines[idx][0])}
+                              title={isH ? t('step2.sidebar.toVertical') : t('step2.sidebar.toHorizontal')}
                               style={{
                                 fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
                                 cursor: 'pointer', userSelect: 'none',

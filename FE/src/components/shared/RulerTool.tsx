@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { ERROR_DARK } from '../../styles/colors'
-import { useLang } from '../../i18n/LangContext'
+import { useEffect, useState } from 'react'
+import { PRIMARY, PRIMARY_DARK, WHITE } from '../../styles/colors'
 
 /**
  * Reusable ruler/distance measurement tool overlay.
@@ -12,17 +11,48 @@ import { useLang } from '../../i18n/LangContext'
  *  containerRef – ref to the pan container div (screen coords base)
  */
 function RulerTool({ active, zoom, pxPerCm, containerRef }) {
-  const { t } = useLang()
   const [pts, setPts] = useState([])
+  const [dragging, setDragging] = useState(false)
 
-  const handleClick = (e) => {
-    if (!active) return
-    e.stopPropagation()
+  // Toggling the ruler off clears any drawn measurement, and starting a new
+  // drag replaces the old one — so no separate "clear" button is needed.
+  useEffect(() => {
+    if (!active) { setPts([]); setDragging(false) }
+  }, [active])
+
+  const coordsOf = (e) => {
     const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    setPts(prev => prev.length >= 2 ? [{ x, y }] : [...prev, { x, y }])
+    if (!rect) return null
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  // Drag-to-draw (consistent with Step1 reference line + Step2 PanelCanvas):
+  // press to set the start point, drag to preview, release to set the end.
+  const handleMouseDown = (e) => {
+    if (!active || e.button !== 0) return
+    e.stopPropagation()
+    const c = coordsOf(e)
+    if (!c) return
+    setPts([c])
+    setDragging(true)
+  }
+  const handleMouseMove = (e) => {
+    if (!active || !dragging) return
+    const c = coordsOf(e)
+    if (c) setPts(prev => (prev.length ? [prev[0], c] : prev))
+  }
+  const handleMouseUp = (e) => {
+    if (!active || !dragging) return
+    e.stopPropagation()
+    setDragging(false)
+    const c = coordsOf(e)
+    const start = pts[0]
+    // Ignore a stray click / micro-drag so we never commit a zero-length line.
+    if (!c || !start || Math.hypot(c.x - start.x, c.y - start.y) < 8) {
+      setPts([])
+      return
+    }
+    setPts([start, c])
   }
 
   // expose clear so parent can call it when ruler is toggled off
@@ -52,22 +82,10 @@ function RulerTool({ active, zoom, pxPerCm, containerRef }) {
         cursor: active ? 'crosshair' : 'default',
         zIndex: 8,
       }}
-      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
-      {/* Clear button */}
-      {pts.length > 0 && (
-        <button
-          onClick={e => { e.stopPropagation(); setPts([]) }}
-          style={{
-            position: 'absolute', top: 12, left: 12,
-            padding: '0.22rem 0.55rem', fontSize: '0.65rem', fontWeight: '600',
-            background: '#fff3f3', color: ERROR_DARK, border: '1px solid #f5b7b1',
-            borderRadius: '5px', cursor: 'pointer', zIndex: 9,
-          }}
-        >
-          {t('ruler.clear')}
-        </button>
-      )}
 
       {/* SVG overlay */}
       <svg
@@ -76,22 +94,22 @@ function RulerTool({ active, zoom, pxPerCm, containerRef }) {
         {p1 && p2 && (
           <line
             x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-            stroke="#E53935" strokeWidth={1.5} strokeDasharray="6,4"
+            stroke={PRIMARY} strokeWidth={2.5} strokeDasharray="6,4"
           />
         )}
-        {p1 && <circle cx={p1.x} cy={p1.y} r={5} fill="#E53935" stroke="white" strokeWidth={1.5} />}
-        {p2 && <circle cx={p2.x} cy={p2.y} r={5} fill="#E53935" stroke="white" strokeWidth={1.5} />}
+        {p1 && <circle cx={p1.x} cy={p1.y} r={5} fill={PRIMARY} stroke={WHITE} strokeWidth={1.5} />}
+        {p2 && <circle cx={p2.x} cy={p2.y} r={5} fill={PRIMARY} stroke={WHITE} strokeWidth={1.5} />}
         {distLabel && (
           <g>
             <rect
               x={midX - distLabel.length * 4 - 6} y={midY - 11}
               width={distLabel.length * 8 + 12} height={18}
-              fill="white" stroke="#E53935" strokeWidth={1} rx={4}
+              fill={WHITE} stroke={PRIMARY} strokeWidth={1} rx={4}
             />
             <text
               x={midX} y={midY + 0.5}
               textAnchor="middle" dominantBaseline="middle"
-              fontSize={11} fontWeight="700" fill="#C62828"
+              fontSize={11} fontWeight="700" fill={PRIMARY_DARK}
             >{distLabel}</text>
           </g>
         )}

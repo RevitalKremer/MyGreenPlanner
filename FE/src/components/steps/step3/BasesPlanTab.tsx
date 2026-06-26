@@ -79,7 +79,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const [tableOpen,      setTableOpen]      = useState(false)
   const initialMountRef = useRef(true)
 
-  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
+  const { zoom, setZoom, panOffset, setPanOffset, panActive, containerRef, contentRef, startPan, handleMouseMove, stopPan, resetView, centerView, zoomAtCenter, MM_W, MM_H, panToMinimapPoint, getMinimapViewportRect } = useCanvasPanZoom()
 
   const pixelToCmRatio = refinedArea?.pixelToCmRatio ?? 1
   const svgRef = useRef(null)
@@ -1440,9 +1440,9 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
         <CanvasNavigator
           viewZoom={zoom}
-          onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
+          onZoomOut={() => { const nz = Math.max(0.3, zoom - 0.1); zoomAtCenter(zoom, nz); setZoom(nz) }}
           onZoomReset={resetView}
-          onZoomIn={() => setZoom(z => Math.min(8, z + 0.1))}
+          onZoomIn={() => { const nz = Math.min(8, zoom + 0.1); zoomAtCenter(zoom, nz); setZoom(nz) }}
           mmWidth={MM_W} mmHeight={MM_H}
           onPanToPoint={panToMinimapPoint}
           viewportRect={getMinimapViewportRect()}
