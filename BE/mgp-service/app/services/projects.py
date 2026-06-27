@@ -3067,10 +3067,11 @@ def _trim_non_full_trapezoids(
     app_defaults: dict,
     tds,
     stored_custom_blocks: dict | None = None,
+    stored_custom_diags: dict | None = None,
 ) -> None:
     """
     Second pass: trim non-full trapezoids to include only legs for active panel lines.
-    
+
     Modifies result dict in place.
     """
     # Build per-(area, panelRow) full trap lookup. A multi-row area can have
@@ -3198,6 +3199,7 @@ def _trim_non_full_trapezoids(
             local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
             app_defaults['lineGapCm'],
             custom_blocks=(stored_custom_blocks or {}).get(tid),
+            custom_diagonals=(stored_custom_diags or {}).get(tid),
         )
         result[tid] = detail
 
@@ -3392,6 +3394,7 @@ async def compute_and_save_trapezoid_details(
     _trim_non_full_trapezoids(
         result, trapezoids, areas, step2, data, app_defaults, tds,
         stored_custom_blocks=stored_custom_blocks,
+        stored_custom_diags=stored_custom_diags,
     )
 
     # Persist trimmed results
