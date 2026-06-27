@@ -343,11 +343,16 @@ function App() {
 
     const filteredArea = {}
     const areaParamKeys = sectionParams.filter(p => p.scope === 'area').map(p => p.key)
+    // Frameless areas (tiles, flat_installation) store trap-scoped bases params
+    // (e.g. spacingMm) at AREA scope since they have no trapezoid. Pull those
+    // from areaSettings too when present — framed areas keep them in
+    // trapezoidConfigs, so this never double-counts.
+    const areaTrapFallbackKeys = sectionParams.filter(p => p.scope === 'trapezoid').map(p => p.key)
     Object.keys(areaSettings || {}).forEach(areaIdx => {
       const area = areaSettings[areaIdx] || {}
       const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
       const filtered = {}
-      areaParamKeys.forEach(key => {
+      ;[...areaParamKeys, ...areaTrapFallbackKeys].forEach(key => {
         if (dirtyKeysForArea && !dirtyKeysForArea.has(key)) return
         if (area[key] != null) filtered[key] = area[key]
       })

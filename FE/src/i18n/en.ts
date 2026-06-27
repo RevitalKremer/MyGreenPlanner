@@ -549,7 +549,7 @@ const en = {
   'step3.param.crossRailEdgeDistMm': 'Rail Profile Size (mm)',
   'step3.param.stockLengths':        'Stock Lengths (mm)',
   'step3.param.edgeOffsetMm':        'Edge Offset (mm)',
-  'step3.param.spacingMm':           'Base Spacing (mm)',
+  'step3.param.spacingMm':           'Base / Anchor Spacing (mm)',
   'step3.param.baseOverhangCm':      'Base Overhang (cm)',
   'step3.param.blockHeightCm':       'Block Height (cm)',
   'step3.param.blockLengthCm':       'Block Length (cm)',

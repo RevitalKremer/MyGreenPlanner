@@ -178,27 +178,42 @@ export default function useRowData({
   // Route every write through setParam so per-key dirty tracking includes
   // every target trap — otherwise the next saveTab payload would carry only
   // the source trap and silently drop the rest.
-  const applyBasesToAll = useCallback((effectiveSelectedTrapId: string) => {
-    if (!effectiveSelectedTrapId) return
-    const trapBases = getTrapBasesSettings(effectiveSelectedTrapId)
-    const allTrapIds = Object.values(areaTrapezoidMap).flat()
-    if (setParam) {
-      allTrapIds.forEach(trapId => {
-        Object.entries(trapBases).forEach(([key, value]) => {
-          setParam({ scope: 'trap', anchor: trapId, key }, value)
-        })
+  const applyBasesToAll = useCallback((effectiveSelectedTrapId: string, sourceAreaIdx?: number) => {
+    if (!effectiveSelectedTrapId && sourceAreaIdx == null) return
+    // Resolve the SOURCE bases values from the scope the source area reads from:
+    // frameless areas (tiles, flat_installation) store them in areaSettings, framed
+    // areas in trapezoidConfigs. A frameless source only has spacingMm — copying its
+    // (default) edge/overhang onto framed areas would wipe their customizations, so
+    // restrict the copied keys to spacingMm in that case.
+    const sourceAreaKey = sourceAreaIdx != null ? rowKeys[sourceAreaIdx] : undefined
+    const sourceFrameless = sourceAreaKey != null && _isAreaFrameless(areaByGroupKey[sourceAreaKey])
+    const srcSettings = sourceAreaIdx != null ? getSettings(sourceAreaIdx) : {}
+    const sourceVals: Record<string, any> = sourceFrameless
+      ? { spacingMm: srcSettings.spacingMm ?? appDefaults?.spacingMm }
+      : getTrapBasesSettings(effectiveSelectedTrapId)
+    if (!sourceVals || !setParam) return
+    const keysToCopy = sourceFrameless
+      ? ['spacingMm']
+      : ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
+
+    // Write each target at the scope it actually reads: frameless → area-scoped
+    // (spacingMm only — edge/overhang aren't exposed there), framed → trap-scoped.
+    rowKeys.forEach((areaKey, areaIdx) => {
+      const frameless = _isAreaFrameless(areaByGroupKey[areaKey])
+      const targetKeys = frameless ? keysToCopy.filter(k => k === 'spacingMm') : keysToCopy
+      targetKeys.forEach(key => {
+        const value = sourceVals[key]
+        if (value == null) return
+        if (frameless) {
+          setParam({ scope: 'area', anchor: areaIdx, key }, value)
+        } else {
+          (areaTrapezoidMap[areaKey] ?? []).forEach(trapId => {
+            setParam({ scope: 'trap', anchor: trapId, key }, value)
+          })
+        }
       })
-    } else if (setTrapezoidConfigs) {
-      // Fallback for callers that didn't wire setParam: legacy bulk write.
-      setTrapezoidConfigs(prev => {
-        const next = { ...prev }
-        allTrapIds.forEach(trapId => {
-          next[trapId] = { ...(prev[trapId] || {}), ...trapBases }
-        })
-        return next
-      })
-    }
-  }, [getTrapBasesSettings, areaTrapezoidMap, setTrapezoidConfigs, setParam])
+    })
+  }, [getTrapBasesSettings, getSettings, areaByGroupKey, _isAreaFrameless, appDefaults, rowKeys, areaTrapezoidMap, setParam])
 
   // ── Construction calculations (from BE geometry) ───────────────────────
   const rowConstructions = useMemo(() => {
