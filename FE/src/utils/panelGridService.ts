@@ -10,7 +10,14 @@ import { PANEL_V, PANEL_H, PANEL_EV, PANEL_EH } from './panelCodes.js'
  * @returns {{ startCorner: string, areaAngle: number, rows: string[][], rowPositions?: object }}
  */
 export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
-  const filteredKeys = new Set(filtered.map(p => `${p.row}_${p.coveredCols?.[0] ?? p.col ?? 0}`))
+  // Index the ACTUAL placed panels by slot so the cell orientation reflects the
+  // real panel, not the default fill. Otherwise a landscape panel dropped into a
+  // slot the default layout would fill with portrait gets a 'V' code, and the
+  // rail calc infers portrait depth → rail pair floats off the shallow panel.
+  const filteredByKey = new Map()
+  filtered.forEach(p => {
+    filteredByKey.set(`${p.row}_${p.coveredCols?.[0] ?? p.col ?? 0}`, p)
+  })
   const allRows = [...new Set(computed.map(p => p.row) as number[])].sort((a, b) => a - b)
   const rowColMap = new Map()
   computed.forEach(p => {
@@ -21,9 +28,11 @@ export function buildPanelGrid(area, computed, filtered, pixelToCmRatio) {
   const rows = allRows.map(rowIdx => {
     const cols = (rowColMap.get(rowIdx) || []).sort((a, b) => a.col - b.col)
     return cols.map(({ col, p }) => {
-      const isPortrait = p.heightCm > p.widthCm
-      const inFiltered = filteredKeys.has(`${rowIdx}_${col}`)
-      return inFiltered ? (isPortrait ? PANEL_V : PANEL_H) : (isPortrait ? PANEL_EV : PANEL_EH)
+      const actual = filteredByKey.get(`${rowIdx}_${col}`)
+      // Orientation from the real panel when present; default fill only for ghosts.
+      const orientPanel = actual ?? p
+      const isPortrait = orientPanel.heightCm > orientPanel.widthCm
+      return actual ? (isPortrait ? PANEL_V : PANEL_H) : (isPortrait ? PANEL_EV : PANEL_EH)
     })
   })
   const xCode = area.xDir === 'rtl' ? 'R' : 'L'
@@ -117,7 +126,11 @@ function buildRowPositions(area, computed, filtered, pixelToCmRatio) {
     const hasDeviation = sorted.some((p, i) => {
       const col = p.coveredCols?.[0] ?? p.col ?? 0
       const def = defaultPos.get(`${rowIdx}_${col}`)
-      if (def == null) return false
+      // No default slot at this column → the panel was moved off the default
+      // grid (e.g. a landscape panel dragged to a column the default fill never
+      // places one). That IS a deviation: record its position so the rail calc
+      // emits a rail there instead of skipping the (now-empty) default slot.
+      if (def == null) return true
       return Math.abs(actualPos[i] - def) > 1.0
     })
 

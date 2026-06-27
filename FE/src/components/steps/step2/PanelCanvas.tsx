@@ -799,6 +799,18 @@ export default function PanelCanvas({
     }
 
     if (willDeselectRef.current) { setSelectedPanels([]); willDeselectRef.current = false }
+    // A finished panel drag must rebuild the panel grid so the move is captured
+    // in rowPositions — otherwise the rail calc falls back to default (unmoved)
+    // positions. Mirror the delete path, which already rebuilds. Only rebuild
+    // when panels actually moved (a click-without-drag also sets dragState).
+    if (dragState) {
+      const moved = dragState.panelIds.some(id => {
+        const p = panels.find(pp => pp.id === id)
+        const o = dragState.originalPositions[id]
+        return p && o && (Math.abs(p.x - o.x) > 0.5 || Math.abs(p.y - o.y) > 0.5)
+      })
+      if (moved) rebuildPanelGrid?.(panels)
+    }
     panRef.current = null
     setPanActive(false)
     setDragState(null)
