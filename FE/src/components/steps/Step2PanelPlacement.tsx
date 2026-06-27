@@ -1079,9 +1079,13 @@ export default function Step2PanelPlacement({
     const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad)
     const dx = (alongCm * cosR - acrossCm * sinR) / ratio
     const dy = (alongCm * sinR + acrossCm * cosR) / ratio
-    setPanels(prev => prev.map(p =>
+    const newPanels = panels.map(p =>
       selectedPanels.includes(p.id) ? { ...p, x: p.x + dx, y: p.y + dy } : p
-    ))
+    )
+    setPanels(newPanels)
+    // Rebuild the grid so the nudge is captured in rowPositions for the rail
+    // calc — same reason as a drag-release (see PanelCanvas.handleSVGMouseUp).
+    rebuildPanelGrid?.(newPanels)
   }
 
   const [pendingAddNextTo, setPendingAddNextTo] = useState(false)

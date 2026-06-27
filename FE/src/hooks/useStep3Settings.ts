@@ -486,9 +486,24 @@ export default function useStep3Settings({
       }
       trapezoidConfigsRef.current = nextRef
     }
+    // Frameless areas (tiles, flat_installation) store these bases params at
+    // AREA scope (no trapezoid), so clear them from areaSettings too — else the
+    // sidebar input (which reads areaSettingsRef via getSettings) stays stale
+    // after reset even though the BE has reverted to defaults.
+    const clearAreaBases = (obj: Record<number, any>) => {
+      const next: Record<number, any> = {}
+      for (const i of Object.keys(obj)) {
+        const copy = { ...obj[i] }
+        TRAP_BASES_KEYS.forEach(k => delete copy[k])
+        next[Number(i)] = copy
+      }
+      return next
+    }
+    setAreaSettings(prev => clearAreaBases(prev))
+    areaSettingsRef.current = clearAreaBases(areaSettingsRef.current || {})
     onTabReset?.('bases')
     markClean('bases')
-  }, [setTrapezoidConfigs, onTabReset, markClean])
+  }, [setTrapezoidConfigs, setAreaSettings, onTabReset, markClean])
 
   return {
     globalSettings, setGlobalSettings,

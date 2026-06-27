@@ -81,8 +81,8 @@ const HELP = {
           'Areas — overview of all drawn areas, panels, and trapezoids on the roof image',
           'Rails Layout — cross-rail spacing per panel line and stock-length splitting per area',
           'Bases Layout — base / block placement along each rail, with per-base offset overrides',
-          'Trapezoid Details — full cross-section of the selected trapezoid (legs, panels, rails, blocks, dimensions). Click Edit trap to drag diagonal handles, drag blocks, click empty beam to add a block, click a block to delete. Structural blocks (amber outline) are locked from deletion but can move. Reset to defaults wipes settings, diagonal handles, and block edits together for the trap.',
-          'Bases and Trapezoid tabs are hidden when every area is frameless (tiles / flat installation — no construction frame)',
+          'Trapezoid Details — full cross-section of the selected trapezoid (legs, panels, rails, blocks, dimensions). Click Edit trap to drag diagonal handles, drag blocks, click empty beam to add a block, click a block to delete. Structural blocks (black outline) are locked from deletion but can move. Reset to defaults wipes settings, diagonal handles, and block edits together for the trap.',
+          'The Trapezoid Details tab is hidden when every area is frameless (tiles / flat installation — no construction frame); the Bases tab stays, where Base Spacing sets the distance between the omega / hook anchor lines',
         ].join(' | ')
       },
       {

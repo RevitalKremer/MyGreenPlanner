@@ -547,7 +547,7 @@ const he = {
   'step3.param.crossRailEdgeDistMm': 'גודל פרופיל קושרת (מ"מ)',
   'step3.param.stockLengths':        'אורכי מלאי (מ"מ)',
   'step3.param.edgeOffsetMm':        'היסט קצה (מ"מ)',
-  'step3.param.spacingMm':           'ריווח בסיסים (מ"מ)',
+  'step3.param.spacingMm':           'ריווח בסיסים / עיגון (מ"מ)',
   'step3.param.baseOverhangCm':      'הבלטת בסיס (ס"מ)',
   'step3.param.blockHeightCm':       'גובה בלוק (ס"מ)',
   'step3.param.blockLengthCm':       'אורך בלוק (ס"מ)',

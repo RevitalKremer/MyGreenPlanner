@@ -835,11 +835,25 @@ def _build_base_inputs(
     # Incoming wins, so a partial update from the FE still works; the persisted
     # store ensures values survive across reloads / requests that don't carry
     # the full trap config.
-    persisted_traps = (data.get('step3') or {}).get('trapezoidConfigs') or {}
+    step3 = data.get('step3') or {}
+    persisted_traps = step3.get('trapezoidConfigs') or {}
     trap_cfg = {
         **(persisted_traps.get(trapezoid_id) or {}),
         **((trapezoid_configs or {}).get(trapezoid_id, {})),
     }
+
+    # Frameless areas (tiles, flat_installation) have no trapezoid, so their
+    # bases params (e.g. spacingMm, which sets the omega/hook line spacing) are
+    # AREA-scoped. Read area settings as a fallback under the trap config — a
+    # framed trap override still wins where one exists.
+    area_settings_raw = step3.get('areaSettings') or {}
+    if isinstance(area_settings_raw, list):
+        area_cfg = area_settings_raw[area_idx] if area_idx < len(area_settings_raw) else {}
+    else:
+        area_cfg = area_settings_raw.get(str(area_idx)) or {}
+
+    def _base_param(key):
+        return trap_cfg.get(key, area_cfg.get(key, app_defaults[key]))
 
     effective_grid = panel_grid if panel_grid is not None else (area.get('panelGrid') or {})
 
@@ -848,9 +862,9 @@ def _build_base_inputs(
         'panel_width_cm':      step2.get('panelWidthCm'),
         'panel_length_cm':     step2.get('panelLengthCm'),
         'line_rails':          line_rails,
-        'edge_offset_mm':      trap_cfg.get('edgeOffsetMm',      app_defaults['edgeOffsetMm']),
-        'spacing_mm':          trap_cfg.get('spacingMm',          app_defaults['spacingMm']),
-        'base_overhang_cm':    trap_cfg.get('baseOverhangCm',     app_defaults['baseOverhangCm']),
+        'edge_offset_mm':      _base_param('edgeOffsetMm'),
+        'spacing_mm':          _base_param('spacingMm'),
+        'base_overhang_cm':    _base_param('baseOverhangCm'),
         'cross_rail_offset_cm': app_defaults['crossRailEdgeDistMm'] / 10,
         'panel_gap_cm':        app_defaults['panelGapCm'],
         'line_gap_cm':         app_defaults['lineGapCm'],
@@ -3067,10 +3081,11 @@ def _trim_non_full_trapezoids(
     app_defaults: dict,
     tds,
     stored_custom_blocks: dict | None = None,
+    stored_custom_diags: dict | None = None,
 ) -> None:
     """
     Second pass: trim non-full trapezoids to include only legs for active panel lines.
-    
+
     Modifies result dict in place.
     """
     # Build per-(area, panelRow) full trap lookup. A multi-row area can have
@@ -3198,6 +3213,7 @@ def _trim_non_full_trapezoids(
             local_orients, step2.get('panelWidthCm'), step2.get('panelLengthCm'),
             app_defaults['lineGapCm'],
             custom_blocks=(stored_custom_blocks or {}).get(tid),
+            custom_diagonals=(stored_custom_diags or {}).get(tid),
         )
         result[tid] = detail
 
@@ -3392,6 +3408,7 @@ async def compute_and_save_trapezoid_details(
     _trim_non_full_trapezoids(
         result, trapezoids, areas, step2, data, app_defaults, tds,
         stored_custom_blocks=stored_custom_blocks,
+        stored_custom_diags=stored_custom_diags,
     )
 
     # Persist trimmed results

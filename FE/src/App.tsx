@@ -343,11 +343,16 @@ function App() {
 
     const filteredArea = {}
     const areaParamKeys = sectionParams.filter(p => p.scope === 'area').map(p => p.key)
+    // Frameless areas (tiles, flat_installation) store trap-scoped bases params
+    // (e.g. spacingMm) at AREA scope since they have no trapezoid. Pull those
+    // from areaSettings too when present — framed areas keep them in
+    // trapezoidConfigs, so this never double-counts.
+    const areaTrapFallbackKeys = sectionParams.filter(p => p.scope === 'trapezoid').map(p => p.key)
     Object.keys(areaSettings || {}).forEach(areaIdx => {
       const area = areaSettings[areaIdx] || {}
       const dirtyKeysForArea = dirtyAreaByIdx?.[Number(areaIdx)] ?? null
       const filtered = {}
-      areaParamKeys.forEach(key => {
+      ;[...areaParamKeys, ...areaTrapFallbackKeys].forEach(key => {
         if (dirtyKeysForArea && !dirtyKeysForArea.has(key)) return
         if (area[key] != null) filtered[key] = area[key]
       })
@@ -478,40 +483,33 @@ function App() {
         }
 
       } else if (tabName === 'trapezoids') {
-        // Trapezoids tab overrides: diagonal positions from areaSettings
+        // Trapezoids tab overrides: diagonal positions from areaSettings.
+        // diagOverrides is keyed PER TRAP: areaSettings[areaIdx].diagOverrides =
+        // { [trapId]: { [spanIdx]: {...} } }. Map straight to the BE's per-trap
+        // customDiagonals shape — the edited trap is the actual one (no more
+        // collapsing every area edit onto trapIds[0], which mis-saved edits made
+        // on a non-first trap and leaked a trimmed trap's edit onto its twin).
         const diagOverrides = {}
         const { areaSettings } = step3SettingsRef.current
-        
-        // Build area -> trapezoid mapping from panels (normalize keys to strings)
-        const areaTrapMap = {}
-        s.panels.forEach(p => {
-          const areaIdx = String(p.area)  // Normalize to string
-          const trapId = p.trapezoidId
-          if (p.area != null && trapId) {
-            if (!areaTrapMap[areaIdx]) areaTrapMap[areaIdx] = []
-            if (!areaTrapMap[areaIdx].includes(trapId)) areaTrapMap[areaIdx].push(trapId)
-          }
-        })
-        
-        // For each area with diagOverrides, map to its trapezoid(s)
+
         Object.keys(areaSettings || {}).forEach(areaIdx => {
-          const areaDiagOverrides = areaSettings[areaIdx]?.diagOverrides
-          if (!areaDiagOverrides || typeof areaDiagOverrides !== 'object') return
+          const areaDiagByTrap = areaSettings[areaIdx]?.diagOverrides
+          if (!areaDiagByTrap || typeof areaDiagByTrap !== 'object') return
 
-          const trapIds = areaTrapMap[areaIdx] || []
-          const trapId = trapIds[0] || `${String.fromCharCode(65 + parseInt(areaIdx))}1`
-
-          const diagObj = {}
-          for (const [spanIdx, diag] of Object.entries(areaDiagOverrides) as [string, any][]) {
-            const { topDistFromLegCm, botDistFromLegCm, disabled } = diag
-            if (disabled === true) {
-              diagObj[spanIdx] = { disabled: true }
-            } else if (topDistFromLegCm != null && botDistFromLegCm != null) {
-              diagObj[spanIdx] = { topDistFromLegCm, botDistFromLegCm }
+          for (const [trapId, spanMap] of Object.entries(areaDiagByTrap) as [string, any][]) {
+            if (!spanMap || typeof spanMap !== 'object') continue
+            const diagObj = {}
+            for (const [spanIdx, diag] of Object.entries(spanMap) as [string, any][]) {
+              const { topDistFromLegCm, botDistFromLegCm, disabled } = diag
+              if (disabled === true) {
+                diagObj[spanIdx] = { disabled: true }
+              } else if (topDistFromLegCm != null && botDistFromLegCm != null) {
+                diagObj[spanIdx] = { topDistFromLegCm, botDistFromLegCm }
+              }
             }
-          }
-          if (Object.keys(diagObj).length > 0) {
-            diagOverrides[trapId] = diagObj
+            if (Object.keys(diagObj).length > 0) {
+              diagOverrides[trapId] = diagObj
+            }
           }
         })
         if (Object.keys(diagOverrides).length > 0) {

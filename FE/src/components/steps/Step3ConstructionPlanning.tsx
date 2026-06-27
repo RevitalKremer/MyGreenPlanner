@@ -4,7 +4,7 @@ import { TEXT, TEXT_PLACEHOLDER, TEXT_VERY_LIGHT, BORDER_FAINT, BG_LIGHT, PRIMAR
 import ConfirmDialog from '../ConfirmDialog'
 import { useConfirm } from '../../hooks/useConfirm'
 import { PANEL_V } from '../../utils/panelCodes'
-import { allAreasFrameless, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
+import { allAreasFrameless, isAreaFrameless, resolveAreaRoofSpec } from '../../utils/roofSpecUtils'
 import RailLayoutTab from './step3/RailLayoutTab'
 import BasesPlanTab  from './step3/BasesPlanTab'
 import Step3Sidebar from './step3/Step3Sidebar'
@@ -160,6 +160,12 @@ export default function Step3ConstructionPlanning({
 
   const effectiveSelectedTrapId = selectedTrapezoidId ??
     (rowKeys[selectedRowIdx] != null ? (areaTrapezoidMap[rowKeys[selectedRowIdx]]?.[0] ?? null) : null)
+
+  // Frameless areas (tiles, flat_installation) get a pseudo-trap-id (the area
+  // letter) from areaTrapezoidMap, so effectiveSelectedTrapId is truthy even
+  // though there's no real trapezoid. Detect frameless by roof type so the
+  // sidebar can route trap-scoped bases params (e.g. spacingMm) to AREA scope.
+  const selectedAreaFrameless = isAreaFrameless(roofType, areaByGroupKey[rowKeys[selectedRowIdx]])
 
   const selectedRC = rowConstructions[selectedRowIdx] ?? null
 
@@ -395,6 +401,7 @@ export default function Step3ConstructionPlanning({
         selectedPanelRowIdx={selectedPanelRowIdx} setSelectedPanelRowIdx={setSelectedPanelRowIdx}
         selectedTrapezoidId={selectedTrapezoidId} setSelectedTrapezoidId={setSelectedTrapezoidId}
         effectiveSelectedTrapId={effectiveSelectedTrapId}
+        selectedAreaFrameless={selectedAreaFrameless}
         trapezoidConfigs={trapezoidConfigs} panels={panels}
         activeTab={activeTab} setActiveTab={requestTabSwitch}
         dirty={settings.dirty}
@@ -412,7 +419,7 @@ export default function Step3ConstructionPlanning({
         onApplyRailsToAllAreas={handleApplyRailsToAll}
         getTrapBasesSettings={settings.getTrapBasesSettings}
         updateTrapBaseSetting={settings.updateTrapBaseSetting}
-        applyBasesToAll={() => rowData.applyBasesToAll(effectiveSelectedTrapId)}
+        applyBasesToAll={() => rowData.applyBasesToAll(effectiveSelectedTrapId, selectedRowIdx)}
         paramSchema={PARAM_SCHEMA}
         paramGroup={PARAM_GROUP}
         onApplyChanges={(tab) => applyTab(tab)}
