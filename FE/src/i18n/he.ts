@@ -1005,7 +1005,7 @@ const he = {
 
   // Settings tab
   'admin.settings.section.global': 'גלובלי',
-  'admin.settings.section.rails':  'מסילות',
+  'admin.settings.section.rails':  'ריילסים',
   'admin.settings.section.bases':  'בסיסים',
   'admin.settings.section.detail': 'בלוק ופרט',
   'admin.settings.col.parameter': 'פרמטר',
