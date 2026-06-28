@@ -123,6 +123,7 @@ export default function Step3Sidebar({
   selectedRowIdx, setSelectedRowIdx,
   selectedPanelRowIdx, setSelectedPanelRowIdx,
   selectedTrapezoidId = null, setSelectedTrapezoidId, effectiveSelectedTrapId,
+  selectedAreaFrameless = false,
   trapezoidConfigs, panels,
   activeTab, setActiveTab,
   selectedRC, getSettings, updateSetting, applySection,
@@ -176,7 +177,14 @@ export default function Step3Sidebar({
     // Skip parameters marked as not visible (admin-only)
     if (param.visible === false) return null
 
-    const { key, label, type, scope, orientation, min, max, step, highlightGroup } = param
+    const { key, label, type, scope: rawScope, orientation, min, max, step, highlightGroup } = param
+    // Trap-scoped bases params (e.g. spacingMm) have no real trapezoid on
+    // frameless areas (tiles, flat_installation) — they get a pseudo-trap-id
+    // (the area letter), so effectiveSelectedTrapId is truthy. Detect frameless
+    // by roof type and fall back to AREA scope there so the value is stored
+    // per-area and reaches the frameless base computation (omega/hook line
+    // spacing). Framed areas keep their per-trap scope.
+    const scope = (rawScope === 'trapezoid' && selectedAreaFrameless) ? 'area' : rawScope
     const hlKey    = highlightGroup ?? key
     const isActive = PARAM_GROUP[highlightParam] === hlKey
 

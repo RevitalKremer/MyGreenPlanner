@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER, PRIMARY, ERROR, PANEL_FILL_HOVER_DELETE, CANVAS_DELETE_MARK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER, PRIMARY, ERROR, PANEL_FILL_HOVER_DELETE, CANVAS_DELETE_MARK, BLACK } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -55,7 +55,16 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   // string keys after JSON round-tripping (e.g. from BE responses or localStorage).
   const railOffsetCm   = lineRails?.[0]?.[0] ?? lineRails?.['0']?.[0] ?? 0
   const panelLengthCm  = settings.panelLengthCm
-  const diagOverrides  = settings.diagOverrides ?? {}
+  // Diagonal overrides are scoped PER TRAP: settings.diagOverrides is keyed by
+  // trapId so a trimmed trap's edit doesn't leak onto its full twin (both share
+  // the area-level settings object). `diagOverrides` below is the flat span map
+  // for THIS trap — all downstream logic keeps using it unchanged; only the
+  // read (here) and writes (commitDiagOverrides) are trap-scoped.
+  const diagTrapKey    = trapId ?? '_default'
+  const diagByTrap     = settings.diagOverrides ?? {}
+  const diagOverrides  = diagByTrap[diagTrapKey] ?? {}
+  const commitDiagOverrides = (spanMap) =>
+    onUpdateSetting?.('diagOverrides', { ...diagByTrap, [diagTrapKey]: spanMap })
 
   // Highlight helpers
   const hlGroup = PARAM_GROUP[highlightParam] ?? null
@@ -220,13 +229,35 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
   const deleteDiagonal = (spanIndex) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { topDistFromLegCm: _td, botDistFromLegCm: _bd, ...rest } = diagOverrides[spanIndex] ?? {}
-    onUpdateSetting?.('diagOverrides', { ...diagOverrides, [spanIndex]: { ...rest, disabled: true } })
+    commitDiagOverrides({ ...diagOverrides, [spanIndex]: { ...rest, disabled: true } })
   }
 
   const _spanCmForIdx = (spanIndex: number) => {
     const ph = BEAM_THICK_PX / (2 * SC)
     const leg = beLegs[spanIndex], nextLeg = beLegs[spanIndex + 1]
     return leg && nextLeg ? (nextLeg.positionEndCm - ph) - (leg.positionCm + ph) : null
+  }
+
+  // Snap a diagonal endpoint drag so the punch position shown on the bar lands
+  // on a whole cm. The BE already emits integer punch positions, so this keeps
+  // the live preview WYSIWYG (no jump on save). Rounding is done in DISPLAYED-
+  // punch space — mirrors computeLiveDiagPunchPositions and honors the slope
+  // bar's reversed direction. Inverts back to a distance-from-leg value.
+  const snapDiagDistToRoundPunch = (which: 'top' | 'bot', d: any, distCm: number) => {
+    const leg = beLegs[d.spanIndex]
+    if (!leg) return distCm
+    const ph = beamThickCm / 2
+    const ps = leg.positionCm + ph
+    if (which === 'top') {
+      const topPos = ps + distCm - legOffsetCm
+      const displayed = reverseBlockPunches ? topBeamLength - topPos : topPos
+      const newTopPos = reverseBlockPunches ? topBeamLength - Math.round(displayed) : Math.round(displayed)
+      return newTopPos + legOffsetCm - ps
+    }
+    const cosA = Math.cos(angleRad) || 1
+    const botPos = legOffsetCm + ph + (ps + distCm - legOffsetCm - ph) * cosA
+    const newBotSlope = (Math.round(botPos) - legOffsetCm - ph) / cosA + legOffsetCm + ph
+    return newBotSlope - ps
   }
 
   // ── Handle drag (window-listener based, click-vs-drag) ────────────────────
@@ -244,7 +275,9 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
       if (Math.abs(me.clientX - startClientX) > 3) didDrag = true
       if (!didDrag) return
       const deltaCm = (me.clientX - startClientX) / zoom / SC
-      const distCm  = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, initialDist + deltaCm))
+      const rawDist = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, initialDist + deltaCm))
+      // Snap to a whole-cm punch position (per the displayed bar number).
+      const distCm  = Math.max(0.05 * span_cm, Math.min(0.95 * span_cm, snapDiagDistToRoundPunch(which, d, rawDist)))
       const existing = capturedOv[d.spanIndex] ?? {}
       // Persist BOTH endpoints. The BE override path requires top + bot
       // together; a single-key override is dropped by the saveTab payload
@@ -254,7 +287,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
       const otherCurrent = existing[otherKey] ?? (which === 'top'
         ? (d.spanW > 0 ? (d.botX - d.xA) / SC : 0.90 * span_cm)
         : (d.spanW > 0 ? (d.topX - d.xA) / SC : 0.25 * span_cm))
-      onUpdateSetting?.('diagOverrides', {
+      commitDiagOverrides({
         ...capturedOv,
         [d.spanIndex]: { ...existing, [dragKey]: distCm, [otherKey]: otherCurrent },
       })
@@ -284,7 +317,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
     const entry  = naturallySkipped.has(span.spanIndex)
       ? { disabled: false, topDistFromLegCm: topDist, botDistFromLegCm: botDist }
       : { topDistFromLegCm: topDist, botDistFromLegCm: botDist }
-    onUpdateSetting?.('diagOverrides', { ...diagOverrides, [span.spanIndex]: entry })
+    commitDiagOverrides({ ...diagOverrides, [span.spanIndex]: entry })
   }
 
   // ── Block edit handlers (edit-mode only) ─────────────────────────────────
@@ -625,7 +658,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                               and pure-click-to-delete (non-structural only). */}
                           <rect x={bx} y={blockTopY} width={bw} height={blockH}
                             fill="transparent"
-                            style={{ cursor: isStructural ? 'grab' : (isHovered ? 'grab' : 'grab') }}
+                            style={{ cursor: 'move' }}
                             onMouseDown={(e) => startBlockDrag(e, idx)}>
                             <title>
                               {isStructural
@@ -633,10 +666,12 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                                 : (t('step3.editMode.blockHint') || 'Drag to move, click to delete')}
                             </title>
                           </rect>
-                          {/* Structural marker — amber outline */}
+                          {/* Structural marker — black outline (drag-only, no delete).
+                              Inset by half the stroke width so the border sits fully
+                              INSIDE the block footprint and doesn't enlarge the shape. */}
                           {isStructural && (
                             <rect x={bx + 1} y={blockTopY + 1} width={bw - 2} height={blockH - 2}
-                              fill="none" stroke={AMBER_DARK} strokeWidth="2.5"
+                              fill="none" stroke={BLACK} strokeWidth="2"
                               pointerEvents="none" />
                           )}
                           {/* Delete affordance on hover (non-structural only).
@@ -701,6 +736,35 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                     label={fmt(d.lenCm)} off={-16} />}
                 </g>
               ))}
+
+              {/* ── Diagonal-position handles (edit mode) ──
+                  Draggable endpoints sit on each beam where the diagonal lands:
+                  drag to reposition, click to delete (✕ on hover). Lives in the
+                  structure — not the punch bar — so non-admins (who never see the
+                  admin-only punch bar) can adjust diagonals too. */}
+              {editMode && !printMode && activeDiags.map((d, di) => {
+                const handle = (which: 'top' | 'bot', hx: number, hy: number) => {
+                  const isHov = hoverHandle?.which === which && hoverHandle?.spanIndex === d.spanIndex
+                  return (
+                    <g key={`${which}`}>
+                      <circle cx={hx} cy={hy} r={5.5}
+                        fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
+                        style={{ cursor: 'move' }}
+                        onMouseEnter={() => setHoverHandle({ which, spanIndex: d.spanIndex })}
+                        onMouseLeave={() => setHoverHandle(null)}
+                        onMouseDown={(e) => startHandleDrag(e, which, d)} />
+                      {isHov && <text x={hx} y={hy} textAnchor="middle" dominantBaseline="middle"
+                        fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
+                    </g>
+                  )
+                }
+                return (
+                  <g key={`diag-h-${di}`}>
+                    {handle('top', d.topX, d.topY)}
+                    {handle('bot', d.botX, d.botY)}
+                  </g>
+                )
+              })}
 
               {/* Rail-clamp offset highlight */}
               {hl('rail-clamp') && (
@@ -930,8 +994,8 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   barX0={bbX0} barW={bbW} beamLenCm={baseBeamLen}
                   punches={points} activeDiags={activeDiags}
                   showDiagHandles={editMode} printMode={printMode}
-                  barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
-                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
+                  barHover={barHover} setBarHover={setBarHover}
+                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
                   activeBoundL={bbX0} activeBoundR={bbX0 + bbW}
                   fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.baseBeamPunches" segments={segments} />
@@ -966,8 +1030,8 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   barX0={legX0} barW={legBW} beamLenCm={slopeLen}
                   punches={points} activeDiags={activeDiags}
                   showDiagHandles={editMode} printMode={printMode}
-                  barHover={barHover} setBarHover={setBarHover} hoverHandle={hoverHandle} setHoverHandle={setHoverHandle}
-                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick} startHandleDrag={startHandleDrag}
+                  barHover={barHover} setBarHover={setBarHover}
+                  handleBarMouseMove={handleBarMouseMove} handleBarClick={handleBarClick}
                   findSpan={findSpan} activeSpanSet={activeSpanSet}
                   activeBoundL={activeBoundL} activeBoundR={activeBoundR}
                   fmt={fmt} Dim={Dim} t={t} labelKey="step3.detail.slopeBeamPunches" segments={segments} />

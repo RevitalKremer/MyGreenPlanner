@@ -1208,6 +1208,7 @@ def trim_trapezoid(
     panel_length_cm: float = 0,
     line_gap_cm: float = 0,
     custom_blocks: list[dict] | None = None,
+    custom_diagonals: dict | None = None,
 ) -> dict:
     """
     Trim a trapezoid detail to only include legs/blocks/punches/diagonals
@@ -1437,6 +1438,34 @@ def trim_trapezoid(
             angle * math.pi / 180,
             beam_thick,
         )
+
+    # Apply this trim trap's own diagonal overrides. The inherit/fallback paths
+    # above carry the FULL trap's diagonals (or a default re-brace) and know
+    # nothing about edits the user made on the trimmed trap, so a drag/disable
+    # on a non-full trap was silently dropped. Re-brace this trap's own legs WITH
+    # the override and splice in the affected spans (keyed by the trimmed-trap
+    # span index — exactly what the FE persisted). Absent from the re-brace ⇒ the
+    # user disabled that span.
+    if custom_diagonals and len(filtered_legs) >= 2:
+        ds = full_trap_detail.get('diagSettings', {})
+        braced, _ = _compute_diagonal_bracing(
+            detail['legs'], custom_diagonals,
+            ds.get('distFromLegCm', 10), ds.get('preferredAngleDeg', 45),
+            ds.get('skipBelowCm', 8), ds.get('doubleAboveCm', 200),
+            angle * math.pi / 180, beam_thick,
+        )
+        braced_by_span = {d['spanIdx']: d for d in braced}
+        overridden = set()
+        for k in custom_diagonals:
+            try:
+                overridden.add(int(k))
+            except (TypeError, ValueError):
+                pass
+        new_diags = [d for d in new_diags if d['spanIdx'] not in overridden]
+        for si in overridden:
+            if si in braced_by_span:
+                new_diags.append(braced_by_span[si])
+        new_diags.sort(key=lambda d: d['spanIdx'])
 
     detail['diagonals'] = new_diags
 

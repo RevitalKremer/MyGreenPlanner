@@ -1,4 +1,4 @@
-import { TEXT_SECONDARY, TEXT_PLACEHOLDER, BLUE, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, DANGER, ADD_GREEN, BEAM_CONNECTOR_STROKE } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_PLACEHOLDER, PUNCH_BAR_FILL, PUNCH_BAR_STROKE, ADD_GREEN, BEAM_CONNECTOR_STROKE } from '../../../styles/colors'
 
 /**
  * Renders a punch position bar (base beam or slope beam) with:
@@ -16,8 +16,8 @@ export default function DetailPunchSketch({
   punches,         // [{ x, label, origin }] — pre-mapped to SVG coords
   activeDiags,     // Diagonal data with topX/botX
   showDiagHandles, printMode,
-  barHover, setBarHover, hoverHandle, setHoverHandle,
-  handleBarMouseMove, handleBarClick, startHandleDrag,
+  barHover, setBarHover,
+  handleBarMouseMove, handleBarClick,
   findSpan, activeSpanSet,
   activeBoundL, activeBoundR,
   fmt, Dim, t,
@@ -96,22 +96,9 @@ export default function DetailPunchSketch({
           </g>
         )
       })}
-      {showDiagHandles && !printMode && activeDiags.map((d, di) => {
-        const dx = d[diagXKey]
-        const isHov = hoverHandle?.which === which && hoverHandle?.spanIndex === d.spanIndex
-        return (
-          <g key={`dh-${di}`}>
-            <circle cx={dx} cy={barCy} r={5.5}
-              fill={isHov ? DANGER : BLUE} stroke="white" strokeWidth="1.5"
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={() => setHoverHandle({ which, spanIndex: d.spanIndex })}
-              onMouseLeave={() => setHoverHandle(null)}
-              onMouseDown={(e) => startHandleDrag(e, which, d)}
-            />
-            {isHov && <text x={dx} y={barCy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="900" fill="white" style={{ pointerEvents: 'none' }}>✕</text>}
-          </g>
-        )
-      })}
+      {/* Diagonal-position handles now live on the beam endpoints in DetailView
+          (shared by admin + non-admin); the bar keeps only the add-diagonal
+          affordance below. */}
       {ghostX !== null && (
         <g opacity="0.5" style={{ pointerEvents: 'none' }}>
           <line x1={ghostX} y1={ry} x2={ghostX} y2={ry + barH} stroke={ADD_GREEN} strokeWidth="1.5" strokeDasharray="3,2" />
