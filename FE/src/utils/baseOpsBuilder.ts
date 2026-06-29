@@ -93,11 +93,12 @@ export function buildBaseOpsFromState(
     const byRow = rowBasesFromArea(ad)
     for (const [riStr, rowBases] of Object.entries(byRow)) {
       const ri = Number(riStr)
-      // Take ALL editable bases in the row (every sub-trap) and sort by
-      // offset. Frameless / virtual hook lines have no editable beam,
-      // skip them so they don't pollute the diff.
+      // Take ALL bases in the row (every sub-trap) and sort by offset.
+      // Frameless / virtual anchors (non-empty hookOffsets) are editable too
+      // (move/add/delete) — the BE re-derives their hook crossings at the new
+      // position — so they're included in the diff. A row is homogeneous
+      // (one roof type), so framed and frameless never mix here.
       const sorted = rowBases
-        .filter(b => (b.hookOffsets?.length ?? 0) === 0)
         .slice()
         .sort((a, b) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
       if (sorted.length === 0) continue

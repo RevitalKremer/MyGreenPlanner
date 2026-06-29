@@ -864,6 +864,7 @@ def _build_base_inputs(
         'line_rails':          line_rails,
         'edge_offset_mm':      _base_param('edgeOffsetMm'),
         'spacing_mm':          _base_param('spacingMm'),
+        'edge_spacing_mm':     trap_cfg.get('edgeSpacingMm', area_cfg.get('edgeSpacingMm', app_defaults.get('edgeSpacingMm'))),
         'base_overhang_cm':    _base_param('baseOverhangCm'),
         'cross_rail_offset_cm': app_defaults['crossRailEdgeDistMm'] / 10,
         'panel_gap_cm':        app_defaults['panelGapCm'],
@@ -898,7 +899,7 @@ def _merge_step3_data(data: dict, step3_data: dict) -> None:
 # lives in dedicated step3 paths (customBasesOffsets, customDiagonals) and
 # is intentionally NOT mixed into trapezoidConfigs.
 TRAP_SCHEMA_PARAM_KEYS = (
-    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm',  # bases tab
+    'edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm',  # bases tab
     'extendFront', 'extendRear',                    # detail tab
 )
 
@@ -1295,6 +1296,10 @@ def _compute_row_default_bases(
     edge_offset_cm = trap_cfg.get('edgeOffsetMm', app_defaults['edgeOffsetMm']) / 10
     base_overhang_cm = trap_cfg.get('baseOverhangCm', app_defaults['baseOverhangCm'])
     spacing_mm = trap_cfg.get('spacingMm', app_defaults['spacingMm'])
+    # Distinct outermost span at each row end (planner's choice, tighter OR
+    # wider than spacing). Falls back to None when the key is absent (project/DB
+    # predating 0073) so the layout stays byte-identical to the old even fill.
+    edge_spacing_mm = trap_cfg.get('edgeSpacingMm', app_defaults.get('edgeSpacingMm'))
 
     row_meta = bs.compute_row_bases(
         rails_for_row=rails_for_row,
@@ -1308,6 +1313,7 @@ def _compute_row_default_bases(
         panel_gap_cm=app_defaults['panelGapCm'],
         line_gap_cm=app_defaults['lineGapCm'],
         roof_spec=roof_spec,
+        edge_spacing_mm=edge_spacing_mm,
     )
     if not row_meta:
         return [], {}
@@ -1424,6 +1430,50 @@ def _apply_persisted_position_overrides(
     if removal_ids:
         row_bases[:] = [b for b in row_bases if id(b) not in removal_ids]
     row_bases.extend(additions)
+
+
+def _apply_anchor_position_overrides(
+    bs, row_bases: list[dict], stored_custom: dict, row_idx: int,
+    pseudo_trap: str, rails: list[dict], panel_grid: dict, step2: dict,
+    line_gap_cm: float,
+) -> None:
+    """Apply user move/add/delete edits to a frameless row's virtual anchor
+    bases, then re-derive each anchor's ``hookOffsets`` (rail crossings) at its
+    new X. No-op when the row carries no stored edits.
+
+    Frameless anchors are stamped with ``pseudo_trap`` so they key into the same
+    ``{trapId}:{rowIdx}`` snapshot the framed path uses. We hide ``hookOffsets``
+    while reusing ``_apply_persisted_position_overrides`` (which deliberately
+    skips bases that still carry hookOffsets), then recompute them — a moved or
+    added anchor crosses whichever rails span its new X, so its hook count may
+    change (or be zero if it lands between rails). Added anchors clone a peer,
+    inheriting ``panelLineIdx`` / ``startCm`` / ``lengthCm`` for the recompute.
+    """
+    key = f'{pseudo_trap}:{row_idx}'
+    # Transitional fallback: anchors saved before they carried a pseudo trap
+    # produced an empty-parent snapshot key (`:{rowIdx}`). Honour it once so a
+    # pre-existing edit isn't dropped on the first recompute after upgrade.
+    if key not in stored_custom and f':{row_idx}' in stored_custom:
+        stored_custom = {**stored_custom, key: stored_custom[f':{row_idx}']}
+    if key not in stored_custom:
+        return  # no edits for this row → keep default anchors + hooks untouched
+
+    for b in row_bases:
+        b['hookOffsets'] = []  # unhide from the override fn's frameless skip
+    _apply_persisted_position_overrides(row_bases, stored_custom, row_idx)
+
+    # The override pass may have added / deleted / reordered — renumber by X and
+    # re-stamp the pseudo trap (clones inherit the template's id, adds aside).
+    row_bases.sort(key=lambda b: b.get('offsetFromStartCm', 0))
+    for idx, b in enumerate(row_bases):
+        b['baseId'] = f'B{idx + 1}'
+        b['trapezoidId'] = pseudo_trap
+        b.pop('extensionIdx', None)  # frameless anchors carry no beam extensions
+
+    bs.fill_frameless_anchors_offsets(
+        row_bases, rails, panel_grid,
+        step2['panelWidthCm'], step2['panelLengthCm'], line_gap_cm,
+    )
 
 
 def _finalize_row_bases(
@@ -2241,11 +2291,18 @@ async def compute_and_save_bases(
             if not panel_rows:
                 pg = area.get('panelGrid')
                 panel_rows = [{'rowIndex': 0, 'panelGrid': pg}] if pg else []
+            # Frameless anchors have no real trapezoid, but the position-override
+            # machinery keys edits by `{trapId}:{rowIdx}` and the FE diff targets
+            # them by baseId. Stamp a per-area pseudo trap so anchors flow through
+            # the same snapshot/grouping path as framed bases (the frameless
+            # discriminator everywhere is `hookOffsets`, not trapId).
+            pseudo_trap = f'{label}1'
             all_row_bases: dict[int, list] = {}
             for pr in panel_rows:
                 if pr is None:
                     continue
                 row_idx = pr.get('rowIndex', 0)
+                pg = pr.get('panelGrid') or {}
                 rails_dict = computed_area.get('rails', {})
                 if isinstance(rails_dict, list):
                     row_rails = rails_dict
@@ -2254,9 +2311,16 @@ async def compute_and_save_bases(
                 row_bases = _compute_row_hook_bases(
                     bs, data, area, i,
                     app_defaults, roof_spec,
-                    panel_grid=pr.get('panelGrid') or {},
+                    panel_grid=pg,
                     row_idx=row_idx,
                     rails=row_rails,
+                )
+                for b in row_bases:
+                    b['trapezoidId'] = pseudo_trap
+                _apply_anchor_position_overrides(
+                    bs, row_bases, stored_custom, row_idx, pseudo_trap,
+                    rails=row_rails, panel_grid=pg, step2=step2,
+                    line_gap_cm=app_defaults['lineGapCm'],
                 )
                 all_row_bases[row_idx] = row_bases
             _upsert_computed_area(step3, area_id, label, {'bases': all_row_bases})
@@ -2440,6 +2504,14 @@ async def compute_and_save_external_diagonals(
     step3 = data.get('step3', {})
     computed_trapezoids = step3.get('computedTrapezoids', [])
 
+    # Min leg height (cm) below which external diagonals are skipped. Global
+    # param: project globalSettings override wins over the app_settings default.
+    app_defaults = settings_cache.get_all_settings()
+    global_settings = step3.get('globalSettings') or {}
+    min_ext_diag_height_cm = global_settings.get(
+        'extDiagMinHeightCm', app_defaults.get('extDiagMinHeightCm', 0)
+    )
+
     diagonals_result = []
     for area_res in bases_result:
         area_id = area_res.get('areaId', 0)
@@ -2498,6 +2570,7 @@ async def compute_and_save_external_diagonals(
                     trap_ids, bdm, cons, computed_trapezoids,
                     row_bases=row_bases, line_rears_cm=line_rears_cm,
                     rails=rails,
+                    min_height_cm=min_ext_diag_height_cm,
                 )
                 for d in row_diags:
                     d['panelRowIdx'] = row_idx
@@ -2507,7 +2580,10 @@ async def compute_and_save_external_diagonals(
             bases_data_map = area_res.get('basesDataMap', {})
             consolidated = area_res.get('consolidated', {})
             if bases_data_map:
-                all_diagonals = bs.compute_external_diagonals(trap_ids, bases_data_map, consolidated, computed_trapezoids)
+                all_diagonals = bs.compute_external_diagonals(
+                    trap_ids, bases_data_map, consolidated, computed_trapezoids,
+                    min_height_cm=min_ext_diag_height_cm,
+                )
 
         _upsert_computed_area(step3, area_id, label, {'diagonals': all_diagonals})
         diagonals_result.append({'areaId': area_id, 'areaLabel': label, 'diagonals': all_diagonals})
@@ -3653,13 +3729,13 @@ async def reset_tab(
         step3.pop('baseVariations', None)
         for area_settings in (step3.get('areaSettings') or {}).values():
             if isinstance(area_settings, dict):
-                for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
+                for key in ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm']:
                     area_settings.pop(key, None)
         # Trap-scope bases params live in step3.trapezoidConfigs (new
         # persistence). Strip them so reset truly returns to defaults.
         for trap_cfg in (step3.get('trapezoidConfigs') or {}).values():
             if isinstance(trap_cfg, dict):
-                for key in ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']:
+                for key in ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm']:
                     trap_cfg.pop(key, None)
     elif tab == 'trapezoids':
         step3.pop('customDiagonals', None)

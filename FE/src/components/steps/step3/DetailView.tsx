@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLang } from '../../../i18n/LangContext'
-import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER, PRIMARY, ERROR, PANEL_FILL_HOVER_DELETE, CANVAS_DELETE_MARK, BLACK } from '../../../styles/colors'
+import { TEXT_SECONDARY, TEXT_DARKEST, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BG_SUBTLE, BG_MID, BLUE, BLUE_BG, BLUE_BORDER, AMBER_DARK, AMBER, RAIL_STROKE, RAIL_FILL, DANGER, AMBER_BG, AMBER_BORDER, PRIMARY, ERROR, PANEL_FILL_HOVER_DELETE, CANVAS_DELETE_MARK, BLACK, BLOCK_LABEL } from '../../../styles/colors'
 import DimensionAnnotation from './DimensionAnnotation'
 import CanvasNavigator from '../../shared/CanvasNavigator'
 import { useCanvasPanZoom } from '../../../hooks/useCanvasPanZoom'
@@ -594,7 +594,7 @@ export default function DetailView({ rc, trapId = null, twinIds = [] as string[]
                   return (
                     <text key={`blbl-${bi}`} x={bx + bw / 2} y={blockTopY + blockH / 2}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize="12" fontWeight="700" fill={TEXT_DARKEST}>{label}</text>
+                      fontSize="12" fontWeight="700" fill={BLOCK_LABEL}>{label}</text>
                   )
                 })
               })()}

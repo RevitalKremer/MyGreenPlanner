@@ -241,11 +241,13 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   const effZoom   = printMode ? 1 : zoom
   // In edit mode we force the canvas to the minimal editable set — bases,
   // rails, dimensions on; derived/decorative layers off — so the user
-  // focuses on what they can manipulate. Outside edit mode the layer
-  // toggles drive visibility as before.
+  // focuses on what they can manipulate. Anchors (frameless omega/hook marks)
+  // stay ON so the planner sees each anchor's rail crossings while dragging
+  // the bar; they follow the live edit via liveBeBasesData (hook positions
+  // re-derive on the BE on save). Framed areas have no anchors → no effect.
   const sEditMode = !printMode && editMode
   const sBases    = sEditMode ? true  : (printMode || showBases)
-  const sAnchors  = sEditMode ? false : (printMode || showAnchors)
+  const sAnchors  = sEditMode ? true  : (printMode || showAnchors)
   const sBlocks   = sEditMode ? false : (printMode || showBlocks)
   const sBaseIDs  = sEditMode ? false : (printMode || showBaseIDs)
 
@@ -850,6 +852,48 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   })
                 })}
 
+                {/* 5b. External-diagonal contact-point highlight — pulses the
+                    OUTER contact point (the diagonal's start, the no-arrowhead
+                    end) when the extDiagMinHeightCm param is focused in the
+                    sidebar. Independent of the diagonals layer toggle. */}
+                {highlightGroup === 'ext-diagonal' && liveBeBasesData.map((areaData, ai) => {
+                  const diags = areaData.diagonals ?? []
+                  const allBases = areaData.bases ?? []
+                  const basesByRow: Record<number, any[]> = {}
+                  for (const b of allBases) {
+                    const ri = b._panelRowIdx ?? 0
+                    ;(basesByRow[ri] ||= []).push(b)
+                  }
+                  const r = Math.max(3, 6 / effZoom)
+                  return (
+                    <g key={`extdiag-hl-${ai}`} style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                      {diags.map((d, di) => {
+                        const diagPri = d.panelRowIdx ?? 0
+                        const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, diagPri)
+                        if (!ctx) return null
+                        const { af } = ctx
+                        const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                        const { angleRad: tAngle, localBounds: tLB } = tFrame
+                        const rowBases = basesByRow[diagPri] ?? allBases
+                        const baseA = rowBases[d.startBaseIdx]
+                        if (!baseA) return null
+                        // Diagonal START = outer base contact (no arrowhead end).
+                        const lxA = tIsRtl
+                          ? tLB.maxX - baseA.offsetFromStartCm / pixelToCmRatio
+                          : tLB.minX + baseA.offsetFromStartCm / pixelToCmRatio
+                        const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
+                        const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
+                        const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
+                        const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
+                        const [x1, y1] = toSvg(pa.x, pa.y)
+                        if (isNaN(x1) || isNaN(y1)) return null
+                        return <circle key={`ed-hl-${di}`} cx={x1} cy={y1} r={r}
+                          fill={AMBER} fillOpacity={0.3} stroke={AMBER} strokeWidth={2 / effZoom} />
+                      })}
+                    </g>
+                  )
+                })}
+
                 {/* 6. Connectors (splice) — above the diagonals, below the labels.
                     Both beams' joints are shown, centered on the base line: slope joints
                     map directly (line is slope-axis), base joints are in BASE coords
@@ -962,12 +1006,25 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
                 {/* Edit bar */}
                 {sEditMode && Object.entries(areaTrapsMap).map(([areaKey, areaTrapIds]) => {
-                  const af = areaFrames[areaKey]
-                  if (!af?.frame?.center) return null
-                  const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
-                  if (effTrapId !== null && String(areaKey) !== String(selectedArea)) return null
                   const areaData = (beBasesData ?? []).find(ad => String(ad.areaId) === String(areaKey) || ad.areaLabel === areaKey || ad.label === areaKey)
                   if (!areaData?.bases?.length) return null
+                  // areaFrames is keyed by area id (same as areaTrapsMap) now
+                  // that buildAreaFrames no longer falls back to a label stem.
+                  const af = areaFrames[areaKey] ?? areaFrames[String(areaKey)]
+                  if (!af?.frame?.center) return null
+                  // Selection filter. Framed: show only the selected area's bar.
+                  // Frameless areas use a pseudo trap id that isn't in
+                  // trapAreaMap, so the selection won't resolve — in that case
+                  // show every frameless area's bar (each edits its own area)
+                  // and hide framed areas.
+                  const selectedArea = effTrapId ? trapAreaMap[effTrapId] : null
+                  const selectionResolved = effTrapId == null || selectedArea != null
+                  const isFramelessArea = (areaData.bases ?? []).some(b => (b.hookOffsets?.length ?? 0) > 0)
+                  if (selectionResolved) {
+                    if (effTrapId !== null && String(areaKey) !== String(selectedArea)) return null
+                  } else if (!isFramelessArea) {
+                    return null
+                  }
 
                   // Determine which panel rows to render
                   const allRowIdxs = ([...new Set((areaData.bases ?? []).map(sb => sb._panelRowIdx ?? 0))] as number[]).sort((a, b) => a - b)
@@ -995,6 +1052,17 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     // — acceptable since the per-base BE recompute is final.
                     const firstSubTrapId = stripVariation(rowBasesSorted[0].trapezoidId) || areaTrapIds[0]
                     const trapS = trapSettingsMap[firstSubTrapId] ?? trapSettingsMap[rowBasesSorted[0].trapezoidId] ?? {}
+                    // Frameless rows = virtual anchors (non-empty hookOffsets).
+                    // They have no real trapezoid, so trapSettingsMap has no
+                    // entry. Anchors are free-move (the BE re-derives hook
+                    // crossings on save), so use permissive clamps: drag to the
+                    // frame edge (edge 0) with no max-spacing constraint (the
+                    // 100mm min-gap between bases still applies in the overlay).
+                    const isFramelessRow = (rowBasesSorted[0]?.hookOffsets?.length ?? 0) > 0
+                    const clampSpacingMm = isFramelessRow
+                      ? Math.round(frameLengthPx * pixelToCmRatio * 10)
+                      : trapS.spacingMm
+                    const clampEdgeOffsetMm = isFramelessRow ? 0 : trapS.edgeOffsetMm
 
                     // Per-row customBasesMap key (`areaId:rowIdx`) — single
                     // entry per row spanning every sub-trap.
@@ -1021,8 +1089,8 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                         bp={syntheticBp}
                         zoom={effZoom} pixelToCmRatio={pixelToCmRatio} sc={sc}
                         svgRef={svgRef} toSvg={toSvg}
-                        spacingMm={trapS.spacingMm}
-                        edgeOffsetMm={trapS.edgeOffsetMm}
+                        spacingMm={clampSpacingMm}
+                        edgeOffsetMm={clampEdgeOffsetMm}
                         isSelected={true}
                         overrideBarLocalY={barLocalY}
                         onBasesChange={onBasesChange ? (offsets) => onBasesChange(areaKey, offsets, pri) : null}
@@ -1086,6 +1154,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     sc={sc}
                     zoom={effZoom}
                     toSvg={toSvg}
+                    pendingTrapOps={pendingTrapOps}
                     onExtend={(op) => onTrapExtend?.(op)}
                   />
                 )}
@@ -1387,7 +1456,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
           ]}
           summary={editMode ? (
-            <span>{t('step3.editMode.hint') || 'Drag bases on the bar to move; click to add or ✕ to remove. Drag base endpoints to extend.'}</span>
+            <span>{(hasAnchors ? t('step3.editMode.hintAnchors') : t('step3.editMode.hint')) || 'Drag bases on the bar to move; click to add or ✕ to remove. Drag base endpoints to extend.'}</span>
           ) : null}
           actions={editMode ? [
             // In edit mode: only an "Exit" toggle. Save lives in the sidebar
@@ -1425,7 +1494,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     <path d="M11.5 1.5l3 3-9 9H2.5v-3z" />
                     <path d="M10 3l3 3" />
                   </svg>
-                  {t('step3.editMode.enter')}
+                  {hasAnchors ? t('step3.editMode.enterAnchors') : t('step3.editMode.enter')}
                 </span>
               ),
               onClick: () => setEditMode(true),

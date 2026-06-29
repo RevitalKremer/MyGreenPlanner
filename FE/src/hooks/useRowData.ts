@@ -189,18 +189,23 @@ export default function useRowData({
     const sourceFrameless = sourceAreaKey != null && _isAreaFrameless(areaByGroupKey[sourceAreaKey])
     const srcSettings = sourceAreaIdx != null ? getSettings(sourceAreaIdx) : {}
     const sourceVals: Record<string, any> = sourceFrameless
-      ? { spacingMm: srcSettings.spacingMm ?? appDefaults?.spacingMm }
+      ? {
+          spacingMm:     srcSettings.spacingMm     ?? appDefaults?.spacingMm,
+          edgeSpacingMm: srcSettings.edgeSpacingMm ?? appDefaults?.edgeSpacingMm,
+        }
       : getTrapBasesSettings(effectiveSelectedTrapId)
     if (!sourceVals || !setParam) return
     const keysToCopy = sourceFrameless
-      ? ['spacingMm']
-      : ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
+      ? ['spacingMm', 'edgeSpacingMm']
+      : ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm']
 
     // Write each target at the scope it actually reads: frameless → area-scoped
-    // (spacingMm only — edge/overhang aren't exposed there), framed → trap-scoped.
+    // (spacing params only — edge offset/overhang aren't exposed there),
+    // framed → trap-scoped.
+    const framelessKeys = ['spacingMm', 'edgeSpacingMm']
     rowKeys.forEach((areaKey, areaIdx) => {
       const frameless = _isAreaFrameless(areaByGroupKey[areaKey])
-      const targetKeys = frameless ? keysToCopy.filter(k => k === 'spacingMm') : keysToCopy
+      const targetKeys = frameless ? keysToCopy.filter(k => framelessKeys.includes(k)) : keysToCopy
       targetKeys.forEach(key => {
         const value = sourceVals[key]
         if (value == null) return

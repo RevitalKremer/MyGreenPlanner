@@ -502,6 +502,7 @@ export interface BaseConfig {
   customOffsets?: number[]
   edgeOffsetMm?: number
   spacingMm?: number
+  edgeSpacingMm?: number
 }
 
 // ── Panel line segments (used by FE geometry helpers) ───────────────────────

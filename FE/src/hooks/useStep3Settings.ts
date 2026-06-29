@@ -318,7 +318,7 @@ export default function useStep3Settings({
   }, [onTabReset, PARAM_SCHEMA, markClean]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Per-trapezoid base settings ─────────────────────────────────────────
-  const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm']
+  const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm']
 
   // Reads through trapezoidConfigsRef so apply-bases-to-all sees the source
   // trap's just-typed value (the blur right before the button click writes
@@ -328,6 +328,7 @@ export default function useStep3Settings({
     return {
       edgeOffsetMm:   cfg.edgeOffsetMm   ?? appDefaults?.edgeOffsetMm,
       spacingMm:      cfg.spacingMm      ?? appDefaults?.spacingMm,
+      edgeSpacingMm:  cfg.edgeSpacingMm  ?? appDefaults?.edgeSpacingMm,
       baseOverhangCm: cfg.baseOverhangCm ?? appDefaults?.baseOverhangCm,
     }
     // Deps intentionally exclude trapezoidConfigs — the ref is the source of

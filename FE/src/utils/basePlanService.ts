@@ -252,7 +252,12 @@ export function buildAreaFrames(panels: PanelLayout[], trapAreaMap: Record<strin
   for (const p of panels) {
     let areaKey: string | number
     if (p.trapezoidId) {
-      areaKey = trapAreaMap[p.trapezoidId] ?? p.trapezoidId.replace(/\d+$/, '')
+      // Always key by the AREA ID. trapAreaMap resolves it for framed panels;
+      // when it misses (e.g. a stale/virtual trapId not in step2's
+      // area.trapezoidIds), fall back to the panel's area index → area id, NOT
+      // the trapId stem (a label letter, which isn't unique and mismatches the
+      // area-id keys used by areaTrapsMap / the edit-bar lookup).
+      areaKey = trapAreaMap[p.trapezoidId] ?? areas?.[p.area as number]?.id ?? p.area ?? 0
     } else {
       const a = areas?.[p.area as number]
       areaKey = a?.id ?? p.area ?? 0

@@ -79,6 +79,46 @@ def _optimize_edge_offset(
     return max(edge_offset_mm, min(min_edge_mm, max_edge_mm))
 
 
+# ── Edge-spacing (distinct outermost span) helpers ────────────────────────────
+#
+# Constructors often place the outermost base at each row end at a DIFFERENT
+# distance from its neighbour than the regular interior spacing — usually
+# tighter (edges carry more wind load), occasionally looser. `edge_spacing_mm`
+# sets that outermost span at both the start AND end of a row; the interior is
+# filled at the regular `spacing`. The relationship between the two is the
+# planner's choice — edge spacing may be smaller OR larger than the regular
+# spacing; it is NOT enforced. (Because the edge span may be WIDER than
+# `spacing`, the interior fill must never subdivide it — callers exclude the two
+# edge spans from the even fill.)
+#
+# The feature is inert (layout byte-identical to the old even-fill) only when no
+# edge spacing is set at all — i.e. ``edge_spacing_cm is None`` (a project or DB
+# predating the edgeSpacingMm setting). Any positive value is applied as-is.
+
+def _edge_spacing_active(spacing_cm: float, edge_spacing_cm: float | None) -> bool:
+    """Edge tightening applies whenever a positive edge spacing is set.
+
+    No relationship to `spacing_cm` is enforced — the planner may set the edge
+    span tighter or wider than the interior. ``None`` / non-positive is inert.
+    """
+    return (
+        edge_spacing_cm is not None
+        and edge_spacing_cm > 0
+        and spacing_cm > 0
+    )
+
+
+def _even_fill_interior(a: float, b: float, spacing_cm: float) -> list[float]:
+    """Interior fill points strictly between `a` and `b` (exclusive of both),
+    dividing the gap into ``ceil(gap / spacing)`` equal spans. Returns [] when
+    the gap is within one ``spacing`` (or spacing is non-positive)."""
+    gap = b - a
+    if spacing_cm <= 0 or gap <= spacing_cm + 1e-6:
+        return []
+    n = math.ceil(gap / spacing_cm)
+    return [round_to_2dp(a + k * gap / n) for k in range(1, n)]
+
+
 # ── Per-base depth helpers ────────────────────────────────────────────────────
 #
 # Extracted from `compute_area_bases` so the per-base depth assignment can run
@@ -235,6 +275,7 @@ def compute_area_bases(
     trap_end_cm: float | None = None,
     roof_spec: dict | None = None,
     edge_offset_tolerance_pct: float = 0,
+    edge_spacing_mm: float | None = None,
 ) -> dict | None:
     """
     Compute DEFAULT base layout for one area (or trapezoid sub-range).
@@ -290,12 +331,17 @@ def compute_area_bases(
             n = max(1, math.floor(spacing_mm / purlin_dist_mm))
             spacing_mm = n * purlin_dist_mm
 
+    spacing_cm = spacing_mm / 10
+    edge_spacing_cm = (edge_spacing_mm / 10) if edge_spacing_mm else None
+
     # ── Base X positions (cm from area start corner) ───────────────────────
     inner_span_mm = frame_length_mm - 2 * edge_offset_mm
     is_purlin_parallel = roof_type in ('iskurit', 'insulated_panel') and rs.get('installationOrientation') == 'parallel' and spacing_mm > 0
 
     if is_purlin_parallel:
-        # Purlin-aligned: fixed spacing, adjust edge offset to center within frame
+        # Purlin-aligned: fixed spacing, adjust edge offset to center within frame.
+        # Edge tightening is intentionally NOT applied here — bases must stay on
+        # purlin lines, so the outermost span can't be pulled to an arbitrary value.
         num_spans = max(1, math.floor(inner_span_mm / spacing_mm))
         total_bases_span = num_spans * spacing_mm
         adjusted_edge_mm = (frame_length_mm - total_bases_span) / 2
@@ -310,13 +356,44 @@ def compute_area_bases(
             edge_offset_tolerance_pct,
         )
         effective_inner_span_mm = frame_length_mm - 2 * effective_edge_mm
-        num_spans = max(1, math.ceil(effective_inner_span_mm / spacing_mm))
-        actual_spacing_cm = (effective_inner_span_mm / num_spans) / 10
-        num_bases = num_spans + 1
-        base_offsets_cm = [
-            round_to_2dp(effective_edge_mm / 10 + i * actual_spacing_cm)
-            for i in range(num_bases)
-        ]
+        start_off = round_to_2dp(effective_edge_mm / 10)
+        end_off = round_to_2dp((frame_length_mm - effective_edge_mm) / 10)
+        if _edge_spacing_active(spacing_cm, edge_spacing_cm):
+            # Set the outermost span at BOTH ends to edge_spacing (planner's
+            # choice — tighter or wider than spacing); even-fill the interior.
+            # The two edge spans are excluded from the fill so a wider edge span
+            # is never subdivided.
+            anchors = [start_off, end_off]
+            left_cand = round_to_2dp(start_off + edge_spacing_cm)
+            right_cand = round_to_2dp(end_off - edge_spacing_cm)
+            add_left = start_off + 1e-6 < left_cand < end_off - 1e-6
+            add_right = start_off + 1e-6 < right_cand < end_off - 1e-6
+            if add_left and add_right and left_cand >= right_cand - 1e-6:
+                add_left = add_right = False  # span too short for both ends
+            left_edge_off = left_cand if add_left else None
+            right_edge_off = right_cand if add_right else None
+            if add_left:
+                anchors.append(left_cand)
+            if add_right:
+                anchors.append(right_cand)
+            anchors = sorted(set(anchors))
+            base_offsets_cm = [anchors[0]]
+            for i in range(1, len(anchors)):
+                prev, cur = anchors[i - 1], anchors[i]
+                is_left_edge = left_edge_off is not None and i == 1 and cur == left_edge_off
+                is_right_edge = right_edge_off is not None and i == len(anchors) - 1 and prev == right_edge_off
+                if not (is_left_edge or is_right_edge):
+                    base_offsets_cm.extend(_even_fill_interior(prev, cur, spacing_cm))
+                base_offsets_cm.append(cur)
+        else:
+            # Original even division (unchanged when edge spacing is inert).
+            num_spans = max(1, math.ceil(effective_inner_span_mm / spacing_mm))
+            actual_spacing_cm = (effective_inner_span_mm / num_spans) / 10
+            num_bases = num_spans + 1
+            base_offsets_cm = [
+                round_to_2dp(effective_edge_mm / 10 + i * actual_spacing_cm)
+                for i in range(num_bases)
+            ]
 
     actual_spacing_mm = (
         round((base_offsets_cm[1] - base_offsets_cm[0]) * 10)
@@ -410,6 +487,7 @@ def compute_row_bases(
     panel_gap_cm: float,
     line_gap_cm: float,
     roof_spec: dict | None = None,
+    edge_spacing_mm: float | None = None,
 ) -> dict | None:
     """Compute the DEFAULT base layout for one whole panel ROW.
 
@@ -420,6 +498,10 @@ def compute_row_bases(
                 ``edgeOffsetMm``). Endpoints within ``BASE_DEDUPE_TOL_CM``
                 collapse to a single base, keeping the one that covers MORE
                 panel lines (the longer beam).
+      Edge    — when ``edge_spacing_mm`` is strictly tighter than ``spacing``,
+                insert one extra base ``edge_spacing`` in from each of the row's
+                two outermost rail-endpoint bases, so the OUTERMOST span at both
+                ends equals ``edge_spacing``. Inert (no extra base) otherwise.
       Phase 2 — sort by X and fill any gap wider than ``spacing`` with evenly
                 spaced intermediate bases.
       Depth   — each base's rear/front depth (``startCm`` / ``lengthCm``) is
@@ -448,7 +530,11 @@ def compute_row_bases(
             purlin_dist_mm = purlin_dist_cm * 10
             n = max(1, math.floor(spacing_mm / purlin_dist_mm))
             spacing_mm = n * purlin_dist_mm
+            if edge_spacing_mm and edge_spacing_mm > 0:
+                ne = max(1, round(edge_spacing_mm / purlin_dist_mm))
+                edge_spacing_mm = ne * purlin_dist_mm
     spacing_cm = spacing_mm / 10
+    edge_spacing_cm = (edge_spacing_mm / 10) if edge_spacing_mm else None
 
     def coverage_at(x: float) -> int:
         return len(_active_lines_at_x(
@@ -480,18 +566,51 @@ def compute_row_bases(
     if cluster:
         phase1_xs.append(pick_winner(cluster))
 
-    # ── Phase 2: spacing fill (gaps measured from the prior shared edge) ────
+    # ── Edge spacing: extra anchor edge_spacing in from each outer tip ─────
+    # Inserts a base so the OUTERMOST span at each end equals `edge_spacing`
+    # (which the planner may set tighter OR wider than the regular spacing).
+    # The two edge spans are excluded from the Phase-2 fill so a wider edge
+    # span is never subdivided. Inert (no extra anchor) when edge spacing is
+    # unset. When unset, the loop is byte-identical to the old plain even fill.
+    anchors = list(phase1_xs)
+    left_edge_x: float | None = None
+    right_edge_x: float | None = None
+    if _edge_spacing_active(spacing_cm, edge_spacing_cm) and len(phase1_xs) >= 2:
+        left_cand = round_to_2dp(phase1_xs[0] + edge_spacing_cm)
+        right_cand = round_to_2dp(phase1_xs[-1] - edge_spacing_cm)
+        # Each candidate must land strictly inside its end gap (before the next
+        # existing rail anchor); a requested edge span wider than that gap can't
+        # be honoured — the required rail-endpoint base already sits closer.
+        add_left = left_cand < phase1_xs[1] - BASE_DEDUPE_TOL_CM
+        add_right = right_cand > phase1_xs[-2] + BASE_DEDUPE_TOL_CM
+        # Single-gap row (only the two tips): drop both edge anchors only if
+        # they'd actually cross — i.e. the row is too short to hold both edge
+        # spans. A small middle span between them is fine (and intended), so the
+        # guard uses a float epsilon, NOT BASE_DEDUPE_TOL_CM (which would wrongly
+        # discard a legitimate sub-tolerance middle gap, e.g. 1300/350/1300).
+        if add_left and add_right and left_cand >= right_cand - 1e-6:
+            add_left = add_right = False
+        if add_left:
+            left_edge_x = left_cand
+        if add_right:
+            right_edge_x = right_cand
+        extra = ([left_edge_x] if add_left else []) + ([right_edge_x] if add_right else [])
+        if extra:
+            anchors = sorted(set(anchors) | set(extra))
+
+    # ── Phase 2: spacing fill — even-fill every interior gap, but leave the
+    # two edge spans (tip ↔ edge anchor) untouched so they stay exactly
+    # `edge_spacing` even when that's wider than `spacing`. ─────────────────
     xs: list[float] = []
-    for i, x in enumerate(phase1_xs):
+    for i, x in enumerate(anchors):
         if i == 0:
             xs.append(x)
             continue
-        prev = phase1_xs[i - 1]
-        gap = x - prev
-        if spacing_cm > 0 and gap > spacing_cm + 1e-6:
-            n = math.ceil(gap / spacing_cm)
-            for k in range(1, n):
-                xs.append(round_to_2dp(prev + k * gap / n))
+        prev = anchors[i - 1]
+        is_left_edge_span = left_edge_x is not None and i == 1 and x == left_edge_x
+        is_right_edge_span = right_edge_x is not None and i == len(anchors) - 1 and prev == right_edge_x
+        if not (is_left_edge_span or is_right_edge_span):
+            xs.extend(_even_fill_interior(prev, x, spacing_cm))
         xs.append(x)
 
     # ── Row frame metadata (rear/front leg depth, base extents) ────────────
@@ -916,6 +1035,7 @@ def _compute_diagonals_via_rails(
     bases_data_map: dict[str, dict],
     trap_geom: dict[str, dict],
     line_rears: dict[int, float],
+    min_height_cm: float = 0,
 ) -> list[dict]:
     """Rails-based external-diagonal placement.
 
@@ -996,6 +1116,10 @@ def _compute_diagonals_via_rails(
         off_inner = max(0.0, min(inn_len, ry - inn_rear))
         horiz_mm = round(abs(inner.get('offsetFromStartCm', 0) - outer.get('offsetFromStartCm', 0)) * 10)
         height_at_edge_cm = _interp_leg_height_cm(outer, off_outer, bases_data_map, trap_geom)
+        # Skip diagonals whose attachment leg is shorter than the configured
+        # minimum (extDiagMinHeightCm) — low legs don't warrant external bracing.
+        if min_height_cm > 0 and height_at_edge_cm < min_height_cm:
+            return
         vert_mm = round(height_at_edge_cm * 10)
         diagonals.append({
             'startBaseIdx': base_idx_by_id.get(outer.get('baseId'), 0),
@@ -1097,6 +1221,7 @@ def compute_external_diagonals(
     row_bases: list[dict] | None = None,
     line_rears_cm: dict[int, float] | None = None,
     rails: list[dict] | None = None,
+    min_height_cm: float = 0,
 ) -> list[dict]:
     """
     Compute external diagonals for one panel row in one area.
@@ -1158,6 +1283,7 @@ def compute_external_diagonals(
     if rails:
         return _compute_diagonals_via_rails(
             rails, bases_source, bases_data_map, trap_geom, line_rears,
+            min_height_cm=min_height_cm,
         )
     base_idx_by_id: dict[str, int] = {}
     for i, b in enumerate(bases_source):
@@ -1216,6 +1342,10 @@ def compute_external_diagonals(
             # is structurally identical on both bases by design (parallel-to-
             # rails diagonal). Interpolate on the outer base.
             height_at_edge_cm = _interp_leg_height_cm(outer, off_outer, bases_data_map, trap_geom)
+            # Skip diagonals whose attachment leg is below the configured
+            # minimum (extDiagMinHeightCm).
+            if min_height_cm > 0 and height_at_edge_cm < min_height_cm:
+                continue
             vert_mm = round(height_at_edge_cm * 10)
             result.append({
                 'startBaseIdx': start_idx,
