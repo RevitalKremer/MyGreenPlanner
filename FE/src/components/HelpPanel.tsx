@@ -98,6 +98,14 @@ const HELP = {
         a: 'On the Bases Layout tab you can drag a base along its rail or type a millimetre offset directly. Edited bases turn into per-trap overrides and survive recomputation. Use Reset bases to drop them and fall back to the auto-spaced layout.'
       },
       {
+        q: 'Edge Base / Anchor Spacing',
+        a: 'Base / Anchor Spacing sets the regular distance between interior bases; Edge Base / Anchor Spacing sets the outermost span at BOTH ends of each row (default 1300 mm). Edges often carry more wind load, so the last base is usually pulled closer to its neighbour — but the relationship is your choice: the edge value may be set smaller or larger than the regular spacing, it is not enforced. The interior is always filled at the regular spacing.'
+      },
+      {
+        q: 'External Diagonal Min Leg Height',
+        a: 'On framed roofs (concrete / iskurit / insulated panel), external diagonals brace the legs between bases. This sets the minimum leg height (default 30 cm) below which no external diagonal is placed — short legs don\'t warrant the extra bracing. Set it to 0 to brace every leg. It doesn\'t apply to tile / flat-installation roofs (which have no external diagonals).'
+      },
+      {
         q: 'Why is a trap "shared" (⇄ badge)?',
         a: 'When two areas resolve to the same trapezoid cross-section they share the same trap ID and parameters — editing one updates both. The ⇄ badge next to the trap ID flags that.'
       },

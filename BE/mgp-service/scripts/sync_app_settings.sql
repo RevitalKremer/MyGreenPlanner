@@ -16,7 +16,7 @@ UPDATE app_settings SET visible = false WHERE key IN (
 UPDATE app_settings SET visible = true WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
     'railMinCutCm',
-    'edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
+    'edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm', 'baseEdgeOffsetTolerance',
     'blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm',
     'diagDistFromLegCm', 'diagPreferredAngleDeg',
     'purlinBufferCm', 'extendFront', 'extendRear'
@@ -29,7 +29,7 @@ UPDATE app_settings SET highlight_group = 'rail-ends'     WHERE key = 'railOverh
 UPDATE app_settings SET highlight_group = 'cross-rails'   WHERE key = 'crossRailEdgeDistMm';
 UPDATE app_settings SET highlight_group = 'rail-cuts'     WHERE key IN ('stockLengths', 'railMinCutCm');
 UPDATE app_settings SET highlight_group = 'base-edges'    WHERE key = 'edgeOffsetMm';
-UPDATE app_settings SET highlight_group = 'base-spacing'  WHERE key = 'spacingMm';
+UPDATE app_settings SET highlight_group = 'base-spacing'  WHERE key IN ('spacingMm', 'edgeSpacingMm');
 UPDATE app_settings SET highlight_group = 'base-overhang' WHERE key = 'baseOverhangCm';
 UPDATE app_settings SET highlight_group = 'blocks'        WHERE key IN ('blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm');
 UPDATE app_settings SET highlight_group = 'diagonal'      WHERE key IN ('diagDistFromLegCm', 'diagPreferredAngleDeg');
@@ -43,7 +43,8 @@ UPDATE app_settings SET roof_types = NULL WHERE key IN (
     'railSpacingV', 'railSpacingH', 'keepSymmetry', 'railOverhangCm',
     'crossRailEdgeDistMm', 'stockLengths', 'railMinCutCm',
     'panelGapCm', 'panelThickCm', 'lineGapCm',
-    'railRoundThresholdCm', 'railRoundPrecisionCm'
+    'railRoundThresholdCm', 'railRoundPrecisionCm',
+    'edgeSpacingMm'  -- 0073: edge base/anchor spacing, all roof types (like spacingMm post-0072)
 );
 
 -- Concrete only
