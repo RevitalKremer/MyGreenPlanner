@@ -548,6 +548,8 @@ const he = {
   'step3.param.stockLengths':        'אורכי מלאי (מ"מ)',
   'step3.param.edgeOffsetMm':        'היסט קצה (מ"מ)',
   'step3.param.spacingMm':           'ריווח בסיסים / עיגון (מ"מ)',
+  'step3.param.edgeSpacingMm':       'ריווח בסיסים / עיגון בקצוות (מ"מ)',
+  'step3.param.extDiagMinHeightCm':  'גובה רגל מינימלי לאלכסון חיצוני (ס"מ)',
   'step3.param.baseOverhangCm':      'הבלטת בסיס (ס"מ)',
   'step3.param.blockHeightCm':       'גובה בלוק (ס"מ)',
   'step3.param.blockLengthCm':       'אורך בלוק (ס"מ)',
@@ -730,8 +732,10 @@ const he = {
   'step3.layer.resetDefaults':   'אפס לברירת מחדל',
   'step3.layer.resetHandles':    'איפוס ידיות',
   'step3.editMode.enter':        'ערוך בסיסים',
+  'step3.editMode.enterAnchors': 'ערוך בסיסים / עוגנים',
   'step3.editMode.exit':         'סיים עריכה',
   'step3.editMode.hint':         'גרור בסיסים בסרגל כדי להזיז; לחץ להוספה או ✕ למחיקה. גרור קצוות להארכה.',
+  'step3.editMode.hintAnchors':  'גרור בסיסים / עוגנים בסרגל כדי להזיז; לחץ להוספה או ✕ למחיקה. גרור קצוות להארכה.',
   'step3.editMode.exitConfirm':  'יש שינויים שלא נשמרו. להחיל או לבטל לפני יציאה ממצב עריכה?',
   'step3.editMode.applyAndExit': 'החל וצא',
   'step3.editMode.discardAndExit': 'בטל וצא',
@@ -1005,7 +1009,7 @@ const he = {
 
   // Settings tab
   'admin.settings.section.global': 'גלובלי',
-  'admin.settings.section.rails':  'מסילות',
+  'admin.settings.section.rails':  'ריילסים',
   'admin.settings.section.bases':  'בסיסים',
   'admin.settings.section.detail': 'בלוק ופרט',
   'admin.settings.col.parameter': 'פרמטר',

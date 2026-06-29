@@ -37,7 +37,7 @@ import './App.css'
 // (mirrors BE TRAP_SCHEMA_PARAM_KEYS). On every BE result these are re-synced
 // authoritatively — stripped then re-applied from the server — so an unsaved
 // optimistic edit can't outlive the server's truth. Keep in sync with the BE.
-const TRAP_SCHEMA_PARAM_KEYS = ['edgeOffsetMm', 'spacingMm', 'baseOverhangCm', 'extendFront', 'extendRear']
+const TRAP_SCHEMA_PARAM_KEYS = ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm', 'extendFront', 'extendRear']
 
 function App() {
   const s = useProjectState()

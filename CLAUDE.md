@@ -145,6 +145,19 @@ Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 ---
 
+## 7. Backward Compatibility — Never Break Existing Data or Behavior
+
+**Rule:** Every change must be **fully backward compatible**. Existing projects, saved `project.data`, and API payloads created before the change must continue to load and compute without errors, and without silently changing their output unless that change is the explicit intent of the task.
+
+- **New parameters / DB settings:** read them with a safe fallback (`dict.get(key, <inert-default>)`), never bare `app_defaults[key]` — a project (or a DB that hasn't run the migration yet) may not have the key. Choose an inert default that reproduces the *old* behavior when the value is absent.
+- **New persisted fields:** make them optional. Old saved data without the field must still parse and compute.
+- **Algorithm changes:** when adding an opt-in behavior, keep the original code path byte-identical for the "off"/default-equivalent case, so untouched projects render exactly as before.
+- **Migrations:** use `ON CONFLICT DO NOTHING` for inserts and provide a real `downgrade()` so the migration is reversible.
+
+**If something has broken — or a change unavoidably alters existing projects' output — STOP and tell the user explicitly.** Do not paper over it or assume the change is acceptable. Name what breaks, which projects/data are affected, and the options, and let the user decide.
+
+---
+
 ## Project Structure Reference
 
 ```

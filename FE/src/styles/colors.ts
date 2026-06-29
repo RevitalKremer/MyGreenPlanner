@@ -90,10 +90,12 @@ export const GHOST_DASH   = '4,3'    // stroke-dasharray for ghost style
 export const STRUCT_FILL    = '#8d8d8d99'  // neutral steel gray fill
 export const STRUCT_STROKE  = '#5c5c5c'    // neutral steel gray stroke
 
-// Concrete blocks — light, warm-neutral; deliberately lighter than the metal
-// structure so a block sitting on a beam stays legible.
-export const BLOCK_FILL        = '#bdbab2'  // concrete block fill
-export const BLOCK_STROKE      = '#8a8780'  // concrete block stroke
+// Concrete blocks — dark neutral gray leaning to black, so they read as solid
+// mass distinct from the lighter metal structure. Punch numbers printed on the
+// block use BLOCK_LABEL (bright) for contrast against the dark fill.
+export const BLOCK_FILL        = '#3a3a3a'  // concrete block fill — dark gray
+export const BLOCK_STROKE      = '#141414'  // concrete block stroke — near black
+export const BLOCK_LABEL       = '#ffffff'  // block punch number — bright on dark block
 
 // External diagonal (Bases plan) — blueish height indicator, distinct from the
 // gray structural members and visible over the panel hatching. (Internal trap
