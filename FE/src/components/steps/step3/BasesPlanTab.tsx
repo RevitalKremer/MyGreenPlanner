@@ -852,6 +852,48 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                   })
                 })}
 
+                {/* 5b. External-diagonal contact-point highlight — pulses the
+                    OUTER contact point (the diagonal's start, the no-arrowhead
+                    end) when the extDiagMinHeightCm param is focused in the
+                    sidebar. Independent of the diagonals layer toggle. */}
+                {highlightGroup === 'ext-diagonal' && liveBeBasesData.map((areaData, ai) => {
+                  const diags = areaData.diagonals ?? []
+                  const allBases = areaData.bases ?? []
+                  const basesByRow: Record<number, any[]> = {}
+                  for (const b of allBases) {
+                    const ri = b._panelRowIdx ?? 0
+                    ;(basesByRow[ri] ||= []).push(b)
+                  }
+                  const r = Math.max(3, 6 / effZoom)
+                  return (
+                    <g key={`extdiag-hl-${ai}`} style={{ animation: 'hlPulse 0.75s ease-in-out infinite', pointerEvents: 'none' }}>
+                      {diags.map((d, di) => {
+                        const diagPri = d.panelRowIdx ?? 0
+                        const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, diagPri)
+                        if (!ctx) return null
+                        const { af } = ctx
+                        const { frame: tFrame, lines: tLines, isRtl: tIsRtl, isBtt: tIsBtt } = af
+                        const { angleRad: tAngle, localBounds: tLB } = tFrame
+                        const rowBases = basesByRow[diagPri] ?? allBases
+                        const baseA = rowBases[d.startBaseIdx]
+                        if (!baseA) return null
+                        // Diagonal START = outer base contact (no arrowhead end).
+                        const lxA = tIsRtl
+                          ? tLB.maxX - baseA.offsetFromStartCm / pixelToCmRatio
+                          : tLB.minX + baseA.offsetFromStartCm / pixelToCmRatio
+                        const lineA = tLines?.find(l => l.lineIdx === baseA.panelLineIdx) ?? tLines?.[0]
+                        const depthA = (baseA.startCm + (d.startBaseOffsetCm ?? 0)) / pixelToCmRatio
+                        const lyA = tIsBtt ? (lineA?.maxY ?? tLB.maxY) - depthA : (lineA?.minY ?? tLB.minY) + depthA
+                        const pa = localToScreen({ x: lxA, y: lyA }, tFrame.center, tAngle)
+                        const [x1, y1] = toSvg(pa.x, pa.y)
+                        if (isNaN(x1) || isNaN(y1)) return null
+                        return <circle key={`ed-hl-${di}`} cx={x1} cy={y1} r={r}
+                          fill={AMBER} fillOpacity={0.3} stroke={AMBER} strokeWidth={2 / effZoom} />
+                      })}
+                    </g>
+                  )
+                })}
+
                 {/* 6. Connectors (splice) — above the diagonals, below the labels.
                     Both beams' joints are shown, centered on the base line: slope joints
                     map directly (line is slope-axis), base joints are in BASE coords

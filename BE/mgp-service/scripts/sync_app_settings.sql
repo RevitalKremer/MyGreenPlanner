@@ -34,6 +34,7 @@ UPDATE app_settings SET highlight_group = 'base-overhang' WHERE key = 'baseOverh
 UPDATE app_settings SET highlight_group = 'blocks'        WHERE key IN ('blockHeightCm', 'blockLengthCm', 'blockWidthCm', 'blockPunchCm');
 UPDATE app_settings SET highlight_group = 'diagonal'      WHERE key IN ('diagDistFromLegCm', 'diagPreferredAngleDeg');
 UPDATE app_settings SET highlight_group = 'diagonals'     WHERE key IN ('diagSkipBelowCm', 'diagDoubleAboveCm');
+UPDATE app_settings SET highlight_group = 'ext-diagonal'  WHERE key = 'extDiagMinHeightCm';
 UPDATE app_settings SET highlight_group = 'punches'       WHERE key IN ('punchOverlapMarginCm', 'punchInnerOffsetCm');
 UPDATE app_settings SET highlight_group = 'extension'     WHERE key IN ('purlinBufferCm', 'extendFront', 'extendRear');
 

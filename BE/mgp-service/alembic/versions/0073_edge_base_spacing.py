@@ -61,7 +61,7 @@ def upgrade() -> None:
         VALUES
             ('extDiagMinHeightCm', '30'::jsonb, 'External Diagonal Min Leg Height (cm)',
              'bases', 'global', 'number',
-             0.0, 100.0, 1.0, NULL, true,
+             0.0, 100.0, 1.0, 'ext-diagonal', true,
              '["concrete", "iskurit", "insulated_panel"]'::jsonb,
              NOW())
         ON CONFLICT (key) DO NOTHING
