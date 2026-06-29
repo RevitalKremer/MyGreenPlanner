@@ -34,6 +34,10 @@ type Props = {
   zoom: number
   toSvg: (sx: number, sy: number) => number[]
   onExtend: (op: ExtendOp) => void
+  // Unsaved extend ops already queued by the host. The drag starts from the
+  // EFFECTIVE extension (pending op if any, else the applied geometry) so a
+  // just-added-but-unsaved extension can be retracted with live feedback.
+  pendingTrapOps?: any[]
 }
 
 /**
@@ -61,6 +65,7 @@ export default function BaseEndpointGrips({
   zoom,
   toSvg,
   onExtend,
+  pendingTrapOps = [],
 }: Props) {
   const dragging = useRef<null | {
     baseId: string
@@ -371,8 +376,24 @@ export default function BaseEndpointGrips({
 
           const { parentTrapId } = parseVariationTrapId(sb.trapezoidId ?? '')
           const ext = getExtensionForBase(extensionsMap, sb.trapezoidId ?? '')
-          const initialFrontMm = Math.round(ext.frontExtMm)
-          const initialBackMm  = Math.round(ext.backExtMm)
+          let initialFrontMm = Math.round(ext.frontExtMm)
+          let initialBackMm  = Math.round(ext.backExtMm)
+          // A queued-but-unsaved extend op for this base wins over the applied
+          // geometry, so the grip starts from the live extension (the same
+          // value liveBeBasesData used to grow the beam). Without this, the
+          // grip sits at the extended tip but thinks the extension is 0, so
+          // dragging inward to retract clamps to 0 and shows nothing.
+          for (const op of pendingTrapOps) {
+            const hit = (op?.targets ?? []).some((t: any) =>
+              String(t.areaId) === areaKey
+              && Number(t.rowIdx) === rowIdx
+              && t.baseId === sb.baseId,
+            )
+            if (hit) {
+              initialFrontMm = Math.round(Number(op.frontExtMm) || 0)
+              initialBackMm  = Math.round(Number(op.backExtMm) || 0)
+            }
+          }
 
           // Trap slope angle drives the horizontal-mm ↔ slope-cm conversion.
           // Stored extension values are HORIZONTAL mm (parallel the base

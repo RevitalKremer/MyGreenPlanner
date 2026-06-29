@@ -1154,6 +1154,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     sc={sc}
                     zoom={effZoom}
                     toSvg={toSvg}
+                    pendingTrapOps={pendingTrapOps}
                     onExtend={(op) => onTrapExtend?.(op)}
                   />
                 )}
