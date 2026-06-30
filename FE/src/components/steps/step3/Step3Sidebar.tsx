@@ -2,7 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { TEXT, TEXT_SECONDARY, TEXT_LIGHT, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, TEXT_FAINTEST, BORDER_LIGHT, BORDER_FAINT, BORDER, BG_SUBTLE, BG_FAINT, BG_MID, PRIMARY, PRIMARY_DARK, PRIMARY_BG_ALT, PRIMARY_BG_LIGHT, AMBER, WARNING_LIGHT, WARNING, WARNING_BG, WARNING_DARK, BORDER_MID, WHITE, TAB_ACTIVE_COLOR, ROW_SELECTED_BG, TRAP_BADGE_BG, SECTION_HEADER_BG } from '../../../styles/colors'
 import { isEmptyOrientation } from '../../../utils/trapezoidGeometry'
 import { PANEL_H } from '../../../utils/panelCodes.js'
+import { parseVariationTrapId } from '../../../utils/trapExtensionService'
 import { useLang } from '../../../i18n/LangContext'
+
+// Trap-scoped settings belong to the parent trap; a selected variation
+// ("A1.2") shares them. Strip the ".N" suffix to the parent id.
+const stripVariation = (trapId: any): string => parseVariationTrapId(String(trapId ?? '')).parentTrapId
 
 const fmt = (v) => parseFloat(v.toFixed(1)).toString()
 
@@ -150,6 +155,11 @@ export default function Step3Sidebar({
   // to expand each trap into A1.0 (= A1), A1.1, A1.2, ... entries in the
   // tree so the user can select an individual variation.
   trapExtensions = {} as Record<string, Array<{ frontExtMm: number; backExtMm: number }>>,
+  // Per parent trap, the set of variation indices actually used by a base
+  // ("A1" → 0, "A1.2" → 2). Variation rows whose index isn't here are orphans
+  // (no base references them) and are hidden. Index 0 (the parent) is always
+  // shown regardless.
+  usedVariationsByTrap = {} as Record<string, Set<number>>,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -318,13 +328,16 @@ export default function Step3Sidebar({
     if (scope === 'trapezoid') {
       const trapSettings = getTrapBasesSettings?.(effectiveSelectedTrapId) ?? {}
       const val = trapSettings[key] ?? param.default
+      // Trap settings live on the PARENT trap; a selected variation ("A1.2")
+      // shares them, so resolve the override against the parent id.
+      const parentTrapId = stripVariation(effectiveSelectedTrapId)
       // Override = stored value differs from the schema default. Routes
       // through the canonical isOverride when available so trap-scope and
       // area-scope share the same rule.
       const overridden = (() => {
-        if (!effectiveSelectedTrapId) return false
-        if (isOverrideProp) return isOverrideProp({ scope: 'trap', anchor: effectiveSelectedTrapId, key })
-        const stored = trapezoidConfigs?.[effectiveSelectedTrapId]?.[key]
+        if (!parentTrapId) return false
+        if (isOverrideProp) return isOverrideProp({ scope: 'trap', anchor: parentTrapId, key })
+        const stored = trapezoidConfigs?.[parentTrapId]?.[key]
         if (stored === undefined) return false
         return !sameValue(stored, param.default)
       })()
@@ -461,7 +474,10 @@ export default function Step3Sidebar({
               {/* Sub-items by tab: areas=none, bases/rails=rows, detail=traps */}
               {isAreaSelected && activeTab !== 'areas' && (() => {
                 const areaPanels = panels.filter(p => (p.areaGroupKey ?? p.area) === areaKey)
-                const hasVariations = trapIds.some(tid => (trapExtensions[tid] || []).length > 0)
+                // Only count variations actually in use (a base references idx
+                // ≥ 1) — orphaned ones are hidden and shouldn't force the tree open.
+                const hasVariations = trapIds.some(tid =>
+                  (trapExtensions[tid] || []).some((_, idx) => usedVariationsByTrap[tid]?.has(idx + 1)))
                 const showTraps = activeTab === 'detail' && (trapIds.length > 1 || hasVariations)
                 const rowIdxSet = new Set()
                 areaPanels.forEach(p => rowIdxSet.add(p.panelRowIdx ?? 0))
@@ -471,44 +487,43 @@ export default function Step3Sidebar({
                 return (
                   <div style={{ borderBottom: `1px solid ${BG_MID}`, background: PRIMARY_BG_LIGHT }}>
                     {showTraps && trapIds.flatMap(trapId => {
-                      const isTrapSelected = effectiveSelectedTrapId === trapId
-                      const count = areaPanels.filter(p => p.trapezoidId === trapId).length
-                      const parent = (
-                        <div
-                          key={`t-${trapId}`}
-                          onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(trapId) }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isTrapSelected ? PRIMARY : 'transparent'}`, background: isTrapSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
-                        >
-                          <span style={{ fontSize: '0.72rem', fontWeight: '700', color: isTrapSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isTrapSelected ? TRAP_BADGE_BG : BORDER_FAINT, padding: '1px 7px', borderRadius: '10px' }}>
-                            {trapId}
-                          </span>
-                          <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
-                          {!!trapezoidConfigs[trapId] && (
-                            <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
-                          )}
-                        </div>
-                      )
-                      // Append a row per user-created variation of this trap
-                      // (A1.1, A1.2, ...). Each selects the variation as
-                      // a virtual trap id so downstream code can scope by it.
+                      // FLAT list of this trap's IN-USE instances, all at the
+                      // same level: the original (idx 0) plus each used variation
+                      // (idx 1..N). Instances no base references (the original
+                      // included) are hidden. Until usage is known, fall back to
+                      // showing the original so the tree isn't briefly empty.
                       const userVars = trapExtensions[trapId] || []
-                      const variantNodes = userVars.map((_, idx) => {
-                        const variantId = `${trapId}.${idx + 1}`
-                        const isSelected = effectiveSelectedTrapId === variantId
+                      const usedSet = usedVariationsByTrap[trapId]
+                      const hasCustomConfig = !!trapezoidConfigs[trapId]
+                      const count = areaPanels.filter(p => p.trapezoidId === trapId).length
+                      const instanceIdxs: number[] = []
+                      if (!usedSet) {
+                        instanceIdxs.push(0)
+                      } else {
+                        if (usedSet.has(0)) instanceIdxs.push(0)
+                        userVars.forEach((_, i) => { if (usedSet.has(i + 1)) instanceIdxs.push(i + 1) })
+                      }
+                      return instanceIdxs.map(idx => {
+                        const id = idx === 0 ? trapId : `${trapId}.${idx}`
+                        const isSel = effectiveSelectedTrapId === id
                         return (
                           <div
-                            key={`tv-${variantId}`}
-                            onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(variantId) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 1rem 0.3rem 2.5rem', cursor: 'pointer', borderLeft: `3px solid ${isSelected ? PRIMARY : 'transparent'}`, background: isSelected ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s', fontStyle: 'italic' }}
+                            key={`ti-${id}`}
+                            onClick={e => { e.stopPropagation(); setSelectedTrapezoidId(id) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem 0.35rem 1.5rem', cursor: 'pointer', borderLeft: `3px solid ${isSel ? PRIMARY : 'transparent'}`, background: isSel ? ROW_SELECTED_BG : 'transparent', transition: 'all 0.1s' }}
                           >
-                            <span style={{ fontSize: '0.68rem', fontWeight: '600', color: isSelected ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isSelected ? TRAP_BADGE_BG : 'transparent', padding: '1px 6px', borderRadius: '10px', border: `1px solid ${isSelected ? PRIMARY : BORDER_FAINT}` }}>
-                              {variantId}
+                            <span style={{ fontSize: '0.72rem', fontWeight: idx === 0 ? '700' : '600', color: isSel ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isSel ? TRAP_BADGE_BG : (idx === 0 ? BORDER_FAINT : 'transparent'), padding: '1px 7px', borderRadius: '10px', border: idx === 0 ? 'none' : `1px solid ${isSel ? PRIMARY : BORDER_FAINT}` }}>
+                              {id}
                             </span>
-                            <span style={{ fontSize: '0.65rem', color: TEXT_VERY_LIGHT }}>variation</span>
+                            {idx === 0
+                              ? <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
+                              : <span style={{ fontSize: '0.65rem', color: TEXT_VERY_LIGHT, fontStyle: 'italic' }}>variation</span>}
+                            {hasCustomConfig && (
+                              <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
+                            )}
                           </div>
                         )
                       })
-                      return [parent, ...variantNodes]
                     })}
                     {showRows && panelRowIdxs.map((ri, idx) => {
                       const isRowSelected = selectedPanelRowIdx === null || selectedPanelRowIdx === ri

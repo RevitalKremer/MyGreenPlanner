@@ -11,6 +11,7 @@ import Step3Sidebar from './step3/Step3Sidebar'
 import AreasTab from './step3/AreasTab'
 import DetailView from './step3/DetailView'
 import { buildFullTrapGhost } from './step3/tabUtils'
+import { parseVariationTrapId } from '../../utils/trapExtensionService'
 import useStep3Settings from '../../hooks/useStep3Settings'
 import useRowData from '../../hooks/useRowData'
 import useSelectedGeometry from '../../hooks/useSelectedGeometry'
@@ -158,8 +159,34 @@ export default function Step3ConstructionPlanning({
     }
   }, [activeTab, rowKeys])
 
-  const effectiveSelectedTrapId = selectedTrapezoidId ??
-    (rowKeys[selectedRowIdx] != null ? (areaTrapezoidMap[rowKeys[selectedRowIdx]]?.[0] ?? null) : null)
+  // Which variation index each parent trap actually has in use — derived from
+  // the bases' stamped trapezoidId ("A1" → idx 0, "A1.2" → idx 2). Drives both
+  // hiding orphaned variation rows in the sidebar AND defaulting selection to
+  // an in-use instance when the parent (idx 0) itself isn't used.
+  const usedVariationsByTrap = useMemo(() => {
+    const m: Record<string, Set<number>> = {}
+    for (const ad of (beBasesData ?? [])) {
+      for (const b of (ad.bases ?? [])) {
+        if (!b?.trapezoidId) continue
+        const { parentTrapId, extensionIdx } = parseVariationTrapId(b.trapezoidId)
+        ;(m[parentTrapId] ??= new Set<number>()).add(extensionIdx)
+      }
+    }
+    return m
+  }, [beBasesData])
+
+  const effectiveSelectedTrapId = selectedTrapezoidId ?? (() => {
+    const areaKey = rowKeys[selectedRowIdx]
+    if (areaKey == null) return null
+    const tid = areaTrapezoidMap[areaKey]?.[0] ?? null
+    if (!tid) return null
+    // Default to the parent unless it's not in use — then the first in-use
+    // variation (so the detail view / settings land on a real instance).
+    const used = usedVariationsByTrap[tid]
+    if (!used || used.has(0)) return tid
+    const firstUsed = [...used].sort((a, b) => a - b)[0]
+    return firstUsed != null ? `${tid}.${firstUsed}` : tid
+  })()
 
   // Frameless areas (tiles, flat_installation) get a pseudo-trap-id (the area
   // letter) from areaTrapezoidMap, so effectiveSelectedTrapId is truthy even
@@ -435,6 +462,7 @@ export default function Step3ConstructionPlanning({
           }
           return out
         })()}
+        usedVariationsByTrap={usedVariationsByTrap}
       />
 
       {/* ── Main content ── */}
@@ -487,8 +515,15 @@ export default function Step3ConstructionPlanning({
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 {(() => {
                   // Resolve roof data for this specific trap's owning area.
-                  const owning = effectiveSelectedTrapId
-                    ? (areas || []).find(a => (a.trapezoidIds || []).includes(effectiveSelectedTrapId))
+                  // Areas list only the PARENT trap id ("C"), never the dotted
+                  // variation ("C.1"), so strip the variation suffix before the
+                  // lookup — otherwise variations resolve to no area and lose
+                  // their roof spec (e.g. the iskurit corrugated roof line).
+                  const ownerTrapId = effectiveSelectedTrapId
+                    ? parseVariationTrapId(effectiveSelectedTrapId).parentTrapId
+                    : null
+                  const owning = ownerTrapId
+                    ? (areas || []).find(a => (a.trapezoidIds || []).includes(ownerTrapId))
                     : null
                   const { type: detailRoofType, purlinDistCm: detailPurlinDistCm, installationOrientation: detailOrient } =
                     resolveAreaRoofSpec(roofType, owning)

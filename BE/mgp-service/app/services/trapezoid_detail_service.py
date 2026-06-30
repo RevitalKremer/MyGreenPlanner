@@ -720,17 +720,24 @@ def compute_trapezoid_details(
             base_beam_length = base_beam_length + rear_ext + front_ext
 
     # Sub-trap variation extensions ("A.1" beam stretches past parent's
-    # legs). These augment the iskurit-perpendicular path's ext above —
-    # local var `front_ext` represents BEAM-REAR extension (legs shift
-    # forward in beam-local coords; see leg_offset=front_ext below),
-    # and `rear_ext` represents BEAM-FRONT extension (pure length
-    # increase past the front leg). Caller-side `back` semantically
-    # extends the beam REAR, `front` extends the beam FRONT — wire
-    # them through to the correctly-named internal counterpart.
+    # legs). Local var `front_ext` represents BEAM-REAR extension (legs shift
+    # forward in beam-local coords; see leg_offset=front_ext below), and
+    # `rear_ext` represents BEAM-FRONT extension (pure length increase past
+    # the front leg). Caller-side `back` semantically extends the beam REAR,
+    # `front` extends the beam FRONT — wire them through to the correctly-named
+    # internal counterpart.
+    #
+    # Variation extensions are ABSOLUTE, not deltas: the edit panel / grips
+    # seed them from the trap's CURRENT extension (the iskurit-perpendicular
+    # default above), so the user-entered values already include that default.
+    # They therefore REPLACE the config default rather than stacking on top of
+    # it — matching `_apply_base_extensions`, which applies the variation idx as
+    # the absolute base extension. (For concrete/parallel roofs the default is
+    # 0, so replace == add and those projects are unaffected.)
     if variation_front_ext_cm or variation_back_ext_cm:
-        front_ext = front_ext + variation_back_ext_cm
-        rear_ext = rear_ext + variation_front_ext_cm
-        base_beam_length = base_beam_length + variation_front_ext_cm + variation_back_ext_cm
+        front_ext = variation_back_ext_cm
+        rear_ext = variation_front_ext_cm
+        base_beam_length = base_beam_core + variation_front_ext_cm + variation_back_ext_cm
 
     sin_a = math.sin(angle_rad)
     tan_a = math.tan(angle_rad)
