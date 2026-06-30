@@ -320,11 +320,20 @@ export default function useStep3Settings({
   // ── Per-trapezoid base settings ─────────────────────────────────────────
   const TRAP_BASES_KEYS = ['edgeOffsetMm', 'spacingMm', 'edgeSpacingMm', 'baseOverhangCm']
 
+  // Trap-scoped settings belong to the PARENT trap; variations ("A1.2") share
+  // them and the BE keys its config by the parent id. Strip the ".N" suffix so
+  // reading/writing settings while a variation is selected targets the parent.
+  const stripTrapVariation = (trapId: string) => {
+    const s = String(trapId ?? '')
+    const m = s.match(/^(.*)\.\d+$/)
+    return m ? m[1] : s
+  }
+
   // Reads through trapezoidConfigsRef so apply-bases-to-all sees the source
   // trap's just-typed value (the blur right before the button click writes
   // it into the ref synchronously; React state hasn't flushed yet).
   const getTrapBasesSettings = useCallback((trapId) => {
-    const cfg = trapezoidConfigsRef.current?.[trapId] || {}
+    const cfg = trapezoidConfigsRef.current?.[stripTrapVariation(trapId)] || {}
     return {
       edgeOffsetMm:   cfg.edgeOffsetMm   ?? appDefaults?.edgeOffsetMm,
       spacingMm:      cfg.spacingMm      ?? appDefaults?.spacingMm,
@@ -336,7 +345,7 @@ export default function useStep3Settings({
   }, [appDefaults])
 
   const updateTrapBaseSetting = useCallback((trapId, key, value) =>
-    setParam({ scope: 'trap', anchor: trapId, key }, value),
+    setParam({ scope: 'trap', anchor: stripTrapVariation(trapId), key }, value),
     [setParam])
 
   // ── Dirty-params filter + clear (saveTab payload trimming) ─────────────

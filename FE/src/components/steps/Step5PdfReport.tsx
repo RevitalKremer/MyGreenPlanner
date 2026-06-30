@@ -415,10 +415,25 @@ export default function Step5PdfReport({
 
   const { keys: trapIds } = useMemo(() => buildTrapezoidGroups(panels), [panels])
 
+  // Trap ids a base actually references (full id incl. ".N" variation suffix)
+  // — the report's quantity source. Used to drop quantity-0 traps/variations.
+  const usedTrapIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const ad of (beBasesData ?? [])) {
+      for (const b of (ad.bases ?? [])) {
+        if (b?.trapezoidId) set.add(String(b.trapezoidId))
+      }
+    }
+    return set
+  }, [beBasesData])
+
   // Variations live in beTrapezoidsData with a parentId pointing at the
   // step2 trap, but panels only carry the parent trapId — so trapIds (from
   // buildTrapezoidGroups(panels)) won't include "A.1". Allow variation IDs
   // through the filter when their parent is one of the panel-derived trapIds.
+  // Then keep only traps actually used by a base (quantity > 0) so unused
+  // originals / orphaned variations don't get a page. (Skip the usage filter
+  // until bases are loaded, so we never blank out every trap page.)
   const allowedTrapIds = useMemo(() => {
     const set = new Set(trapIds)
     if (beTrapezoidsData) {
@@ -427,8 +442,9 @@ export default function Step5PdfReport({
         if (parentId && set.has(parentId)) set.add(tid)
       }
     }
-    return set
-  }, [trapIds, beTrapezoidsData])
+    if (usedTrapIds.size === 0) return set
+    return new Set([...set].filter(id => usedTrapIds.has(id)))
+  }, [trapIds, beTrapezoidsData, usedTrapIds])
 
   // One PDF page per group of structurally identical traps (server-computed).
   // Fall back to one page per trap for older projects that lack groups.
