@@ -378,7 +378,7 @@ export default function BaseEndpointGrips({
       {livePreview && (() => {
         const [ax, ay] = livePreview.anchor
         const fs = 9 / zoom
-        const lbl = `${deriveVariationLabel(livePreview.parentTrapId, 0)}  front: ${livePreview.frontMm}  back: ${livePreview.backMm}`
+        const lbl = `${deriveVariationLabel(livePreview.parentTrapId, 0)}  end 1: ${livePreview.frontMm}  end 2: ${livePreview.backMm}`
         const bgW = lbl.length * fs * 0.6 + 8 / zoom
         const bgH = fs + 6 / zoom
         const cx = ax
