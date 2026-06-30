@@ -515,8 +515,15 @@ export default function Step3ConstructionPlanning({
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 {(() => {
                   // Resolve roof data for this specific trap's owning area.
-                  const owning = effectiveSelectedTrapId
-                    ? (areas || []).find(a => (a.trapezoidIds || []).includes(effectiveSelectedTrapId))
+                  // Areas list only the PARENT trap id ("C"), never the dotted
+                  // variation ("C.1"), so strip the variation suffix before the
+                  // lookup — otherwise variations resolve to no area and lose
+                  // their roof spec (e.g. the iskurit corrugated roof line).
+                  const ownerTrapId = effectiveSelectedTrapId
+                    ? parseVariationTrapId(effectiveSelectedTrapId).parentTrapId
+                    : null
+                  const owning = ownerTrapId
+                    ? (areas || []).find(a => (a.trapezoidIds || []).includes(ownerTrapId))
                     : null
                   const { type: detailRoofType, purlinDistCm: detailPurlinDistCm, installationOrientation: detailOrient } =
                     resolveAreaRoofSpec(roofType, owning)
