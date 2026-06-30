@@ -5,10 +5,11 @@ import { TEXT, TEXT_SECONDARY, TEXT_VERY_LIGHT, TEXT_PLACEHOLDER, BORDER_LIGHT, 
 /**
  * Floating collapsible layers/visibility toggle panel (top-right of canvas).
  * layers: [{ label, checked, setter }]
+ * editPanel: optional JSX (the selected-base editor) shown above the summary
  * summary: optional JSX shown at the bottom when expanded
  * actions: optional [{ label, onClick, style }] buttons shown below summary
  */
-export default function LayersPanel({ layers, summary = null, actions }) {
+export default function LayersPanel({ layers, editPanel = null, summary = null, actions }) {
   const { t } = useLang()
   const [collapsed, setCollapsed] = useState(false)
   const allRef = useRef(null)
@@ -39,18 +40,21 @@ export default function LayersPanel({ layers, summary = null, actions }) {
       </div>
       {!collapsed && (
         <div style={{ padding: '0.6rem 0.75rem' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: summary ? '0.6rem' : 0 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: someChecked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '700', paddingBottom: '0.25rem', borderBottom: `1px solid ${BG_MID}`, marginBottom: '0.05rem' }}>
-              <input ref={allRef} type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
-              {t('step3.layers.all')}
-            </label>
-            {layers.map(({ label, checked, setter }) => (
-              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '500' }}>
-                <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
-                {label}
+          {layers.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: (summary || editPanel) ? '0.6rem' : 0 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: someChecked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '700', paddingBottom: '0.25rem', borderBottom: `1px solid ${BG_MID}`, marginBottom: '0.05rem' }}>
+                <input ref={allRef} type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
+                {t('step3.layers.all')}
               </label>
-            ))}
-          </div>
+              {layers.map(({ label, checked, setter }) => (
+                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.79rem', color: checked ? TEXT : TEXT_VERY_LIGHT, fontWeight: '500' }}>
+                  <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} style={{ accentColor: LAYER_ACCENT, cursor: 'pointer', width: '13px', height: '13px' }} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+          {editPanel}
           {summary && (
             <div style={{ borderTop: `1px solid ${BG_MID}`, paddingTop: '0.5rem', fontSize: '0.73rem', color: TEXT_PLACEHOLDER }}>
               {summary}

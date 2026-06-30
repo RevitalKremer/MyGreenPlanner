@@ -15,6 +15,7 @@ import BackgroundImageLayer from './BackgroundImageLayer'
 import BasesTable from './BasesTable'
 import BasePlanOverlay from './BasePlanOverlay'
 import BaseEndpointGrips from './BaseEndpointGrips'
+import BaseEditPanel from './BaseEditPanel'
 import RailsOverlay from './RailsOverlay'
 import RulerTool from '../../shared/RulerTool'
 import DimensionAnnotation from './DimensionAnnotation'
@@ -75,6 +76,12 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
   useEffect(() => {
     if (moveEditor) dismissMoveEditorSoon()
   }, [moveEditor?.trapId, moveEditor?.rowIdx, moveEditor?.baseIdx])  // eslint-disable-line react-hooks/exhaustive-deps
+  // Base selected for the docked EXTEND panel (Layers widget). Set only by the
+  // endpoint grips (extend); move/add/delete keep their own canvas popup.
+  // Identified by (area, row, sorted-offset index) against the live base list.
+  const [selectedExtendBase, setSelectedExtendBase] = useState<null | {
+    areaKey: string; rowIdx: number; baseIdx: number
+  }>(null)
   const [rulerActive,    setRulerActive]    = useState(false)
   const [tableOpen,      setTableOpen]      = useState(false)
   const initialMountRef = useRef(true)
@@ -488,6 +495,72 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
 
     return { ...ad, bases: nextBases }
   })
+
+  // Drop the extend selection when leaving edit mode or after a recompute.
+  useEffect(() => { if (!sEditMode) setSelectedExtendBase(null) }, [sEditMode])
+
+  // ── Selected-base EXTEND panel (docked in the Layers widget) ────────────
+  // Only the endpoint grips set the selection (framed bases). Resolves the
+  // base against the LIVE list, reads its effective extension (pending op wins
+  // over applied geometry), and wires front/back + row/area fan-out — the same
+  // extend-op flow the grip drag uses (one op per base via a shared session).
+  const baseEditPanel = (() => {
+    if (!sEditMode || !selectedExtendBase) return null
+    const { areaKey, rowIdx, baseIdx } = selectedExtendBase
+    const ad = liveBeBasesData.find((a: any) =>
+      String(a.areaId) === areaKey || a.areaLabel === areaKey || a.label === areaKey)
+    if (!ad) return null
+    const rowBases = (ad.bases ?? [])
+      .filter((b: any) => (b._panelRowIdx ?? 0) === rowIdx)
+      .slice()
+      .sort((a: any, b: any) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
+    const sb = rowBases[baseIdx]
+    if (!sb || (sb.hookOffsets?.length ?? 0) > 0) return null   // none / frameless → no extend
+    const baseId = sb.baseId
+    const parentTrap = stripVariation(sb.trapezoidId)
+
+    const curIdxMatch = String(sb.trapezoidId ?? '').match(/\.(\d+)$/)
+    const applied = beTrapezoidsData?.[parentTrap]?.geometry?.extensions?.[curIdxMatch ? Number(curIdxMatch[1]) : 0]
+      ?? beTrapezoidsData?.[parentTrap]?.geometry?.extensions?.[0]
+      ?? { frontExtMm: 0, backExtMm: 0 }
+    let frontExtMm = Math.round(Number(applied.frontExtMm) || 0)
+    let backExtMm = Math.round(Number(applied.backExtMm) || 0)
+    for (const op of (pendingTrapOps ?? [])) {
+      const hit = (op?.targets ?? []).some((tt: any) =>
+        String(tt.areaId) === String(ad.areaId) && Number(tt.rowIdx) === rowIdx && tt.baseId === baseId)
+      if (hit) { frontExtMm = Math.round(Number(op.frontExtMm) || 0); backExtMm = Math.round(Number(op.backExtMm) || 0) }
+    }
+
+    // Fan-out targets: other framed bases in this row / area.
+    const framed = (bs: any[]) => bs.filter((b: any) => (b.hookOffsets?.length ?? 0) === 0 && b.baseId && b.baseId !== baseId)
+    const rowTargets = framed(rowBases).map((b: any) => ({ areaId: ad.areaId, rowIdx, baseId: b.baseId }))
+    const areaTargets = framed(ad.bases ?? []).map((b: any) => ({ areaId: ad.areaId, rowIdx: b._panelRowIdx ?? 0, baseId: b.baseId }))
+
+    const extSession = `ext:${ad.areaId}:${rowIdx}:${baseId}`
+    const fireExtend = (f: number, bk: number, targets: any[]) => {
+      if (!targets.length) return
+      onTrapExtend?.({ op: 'extend', targets, frontExtMm: Math.max(0, Math.round(f)), backExtMm: Math.max(0, Math.round(bk)), _sessionId: extSession })
+    }
+    const self = { areaId: ad.areaId, rowIdx, baseId }
+    const onExtendFront = (mm: number) => fireExtend(mm, backExtMm, [self])
+    const onExtendBack = (mm: number) => fireExtend(frontExtMm, mm, [self])
+    const onApplyRow = () => fireExtend(frontExtMm, backExtMm, [self, ...rowTargets])
+    const onApplyArea = () => fireExtend(frontExtMm, backExtMm, [self, ...areaTargets])
+
+    const info = {
+      baseLabel: String(baseId ?? ''), frontExtMm, backExtMm,
+      rowTargetCount: rowTargets.length, areaTargetCount: areaTargets.length,
+    }
+    return (
+      <BaseEditPanel
+        key={`${areaKey}:${rowIdx}:${baseId}`}
+        info={info}
+        onExtendFront={onExtendFront} onExtendBack={onExtendBack}
+        onApplyRow={onApplyRow} onApplyArea={onApplyArea}
+        onClose={() => setSelectedExtendBase(null)}
+      />
+    )
+  })()
 
   // ── SVG layers (shared by both print and interactive modes) ──
   const svgLayers = (
@@ -1156,6 +1229,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     toSvg={toSvg}
                     pendingTrapOps={pendingTrapOps}
                     onExtend={(op) => onTrapExtend?.(op)}
+                    onSelect={(areaId, rowIdx, baseIdx) => setSelectedExtendBase({ areaKey: String(areaId), rowIdx, baseIdx })}
                   />
                 )}
 
@@ -1455,6 +1529,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
             { label: t('step3.layer.diagonals'),  checked: showDiagonals,  setter: setShowDiagonals },
             { label: t('step3.layer.dimensions'), checked: showDimensions, setter: setShowDimensions },
           ]}
+          editPanel={baseEditPanel}
           summary={editMode ? (
             <span>{(hasAnchors ? t('step3.editMode.hintAnchors') : t('step3.editMode.hint')) || 'Drag bases on the bar to move; click to add or ✕ to remove. Drag base endpoints to extend.'}</span>
           ) : null}

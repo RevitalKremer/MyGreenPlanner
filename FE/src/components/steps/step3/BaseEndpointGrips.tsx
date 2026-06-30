@@ -1,11 +1,10 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
-import { BLACK, DANGER, AMBER, BORDER, PRIMARY } from '../../../styles/colors'
+import { useRef, useState, useCallback } from 'react'
+import { BLACK, DANGER, AMBER } from '../../../styles/colors'
 import { baseScreenCoords, resolveAreaContext } from './basePlanHelpers'
 import { parseVariationTrapId, getExtensionForBase, variationLabel as deriveVariationLabel } from '../../../utils/trapExtensionService'
 
 const GRIP_RADIUS_SVG = 4
 const READOUT_OFFSET_SVG = 14
-const EDITOR_LIFETIME_MS = 3000  // popover auto-dismisses after ~3s of inactivity
 const SLOPE_DEFAULT_ANGLE_DEG = 0 // fallback when trap geometry lacks angle
 
 type ExtendTarget = { areaId: string | number; rowIdx: number; baseId: string }
@@ -16,10 +15,6 @@ type ExtendOp = {
   frontExtMm: number
   backExtMm: number
 }
-
-// FE-only scope tag used inside BaseEndpointGrips when the user picks
-// row / area fan-out from the editor. Drives target-list expansion.
-type FanoutScope = 'base' | 'row' | 'area'
 
 type Props = {
   beBasesData: any[] | null
@@ -38,6 +33,9 @@ type Props = {
   // EFFECTIVE extension (pending op if any, else the applied geometry) so a
   // just-added-but-unsaved extension can be retracted with live feedback.
   pendingTrapOps?: any[]
+  // Select a base (areaId, rowIdx, sorted-offset index) for the docked edit
+  // panel. Fired on grip press and after a drag-release.
+  onSelect?: (areaId: string | number, rowIdx: number, baseIdx: number) => void
 }
 
 /**
@@ -66,6 +64,7 @@ export default function BaseEndpointGrips({
   toSvg,
   onExtend,
   pendingTrapOps = [],
+  onSelect,
 }: Props) {
   const dragging = useRef<null | {
     baseId: string
@@ -94,61 +93,6 @@ export default function BaseEndpointGrips({
     staticEnd: [number, number]
   }>(null)
 
-  // Numeric input popover anchored to the most recently edited base; stays
-  // open after drag-release so the user can type precise values. Auto-
-  // dismisses after EDITOR_LIFETIME_MS unless the user engages with it.
-  const [editor, setEditor] = useState<null | {
-    baseId: string
-    areaId: string | number
-    rowIdx: number             // for scope='row' button
-    parentTrapId: string
-    anchor: [number, number]   // SVG coords near the base's front end
-    frontMm: number
-    backMm: number
-    // One editor session = one logical user gesture. Every op emitted
-    // while this editor is open carries the same sessionId; the host
-    // dedupes by sessionId so successive emits (drag-release → input
-    // change → scope-button click) collapse to the LATEST op.
-    sessionId: number
-  }>(null)
-  const sessionIdRef = useRef(0)
-  const editorTimerRef = useRef<number | null>(null)
-  const scheduleEditorDismiss = useCallback(() => {
-    if (editorTimerRef.current != null) window.clearTimeout(editorTimerRef.current)
-    editorTimerRef.current = window.setTimeout(() => {
-      setEditor(null)
-      editorTimerRef.current = null
-    }, EDITOR_LIFETIME_MS) as unknown as number
-  }, [])
-  useEffect(() => () => {
-    if (editorTimerRef.current != null) window.clearTimeout(editorTimerRef.current)
-  }, [])
-
-  // Expand a fan-out gesture into a flat list of base targets. The
-  // wire format is always a list of `(areaId, rowIdx, baseId)` — the
-  // FE owns scope expansion because it has the live base list in
-  // `beBasesData`. Bases with non-empty `hookOffsets` are virtual
-  // anchors (frameless roofs) and are excluded.
-  const expandTargets = useCallback((
-    scope: FanoutScope,
-    areaId: string | number,
-    rowIdx: number,
-    baseId: string,
-  ): ExtendTarget[] => {
-    if (scope === 'base') return [{ areaId, rowIdx, baseId }]
-    const out: ExtendTarget[] = []
-    for (const ad of (beBasesData ?? [])) {
-      const adAreaKey = String(ad.areaId ?? ad.areaLabel ?? ad.label)
-      if (adAreaKey !== String(areaId)) continue
-      for (const b of (ad.bases ?? [])) {
-        if ((b.hookOffsets?.length ?? 0) > 0) continue
-        const ri = b._panelRowIdx ?? 0
-        if (scope === 'row' && ri !== rowIdx) continue
-        if (b.baseId) out.push({ areaId, rowIdx: ri, baseId: b.baseId })
-      }
-    }
-    return out
-  }, [beBasesData])
 
   const onGripMouseDown = useCallback((
     e: React.MouseEvent,
@@ -253,56 +197,42 @@ export default function BaseEndpointGrips({
       const changed = preview.frontMm !== d.initialFrontMm
                     || preview.backMm  !== d.initialBackMm
       const areaId = trapAreaMap[d.parentTrapId]
-      // Look up the base's panel-row index — required for scope='base'
-      // (baseIds collide across rows in the same area) AND for the
-      // scope='row' fan-out button in the editor popover.
+      // Resolve the base's row index AND its sorted-offset index in that row
+      // (the latter is how the docked edit panel identifies a base).
       let rowIdx = 0
+      let baseIdx = 0
       if (areaId != null) {
         for (const ad of (beBasesData ?? [])) {
           const adAreaKey = String(ad.areaId ?? ad.areaLabel ?? ad.label)
           if (adAreaKey !== String(areaId)) continue
-          for (const b of (ad.bases ?? [])) {
-            if (b.baseId === d.baseId) {
-              rowIdx = b._panelRowIdx ?? 0
-              break
-            }
-          }
+          const target = (ad.bases ?? []).find((b: any) => b.baseId === d.baseId)
+          rowIdx = target?._panelRowIdx ?? 0
+          const rowSorted = (ad.bases ?? [])
+            .filter((b: any) => (b._panelRowIdx ?? 0) === rowIdx)
+            .slice()
+            .sort((a: any, b: any) => (a.offsetFromStartCm ?? 0) - (b.offsetFromStartCm ?? 0))
+          baseIdx = Math.max(0, rowSorted.findIndex((b: any) => b.baseId === d.baseId))
+          break
         }
       }
-      // Allocate the sessionId BEFORE the drag-release emit so the
-      // editor's later commits can replace this op in the queue when
-      // the user picks a different scope.
-      const sessionId = ++sessionIdRef.current
+      // Per-base session id so this drag and any panel edit of the SAME base
+      // collapse to one op (the host dedupes by _sessionId).
       if (changed && areaId != null) {
         onExtend({
           op: 'extend',
           targets: [{ areaId, rowIdx, baseId: d.baseId }],
           frontExtMm: preview.frontMm,
           backExtMm: preview.backMm,
-          _sessionId: sessionId,
+          _sessionId: `ext:${areaId}:${rowIdx}:${d.baseId}`,
         } as ExtendOp)
       }
       setLivePreview(null)
-      // Open the numeric editor anchored to this base so the user can
-      // refine the just-dragged value precisely. Works after either a
-      // committed drag OR a no-change click.
-      if (areaId != null) {
-        setEditor({
-          baseId: d.baseId,
-          areaId,
-          rowIdx,
-          parentTrapId: d.parentTrapId,
-          anchor: d.frontEnd,
-          frontMm: preview.frontMm,
-          backMm: preview.backMm,
-          sessionId,
-        })
-        scheduleEditorDismiss()
-      }
+      // Select this base so the docked edit panel (Layers widget) shows it.
+      if (areaId != null) onSelect?.(areaId, rowIdx, baseIdx)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [zoom, sc, pixelToCmRatio, onExtend, trapAreaMap, scheduleEditorDismiss])
+  }, [zoom, sc, pixelToCmRatio, onExtend, trapAreaMap, beBasesData, onSelect])
 
   // Keep a ref of livePreview for the onUp handler (closure captures stale state otherwise).
   const livePreviewRef = useRef(livePreview)
@@ -443,124 +373,6 @@ export default function BaseEndpointGrips({
         </g>
       )}
 
-      {/* Precise numeric editor — appears after a drag-release; lets the
-          user fine-tune front/back values without re-dragging. Auto-
-          dismisses after EDITOR_LIFETIME_MS if untouched. */}
-      {editor && !livePreview && (() => {
-        const [ax, ay] = editor.anchor
-        // Width/height in SVG px; foreignObject scales to outer SVG zoom.
-        const w = 200 / zoom
-        const h = 154 / zoom
-        const x = ax + 10 / zoom
-        const y = ay - h / 2
-        const fontSz = 10 / zoom
-        const commit = (
-          next: { frontMm: number; backMm: number },
-          scope: FanoutScope = 'base',
-        ) => {
-          const targets = expandTargets(scope, editor.areaId, editor.rowIdx, editor.baseId)
-          if (targets.length === 0) return
-          onExtend({
-            op: 'extend',
-            targets,
-            frontExtMm: next.frontMm,
-            backExtMm: next.backMm,
-            // Same session as the drag that opened this editor — host
-            // dedupes by sessionId so this op replaces the prior
-            // single-target op emitted on release. Final fan-out wins.
-            _sessionId: editor.sessionId,
-          } as ExtendOp)
-          setEditor({ ...editor, ...next })
-          scheduleEditorDismiss()
-        }
-        return (
-          <foreignObject x={x} y={y} width={w} height={h}>
-            <div
-              onMouseDown={(e) => { e.stopPropagation(); scheduleEditorDismiss() }}
-              onKeyDown={(e) => { e.stopPropagation(); scheduleEditorDismiss() }}
-              onWheel={(e) => e.stopPropagation()}
-              style={{
-                background: 'white', border: `1px solid ${BORDER}`,
-                borderRadius: 4 / zoom, padding: `${6 / zoom}px ${8 / zoom}px`,
-                fontSize: fontSz, fontFamily: 'inherit',
-                boxShadow: `0 ${2 / zoom}px ${6 / zoom}px rgba(0,0,0,0.15)`,
-                display: 'flex', flexDirection: 'column', gap: 4 / zoom,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: PRIMARY }}>
-                {deriveVariationLabel(editor.parentTrapId, 0)} extend (mm)
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 / zoom }}>
-                front
-                <input
-                  type="number" min={0} step={10}
-                  value={editor.frontMm}
-                  onChange={(e) => {
-                    const v = Math.max(0, Math.round(Number(e.target.value) || 0))
-                    setEditor({ ...editor, frontMm: v })
-                  }}
-                  onBlur={() => commit({ frontMm: editor.frontMm, backMm: editor.backMm })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      commit({ frontMm: editor.frontMm, backMm: editor.backMm })
-                    }
-                  }}
-                  style={{
-                    width: 60 / zoom, padding: `${2 / zoom}px ${4 / zoom}px`,
-                    border: `1px solid ${BORDER}`, borderRadius: 2 / zoom,
-                    fontSize: fontSz, textAlign: 'right',
-                  }}
-                />
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 / zoom }}>
-                back
-                <input
-                  type="number" min={0} step={10}
-                  value={editor.backMm}
-                  onChange={(e) => {
-                    const v = Math.max(0, Math.round(Number(e.target.value) || 0))
-                    setEditor({ ...editor, backMm: v })
-                  }}
-                  onBlur={() => commit({ frontMm: editor.frontMm, backMm: editor.backMm })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      commit({ frontMm: editor.frontMm, backMm: editor.backMm })
-                    }
-                  }}
-                  style={{
-                    width: 60 / zoom, padding: `${2 / zoom}px ${4 / zoom}px`,
-                    border: `1px solid ${BORDER}`, borderRadius: 2 / zoom,
-                    fontSize: fontSz, textAlign: 'right',
-                  }}
-                />
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 / zoom, marginTop: 3 / zoom, borderTop: `1px solid ${BORDER}`, paddingTop: 4 / zoom }}>
-                <div style={{ fontSize: fontSz * 0.85, color: '#666' }}>fan out to:</div>
-                <button
-                  type="button"
-                  onClick={() => commit({ frontMm: editor.frontMm, backMm: editor.backMm }, 'row')}
-                  style={{
-                    padding: `${3 / zoom}px ${6 / zoom}px`, border: `1px solid ${BORDER}`,
-                    borderRadius: 2 / zoom, background: 'white', cursor: 'pointer',
-                    fontSize: fontSz, textAlign: 'left',
-                  }}
-                >row {editor.rowIdx}</button>
-                <button
-                  type="button"
-                  onClick={() => commit({ frontMm: editor.frontMm, backMm: editor.backMm }, 'area')}
-                  style={{
-                    padding: `${3 / zoom}px ${6 / zoom}px`, border: `1px solid ${BORDER}`,
-                    borderRadius: 2 / zoom, background: 'white', cursor: 'pointer',
-                    fontSize: fontSz, textAlign: 'left',
-                  }}
-                >whole area</button>
-              </div>
-            </div>
-          </foreignObject>
-        )
-      })()}
 
       {/* Live readout chip — anchored to the grabbed grip */}
       {livePreview && (() => {
