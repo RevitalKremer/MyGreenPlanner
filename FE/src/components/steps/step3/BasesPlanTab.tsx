@@ -531,10 +531,18 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
       if (hit) { frontExtMm = Math.round(Number(op.frontExtMm) || 0); backExtMm = Math.round(Number(op.backExtMm) || 0) }
     }
 
-    // Fan-out targets: other framed bases in this row / area.
-    const framed = (bs: any[]) => bs.filter((b: any) => (b.hookOffsets?.length ?? 0) === 0 && b.baseId && b.baseId !== baseId)
-    const rowTargets = framed(rowBases).map((b: any) => ({ areaId: ad.areaId, rowIdx, baseId: b.baseId }))
-    const areaTargets = framed(ad.bases ?? []).map((b: any) => ({ areaId: ad.areaId, rowIdx: b._panelRowIdx ?? 0, baseId: b.baseId }))
+    // Fan-out targets: other framed bases in this row / area. Exclude only the
+    // SOURCE base — but baseIds repeat across rows (each row renumbers B1..BN),
+    // so the area exclusion must match on (rowIdx, baseId), not baseId alone;
+    // otherwise the same-numbered base in every OTHER row is wrongly dropped.
+    // Within a single row baseId is unique, so rowTargets can exclude by baseId.
+    const isFramed = (b: any) => (b.hookOffsets?.length ?? 0) === 0 && b.baseId
+    const rowTargets = rowBases
+      .filter((b: any) => isFramed(b) && b.baseId !== baseId)
+      .map((b: any) => ({ areaId: ad.areaId, rowIdx, baseId: b.baseId }))
+    const areaTargets = (ad.bases ?? [])
+      .filter((b: any) => isFramed(b) && !((b._panelRowIdx ?? 0) === rowIdx && b.baseId === baseId))
+      .map((b: any) => ({ areaId: ad.areaId, rowIdx: b._panelRowIdx ?? 0, baseId: b.baseId }))
 
     const extSession = `ext:${ad.areaId}:${rowIdx}:${baseId}`
     const fireExtend = (f: number, bk: number, targets: any[]) => {
@@ -1223,6 +1231,7 @@ export default function BasesPlanTab({ panels = [], refinedArea, areas = [], upl
                     trapAreaMap={trapAreaMap}
                     customBasesMap={customBasesMap}
                     effectiveSelectedTrapId={effTrapId}
+                    selectedPanelRowIdx={selectedPanelRowIdx}
                     pixelToCmRatio={pixelToCmRatio}
                     sc={sc}
                     zoom={effZoom}
