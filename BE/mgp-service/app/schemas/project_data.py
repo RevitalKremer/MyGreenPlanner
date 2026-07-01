@@ -262,9 +262,11 @@ class TrapExtension(_StrictBase):
     Index 0 is always the trap's BE-computed default (zero for concrete and
     parallel-purlin roofs; non-zero for iskurit / insulated_panel with
     `perpendicular` orientation). Indices 1..N are user-created alternatives,
-    appended in change order — never reordered, never re-indexed. Bases
-    identify their variation through `Base.trapezoidId` ("A1" → idx 0,
-    "A1.N" → idx N).
+    appended in change order. They are compacted + renumbered when a variation
+    becomes unreferenced (see `_gc_unused_trap_extensions`), so a variation's
+    index is stable only between such garbage-collections — consumers resolve a
+    base's variation through `customBaseVariations` (slot → idx) and the base's
+    `Base.trapezoidId` ("A1" → idx 0, "A1.N" → idx N), never by caching an idx.
 
     This Pydantic model documents the dict shape and is also used directly in
     the wire schema for `TrapExtend` ops (SaveTabRequest.overrides.traps).

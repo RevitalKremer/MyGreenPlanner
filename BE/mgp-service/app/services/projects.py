@@ -2091,6 +2091,77 @@ def _apply_trap_extend_ops(
     flag_modified(project, 'data')
 
 
+def _gc_unused_trap_extensions(project) -> bool:
+    """Drop base-beam extension variations that no base references anymore and
+    compact the survivors so their indices stay contiguous (1..M, no gaps).
+
+    `step3.trapExtensions[parentTid]` holds the USER variations — extension idx
+    1..N. Idx 0 is the BE-computed default; it is NEVER stored here, so it is
+    always preserved (it is the subtraction base for the beam-length calc).
+    `step3.customBaseVariations["parentTid:rowIdx"][slot]` holds the extension
+    idx each base slot points at — the only references to a variation.
+
+    A variation becomes unused after the last base on it is deleted, reassigned,
+    or reset. This collects those and renumbers the survivors, remapping every
+    referencing slot (idx 0 stays 0). Derived data — each base's trapezoidId
+    suffix + extensionIdx, the "X.N" computed traps, and geometry.extensions —
+    is regenerated from these two structures on the recompute that follows, so
+    base IDs / traps automatically follow the new indices. `customBasesOffsets`
+    is keyed by the PARENT trap id, so it is unaffected by the renumber.
+
+    No-op for legacy projects without customBaseVariations. Returns True iff it
+    changed project.data; mutates in place (deep-copy + reassign), caller commits.
+    """
+    src = project.data or {}
+    src_step3 = src.get('step3') or {}
+    if not (src_step3.get('trapExtensions') and src_step3.get('customBaseVariations')):
+        return False
+
+    # Deep-copy + reassign is the SQLAlchemy-safe JSONB mutation pattern here
+    # (matches _apply_trap_extend_ops).
+    data = copy.deepcopy(src)
+    step3 = data['step3']
+    trap_exts: dict = step3.get('trapExtensions') or {}
+    custom_vars: dict = step3.get('customBaseVariations') or {}
+
+    changed = False
+    for parent_tid, var_list in list(trap_exts.items()):
+        if not isinstance(var_list, list) or not var_list:
+            continue
+        prefix = f'{parent_tid}:'
+        var_keys = [k for k in custom_vars if k.startswith(prefix)]
+
+        # Variation indices (>0) still referenced by some base slot.
+        referenced: set[int] = set()
+        for k in var_keys:
+            for v in (custom_vars.get(k) or []):
+                iv = int(v or 0)
+                if iv > 0:
+                    referenced.add(iv)
+
+        survivors = [i for i in range(1, len(var_list) + 1) if i in referenced]
+        if len(survivors) == len(var_list):
+            continue  # every variation still used — nothing to compact
+
+        remap = {0: 0}
+        for new_idx, old_idx in enumerate(survivors, start=1):
+            remap[old_idx] = new_idx
+        # old idx i lives at var_list[i-1].
+        trap_exts[parent_tid] = [var_list[old - 1] for old in survivors]
+        for k in var_keys:
+            custom_vars[k] = [remap.get(int(v or 0), 0) for v in (custom_vars.get(k) or [])]
+        changed = True
+
+    if not changed:
+        return False
+
+    step3['trapExtensions'] = {k: v for k, v in trap_exts.items() if v}
+    step3['customBaseVariations'] = {k: v for k, v in custom_vars.items() if v}
+    project.data = data
+    flag_modified(project, 'data')
+    return True
+
+
 def _apply_trap_extensions(project) -> None:
     """Append user-created variations to each ComputedTrapezoid.geometry.extensions[].
 
@@ -3655,6 +3726,16 @@ async def save_tab(
                 project, overrides['traps'],
                 base_lookup=post_ops_base_lookup,
             )
+            await db.commit()
+            await db.refresh(project)
+
+        # Garbage-collect base-beam variations no base references anymore and
+        # compact the survivors. Runs after the bases + trap-extend ops above
+        # have finalized customBaseVariations, so a variation orphaned by a
+        # delete / reassign / reset is collected regardless of which op
+        # triggered it. Commit before the recompute chain, which refreshes the
+        # project from the DB and would otherwise drop the uncommitted change.
+        if _gc_unused_trap_extensions(project):
             await db.commit()
             await db.refresh(project)
 
