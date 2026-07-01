@@ -160,9 +160,31 @@ export default function Step3Sidebar({
   // (no base references them) and are hidden. Index 0 (the parent) is always
   // shown regardless.
   usedVariationsByTrap = {} as Record<string, Set<number>>,
+  // Base count per trap instance, keyed by full trapezoidId ("A1", "A1.2").
+  // Shown on each variation row (same as the parent's panel count chip).
+  baseCountByInstance = {} as Record<string, number>,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
+
+  // First trap INSTANCE actually shown in the detail tree for an area — i.e.
+  // the first in-use instance (parent idx 0 if used, else its first in-use
+  // variation), walking traps in order. The parent default (idx 0) can be
+  // orphaned and hidden, so selecting the area must land on a real row, not a
+  // dead idx 0. Mirrors the `instanceIdxs` logic in the tree render below.
+  const firstInUseTrapInstance = (areaKey: string | number): string | null => {
+    const trapIds = areaTrapezoidMap[areaKey] || []
+    for (const trapId of trapIds) {
+      const usedSet = usedVariationsByTrap[trapId]
+      if (!usedSet || usedSet.has(0)) return trapId
+      const userVars = trapExtensions[trapId] || []
+      for (let i = 0; i < userVars.length; i++) {
+        if (usedSet.has(i + 1)) return `${trapId}.${i + 1}`
+      }
+      // no in-use instance for this trap → try the next one
+    }
+    return trapIds[0] ?? null
+  }
 
   // Orange border = the stored value differs from the next-level fallback.
   // Prefer the canonical isOverride from useStep3Settings (single source of
@@ -188,6 +210,14 @@ export default function Step3Sidebar({
     if (param.visible === false) return null
 
     const { key, label, type, scope: rawScope, orientation, min, max, step, highlightGroup } = param
+    // A variation trap ("A1.2") carries its OWN absolute front/back extension
+    // (set via the base-endpoint grips / edit panel), so the params that only
+    // drive the DEFAULT extension — the extend-beam toggles and the purlin
+    // buffer that feeds the default extension length — don't apply. Hide them
+    // (UI only) when a variation is selected. The parent trap still shows them.
+    const isVariationSelected = !!effectiveSelectedTrapId
+      && stripVariation(effectiveSelectedTrapId) !== effectiveSelectedTrapId
+    if (isVariationSelected && (key === 'extendFront' || key === 'extendRear' || key === 'purlinBufferCm')) return null
     // Trap-scoped bases params (e.g. spacingMm) have no real trapezoid on
     // frameless areas (tiles, flat_installation) — they get a pseudo-trap-id
     // (the area letter), so effectiveSelectedTrapId is truthy. Detect frameless
@@ -451,9 +481,11 @@ export default function Step3Sidebar({
               <div
                 onClick={() => {
                   setSelectedRowIdx(i)
-                  // Area click: detail tab → first trap; rails/bases → all rows (null); areas → no effect
+                  // Area click: detail tab → first IN-USE trap instance (the
+                  // parent idx 0 may be orphaned/hidden); rails/bases → all rows
+                  // (null); areas → no effect
                   if (activeTab === 'detail') {
-                    setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null)
+                    setSelectedTrapezoidId(firstInUseTrapInstance(areaKey))
                   } else {
                     setSelectedTrapezoidId(null)
                   }
@@ -515,9 +547,9 @@ export default function Step3Sidebar({
                             <span style={{ fontSize: '0.72rem', fontWeight: idx === 0 ? '700' : '600', color: isSel ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isSel ? TRAP_BADGE_BG : (idx === 0 ? BORDER_FAINT : 'transparent'), padding: '1px 7px', borderRadius: '10px', border: idx === 0 ? 'none' : `1px solid ${isSel ? PRIMARY : BORDER_FAINT}` }}>
                               {id}
                             </span>
-                            {idx === 0
-                              ? <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
-                              : <span style={{ fontSize: '0.65rem', color: TEXT_VERY_LIGHT, fontStyle: 'italic' }}>variation</span>}
+                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>
+                              {idx === 0 ? count : (baseCountByInstance[id] ?? 0)}p
+                            </span>
                             {hasCustomConfig && (
                               <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
                             )}

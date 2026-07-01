@@ -175,6 +175,21 @@ export default function Step3ConstructionPlanning({
     return m
   }, [beBasesData])
 
+  // Number of bases on each trap INSTANCE, keyed by the full stamped
+  // trapezoidId ("A", "A.1", …). Feeds the sidebar trap tree so every
+  // instance row (parent + variations) shows its base count.
+  const baseCountByInstance = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const ad of (beBasesData ?? [])) {
+      for (const b of (ad.bases ?? [])) {
+        const tid = b?.trapezoidId
+        if (!tid) continue
+        m[tid] = (m[tid] ?? 0) + 1
+      }
+    }
+    return m
+  }, [beBasesData])
+
   const effectiveSelectedTrapId = selectedTrapezoidId ?? (() => {
     const areaKey = rowKeys[selectedRowIdx]
     if (areaKey == null) return null
@@ -463,6 +478,7 @@ export default function Step3ConstructionPlanning({
           return out
         })()}
         usedVariationsByTrap={usedVariationsByTrap}
+        baseCountByInstance={baseCountByInstance}
       />
 
       {/* ── Main content ── */}

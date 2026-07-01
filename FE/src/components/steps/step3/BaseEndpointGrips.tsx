@@ -24,6 +24,9 @@ type Props = {
   trapAreaMap: Record<string, string | number>
   customBasesMap: Record<string, number[]>
   effectiveSelectedTrapId: string | null
+  // When set, only show grips for this panel row (mirrors the base render's
+  // row scoping). null = all rows of the selected area.
+  selectedPanelRowIdx?: number | null
   pixelToCmRatio: number
   sc: number
   zoom: number
@@ -58,6 +61,7 @@ export default function BaseEndpointGrips({
   trapAreaMap,
   customBasesMap,
   effectiveSelectedTrapId,
+  selectedPanelRowIdx = null,
   pixelToCmRatio,
   sc,
   zoom,
@@ -68,6 +72,7 @@ export default function BaseEndpointGrips({
 }: Props) {
   const dragging = useRef<null | {
     baseId: string
+    rowIdx: number                      // baseId is unique only within a row
     parentTrapId: string
     end: 'front' | 'back'
     startClientX: number
@@ -84,6 +89,7 @@ export default function BaseEndpointGrips({
 
   const [livePreview, setLivePreview] = useState<null | {
     baseId: string
+    rowIdx: number
     anchor: [number, number]
     frontMm: number
     backMm: number
@@ -110,6 +116,7 @@ export default function BaseEndpointGrips({
     e.stopPropagation()
     dragging.current = {
       baseId: base.baseId,
+      rowIdx: base._panelRowIdx ?? 0,
       parentTrapId,
       end,
       startClientX: e.clientX,
@@ -123,6 +130,7 @@ export default function BaseEndpointGrips({
     }
     setLivePreview({
       baseId: base.baseId,
+      rowIdx: base._panelRowIdx ?? 0,
       anchor: end === 'front' ? frontEnd : backEnd,
       frontMm: initialFrontMm,
       backMm: initialBackMm,
@@ -178,6 +186,7 @@ export default function BaseEndpointGrips({
 
       setLivePreview({
         baseId: d.baseId,
+        rowIdx: d.rowIdx,
         anchor: previewEnd,
         frontMm,
         backMm,
@@ -197,16 +206,17 @@ export default function BaseEndpointGrips({
       const changed = preview.frontMm !== d.initialFrontMm
                     || preview.backMm  !== d.initialBackMm
       const areaId = trapAreaMap[d.parentTrapId]
-      // Resolve the base's row index AND its sorted-offset index in that row
-      // (the latter is how the docked edit panel identifies a base).
-      let rowIdx = 0
+      // The dragged base's row is known from the drag state — baseId is unique
+      // only WITHIN a row (rows renumber B1..BN), so we must scope by row or a
+      // multi-row area resolves to the wrong (first-row) base.
+      const rowIdx = d.rowIdx
+      // Resolve its sorted-offset index within that row (how the docked edit
+      // panel identifies a base).
       let baseIdx = 0
       if (areaId != null) {
         for (const ad of (beBasesData ?? [])) {
           const adAreaKey = String(ad.areaId ?? ad.areaLabel ?? ad.label)
           if (adAreaKey !== String(areaId)) continue
-          const target = (ad.bases ?? []).find((b: any) => b.baseId === d.baseId)
-          rowIdx = target?._panelRowIdx ?? 0
           const rowSorted = (ad.bases ?? [])
             .filter((b: any) => (b._panelRowIdx ?? 0) === rowIdx)
             .slice()
@@ -260,20 +270,23 @@ export default function BaseEndpointGrips({
       {beBasesData.flatMap((areaData) => {
         const areaKey = String(areaData.areaId ?? areaData.areaLabel ?? areaData.label)
         if (selectedAreaForFilter != null && String(selectedAreaForFilter) !== areaKey) return []
-        // Dedupe by baseId — a defensive guard against any upstream diff
-        // path that might emit the same baseId twice within an area
-        // (would otherwise duplicate the grip circles).
+        // Dedupe by ROW + baseId — baseIds are renumbered per (area, row), so
+        // a multi-row area reuses B1..BN in every row. Keying on baseId alone
+        // dropped every non-first row's bases (their ids collided), so grips
+        // only ever appeared on the first row. Row-scoping the key keeps each
+        // row's grips while still guarding against a real intra-row duplicate.
         const bases: any[] = []
         const seen = new Set<string>()
         for (const sb of (areaData.bases ?? [])) {
           const id = sb?.baseId
           if (!id) continue
-          if (seen.has(id)) {
+          const dedupeKey = `${sb._panelRowIdx ?? 0}:${id}`
+          if (seen.has(dedupeKey)) {
             // eslint-disable-next-line no-console
             console.warn('[BaseEndpointGrips] duplicate baseId skipped:', id, 'in area', areaKey)
             continue
           }
-          seen.add(id)
+          seen.add(dedupeKey)
           bases.push(sb)
         }
 
@@ -286,6 +299,9 @@ export default function BaseEndpointGrips({
           if (sb.__synthetic) return null
 
           const rowIdx = sb._panelRowIdx ?? 0
+          // Scope grips to the selected row (mirrors the base render's
+          // rowIdxsToShow), so they never float on a non-rendered row.
+          if (selectedPanelRowIdx != null && rowIdx !== selectedPanelRowIdx) return null
           const ctx = resolveAreaContext(areaData, areaFrames, areaTrapsMap, beTrapezoidsData, customBasesMap, rowIdx)
           if (!ctx) return null
           const { af } = ctx
@@ -332,11 +348,11 @@ export default function BaseEndpointGrips({
           const angleDeg = beTrapezoidsData?.[parentTrapId]?.geometry?.angle ?? SLOPE_DEFAULT_ANGLE_DEG
           const cosAngle = Math.cos((angleDeg * Math.PI) / 180) || 1
 
-          const isHovered = livePreview?.baseId === sb.baseId
+          const isHovered = livePreview?.baseId === sb.baseId && livePreview?.rowIdx === rowIdx
           const fill = isHovered ? DANGER : BLACK
 
           return (
-            <g key={`grip-${areaKey}-${sb.baseId}`}>
+            <g key={`grip-${areaKey}-${rowIdx}-${sb.baseId}`}>
               <circle
                 cx={frontEnd[0]} cy={frontEnd[1]} r={gripRadius}
                 fill={fill} stroke="white" strokeWidth={1.5 / zoom}
