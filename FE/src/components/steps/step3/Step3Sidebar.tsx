@@ -167,6 +167,25 @@ export default function Step3Sidebar({
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
+  // First trap INSTANCE actually shown in the detail tree for an area — i.e.
+  // the first in-use instance (parent idx 0 if used, else its first in-use
+  // variation), walking traps in order. The parent default (idx 0) can be
+  // orphaned and hidden, so selecting the area must land on a real row, not a
+  // dead idx 0. Mirrors the `instanceIdxs` logic in the tree render below.
+  const firstInUseTrapInstance = (areaKey: string | number): string | null => {
+    const trapIds = areaTrapezoidMap[areaKey] || []
+    for (const trapId of trapIds) {
+      const usedSet = usedVariationsByTrap[trapId]
+      if (!usedSet || usedSet.has(0)) return trapId
+      const userVars = trapExtensions[trapId] || []
+      for (let i = 0; i < userVars.length; i++) {
+        if (usedSet.has(i + 1)) return `${trapId}.${i + 1}`
+      }
+      // no in-use instance for this trap → try the next one
+    }
+    return trapIds[0] ?? null
+  }
+
   // Orange border = the stored value differs from the next-level fallback.
   // Prefer the canonical isOverride from useStep3Settings (single source of
   // truth) and fall back to a local implementation for back-compat.
@@ -454,9 +473,11 @@ export default function Step3Sidebar({
               <div
                 onClick={() => {
                   setSelectedRowIdx(i)
-                  // Area click: detail tab → first trap; rails/bases → all rows (null); areas → no effect
+                  // Area click: detail tab → first IN-USE trap instance (the
+                  // parent idx 0 may be orphaned/hidden); rails/bases → all rows
+                  // (null); areas → no effect
                   if (activeTab === 'detail') {
-                    setSelectedTrapezoidId(areaTrapezoidMap[areaKey]?.[0] ?? null)
+                    setSelectedTrapezoidId(firstInUseTrapInstance(areaKey))
                   } else {
                     setSelectedTrapezoidId(null)
                   }
