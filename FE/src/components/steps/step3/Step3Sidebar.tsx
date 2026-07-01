@@ -210,6 +210,14 @@ export default function Step3Sidebar({
     if (param.visible === false) return null
 
     const { key, label, type, scope: rawScope, orientation, min, max, step, highlightGroup } = param
+    // A variation trap ("A1.2") carries its OWN absolute front/back extension
+    // (set via the base-endpoint grips / edit panel), so the params that only
+    // drive the DEFAULT extension — the extend-beam toggles and the purlin
+    // buffer that feeds the default extension length — don't apply. Hide them
+    // (UI only) when a variation is selected. The parent trap still shows them.
+    const isVariationSelected = !!effectiveSelectedTrapId
+      && stripVariation(effectiveSelectedTrapId) !== effectiveSelectedTrapId
+    if (isVariationSelected && (key === 'extendFront' || key === 'extendRear' || key === 'purlinBufferCm')) return null
     // Trap-scoped bases params (e.g. spacingMm) have no real trapezoid on
     // frameless areas (tiles, flat_installation) — they get a pseudo-trap-id
     // (the area letter), so effectiveSelectedTrapId is truthy. Detect frameless
