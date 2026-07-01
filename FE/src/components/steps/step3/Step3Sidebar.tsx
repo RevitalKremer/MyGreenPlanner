@@ -160,6 +160,9 @@ export default function Step3Sidebar({
   // (no base references them) and are hidden. Index 0 (the parent) is always
   // shown regardless.
   usedVariationsByTrap = {} as Record<string, Set<number>>,
+  // Base count per trap instance, keyed by full trapezoidId ("A1", "A1.2").
+  // Shown on each variation row (same as the parent's panel count chip).
+  baseCountByInstance = {} as Record<string, number>,
 }) {
   const { t } = useLang()
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
@@ -515,9 +518,9 @@ export default function Step3Sidebar({
                             <span style={{ fontSize: '0.72rem', fontWeight: idx === 0 ? '700' : '600', color: isSel ? PRIMARY_DARK : TEXT_PLACEHOLDER, background: isSel ? TRAP_BADGE_BG : (idx === 0 ? BORDER_FAINT : 'transparent'), padding: '1px 7px', borderRadius: '10px', border: idx === 0 ? 'none' : `1px solid ${isSel ? PRIMARY : BORDER_FAINT}` }}>
                               {id}
                             </span>
-                            {idx === 0
-                              ? <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>{count}p</span>
-                              : <span style={{ fontSize: '0.65rem', color: TEXT_VERY_LIGHT, fontStyle: 'italic' }}>variation</span>}
+                            <span style={{ fontSize: '0.7rem', color: TEXT_VERY_LIGHT }}>
+                              {idx === 0 ? count : (baseCountByInstance[id] ?? 0)}p
+                            </span>
                             {hasCustomConfig && (
                               <span title="Custom config" style={{ width: '5px', height: '5px', borderRadius: '50%', background: WARNING, marginLeft: 'auto', flexShrink: 0 }} />
                             )}
